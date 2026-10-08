@@ -344,12 +344,16 @@ import {
   summarizeCelebrationBlock,
 } from '@/domain/eventCelebration'
 import {
+  CANCION_PRIMER_BAILE_QUESTION_KEY,
   CLASES_BAILE_QUESTION_KEY,
+  desiredForCancionPrimerBaile,
   desiredForClasesBaile,
   listMomentosEspecialesBlockQuestions,
   MOMENTOS_ESPECIALES_CATALOG,
   MOMENTOS_ESPECIALES_QUESTION_KEY,
   summarizeMomentosEspecialesBlock,
+  type CancionPrimerBaileAnswer,
+  type CancionPrimerBaileChoice,
   type ClasesBaileAnswer,
   type ClasesBaileChoice,
   type MomentoEspecialCatalogItem,
@@ -418,15 +422,73 @@ import {
   buildMomentosEspecialesDecisionSummary,
   buildEspecialDecisionSummary,
   buildFamiliaresDecisionSummary,
+  buildMusicaFiestaDecisionSummary,
+  buildFotosRecuerdosDecisionSummary,
+  buildOtrosDecoracionDecisionSummary,
   mergeTipoResolucionPairs,
   type DecisionSummary,
   type DecisionSummaryItem,
 } from '@/domain/eventDecisionsSummary'
 import {
+  listMusicaFiestaBlockQuestions,
+  summarizeMusicaFiestaBlock,
+  desiredForMusica,
+  desiredForAnimacion,
+  MUSICA_FIESTA_BLOCK_KEY,
+  MUSICA_QUESTION_KEY,
+  MUSICA_EXTRA_CONFIRM_QUESTION_KEY,
+  MUSICA_CATALOG,
+  ANIMACION_QUESTION_KEY,
+  ANIMACION_CATALOG,
+  type MusicaAnswer,
+  type MusicaExtraConfirmAnswer,
+  type MusicaExtraConfirmChoice,
+  type AnimacionAnswer,
+  type AnimacionChoice,
+} from '@/domain/eventMusicaFiesta'
+import {
+  listFotosRecuerdosBlockQuestions,
+  summarizeFotosRecuerdosBlock,
+  desiredForCoberturaFotos,
+  desiredForSesionFotos,
+  desiredForVideo,
+  FOTOS_RECUERDOS_BLOCK_KEY,
+  COBERTURA_FOTOS_QUESTION_KEY,
+  SESION_FOTOS_QUESTION_KEY,
+  VIDEO_QUESTION_KEY,
+  type CoberturaFotosAnswer,
+  type CoberturaFotosChoice,
+  type SesionFotosAnswer,
+  type SesionFotosChoice,
+  type SesionFotosQuien,
+  type VideoAnswer,
+  type VideoChoice,
+} from '@/domain/eventFotosRecuerdos'
+import {
+  listOtrosDecoracionBlockQuestions,
+  summarizeOtrosDecoracionBlock,
+  desiredForDecoracionOrganizacion,
+  desiredForDecoracionExtraConfirm,
+  OTROS_DECORACION_BLOCK_KEY,
+  DECORACION_EXTRA_CONFIRM_QUESTION_KEY,
+  DECORACION_ORGANIZACION_QUESTION_KEY,
+  DECORACION_ZONAS_QUESTION_KEY,
+  DECORACION_ZONAS_CATALOG,
+  OTRAS_NECESIDADES_QUESTION_KEY,
+  type DecoracionExtraConfirmAnswer,
+  type DecoracionExtraConfirmChoice,
+  type DecoracionOrganizacionAnswer,
+  type DecoracionOrganizacionChoice,
+  type DecoracionZonasAnswer,
+  type OtraNecesidadItem,
+  type OtrasNecesidadesAnswer,
+} from '@/domain/eventOtrosDecoracion'
+import {
   effectiveVenueServicesAnswer,
   legacyOnlyServiceLabels,
   resolveVenueCase,
   toggleVenueService,
+  venueIncludesService,
   VENUE_SERVICES,
   VENUE_SERVICES_BLOCK_KEY,
   VENUE_SERVICES_QUESTION_KEY,
@@ -3892,6 +3954,11 @@ function EventPlanningConfigurator({
   // bautizo/comunión (nunca boda, ver el porqué en eventSpecialPeople.ts). Mismo patrón de acordeón.
   const [personasEspecialesOpen, setPersonasEspecialesOpen] = useState(() => loadConfiguratorOpen(event.id, 'personas_especiales'))
   const [familiaresOpen, setFamiliaresOpen] = useState(() => loadConfiguratorOpen(event.id, 'familiares'))
+  // "🎵 Música y fiesta" / "📷 Fotos y recuerdos" / "🌿 Otros y decoración" — séptimo/octavo/noveno bloque
+  // (tanda "completar el configurador de boda"), exclusivos de boda igual que "La pareja".
+  const [musicaFiestaOpen, setMusicaFiestaOpen] = useState(() => loadConfiguratorOpen(event.id, 'musica_fiesta'))
+  const [fotosRecuerdosOpen, setFotosRecuerdosOpen] = useState(() => loadConfiguratorOpen(event.id, 'fotos_recuerdos'))
+  const [otrosDecoracionOpen, setOtrosDecoracionOpen] = useState(() => loadConfiguratorOpen(event.id, 'otros_decoracion'))
 
   function toggleOpen() {
     const next = !open
@@ -3932,6 +3999,21 @@ function EventPlanningConfigurator({
     const next = !familiaresOpen
     setFamiliaresOpen(next)
     saveConfiguratorOpen(event.id, 'familiares', next)
+  }
+  function toggleMusicaFiestaBlock() {
+    const next = !musicaFiestaOpen
+    setMusicaFiestaOpen(next)
+    saveConfiguratorOpen(event.id, 'musica_fiesta', next)
+  }
+  function toggleFotosRecuerdosBlock() {
+    const next = !fotosRecuerdosOpen
+    setFotosRecuerdosOpen(next)
+    saveConfiguratorOpen(event.id, 'fotos_recuerdos', next)
+  }
+  function toggleOtrosDecoracionBlock() {
+    const next = !otrosDecoracionOpen
+    setOtrosDecoracionOpen(next)
+    saveConfiguratorOpen(event.id, 'otros_decoracion', next)
   }
 
   // Fase 1.1 (plan de pendientes) — resumen general: suma de TODOS los bloques, visible aunque el
@@ -3976,6 +4058,27 @@ function EventPlanningConfigurator({
           ...(showFamiliares
             ? listFamiliaresBlockQuestions(decisions, familiarPeople.length).map((q) => ({ sectionKey: 'familiares', sectionLabel: 'Familiares', key: q.questionKey, label: q.label, status: q.status }))
             : []),
+          ...(event.type === 'boda'
+            ? listMusicaFiestaBlockQuestions(decisions, venueIncludesService(foodCtx.venueCase, decisions, 'musica', foodCtx.legacyIncluded)).map((q) => ({
+                sectionKey: 'musica_fiesta',
+                sectionLabel: 'Música y fiesta',
+                key: q.questionKey,
+                label: q.label,
+                status: q.status,
+              }))
+            : []),
+          ...(event.type === 'boda'
+            ? listFotosRecuerdosBlockQuestions(decisions).map((q) => ({ sectionKey: 'fotos_recuerdos', sectionLabel: 'Fotos y recuerdos', key: q.questionKey, label: q.label, status: q.status }))
+            : []),
+          ...(event.type === 'boda'
+            ? listOtrosDecoracionBlockQuestions(decisions, venueIncludesService(foodCtx.venueCase, decisions, 'decoracion', foodCtx.legacyIncluded)).map((q) => ({
+                sectionKey: 'otros_decoracion',
+                sectionLabel: 'Otros y decoración',
+                key: q.questionKey,
+                label: q.label,
+                status: q.status,
+              }))
+            : []),
         ]
         setSummaryQuestions(refs)
       })
@@ -4007,6 +4110,9 @@ function EventPlanningConfigurator({
     comida: { open: comidaOpen, setOpen: setComidaOpen, storageKey: 'comida' },
     personas_especiales: { open: personasEspecialesOpen, setOpen: setPersonasEspecialesOpen, storageKey: 'personas_especiales' },
     familiares: { open: familiaresOpen, setOpen: setFamiliaresOpen, storageKey: 'familiares' },
+    musica_fiesta: { open: musicaFiestaOpen, setOpen: setMusicaFiestaOpen, storageKey: 'musica_fiesta' },
+    fotos_recuerdos: { open: fotosRecuerdosOpen, setOpen: setFotosRecuerdosOpen, storageKey: 'fotos_recuerdos' },
+    otros_decoracion: { open: otrosDecoracionOpen, setOpen: setOtrosDecoracionOpen, storageKey: 'otros_decoracion' },
   }
   const [focusToken, setFocusToken] = useState(0)
   const [pendingFocus, setPendingFocus] = useState<{ sectionKey: string; questionKey: string; token: number } | null>(null)
@@ -4171,6 +4277,63 @@ function EventPlanningConfigurator({
               {familiaresOpen && (
                 <div style={{ marginTop: 4 }}>
                   <FamiliaresBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('familiares')} />
+                </div>
+              )}
+            </div>
+          )}
+          {event.type === 'boda' && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleMusicaFiestaBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={musicaFiestaOpen}
+              >
+                🎵 Música y fiesta
+                <span aria-hidden="true">{musicaFiestaOpen ? '▾' : '▸'}</span>
+              </button>
+              {musicaFiestaOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <MusicaFiestaBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('musica_fiesta')} />
+                </div>
+              )}
+            </div>
+          )}
+          {event.type === 'boda' && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleFotosRecuerdosBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={fotosRecuerdosOpen}
+              >
+                📷 Fotos y recuerdos
+                <span aria-hidden="true">{fotosRecuerdosOpen ? '▾' : '▸'}</span>
+              </button>
+              {fotosRecuerdosOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <FotosRecuerdosBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('fotos_recuerdos')} />
+                </div>
+              )}
+            </div>
+          )}
+          {event.type === 'boda' && (
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="link-button"
+                onClick={toggleOtrosDecoracionBlock}
+                style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', fontWeight: 600, textAlign: 'left' }}
+                aria-expanded={otrosDecoracionOpen}
+              >
+                🌿 Otros y decoración
+                <span aria-hidden="true">{otrosDecoracionOpen ? '▾' : '▸'}</span>
+              </button>
+              {otrosDecoracionOpen && (
+                <div style={{ marginTop: 4 }}>
+                  <OtrosDecoracionBlock event={event} onDerivedDataChanged={handleDerivedDataChanged} focusRequest={focusRequestFor('otros_decoracion')} />
                 </div>
               )}
             </div>
@@ -6633,6 +6796,60 @@ function ClasesBaileQuestion({ existing, saving, onSave }: { existing: ClasesBai
   )
 }
 
+const CANCION_PRIMER_BAILE_OPTIONS: { value: CancionPrimerBaileChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no' },
+  { value: 'sin_cancion_concreta', label: 'No queremos elegir una canción concreta' },
+]
+
+// A2 — título/artista solo se piden (y solo se guardan) con choice==='si', y son opcionales de verdad:
+// se puede guardar "Sí" sin rellenarlos todavía. Campos de texto libres, PEPA nunca sugiere ni completa.
+function CancionPrimerBaileQuestion({
+  existing,
+  saving,
+  onSave,
+}: {
+  existing: CancionPrimerBaileAnswer | undefined
+  saving: boolean
+  onSave: (answer: CancionPrimerBaileAnswer) => void
+}) {
+  const [titulo, setTitulo] = useState(existing?.titulo ?? '')
+  const [artista, setArtista] = useState(existing?.artista ?? '')
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿Tenéis clara la canción del primer baile?
+      </div>
+      <ChoiceRow
+        options={CANCION_PRIMER_BAILE_OPTIONS}
+        value={existing?.choice}
+        disabled={saving}
+        onSelect={(choice) => onSave(choice === 'si' ? { choice, titulo: titulo || null, artista: artista || null } : { choice })}
+      />
+      {existing?.choice === 'si' && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input
+            type="text"
+            value={titulo}
+            placeholder="Título (opcional)"
+            disabled={saving}
+            onChange={(e) => setTitulo(e.target.value)}
+            onBlur={() => onSave({ choice: 'si', titulo: titulo || null, artista: artista || null })}
+          />
+          <input
+            type="text"
+            value={artista}
+            placeholder="Artista (opcional)"
+            disabled={saving}
+            onChange={(e) => setArtista(e.target.value)}
+            onBlur={() => onSave({ choice: 'si', titulo: titulo || null, artista: artista || null })}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MomentosEspecialesBlock({
   event,
   onDerivedDataChanged,
@@ -6719,12 +6936,40 @@ function MomentosEspecialesBlock({
     }
   }
 
+  // A2 (tanda del configurador de boda) — puramente informativa (desiredForCancionPrimerBaile es
+  // siempre NONE); se llama igual a applyPairDecisionGeneration por coherencia con el resto del motor.
+  // A diferencia de saveSeleccion con CLASES_BAILE_QUESTION_KEY, NUNCA se borra esta decisión al
+  // desmarcar "Primer baile" — listMomentosEspecialesBlockQuestions ya la oculta sin tocar sus datos.
+  async function saveCancionPrimerBaile(answer: CancionPrimerBaileAnswer) {
+    setSavingKey(CANCION_PRIMER_BAILE_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, {
+        blockKey: 'momentos_especiales',
+        questionKey: CANCION_PRIMER_BAILE_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: false,
+      })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForCancionPrimerBaile(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
   if (loading) return null
   const seleccionDecision = findDecision(MOMENTOS_ESPECIALES_QUESTION_KEY)
   const seleccion = seleccionDecision?.answer as unknown as MomentosEspecialesAnswer | undefined
   const catalog = MOMENTOS_ESPECIALES_CATALOG[event.type]
   const clasesBaileDecision = findDecision(CLASES_BAILE_QUESTION_KEY)
   const clasesBaile = clasesBaileDecision?.answer as unknown as ClasesBaileAnswer | undefined
+  const cancionDecision = findDecision(CANCION_PRIMER_BAILE_QUESTION_KEY)
+  const cancion = cancionDecision?.answer as unknown as CancionPrimerBaileAnswer | undefined
   const summary = summarizeMomentosEspecialesBlock(decisions)
   const decisionSummary = buildMomentosEspecialesDecisionSummary(decisions)
 
@@ -6742,6 +6987,9 @@ function MomentosEspecialesBlock({
       )}
       {questionIsVisible(localFocus, CLASES_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile') && (
         <ClasesBaileQuestion existing={clasesBaile} saving={savingKey === CLASES_BAILE_QUESTION_KEY} onSave={saveClasesBaile} />
+      )}
+      {questionIsVisible(localFocus, CANCION_PRIMER_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile') && (
+        <CancionPrimerBaileQuestion existing={cancion} saving={savingKey === CANCION_PRIMER_BAILE_QUESTION_KEY} onSave={saveCancionPrimerBaile} />
       )}
       {localFocus && (
         <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
@@ -8027,6 +8275,766 @@ function FamiliaresBlock({ event, onDerivedDataChanged, focusRequest }: { event:
           )}
         </div>
       )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// "🎵 Música y fiesta" — séptimo bloque del configurador (tanda "completar configurador de boda").
+// REGLA "no preguntar dos veces": si el lugar ya incluye música (eventVenueServices.ts), la pregunta
+// principal se sustituye por una confirmación de "¿algo más?" — nunca una segunda forma de preguntar lo
+// mismo. Muy breve a propósito: nunca listas de canciones ni horarios musicales (eso es del DJ/grupo).
+// ---------------------------------------------------------------------
+const MUSICA_EXTRA_CONFIRM_OPTIONS: { value: MusicaExtraConfirmChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+const ANIMACION_OPTIONS: { value: AnimacionChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function MusicaFiestaBlock({
+  event,
+  onDerivedDataChanged,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [moments, setMoments] = useState<EventMoment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventMoments(event.id)])
+      .then(([d, mo]) => {
+        setDecisions(d.filter((x) => x.blockKey === MUSICA_FIESTA_BLOCK_KEY))
+        setMoments(mo)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+  // El bloque "Ceremonia y celebración" avisa cuando cambia el lugar o lo que incluye.
+  useEventMomentsChangeSignal(event.id, () => void reload())
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  async function saveMusica(answer: MusicaAnswer) {
+    setSavingKey(MUSICA_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: MUSICA_FIESTA_BLOCK_KEY, questionKey: MUSICA_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForMusica(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Si dejan de querer "algo más", el catálogo elegido para lo adicional deja de tener sentido — se
+  // reconcilia (nunca huérfano) y se borra la sub-decisión, mismo criterio que Primer baile/clases de baile.
+  async function saveMusicaExtraConfirm(answer: MusicaExtraConfirmAnswer) {
+    setSavingKey(MUSICA_EXTRA_CONFIRM_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: MUSICA_FIESTA_BLOCK_KEY, questionKey: MUSICA_EXTRA_CONFIRM_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      let allActions: ReconcileAction[] = []
+      if (answer.choice !== 'si') {
+        const existing = findDecision(MUSICA_QUESTION_KEY)
+        if (existing) {
+          const result = await applyPairDecisionGeneration(event.id, existing.id, desiredForMusica(undefined))
+          allActions = [...allActions, ...result.actions]
+          await deleteEventDecision(existing.id)
+        }
+      }
+      await reload()
+      if (allActions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(allActions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveAnimacion(answer: AnimacionAnswer) {
+    setSavingKey(ANIMACION_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: MUSICA_FIESTA_BLOCK_KEY, questionKey: ANIMACION_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForAnimacion(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+  const hasMomentLocation = moments.some((m) => Boolean(m.locationLabel?.trim()))
+  const venueCase = resolveVenueCase(event, decisions, hasMomentLocation)
+  const venueHasMusic = venueIncludesService(venueCase, decisions, 'musica', event.includedServices ?? null)
+  const musicaDecision = findDecision(MUSICA_QUESTION_KEY)
+  const musica = musicaDecision?.answer as unknown as MusicaAnswer | undefined
+  const extraConfirmDecision = findDecision(MUSICA_EXTRA_CONFIRM_QUESTION_KEY)
+  const extraConfirm = extraConfirmDecision?.answer as unknown as MusicaExtraConfirmAnswer | undefined
+  const animacionDecision = findDecision(ANIMACION_QUESTION_KEY)
+  const animacion = animacionDecision?.answer as unknown as AnimacionAnswer | undefined
+  const summary = summarizeMusicaFiestaBlock(decisions)
+  const decisionSummary = buildMusicaFiestaDecisionSummary(decisions, venueHasMusic)
+
+  return (
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      {error && <p className="error">{error}</p>}
+      {venueHasMusic ? (
+        <>
+          {questionIsVisible(localFocus, MUSICA_EXTRA_CONFIRM_QUESTION_KEY) && (
+            <div style={{ marginTop: 6 }}>
+              <div className="muted" style={{ fontSize: 13 }}>
+                🎵 El lugar ya incluye música. ¿Queréis añadir algo más?
+              </div>
+              <ChoiceRow options={MUSICA_EXTRA_CONFIRM_OPTIONS} value={extraConfirm?.choice} disabled={savingKey === MUSICA_EXTRA_CONFIRM_QUESTION_KEY} onSelect={(choice) => saveMusicaExtraConfirm({ choice })} />
+            </div>
+          )}
+          {questionIsVisible(localFocus, MUSICA_QUESTION_KEY) && extraConfirm?.choice === 'si' && (
+            <MusicaCatalogQuestion label="¿Qué más de música queréis añadir?" existing={musica} saving={savingKey === MUSICA_QUESTION_KEY} onSave={saveMusica} />
+          )}
+        </>
+      ) : (
+        questionIsVisible(localFocus, MUSICA_QUESTION_KEY) && (
+          <MusicaCatalogQuestion label="¿Cómo vais a organizar la música?" existing={musica} saving={savingKey === MUSICA_QUESTION_KEY} onSave={saveMusica} />
+        )
+      )}
+      {questionIsVisible(localFocus, ANIMACION_QUESTION_KEY) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Habrá animación o entretenimiento adicional?
+          </div>
+          <ChoiceRow options={ANIMACION_OPTIONS} value={animacion?.choice} disabled={savingKey === ANIMACION_QUESTION_KEY} onSelect={(choice) => saveAnimacion({ choice, selected: animacion?.selected ?? [], customItems: animacion?.customItems ?? [] })} />
+          {animacion?.choice === 'si' && (
+            <AnimacionCatalogPicker
+              answer={animacion}
+              saving={savingKey === ANIMACION_QUESTION_KEY}
+              onChange={(next) => saveAnimacion(next)}
+            />
+          )}
+        </div>
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
+    </div>
+  )
+}
+
+// Catálogo DJ/directo/propia + Sin música/Todavía no lo sabemos + Otro libre — mismo patrón que
+// MomentosEspecialesQuestion, reutilizado aquí con su propio título (fijo o "¿algo más?").
+function MusicaCatalogQuestion({ label, existing, saving, onSave }: { label: string; existing: MusicaAnswer | undefined; saving: boolean; onSave: (answer: MusicaAnswer) => void }) {
+  const [draft, setDraft] = useState<MusicaAnswer | null>(null)
+  const current = draft ?? existing
+  const [customInput, setCustomInput] = useState('')
+  const isTerminal = current?.choice === 'sin_musica' || current?.choice === 'todavia_no_lo_sabemos'
+
+  function toggleSelected(key: (typeof MUSICA_CATALOG)[number]['key']) {
+    const selected = current?.choice === 'seleccionar' ? current.selected : []
+    const next: MusicaAnswer = { choice: 'seleccionar', selected: selected.includes(key) ? selected.filter((x) => x !== key) : [...selected, key], customItems: current?.choice === 'seleccionar' ? current.customItems : [] }
+    setDraft(next)
+    onSave(next)
+  }
+  function addCustom() {
+    if (!customInput.trim()) return
+    const next: MusicaAnswer = { choice: 'seleccionar', selected: current?.choice === 'seleccionar' ? current.selected : [], customItems: [...(current?.choice === 'seleccionar' ? current.customItems : []), customInput.trim()] }
+    setDraft(next)
+    onSave(next)
+    setCustomInput('')
+  }
+  function removeCustom(item: string) {
+    const next: MusicaAnswer = { choice: 'seleccionar', selected: current?.choice === 'seleccionar' ? current.selected : [], customItems: (current?.choice === 'seleccionar' ? current.customItems : []).filter((x) => x !== item) }
+    setDraft(next)
+    onSave(next)
+  }
+  function selectTerminal(choice: 'sin_musica' | 'todavia_no_lo_sabemos') {
+    const next: MusicaAnswer = { choice, selected: [], customItems: [] }
+    setDraft(next)
+    onSave(next)
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        {label}
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {MUSICA_CATALOG.map((item) => (
+          <button key={item.key} type="button" className={'chip' + (!isTerminal && current?.choice === 'seleccionar' && current.selected.includes(item.key) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleSelected(item.key)}>
+            {item.label}
+          </button>
+        ))}
+        {!isTerminal &&
+          current?.choice === 'seleccionar' &&
+          current.customItems.map((item) => (
+            <button key={item} type="button" className="chip chip-active" disabled={saving} onClick={() => removeCustom(item)}>
+              {item} ✕
+            </button>
+          ))}
+      </div>
+      {!isTerminal && (
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={customInput} placeholder="Otra opción" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} />
+          <button type="button" className="link-button" disabled={saving || !customInput.trim()} onClick={addCustom}>
+            + Añadir
+          </button>
+        </div>
+      )}
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        <button type="button" className={'chip' + (current?.choice === 'todavia_no_lo_sabemos' ? ' chip-active' : '')} disabled={saving} onClick={() => selectTerminal('todavia_no_lo_sabemos')}>
+          Todavía no lo sabemos
+        </button>
+        <button type="button" className={'chip' + (current?.choice === 'sin_musica' ? ' chip-active' : '')} disabled={saving} onClick={() => selectTerminal('sin_musica')}>
+          Sin música
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Catálogo de animación (admite varios) — mismo lenguaje visual que MusicaCatalogQuestion, pero sin
+// estados terminales propios: el Sí/No/Todavía ya lo decide ChoiceRow por encima.
+function AnimacionCatalogPicker({ answer, saving, onChange }: { answer: AnimacionAnswer; saving: boolean; onChange: (next: AnimacionAnswer) => void }) {
+  const [customInput, setCustomInput] = useState('')
+  function toggle(key: (typeof ANIMACION_CATALOG)[number]['key']) {
+    const selected = answer.selected.includes(key) ? answer.selected.filter((x) => x !== key) : [...answer.selected, key]
+    onChange({ ...answer, selected })
+  }
+  function addCustom() {
+    if (!customInput.trim()) return
+    onChange({ ...answer, customItems: [...answer.customItems, customInput.trim()] })
+    setCustomInput('')
+  }
+  function removeCustom(item: string) {
+    onChange({ ...answer, customItems: answer.customItems.filter((x) => x !== item) })
+  }
+  return (
+    <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+      {ANIMACION_CATALOG.map((item) => (
+        <button key={item.key} type="button" className={'chip' + (answer.selected.includes(item.key) ? ' chip-active' : '')} disabled={saving} onClick={() => toggle(item.key)}>
+          {item.label}
+        </button>
+      ))}
+      {answer.customItems.map((item) => (
+        <button key={item} type="button" className="chip chip-active" disabled={saving} onClick={() => removeCustom(item)}>
+          {item} ✕
+        </button>
+      ))}
+      <input type="text" value={customInput} placeholder="Otra opción" disabled={saving} onChange={(e) => setCustomInput(e.target.value)} style={{ maxWidth: 140 }} />
+      <button type="button" className="link-button" disabled={saving || !customInput.trim()} onClick={addCustom}>
+        + Añadir
+      </button>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// "📷 Fotos y recuerdos" — octavo bloque del configurador. Tres decisiones independientes (cobertura del
+// día, sesión aparte, vídeo); "profesional"/"otro fotógrafo" reutilizan ProviderLinker TAL CUAL (vincular
+// un proveedor ya existente, nunca un segundo mecanismo de vinculación).
+// ---------------------------------------------------------------------
+const COBERTURA_FOTOS_OPTIONS: { value: CoberturaFotosChoice; label: string }[] = [
+  { value: 'profesional', label: 'Fotógrafo/a profesional' },
+  { value: 'familiares_amigos', label: 'Familiares o amigos' },
+  { value: 'nuestra_cuenta', label: 'Por nuestra cuenta' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+  { value: 'sin_cobertura', label: 'Sin cobertura organizada' },
+]
+const SESION_FOTOS_OPTIONS: { value: SesionFotosChoice; label: string }[] = [
+  { value: 'preboda', label: 'Preboda' },
+  { value: 'postboda', label: 'Postboda' },
+  { value: 'ambas', label: 'Ambas' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+const SESION_FOTOS_QUIEN_OPTIONS: { value: SesionFotosQuien; label: string }[] = [
+  { value: 'mismo_fotografo', label: 'El mismo fotógrafo/a' },
+  { value: 'otro', label: 'Otro/a' },
+  { value: 'pendiente', label: 'Pendiente de decidir' },
+]
+const VIDEO_OPTIONS: { value: VideoChoice; label: string }[] = [
+  { value: 'profesional', label: 'Videógrafo/a profesional' },
+  { value: 'familiares_amigos', label: 'Familiares o amigos' },
+  { value: 'nuestra_cuenta', label: 'Por nuestra cuenta' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function FotosRecuerdosBlock({
+  event,
+  onDerivedDataChanged,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+
+  function reload(): Promise<void> {
+    return listEventDecisions(event.id)
+      .then((d) => setDecisions(d.filter((x) => x.blockKey === FOTOS_RECUERDOS_BLOCK_KEY)))
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  async function saveCobertura(answer: CoberturaFotosAnswer) {
+    setSavingKey(COBERTURA_FOTOS_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: FOTOS_RECUERDOS_BLOCK_KEY, questionKey: COBERTURA_FOTOS_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForCoberturaFotos(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveSesion(answer: SesionFotosAnswer) {
+    setSavingKey(SESION_FOTOS_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: FOTOS_RECUERDOS_BLOCK_KEY, questionKey: SESION_FOTOS_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForSesionFotos(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveVideo(answer: VideoAnswer) {
+    setSavingKey(VIDEO_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: FOTOS_RECUERDOS_BLOCK_KEY, questionKey: VIDEO_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForVideo(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  if (loading) return null
+  const coberturaDecision = findDecision(COBERTURA_FOTOS_QUESTION_KEY)
+  const cobertura = coberturaDecision?.answer as unknown as CoberturaFotosAnswer | undefined
+  const sesionDecision = findDecision(SESION_FOTOS_QUESTION_KEY)
+  const sesion = sesionDecision?.answer as unknown as SesionFotosAnswer | undefined
+  const videoDecision = findDecision(VIDEO_QUESTION_KEY)
+  const video = videoDecision?.answer as unknown as VideoAnswer | undefined
+  const summary = summarizeFotosRecuerdosBlock(decisions)
+  const decisionSummary = buildFotosRecuerdosDecisionSummary(decisions)
+  const sesionTieneFecha = sesion?.choice === 'preboda' || sesion?.choice === 'postboda' || sesion?.choice === 'ambas'
+
+  return (
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      {error && <p className="error">{error}</p>}
+      {questionIsVisible(localFocus, COBERTURA_FOTOS_QUESTION_KEY) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Cómo vais a organizar las fotos del día de la boda?
+          </div>
+          <ChoiceRow options={COBERTURA_FOTOS_OPTIONS} value={cobertura?.choice} disabled={savingKey === COBERTURA_FOTOS_QUESTION_KEY} onSelect={(choice) => saveCobertura({ choice })} />
+          {cobertura?.choice === 'profesional' && coberturaDecision && <ProviderLinker event={event} decision={coberturaDecision} />}
+        </div>
+      )}
+      {questionIsVisible(localFocus, SESION_FOTOS_QUESTION_KEY) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Queréis hacer una sesión de fotos aparte?
+          </div>
+          <ChoiceRow
+            options={SESION_FOTOS_OPTIONS}
+            value={sesion?.choice}
+            disabled={savingKey === SESION_FOTOS_QUESTION_KEY}
+            onSelect={(choice) => saveSesion({ choice, quien: sesion?.quien ?? null, fecha: sesion?.fecha ?? null })}
+          />
+          {sesionTieneFecha && (
+            <>
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                ¿Con quién?
+              </div>
+              <ChoiceRow
+                options={SESION_FOTOS_QUIEN_OPTIONS}
+                value={sesion?.quien ?? undefined}
+                disabled={savingKey === SESION_FOTOS_QUESTION_KEY}
+                onSelect={(quien) => saveSesion({ choice: sesion!.choice, quien, fecha: sesion?.fecha ?? null })}
+              />
+              <input
+                type="date"
+                defaultValue={sesion?.fecha ?? ''}
+                disabled={savingKey === SESION_FOTOS_QUESTION_KEY}
+                onBlur={(e) => saveSesion({ choice: sesion!.choice, quien: sesion?.quien ?? null, fecha: e.target.value || null })}
+                style={{ marginTop: 4 }}
+              />
+              {sesion?.quien === 'otro' && sesionDecision && <ProviderLinker event={event} decision={sesionDecision} />}
+            </>
+          )}
+        </div>
+      )}
+      {questionIsVisible(localFocus, VIDEO_QUESTION_KEY) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Queréis grabar la boda en vídeo?
+          </div>
+          <ChoiceRow options={VIDEO_OPTIONS} value={video?.choice} disabled={savingKey === VIDEO_QUESTION_KEY} onSelect={(choice) => saveVideo({ choice })} />
+          {video?.choice === 'profesional' && videoDecision && <ProviderLinker event={event} decision={videoDecision} />}
+        </div>
+      )}
+      {localFocus && (
+        <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
+          Ver todas las preguntas
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------
+// "🌿 Otros y decoración" — noveno y último bloque nuevo del configurador. NO sustituye al módulo
+// "🎨 Decoración" (ideas/materiales/compras/encargos/presupuesto siguen viviendo allí) — las zonas
+// elegidas se pueden enviar como ideas de partida con "+ Enviar a Decoración" (acción manual y explícita,
+// nunca automática en cada guardado; comprueba nombres ya existentes para no duplicar con un doble toque).
+// "¿Hay algo más?" admite necesidades libres, cada una convertible a Preparativo solo si lo decide la
+// familia — nunca una tarea arbitraria generada sola.
+// ---------------------------------------------------------------------
+const DECORACION_EXTRA_CONFIRM_OPTIONS: { value: DecoracionExtraConfirmChoice; label: string }[] = [
+  { value: 'si', label: 'Sí' },
+  { value: 'no', label: 'No' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+const DECORACION_ORGANIZACION_OPTIONS: { value: DecoracionOrganizacionChoice; label: string }[] = [
+  { value: 'contrataremos', label: 'La contrataremos' },
+  { value: 'nosotros', label: 'La haremos nosotros' },
+  { value: 'combinacion', label: 'Combinación' },
+  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
+]
+
+function OtrosDecoracionBlock({
+  event,
+  onDerivedDataChanged,
+  focusRequest,
+}: {
+  event: FamilyEvent
+  onDerivedDataChanged: () => void
+  focusRequest?: ConfiguratorFocusRequest | null
+}) {
+  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
+  const [moments, setMoments] = useState<EventMoment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [sendingZonas, setSendingZonas] = useState(false)
+  const [necesidadInput, setNecesidadInput] = useState('')
+
+  function reload(): Promise<void> {
+    return Promise.all([listEventDecisions(event.id), listEventMoments(event.id)])
+      .then(([d, mo]) => {
+        setDecisions(d.filter((x) => x.blockKey === OTROS_DECORACION_BLOCK_KEY))
+        setMoments(mo)
+      })
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => {
+    void reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event.id])
+  useEventMomentsChangeSignal(event.id, () => void reload())
+
+  function findDecision(questionKey: string): EventDecision | undefined {
+    return decisions.find((d) => d.questionKey === questionKey)
+  }
+
+  async function saveDecoracionOrganizacion(answer: DecoracionOrganizacionAnswer) {
+    setSavingKey(DECORACION_ORGANIZACION_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: OTROS_DECORACION_BLOCK_KEY, questionKey: DECORACION_ORGANIZACION_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForDecoracionOrganizacion(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveDecoracionExtraConfirm(answer: DecoracionExtraConfirmAnswer) {
+    setSavingKey(DECORACION_EXTRA_CONFIRM_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: OTROS_DECORACION_BLOCK_KEY, questionKey: DECORACION_EXTRA_CONFIRM_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForDecoracionExtraConfirm(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function saveZonas(next: DecoracionZonasAnswer) {
+    setSavingKey(DECORACION_ZONAS_QUESTION_KEY)
+    setError(null)
+    try {
+      await upsertEventDecision(event.id, { blockKey: OTROS_DECORACION_BLOCK_KEY, questionKey: DECORACION_ZONAS_QUESTION_KEY, answer: next as unknown as Record<string, unknown>, isCustomOption: false })
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  // Acción MANUAL y explícita (nunca automática en cada guardado) — comprueba nombres ya existentes en
+  // Decoración para que tocar el botón dos veces no duplique las mismas ideas.
+  async function sendZonasToDecoracion(zonas: DecoracionZonasAnswer, zonasDecisionId: string | null) {
+    setSendingZonas(true)
+    setError(null)
+    try {
+      const existing = await listEventDecorationItems(event.id)
+      const existingNames = new Set(existing.map((i) => i.name.toLowerCase()))
+      const labels = [...zonas.selected.map((k) => DECORACION_ZONAS_CATALOG.find((c) => c.key === k)?.label ?? k), ...zonas.customItems]
+      const toAdd = labels.filter((l) => !existingNames.has(`decoración: ${l}`.toLowerCase()))
+      for (const l of toAdd) {
+        await addEventDecorationItem(event.id, `Decoración: ${l}`, null, zonasDecisionId)
+      }
+      showToast(toAdd.length > 0 ? `✅ ${toAdd.length} idea${toAdd.length === 1 ? '' : 's'} enviada${toAdd.length === 1 ? '' : 's'} a Decoración` : 'Ya estaban todas en Decoración')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo enviar a Decoración'))
+    } finally {
+      setSendingZonas(false)
+    }
+  }
+
+  async function saveNecesidades(next: OtraNecesidadItem[]) {
+    setSavingKey(OTRAS_NECESIDADES_QUESTION_KEY)
+    setError(null)
+    try {
+      const answer: OtrasNecesidadesAnswer = { items: next }
+      await upsertEventDecision(event.id, { blockKey: OTROS_DECORACION_BLOCK_KEY, questionKey: OTRAS_NECESIDADES_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      await reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  function addNecesidad() {
+    if (!necesidadInput.trim()) return
+    const necesidadesDecision = findDecision(OTRAS_NECESIDADES_QUESTION_KEY)
+    const existing = (necesidadesDecision?.answer as unknown as OtrasNecesidadesAnswer | undefined)?.items ?? []
+    void saveNecesidades([...existing, { id: crypto.randomUUID(), text: necesidadInput.trim(), taskId: null }])
+    setNecesidadInput('')
+  }
+
+  function removeNecesidad(id: string) {
+    const necesidadesDecision = findDecision(OTRAS_NECESIDADES_QUESTION_KEY)
+    const existing = (necesidadesDecision?.answer as unknown as OtrasNecesidadesAnswer | undefined)?.items ?? []
+    void saveNecesidades(existing.filter((n) => n.id !== id))
+  }
+
+  // "Convertir en preparativo" es un alta manual directa (addEventTask, decisionId null → source
+  // 'manual') — NUNCA pasa por el motor de reconciliación: es un Preparativo suelto de toda la vida, no
+  // una decisión que PEPA deba mantener sincronizada. taskId se guarda para no poder convertirla dos veces.
+  async function convertNecesidad(item: OtraNecesidadItem) {
+    setError(null)
+    try {
+      const taskId = await addEventTask(event.id, item.text)
+      const necesidadesDecision = findDecision(OTRAS_NECESIDADES_QUESTION_KEY)
+      const existing = (necesidadesDecision?.answer as unknown as OtrasNecesidadesAnswer | undefined)?.items ?? []
+      await saveNecesidades(existing.map((n) => (n.id === item.id ? { ...n, taskId } : n)))
+      onDerivedDataChanged()
+      showToast(`✅ "${item.text}" añadido a Preparativos`)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear el preparativo'))
+    }
+  }
+
+  if (loading) return null
+  const hasMomentLocation = moments.some((m) => Boolean(m.locationLabel?.trim()))
+  const venueCase = resolveVenueCase(event, decisions, hasMomentLocation)
+  const venueHasDecoracion = venueIncludesService(venueCase, decisions, 'decoracion', event.includedServices ?? null)
+  const organizacionDecision = findDecision(DECORACION_ORGANIZACION_QUESTION_KEY)
+  const organizacion = organizacionDecision?.answer as unknown as DecoracionOrganizacionAnswer | undefined
+  const extraConfirmDecision = findDecision(DECORACION_EXTRA_CONFIRM_QUESTION_KEY)
+  const extraConfirm = extraConfirmDecision?.answer as unknown as DecoracionExtraConfirmAnswer | undefined
+  const zonasDecision = findDecision(DECORACION_ZONAS_QUESTION_KEY)
+  const zonas = zonasDecision?.answer as unknown as DecoracionZonasAnswer | undefined
+  const necesidadesDecision = findDecision(OTRAS_NECESIDADES_QUESTION_KEY)
+  const necesidades = (necesidadesDecision?.answer as unknown as OtrasNecesidadesAnswer | undefined)?.items ?? []
+  const summary = summarizeOtrosDecoracionBlock(decisions, venueHasDecoracion)
+  const decisionSummary = buildOtrosDecoracionDecisionSummary(decisions, venueHasDecoracion)
+
+  return (
+    <div ref={focusRef} className="card" style={{ padding: 8 }}>
+      {summary && (
+        <p className="muted" style={{ fontSize: 13, margin: '0 0 6px' }}>
+          {summary}
+        </p>
+      )}
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      {error && <p className="error">{error}</p>}
+      {venueHasDecoracion
+        ? questionIsVisible(localFocus, DECORACION_EXTRA_CONFIRM_QUESTION_KEY) && (
+            <div style={{ marginTop: 6 }}>
+              <div className="muted" style={{ fontSize: 13 }}>
+                🌿 El lugar ya incluye decoración. ¿Queréis decoración adicional?
+              </div>
+              <ChoiceRow options={DECORACION_EXTRA_CONFIRM_OPTIONS} value={extraConfirm?.choice} disabled={savingKey === DECORACION_EXTRA_CONFIRM_QUESTION_KEY} onSelect={(choice) => saveDecoracionExtraConfirm({ choice })} />
+            </div>
+          )
+        : questionIsVisible(localFocus, DECORACION_ORGANIZACION_QUESTION_KEY) && (
+            <div style={{ marginTop: 6 }}>
+              <div className="muted" style={{ fontSize: 13 }}>
+                ¿Cómo vais a organizar la decoración?
+              </div>
+              <ChoiceRow options={DECORACION_ORGANIZACION_OPTIONS} value={organizacion?.choice} disabled={savingKey === DECORACION_ORGANIZACION_QUESTION_KEY} onSelect={(choice) => saveDecoracionOrganizacion({ choice })} />
+            </div>
+          )}
+      {questionIsVisible(localFocus, DECORACION_ZONAS_QUESTION_KEY) && (
+        <div style={{ marginTop: 6 }}>
+          <div className="muted" style={{ fontSize: 13 }}>
+            ¿Qué zonas queréis decorar? (opcional)
+          </div>
+          <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+            {DECORACION_ZONAS_CATALOG.map((item) => {
+              const selected = zonas?.selected.includes(item.key) ?? false
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={'chip' + (selected ? ' chip-active' : '')}
+                  disabled={savingKey === DECORACION_ZONAS_QUESTION_KEY}
+                  onClick={() => {
+                    const base = zonas ?? { selected: [], customItems: [] }
+                    const nextSelected = selected ? base.selected.filter((k) => k !== item.key) : [...base.selected, item.key]
+                    void saveZonas({ selected: nextSelected, customItems: base.customItems })
+                  }}
+                >
+                  {item.label}
+                </button>
+              )
+            })}
+          </div>
+          {zonas && (zonas.selected.length > 0 || zonas.customItems.length > 0) && (
+            <button type="button" className="link-button" disabled={sendingZonas} style={{ marginTop: 4 }} onClick={() => void sendZonasToDecoracion(zonas, zonasDecision?.id ?? null)}>
+              {sendingZonas ? 'Enviando…' : '+ Enviar a Decoración'}
+            </button>
+          )}
+        </div>
+      )}
+      <div style={{ marginTop: 10 }}>
+        <div className="muted" style={{ fontSize: 13 }}>
+          ¿Hay algo más que queráis organizar? (opcional)
+        </div>
+        <div className="event-list" style={{ marginTop: 4 }}>
+          {necesidades.map((n) => (
+            <div key={n.id} className="inline-fields" style={{ alignItems: 'center' }}>
+              <span style={{ flex: 1 }}>{n.text}</span>
+              {n.taskId ? (
+                <span className="muted" style={{ fontSize: 12 }}>
+                  ✓ En Preparativos
+                </span>
+              ) : (
+                <button type="button" className="link-button" onClick={() => void convertNecesidad(n)}>
+                  Convertir en preparativo
+                </button>
+              )}
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Quitar" onConfirm={() => removeNecesidad(n.id)} />
+            </div>
+          ))}
+        </div>
+        <div className="inline-fields" style={{ marginTop: 4 }}>
+          <input type="text" value={necesidadInput} placeholder="Escribid lo que necesitéis…" onChange={(e) => setNecesidadInput(e.target.value)} />
+          <button type="button" className="link-button" disabled={!necesidadInput.trim()} onClick={addNecesidad}>
+            + Añadir
+          </button>
+        </div>
+      </div>
       {localFocus && (
         <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
           Ver todas las preguntas

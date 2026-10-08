@@ -10,7 +10,38 @@ import { listFoodBlockQuestions, type FoodContext } from '@/domain/eventFood'
 import { listCelebrationQuestions, ageTurning, longSpanishDate, type CelebrationFacts } from '@/domain/eventCelebration'
 import { listPairBlockQuestions, type PairQuestionInfo } from '@/domain/eventPairDecisions'
 import { listGuestsBlockQuestions } from '@/domain/eventGuestDecisions'
-import { listMomentosEspecialesBlockQuestions, CLASES_BAILE_QUESTION_KEY, MOMENTOS_ESPECIALES_QUESTION_KEY } from '@/domain/eventSpecialMoments'
+import {
+  listMomentosEspecialesBlockQuestions,
+  CLASES_BAILE_QUESTION_KEY,
+  MOMENTOS_ESPECIALES_QUESTION_KEY,
+  CANCION_PRIMER_BAILE_QUESTION_KEY,
+  type CancionPrimerBaileAnswer,
+} from '@/domain/eventSpecialMoments'
+import {
+  listMusicaFiestaBlockQuestions,
+  MUSICA_QUESTION_KEY,
+  MUSICA_EXTRA_CONFIRM_QUESTION_KEY,
+  ANIMACION_QUESTION_KEY,
+  MUSICA_CATALOG,
+  ANIMACION_CATALOG,
+  type MusicaAnswer,
+  type AnimacionAnswer,
+} from '@/domain/eventMusicaFiesta'
+import {
+  listFotosRecuerdosBlockQuestions,
+  COBERTURA_FOTOS_QUESTION_KEY,
+  SESION_FOTOS_QUESTION_KEY,
+  VIDEO_QUESTION_KEY,
+  type SesionFotosAnswer,
+} from '@/domain/eventFotosRecuerdos'
+import {
+  listOtrosDecoracionBlockQuestions,
+  DECORACION_EXTRA_CONFIRM_QUESTION_KEY,
+  DECORACION_ORGANIZACION_QUESTION_KEY,
+  DECORACION_ZONAS_QUESTION_KEY,
+  DECORACION_ZONAS_CATALOG,
+  type DecoracionZonasAnswer,
+} from '@/domain/eventOtrosDecoracion'
 import {
   ESPECIAL_HAY_QUESTION_KEY,
   ESPECIAL_VESTIMENTA_QUESTION_KEY,
@@ -214,6 +245,18 @@ export function buildMomentosEspecialesDecisionSummary(decisions: EventDecision[
   const taken: DecisionSummaryItem[] = []
   const pending: DecisionSummaryItem[] = []
   for (const q of listMomentosEspecialesBlockQuestions(decisions)) {
+    // Canción del primer baile (A2) — statusLabel dinámico (el título real si lo hay), no una frase fija
+    // de TAKEN_TEXT; mismo criterio que "Resúmenes de decisiones compactos" del resto de la app.
+    if (q.questionKey === CANCION_PRIMER_BAILE_QUESTION_KEY) {
+      if (q.status !== 'decidida') {
+        pending.push({ key: q.questionKey, text: 'Canción del primer baile', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as CancionPrimerBaileAnswer | undefined
+      const statusLabel = answer?.choice === 'si' ? answer.titulo?.trim() || 'Sí' : 'Sin canción concreta'
+      taken.push({ key: q.questionKey, text: 'Canción del primer baile', statusLabel })
+      continue
+    }
     const choice = choiceOf(decisions, q.questionKey)
     if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
       pending.push({ key: q.questionKey, text: pendingText(q.label) })
@@ -221,6 +264,127 @@ export function buildMomentosEspecialesDecisionSummary(decisions: EventDecision[
     }
     const mapped = choice !== null ? MOMENTOS_ESPECIALES_TAKEN_TEXT[q.questionKey]?.[choice] : undefined
     taken.push({ key: q.questionKey, text: mapped ?? q.label.replace(/^¿|\?$/g, '') })
+  }
+  return { taken, pending }
+}
+
+// ---------------------------------------------------------------------
+// "🎵 Música y fiesta" (séptimo bloque, tanda del configurador de boda) — statusLabel real (catálogo
+// elegido / "Incluida en el lugar" / "Sin música"...) en vez del genérico "Resuelto", mismo criterio que
+// el resto de bloques recientes.
+// ---------------------------------------------------------------------
+function labelsForSummary(catalog: { key: string; label: string }[], selected: string[], customItems: string[]): string {
+  const labels = selected.map((k) => catalog.find((c) => c.key === k)?.label.replace(/^\p{Emoji}\s*/u, '') ?? k)
+  return [...labels, ...customItems].join(', ')
+}
+
+// venueHasMusic: igual que listMusicaFiestaBlockQuestions, lo resuelve quien llama (eventVenueServices.ts).
+export function buildMusicaFiestaDecisionSummary(decisions: EventDecision[], venueHasMusic: boolean): DecisionSummary {
+  const taken: DecisionSummaryItem[] = []
+  const pending: DecisionSummaryItem[] = []
+  for (const q of listMusicaFiestaBlockQuestions(decisions, venueHasMusic)) {
+    if (q.questionKey === MUSICA_EXTRA_CONFIRM_QUESTION_KEY) {
+      if (q.status !== 'decidida') {
+        pending.push({ key: q.questionKey, text: 'Música', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      const choice = choiceOf(decisions, q.questionKey)
+      taken.push({ key: q.questionKey, text: 'Música', statusLabel: choice === 'si' ? 'Incluida + algo más' : 'Incluida en el lugar' })
+      continue
+    }
+    if (q.questionKey === MUSICA_QUESTION_KEY) {
+      if (q.status !== 'decidida') {
+        pending.push({ key: q.questionKey, text: 'Música', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as MusicaAnswer | undefined
+      const statusLabel =
+        answer?.choice === 'sin_musica' ? 'Sin música' : answer?.choice === 'seleccionar' ? labelsForSummary(MUSICA_CATALOG, answer.selected, answer.customItems) || 'Sin música' : 'Decidido'
+      taken.push({ key: q.questionKey, text: 'Música', statusLabel })
+      continue
+    }
+    if (q.questionKey === ANIMACION_QUESTION_KEY) {
+      if (q.status !== 'decidida') {
+        pending.push({ key: q.questionKey, text: 'Animación', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as AnimacionAnswer | undefined
+      const statusLabel = answer?.choice === 'no' ? 'No' : answer?.choice === 'si' ? labelsForSummary(ANIMACION_CATALOG, answer.selected, answer.customItems) || 'Sí' : 'Decidido'
+      taken.push({ key: q.questionKey, text: 'Animación', statusLabel })
+      continue
+    }
+    pending.push({ key: q.questionKey, text: pendingText(q.label) })
+  }
+  return { taken, pending }
+}
+
+// ---------------------------------------------------------------------
+// "📷 Fotos y recuerdos" (octavo bloque, tanda del configurador de boda)
+// ---------------------------------------------------------------------
+const COBERTURA_FOTOS_SHORT: Record<string, string> = {
+  profesional: 'Fotógrafo/a profesional',
+  familiares_amigos: 'Familiares o amigos',
+  nuestra_cuenta: 'Por nuestra cuenta',
+  sin_cobertura: 'Sin cobertura organizada',
+}
+const SESION_FOTOS_SHORT: Record<string, string> = { preboda: 'Preboda', postboda: 'Postboda', ambas: 'Preboda y postboda', no: 'No' }
+const VIDEO_SHORT: Record<string, string> = { profesional: 'Videógrafo/a profesional', familiares_amigos: 'Familiares o amigos', nuestra_cuenta: 'Por nuestra cuenta', no: 'No' }
+
+export function buildFotosRecuerdosDecisionSummary(decisions: EventDecision[]): DecisionSummary {
+  const taken: DecisionSummaryItem[] = []
+  const pending: DecisionSummaryItem[] = []
+  for (const q of listFotosRecuerdosBlockQuestions(decisions)) {
+    const choice = choiceOf(decisions, q.questionKey)
+    if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
+      const text = q.questionKey === COBERTURA_FOTOS_QUESTION_KEY ? 'Fotos del día' : q.questionKey === SESION_FOTOS_QUESTION_KEY ? 'Sesión aparte' : 'Vídeo'
+      pending.push({ key: q.questionKey, text, statusLabel: 'Todavía no lo sabemos' })
+      continue
+    }
+    if (q.questionKey === COBERTURA_FOTOS_QUESTION_KEY) {
+      taken.push({ key: q.questionKey, text: 'Fotos del día', statusLabel: (choice && COBERTURA_FOTOS_SHORT[choice]) || 'Decidido' })
+    } else if (q.questionKey === SESION_FOTOS_QUESTION_KEY) {
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as SesionFotosAnswer | undefined
+      taken.push({ key: q.questionKey, text: 'Sesión aparte', statusLabel: (choice && SESION_FOTOS_SHORT[choice]) || (answer ? 'Sí' : 'Decidido') })
+    } else if (q.questionKey === VIDEO_QUESTION_KEY) {
+      taken.push({ key: q.questionKey, text: 'Vídeo', statusLabel: (choice && VIDEO_SHORT[choice]) || 'Decidido' })
+    }
+  }
+  return { taken, pending }
+}
+
+// ---------------------------------------------------------------------
+// "🌿 Otros y decoración" (noveno y último bloque nuevo, tanda del configurador de boda)
+// ---------------------------------------------------------------------
+const DECORACION_ORGANIZACION_SHORT: Record<string, string> = { contrataremos: 'La contrataremos', nosotros: 'La haremos nosotros', combinacion: 'Combinación' }
+
+// venueHasDecoracion: igual criterio que buildMusicaFiestaDecisionSummary con venueHasMusic.
+export function buildOtrosDecoracionDecisionSummary(decisions: EventDecision[], venueHasDecoracion: boolean): DecisionSummary {
+  const taken: DecisionSummaryItem[] = []
+  const pending: DecisionSummaryItem[] = []
+  for (const q of listOtrosDecoracionBlockQuestions(decisions, venueHasDecoracion)) {
+    if (q.questionKey === DECORACION_EXTRA_CONFIRM_QUESTION_KEY) {
+      if (q.status !== 'decidida') {
+        pending.push({ key: q.questionKey, text: 'Decoración', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      const choice = choiceOf(decisions, q.questionKey)
+      taken.push({ key: q.questionKey, text: 'Decoración', statusLabel: choice === 'si' ? 'Incluida + algo más' : 'Incluida en el lugar' })
+      continue
+    }
+    if (q.questionKey === DECORACION_ORGANIZACION_QUESTION_KEY) {
+      const choice = choiceOf(decisions, q.questionKey)
+      if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
+        pending.push({ key: q.questionKey, text: 'Decoración', statusLabel: 'Todavía no lo sabemos' })
+        continue
+      }
+      taken.push({ key: q.questionKey, text: 'Decoración', statusLabel: (choice && DECORACION_ORGANIZACION_SHORT[choice]) || 'Decidido' })
+      continue
+    }
+    if (q.questionKey === DECORACION_ZONAS_QUESTION_KEY) {
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as DecoracionZonasAnswer | undefined
+      const statusLabel = answer ? labelsForSummary(DECORACION_ZONAS_CATALOG, answer.selected, answer.customItems) || 'Ninguna' : 'Ninguna'
+      taken.push({ key: q.questionKey, text: 'Zonas a decorar', statusLabel })
+    }
   }
   return { taken, pending }
 }

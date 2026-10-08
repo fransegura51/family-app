@@ -248,19 +248,31 @@ describe('Acordeón — plegable globalmente y por bloque, estado simple en loca
   })
 })
 
-describe('Bloques implementados hasta la fase 5 (reajustada): Ceremonia, La pareja, Invitados e invitaciones, Momentos especiales', () => {
-  it('los 4 bloques están presentes', () => {
+// El documento maestro original tenía un guard aquí que comprobaba que los bloques posteriores (Comida y
+// bebida, Música y fiesta, Fotos y recuerdos, Otros y decoración...) NO estuvieran implementados todavía
+// — ese guard quedó obsoleto en cuanto Comida y bebida/Personas especiales/Familiares se construyeron
+// (nunca se actualizó) y definitivamente ya no aplica: la tanda "completar el configurador de boda" los
+// terminó todos. Se sustituye por una comprobación POSITIVA de que el configurador completo está presente.
+describe('Bloques del configurador de boda — los 9 están presentes (configurador completo)', () => {
+  it('los 9 bloques están presentes', () => {
+    // "🕊️ Ceremonia y celebración" no se comprueba como literal: su título real es dinámico
+    // (celebrationBlockTitle(event.type, structuredByMoments)), no un texto fijo en el JSX.
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    expect(configurator).toContain('🕊️ Ceremonia y celebración')
-    expect(configurator).toContain('👰🤵 La pareja')
-    expect(configurator).toContain('👥 Invitados e invitaciones')
-    expect(configurator).toContain('🎉 Momentos especiales')
+    for (const title of ['👰🤵 La pareja', '👥 Invitados e invitaciones', '🎉 Momentos especiales', '🍽️ Comida y bebida', '🎭 Personas especiales', '🎵 Música y fiesta', '📷 Fotos y recuerdos', '🌿 Otros y decoración']) {
+      expect(configurator, `no se encontró "${title}"`).toContain(title)
+    }
   })
 
-  it('ningún bloque posterior del documento maestro (Comida y celebración, Música/fiesta, Fotos y recuerdos, Detalles y regalos, Decoración) está implementado todavía', () => {
+  it('los 3 bloques nuevos (tanda "completar configurador de boda") van DESPUÉS de los 6 existentes', () => {
     const configurator = slice(SRC, 'function EventPlanningConfigurator(', '\nfunction MomentForm(')
-    for (const forbidden of ['Comida y celebración', 'Música, fiesta', 'Fotos y recuerdos', 'Detalles y regalos', 'Decoración']) {
-      expect(configurator).not.toContain(forbidden)
-    }
+    const lastExisting = Math.max(
+      configurator.indexOf('👥 Invitados e invitaciones'),
+      configurator.indexOf('🎉 Momentos especiales'),
+      configurator.indexOf('🍽️ Comida y bebida'),
+      configurator.indexOf('🎭 Personas especiales'),
+    )
+    expect(configurator.indexOf('🎵 Música y fiesta')).toBeGreaterThan(lastExisting)
+    expect(configurator.indexOf('📷 Fotos y recuerdos')).toBeGreaterThan(configurator.indexOf('🎵 Música y fiesta'))
+    expect(configurator.indexOf('🌿 Otros y decoración')).toBeGreaterThan(configurator.indexOf('📷 Fotos y recuerdos'))
   })
 })

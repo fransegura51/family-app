@@ -16,11 +16,12 @@ import { MOMENTOS_ESPECIALES_QUESTION_KEY, CLASES_BAILE_QUESTION_KEY } from '@/d
 const UI = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/EventosScreen.tsx']
 
 describe('interfaz: un único componente de resumen reutilizado, nunca una segunda fuente de verdad', () => {
-  it('los siete bloques (Comida, Celebración, Pareja, Invitados, Momentos especiales, Personas especiales, Familiares) usan el mismo <DecisionSummaryDetails>', () => {
+  it('los diez bloques (Comida, Celebración, Pareja, Invitados, Momentos especiales, Personas especiales, Familiares, Música y fiesta, Fotos y recuerdos, Otros y decoración) usan el mismo <DecisionSummaryDetails>', () => {
     // Fase 1.2: cada bloque le pasa además onSelect={setLocalFocus} — cada entrada del resumen ya es un
     // enlace a su propia pregunta (ver useConfiguratorQuestionFocus.ts) — mismo componente, nunca uno nuevo.
     // Fase 2: Personas especiales y Familiares (eventSpecialPeople.ts) se suman a los cinco de la Fase 1.
-    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} onSelect=\{setLocalFocus\} \/>/g) ?? []).length).toBe(7)
+    // Tanda "completar configurador de boda": Música y fiesta, Fotos y recuerdos, Otros y decoración.
+    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} onSelect=\{setLocalFocus\} \/>/g) ?? []).length).toBe(10)
   })
   it('cada bloque calcula su propio decisionSummary con su propio builder (no se comparte estado entre bloques)', () => {
     expect(UI).toContain('const decisionSummary = buildFoodDecisionSummary(ctx)')
@@ -30,6 +31,9 @@ describe('interfaz: un único componente de resumen reutilizado, nunca una segun
     expect(UI).toContain('const decisionSummary = buildMomentosEspecialesDecisionSummary(decisions)')
     expect(UI).toContain('const decisionSummary = buildEspecialDecisionSummary(decisions, people.length)')
     expect(UI).toContain('const decisionSummary = buildFamiliaresDecisionSummary(decisions, people.length)')
+    expect(UI).toContain('const decisionSummary = buildMusicaFiestaDecisionSummary(decisions, venueHasMusic)')
+    expect(UI).toContain('const decisionSummary = buildFotosRecuerdosDecisionSummary(decisions)')
+    expect(UI).toContain('const decisionSummary = buildOtrosDecoracionDecisionSummary(decisions, venueHasDecoracion)')
   })
   it('el indicador de menú infantil pendiente reutiliza el propio resumen de Comida (no un segundo cálculo)', () => {
     expect(UI).toContain('const infantilPending = decisionSummary.pending.some((p) => p.key === FOOD_MENU_INFANTIL_KEY)')

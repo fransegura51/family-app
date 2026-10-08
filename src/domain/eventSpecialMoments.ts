@@ -116,6 +116,12 @@ export function listMomentosEspecialesBlockQuestions(decisions: EventDecision[])
       label: '¿Necesitáis clases de baile?',
       status: decisionStatus(decisions.find((d) => d.questionKey === CLASES_BAILE_QUESTION_KEY)),
     })
+    result.push({
+      questionKey: CANCION_PRIMER_BAILE_QUESTION_KEY,
+      blockKey: 'momentos_especiales',
+      label: '¿Tenéis clara la canción del primer baile?',
+      status: decisionStatus(decisions.find((d) => d.questionKey === CANCION_PRIMER_BAILE_QUESTION_KEY)),
+    })
   }
   return result
 }
@@ -136,6 +142,32 @@ export interface ClasesBaileAnswer {
 export function desiredForClasesBaile(answer: ClasesBaileAnswer | undefined): DesiredPairGeneration {
   if (!answer || answer.choice !== 'si') return NONE
   return { taskTitle: 'Buscar/organizar clases de baile', budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+}
+
+// ---------------------------------------------------------------------
+// "Primer baile" → "¿Tenéis clara la canción del primer baile?" (A2, tanda del configurador de boda) —
+// AMPLÍA la decisión YA EXISTENTE de "Primer baile", nunca un segundo momento ni una tarea duplicada.
+// Puramente informativa: nunca genera Preparativo ni presupuesto (desiredForCancionPrimerBaile es
+// siempre NONE), se llama a applyPairDecisionGeneration igual que el resto solo por coherencia con el
+// motor (un NONE contra "sin tarea existente" es un no-op real).
+// Si "Primer baile" se desmarca, listMomentosEspecialesBlockQuestions (arriba) deja de mostrar esta
+// pregunta — pero a diferencia de "clases de baile", AQUÍ NUNCA se borra la fila de event_decisions: la
+// petición explícita es conservar el título/artista para una posible reactivación (ver saveSeleccion en
+// EventosScreen.tsx, que solo limpia CLASES_BAILE_QUESTION_KEY, nunca esta).
+// ---------------------------------------------------------------------
+export const CANCION_PRIMER_BAILE_QUESTION_KEY = 'momentos_especiales.primer_baile.cancion'
+
+// 'todavia_no_lo_sabemos' reutiliza el MISMO centinela que decisionStatus() ya reconoce como «por
+// decidir» — así "Todavía no" queda pendiente sin tener que tocar esa función genérica.
+export type CancionPrimerBaileChoice = 'si' | 'todavia_no_lo_sabemos' | 'sin_cancion_concreta'
+export interface CancionPrimerBaileAnswer {
+  choice: CancionPrimerBaileChoice
+  titulo?: string | null
+  artista?: string | null
+}
+
+export function desiredForCancionPrimerBaile(_answer: CancionPrimerBaileAnswer | undefined): DesiredPairGeneration {
+  return NONE
 }
 
 export type { CustomAction, CustomHasCost, CustomResolution, DesiredPairGeneration }

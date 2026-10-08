@@ -180,13 +180,14 @@ describe('"Otro color" — acción explícita, separada de las 8 muestras, sin c
 
 // RETOQUE (fase posterior) — el modo de color pasó de dos opciones a tres mutuamente excluyentes
 // ('miembros' | 'categorias' | 'solo_categorias'); el detalle de esa lógica y su UI tiene su propio
-// archivo de tests, calendarColorModesUi.test.ts — aquí solo se comprueba que eventColor sigue
-// existiendo con el mismo fallback de siempre como base, sin repetir esos tests.
-describe('No regresión — eventColor conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
-  it('eventColor sigue devolviendo primero el color propio del evento, y gris como último recurso', () => {
-    const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
-    expect(fn).toContain('if (ev.color) return ev.color')
+// archivo de tests, calendarColorModesUi.test.ts — aquí solo se comprueba que eventColors (Fase 5: un
+// color por persona, ya no solo la primera) sigue existiendo con el mismo fallback de siempre como base,
+// sin repetir esos tests.
+describe('No regresión — eventColors conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
+  it('eventColors sigue devolviendo primero el color propio del evento, y gris como último recurso', () => {
+    const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColors(ev: CalendarEvent', 'function shouldStrikethroughEntry(')
+    expect(fn).toContain('if (ev.color) return [ev.color]')
     expect(fn).toContain('const categoryColor = categoryColorById.get(ev.categoryId)')
-    expect(fn).toContain("return first?.color ?? '#9ca3af'")
+    expect(fn).toContain("return colors.length > 0 ? colors : ['#9ca3af']")
   })
 })

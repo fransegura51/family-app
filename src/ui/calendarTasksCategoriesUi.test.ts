@@ -161,12 +161,12 @@ describe('Emoji de categoría — nunca depende del modo de color (Parte 6), vis
 
 // RETOQUE (fase posterior) — de "miembros"/"categorías" (2 opciones) a tres modos mutuamente
 // excluyentes; el detalle completo vive en calendarColorModesUi.test.ts, no se repite aquí.
-describe('Colores — eventColor conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
-  it('eventColor sigue devolviendo primero el color propio del evento, consultando la categoría y cayendo en el gris de siempre', () => {
-    const fn = slice(CALENDAR_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
-    expect(fn).toContain('if (ev.color) return ev.color')
+describe('Colores — eventColors conserva su fallback base (detalle de los 3 modos en calendarColorModesUi.test.ts)', () => {
+  it('eventColors (Fase 5: un color por persona) sigue devolviendo primero el color propio del evento, consultando la categoría y cayendo en el gris de siempre', () => {
+    const fn = slice(CALENDAR_SRC, 'function eventColors(ev: CalendarEvent', 'function shouldStrikethroughEntry(')
+    expect(fn).toContain('if (ev.color) return [ev.color]')
     expect(fn).toContain('ev.categoryId')
-    expect(fn).toContain("return first?.color ?? '#9ca3af'")
+    expect(fn).toContain("return colors.length > 0 ? colors : ['#9ca3af']")
   })
 })
 

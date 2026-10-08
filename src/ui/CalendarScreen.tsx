@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
@@ -687,13 +687,15 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         // persona esté viendo colores por miembro.
         const category = ev.categoryId ? categoryById.get(ev.categoryId) : null
         const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title
-        const baseColor = eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById)
+        const baseColors = eventColors(ev, memberById, calendarPrefs.colorMode, categoryColorById)
+        const colors = effectiveEntryColors(ev.kind, baseColors, done, calendarPrefs.taskCompletion)
         return {
           key: `ev-${ev.id}`,
           id: ev.id,
           title: ev.visibility === 'private' ? `🔒 ${titleWithCategory}` : titleWithCategory,
           subtitle,
-          color: effectiveEntryColor(ev.kind, baseColor, done, calendarPrefs.taskCompletion),
+          color: colors[0],
+          colors,
           allDay: ev.allDay,
           startTime: ev.allDay ? null : hhmm(ev.startAt),
           endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
@@ -728,6 +730,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           title: ev.title,
           subtitle: feed?.name ?? 'Calendario externo',
           color: member?.color ?? '#6b7280',
+          colors: [member?.color ?? '#6b7280'],
           allDay: ev.allDay,
           startTime: ev.allDay ? null : hhmm(ev.startAt),
           endTime: !ev.allDay && ev.endAt ? hhmm(ev.endAt) : null,
@@ -747,6 +750,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         title: `🎂 Cumpleaños de ${b.name}`,
         subtitle: '',
         color: b.color,
+        colors: [b.color],
         allDay: true,
         startTime: null,
         endTime: null,
@@ -913,6 +917,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
                         className="month-grid-event-bar"
                         style={{ background: entry.color, color: readableTextColor(entry.color) }}
                       >
+                        <EventColorDots colors={entry.colors} style={{ marginLeft: 0, marginRight: 3 }} />
                         {entry.title}
                       </span>
                     ))}
@@ -1281,22 +1286,28 @@ function ManageCategoriesModal({ onClose }: { onClose: () => void }) {
 
 // RETOQUE — tres modos mutuamente excluyentes (Configuración → Calendario → Colores del calendario),
 // resueltos en un único sitio para que NINGUNA vista pueda usar una regla distinta de otra:
-//   'miembros'        — ignora la categoría por completo, siempre el color de la persona de siempre.
+//   'miembros'        — ignora la categoría por completo, siempre el/los color(es) de persona de siempre.
 //   'categorias'      — híbrido ("Categorías + personas"): categoría si la tiene con color; si no, cae
-//                        en el color de la persona de siempre. Es el comportamiento que YA tenía el
+//                        en el/los color(es) de persona de siempre. Es el comportamiento que YA tenía el
 //                        único modo "categorías" de antes — mismo literal, sin cambios.
 //   'solo_categorias' — solo categoría: si la categoría no tiene color, neutro directo — NUNCA cae en
-//                        el color de la persona en este modo (a diferencia del híbrido).
+//                        el color de persona en este modo (a diferencia del híbrido).
 // Fallback seguro en los tres modos: sin nada aplicable, el gris de siempre, nunca invisible.
-function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, colorMode: CalendarColorMode, categoryColorById: Map<string, string>): string {
-  if (ev.color) return ev.color
+//
+// Fase 5 (plan de pendientes) — un color POR CADA miembro asignado, nunca solo el primero: mismo bug que
+// ya se corrigió para la Vista general (eventDotColors, domain/calendar.ts) pero que seguía sin
+// corregirse en el resto de vistas (Mes, Agenda, Semana/Día, chips, Tareas, Vista familiar) — todas
+// pintaban solo a la primera persona asignada. Única función de color del archivo: ya no existe una
+// variante "solo la primera persona" aparte.
+function eventColors(ev: CalendarEvent, memberById: Map<string, FamilyMember>, colorMode: CalendarColorMode, categoryColorById: Map<string, string>): string[] {
+  if (ev.color) return [ev.color]
   if (colorMode !== 'miembros' && ev.categoryId) {
     const categoryColor = categoryColorById.get(ev.categoryId)
-    if (categoryColor) return categoryColor
+    if (categoryColor) return [categoryColor]
   }
-  if (colorMode === 'solo_categorias') return '#9ca3af'
-  const first = ev.memberIds[0] ? memberById.get(ev.memberIds[0]) : null
-  return first?.color ?? '#9ca3af'
+  if (colorMode === 'solo_categorias') return ['#9ca3af']
+  const colors = ev.memberIds.map((id) => memberById.get(id)?.color).filter((c): c is string => !!c)
+  return colors.length > 0 ? colors : ['#9ca3af']
 }
 
 // RETOQUE — "Tareas completadas" (Configuración → Calendario): tachar/color de completada son
@@ -1312,9 +1323,27 @@ function shouldStrikethroughEntry(kind: 'event' | 'task' | undefined, done: bool
   return taskCompletion.strikethrough
 }
 
-function effectiveEntryColor(kind: 'event' | 'task' | undefined, baseColor: string, done: boolean, taskCompletion: CalendarTaskCompletionPrefs): string {
-  if (kind === 'task' && done && taskCompletion.doneColor) return taskCompletion.doneColor
-  return baseColor
+// Mismo criterio de "Tareas completadas" que arriba, para la versión con un color por persona: el color
+// de "Tarea completada" (cuando está fijado) sustituye a TODOS los colores por persona, nunca se mezcla
+// con ellos — una tarea hecha se ve de un solo color igual que antes, sin puntitos de más.
+function effectiveEntryColors(kind: 'event' | 'task' | undefined, baseColors: string[], done: boolean, taskCompletion: CalendarTaskCompletionPrefs): string[] {
+  if (kind === 'task' && done && taskCompletion.doneColor) return [taskCompletion.doneColor]
+  return baseColors
+}
+
+// Fase 5 (plan de pendientes) — "un punto por persona en todas las vistas", igual que ya hacía la Vista
+// general (eventDotColors): con una sola persona no se ve nada nuevo (ninguna vista cambia su aspecto de
+// siempre); con varias, un puntito por cada una, al lado del título — nunca reemplaza al acento de color
+// de siempre (franja/borde/fondo), que sigue usando solo el primero, sin tocar ese CSS ya probado.
+function EventColorDots({ colors, style }: { colors: string[]; style?: CSSProperties }) {
+  if (colors.length <= 1) return null
+  return (
+    <span className="event-color-dots" style={style}>
+      {colors.slice(0, 6).map((c, i) => (
+        <span key={i} className="event-color-dot" style={{ background: c }} />
+      ))}
+    </span>
+  )
 }
 
 function hhmm(iso: string): string {
@@ -1331,6 +1360,10 @@ interface AgendaEntry {
   title: string
   subtitle: string
   color: string
+  // Fase 5 (plan de pendientes) — un color por cada persona asignada (color[0] === color de arriba,
+  // siempre); el acento de color de siempre (franja/fondo) sigue usando solo `color`, nunca se toca esa
+  // parte — esto solo añade los puntitos extra cuando hay más de una persona.
+  colors: string[]
   allDay: boolean
   startTime: string | null
   endTime: string | null
@@ -1597,12 +1630,14 @@ function FamilyDayView({
       )
     }
     const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === selectedDate)
-    const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)
+    const baseColors = eventColors(ev, memberById, colorMode, categoryColorById)
+    const colors = effectiveEntryColors(ev.kind, baseColors, done, taskCompletion)
     return (
       <EventCard
         key={ev.id}
         event={ev}
-        color={effectiveEntryColor(ev.kind, baseColor, done, taskCompletion)}
+        color={colors[0]}
+        colors={colors}
         categoryById={categoryById}
         done={done}
         strikethrough={shouldStrikethroughEntry(ev.kind, done, taskCompletion)}
@@ -1828,6 +1863,7 @@ interface TimeGridBlock {
   key: string
   title: string
   color: string
+  colors: string[]
   startMin: number
   endMin: number
   dateStr: string
@@ -1912,10 +1948,12 @@ function TimeGridView({
       const end = ev.endAt ? new Date(ev.endAt) : null
       const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
       const title = titleWithCategoryEmoji(ev)
+      const colors = eventColors(ev, memberById, colorMode, categoryColorById)
       blocks.push({
         key: `ev-${ev.id}`,
         title: ev.visibility === 'private' ? `🔒 ${title}` : title,
-        color: eventColor(ev, memberById, colorMode, categoryColorById),
+        color: colors[0],
+        colors,
         startMin,
         endMin,
         dateStr,
@@ -1929,7 +1967,8 @@ function TimeGridView({
       const endMin = end ? Math.max(end.getHours() * 60 + end.getMinutes(), startMin + 20) : startMin + 60
       const feed = feedById.get(ev.feedId)
       const member = feed?.memberId ? memberById.get(feed.memberId) : null
-      blocks.push({ key: `ext-${ev.id}`, title: ev.title, color: member?.color ?? '#6b7280', startMin, endMin, dateStr })
+      const color = member?.color ?? '#6b7280'
+      blocks.push({ key: `ext-${ev.id}`, title: ev.title, color, colors: [color], startMin, endMin, dateStr })
     }
     return blocks
   }
@@ -1937,21 +1976,22 @@ function TimeGridView({
   // "Todo el día" es solo para Eventos de día completo de verdad —
   // una Tarea sin hora NUNCA es un evento de todo el día (Parte 7),
   // así que se excluye aquí y se representa aparte en tasksForDate().
-  function allDayChipsForDate(dateStr: string): { key: string; title: string; color: string }[] {
-    const chips: { key: string; title: string; color: string }[] = []
+  function allDayChipsForDate(dateStr: string): { key: string; title: string; color: string; colors: string[] }[] {
+    const chips: { key: string; title: string; color: string; colors: string[] }[] = []
     for (const ev of eventsByDate.get(dateStr) ?? []) {
       if (!ev.allDay || ev.kind === 'task') continue
       const hasPhoto = ev.attachmentKind === 'foto'
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
       const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
       const title = titleWithCategoryEmoji(ev)
-      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${title}` : title, color: eventColor(ev, memberById, colorMode, categoryColorById) })
+      const colors = eventColors(ev, memberById, colorMode, categoryColorById)
+      chips.push({ key: `ev-${ev.id}`, title: prefix ? `${prefix} ${title}` : title, color: colors[0], colors })
     }
     for (const ev of externalEventsByDate.get(dateStr) ?? []) {
-      if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280' })
+      if (ev.allDay) chips.push({ key: `ext-${ev.id}`, title: ev.title, color: '#6b7280', colors: ['#6b7280'] })
     }
     for (const b of birthdaysByDate.get(dateStr) ?? []) {
-      chips.push({ key: `bday-${b.name}`, title: `🎂 ${b.name}`, color: b.color })
+      chips.push({ key: `bday-${b.name}`, title: `🎂 ${b.name}`, color: b.color, colors: [b.color] })
     }
     return chips
   }
@@ -1966,14 +2006,16 @@ function TimeGridView({
     dateStr: string
     title: string
     color: string
+    colors: string[]
     done: boolean
     strikethrough: boolean
   }[] {
-    const tasks: { key: string; eventId: string; dateStr: string; title: string; color: string; done: boolean; strikethrough: boolean }[] = []
+    const tasks: { key: string; eventId: string; dateStr: string; title: string; color: string; colors: string[]; done: boolean; strikethrough: boolean }[] = []
     for (const ev of eventsByDate.get(dateStr) ?? []) {
       if (ev.kind !== 'task') continue
       const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)
-      const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)
+      const baseColors = eventColors(ev, memberById, colorMode, categoryColorById)
+      const colors = effectiveEntryColors(ev.kind, baseColors, done, taskCompletion)
       const hasPhoto = ev.attachmentKind === 'foto'
       const hasLocation = !!ev.locationLabel || (ev.locationLatitude != null && ev.locationLongitude != null)
       const prefix = (ev.visibility === 'private' ? '🔒' : '') + (hasPhoto ? '📷' : '') + (hasLocation ? '📍' : '')
@@ -1983,7 +2025,8 @@ function TimeGridView({
         eventId: ev.id,
         dateStr,
         title: prefix ? `${prefix} ${title}` : title,
-        color: effectiveEntryColor(ev.kind, baseColor, done, taskCompletion),
+        color: colors[0],
+        colors,
         done,
         strikethrough: shouldStrikethroughEntry(ev.kind, done, taskCompletion),
       })
@@ -2026,6 +2069,7 @@ function TimeGridView({
             {allDayChipsForDate(d.dateStr).map((c) => (
               <span key={c.key} className="time-grid-allday-chip" style={{ background: c.color, color: readableTextColor(c.color) }}>
                 {c.title}
+                <EventColorDots colors={c.colors} />
               </span>
             ))}
           </div>
@@ -2060,6 +2104,7 @@ function TimeGridView({
                       onClick={() => onSelectDate(d.dateStr)}
                     >
                       {t.title}
+                      <EventColorDots colors={t.colors} />
                     </span>
                   </div>
                 </div>
@@ -2116,6 +2161,7 @@ function TimeGridView({
                     }}
                   >
                     {b.title}
+                    <EventColorDots colors={b.colors} />
                   </button>
                 ))}
               </div>
@@ -2400,6 +2446,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
             {entry.attachmentKind === 'foto' && ' 📷'}
             {entry.attachmentKind === 'archivo' && ' 📎'}
             {entry.note && ' 📝'}
+            <EventColorDots colors={entry.colors} />
           </span>
           <span className="agenda-row-meta">
             <span className="agenda-row-sub">{entry.locationLabel ? `📍 ${entry.locationLabel}` : entry.subtitle}</span>
@@ -2530,6 +2577,7 @@ function EventAttachmentFileLink({ storagePath, name }: { storagePath: string; n
 function EventCard({
   event: ev,
   color,
+  colors,
   categoryById,
   done = false,
   strikethrough,
@@ -2544,9 +2592,13 @@ function EventCard({
   // RETOQUE — antes el borde solo usaba ev.color (el color propio y explícito del evento, raro) y se
   // quedaba sin colorear en el resto de casos: la vista Familiar era la única que NO reflejaba el modo
   // de color activo (miembro/categoría/híbrido) mientras TODAS las demás vistas sí — ahora el llamador
-  // (FamilyDayView) resuelve el color con la misma eventColor() de siempre y lo pasa ya hecho aquí, para
-  // que ninguna vista tenga su propia regla aparte.
+  // (FamilyDayView) resuelve el color con eventColors() de siempre y lo pasa ya hecho aquí, para que
+  // ninguna vista tenga su propia regla aparte. El borde sigue usando solo este primer color (sin
+  // cambios); `colors` (abajo) es solo para el puntito extra por persona cuando hay más de una.
   color: string
+  // Fase 5 (plan de pendientes) — un color por persona asignada, para EventColorDots junto al título;
+  // colors[0] === color de arriba, siempre.
+  colors: string[]
   categoryById?: Map<string, CalendarCategory>
   // BUG CALENDARIO-15 (auditoría): esta tarjeta (Vista Familiar) no ofrecía "Hecho" aunque
   // calendar_event_completions ya existiera y DayModal/Agenda sí lo usaran — mismo motor, mismo
@@ -2591,6 +2643,7 @@ function EventCard({
         {ev.visibility === 'private' && '🔒 '}
         {ev.categoryId && categoryById?.get(ev.categoryId) ? `${categoryById.get(ev.categoryId)!.emoji} ` : ''}
         {ev.title}
+        <EventColorDots colors={colors} />
       </strong>
       {/* RETOQUE (Parte 4.1/4.3) — compactación de Familiar: la fecha ya aparece arriba del todo
           ("lunes, 5 de octubre"), repetirla aquí dentro de cada tarjeta era la info redundante más

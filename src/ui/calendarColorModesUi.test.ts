@@ -72,17 +72,17 @@ describe('I/J — persistencia por usuario (profiles) y compatibilidad con la pr
   })
 })
 
-describe('Regla exacta de resolución de color — eventColor, fuente única para toda vista', () => {
-  const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColor(ev: CalendarEvent', 'function hhmm(')
+describe('Regla exacta de resolución de color — eventColors, fuente única para toda vista', () => {
+  const fn = slice(CALENDAR_SCREEN_SRC, 'function eventColors(ev: CalendarEvent', 'function shouldStrikethroughEntry(')
 
   it('acepta el modo como argumento explícito (ya no un categoryColorById opcional que se pasaba o no) — un único sitio decide la regla, nunca cada vista por su cuenta', () => {
     expect(fn).toContain(
-      'function eventColor(ev: CalendarEvent, memberById: Map<string, FamilyMember>, colorMode: CalendarColorMode, categoryColorById: Map<string, string>): string {',
+      'function eventColors(ev: CalendarEvent, memberById: Map<string, FamilyMember>, colorMode: CalendarColorMode, categoryColorById: Map<string, string>): string[] {',
     )
   })
 
   it('color propio del evento manda siempre, en los tres modos', () => {
-    expect(fn).toContain('if (ev.color) return ev.color')
+    expect(fn).toContain('if (ev.color) return [ev.color]')
   })
 
   it('"miembros": la categoría se ignora por completo (el if de categoría ni se evalúa)', () => {
@@ -90,22 +90,25 @@ describe('Regla exacta de resolución de color — eventColor, fuente única par
   })
 
   it('"solo_categorias": sin color de categoría aplicable, neutro directo — nunca cae en la persona (a diferencia del híbrido)', () => {
-    expect(fn).toContain("if (colorMode === 'solo_categorias') return '#9ca3af'")
+    expect(fn).toContain("if (colorMode === 'solo_categorias') return ['#9ca3af']")
   })
 
-  it('"categorias" (híbrido): si no hay color de categoría, sigue cayendo en la persona de siempre — el mismo fallback final para miembros Y para el híbrido', () => {
-    expect(fn).toContain("return first?.color ?? '#9ca3af'")
+  it('"categorias" (híbrido) y "miembros": sin color de categoría aplicable, cae en el color de CADA persona asignada (Fase 5: ya no solo la primera) — el mismo fallback final para ambos modos', () => {
+    expect(fn).toContain('const colors = ev.memberIds.map((id) => memberById.get(id)?.color).filter((c): c is string => !!c)')
+    expect(fn).toContain("return colors.length > 0 ? colors : ['#9ca3af']")
   })
 })
 
 describe('K — el modo activo se aplica de forma consistente en TODAS las vistas internas, nunca una regla distinta en cada una', () => {
   it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) resuelve con calendarPrefs.colorMode', () => {
     const fn = slice(CALENDAR_SCREEN_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
-    // RETOQUE — el color base sigue resolviéndose con eventColor()/calendarPrefs.colorMode tal cual;
-    // ahora se envuelve con effectiveEntryColor() para que una Tarea completada con "color al completar"
+    // RETOQUE — el color base sigue resolviéndose con eventColors()/calendarPrefs.colorMode tal cual;
+    // ahora se envuelve con effectiveEntryColors() para que una Tarea completada con "color al completar"
     // (preferencia nueva) pueda sustituirlo como capa final, sin tocar la resolución del modo de color.
-    expect(fn).toContain('const baseColor = eventColor(ev, memberById, calendarPrefs.colorMode, categoryColorById)')
-    expect(fn).toContain('color: effectiveEntryColor(ev.kind, baseColor, done, calendarPrefs.taskCompletion),')
+    // Fase 5: un color por persona (colors), no solo la primera — color (singular) = colors[0].
+    expect(fn).toContain('const baseColors = eventColors(ev, memberById, calendarPrefs.colorMode, categoryColorById)')
+    expect(fn).toContain('const colors = effectiveEntryColors(ev.kind, baseColors, done, calendarPrefs.taskCompletion)')
+    expect(fn).toContain('color: colors[0],')
   })
 
   it('los puntitos de "Vista general" (eventDotColors) resuelven con el mismo calendarPrefs.colorMode', () => {
@@ -118,17 +121,21 @@ describe('K — el modo activo se aplica de forma consistente en TODAS las vista
     // RETOQUE — una Tarea sin hora ya no cae en "todo el día" (franja propia "Tareas"), así que ahora
     // hay un tercer sitio que resuelve el mismo color: timedBlocksForDate (con hora), allDayChipsForDate
     // (Eventos de todo el día de verdad) y tasksForDate (la nueva franja "Tareas").
-    expect([...fn.matchAll(/eventColor\(ev, memberById, colorMode, categoryColorById\)/g)]).toHaveLength(3)
+    expect([...fn.matchAll(/eventColors\(ev, memberById, colorMode, categoryColorById\)/g)]).toHaveLength(3)
   })
 
-  it('Familiar (EventCard) YA NO usa su propia regla aparte (antes: borderColor: ev.color ?? undefined, ignoraba categoría/miembro) — ahora resuelve con la misma eventColor()', () => {
+  it('Familiar (EventCard) YA NO usa su propia regla aparte (antes: borderColor: ev.color ?? undefined, ignoraba categoría/miembro) — ahora resuelve con la misma eventColors()', () => {
     expect(CALENDAR_SCREEN_SRC).not.toContain('borderColor: ev.color ?? undefined')
     expect(CALENDAR_SCREEN_SRC).toContain('style={{ borderColor: color }}')
     const familyView = slice(CALENDAR_SCREEN_SRC, 'function FamilyDayView({', 'function PersonalView({')
-    // RETOQUE — igual que en buildEntriesForDate: el color base sigue siendo eventColor() tal cual,
-    // envuelto en effectiveEntryColor() para la nueva preferencia "color al completar" de Tareas.
-    expect(familyView).toContain('const baseColor = eventColor(ev, memberById, colorMode, categoryColorById)')
-    expect(familyView).toContain('color={effectiveEntryColor(ev.kind, baseColor, done, taskCompletion)}')
+    // RETOQUE — igual que en buildEntriesForDate: el color base sigue siendo eventColors() tal cual,
+    // envuelto en effectiveEntryColors() para la nueva preferencia "color al completar" de Tareas. El
+    // borde sigue pintándose SOLO con el primer color (colors[0]) — colors completo solo alimenta el
+    // puntito extra por persona (EventColorDots, Fase 5).
+    expect(familyView).toContain('const baseColors = eventColors(ev, memberById, colorMode, categoryColorById)')
+    expect(familyView).toContain('const colors = effectiveEntryColors(ev.kind, baseColors, done, taskCompletion)')
+    expect(familyView).toContain('color={colors[0]}')
+    expect(familyView).toContain('colors={colors}')
   })
 
   it('Externos sigue siendo una fuente de datos aparte (dotColorForFeed, nunca categoryColorById/colorMode) — no se ha tocado', () => {
@@ -211,8 +218,8 @@ describe('P/Q/R — no regresión: selector de categoría, emoji, color/otro col
     expect(MENU_SETTINGS_SRC).toContain('Sin color')
   })
 
-  it('el fallback final sigue siendo el gris de siempre, en eventColor y en eventDotColors', () => {
-    expect(CALENDAR_SCREEN_SRC).toContain("return first?.color ?? '#9ca3af'")
+  it('el fallback final sigue siendo el gris de siempre, en eventColors y en eventDotColors', () => {
+    expect(CALENDAR_SCREEN_SRC).toContain("return colors.length > 0 ? colors : ['#9ca3af']")
   })
 
   it('puntos, ubicación, adjuntos y nota del formulario de Evento/Tarea no se han tocado en este retoque (siguen fuera de CategoryDropdown, como antes)', () => {

@@ -2939,6 +2939,25 @@ textarea {
   border-radius: 50%;
 }
 
+/* Fase 5 (plan de pendientes) — "un punto por persona", fuera de la cuadrícula del mes: Agenda, Mes
+   (franjas), Semana/Día, chips de todo el día, Tareas y Vista familiar. Mismo espíritu que
+   .month-grid-dot (clase aparte porque el contexto es distinto: al lado de un título, no dentro de una
+   celda diminuta), con algo más de tamaño para que se distinga con buena luz en el móvil. */
+.event-color-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.event-color-dot {
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
 /* Solo en Calendario → Externos: en vez de un puntito, el recuadro
    entero del día se pinta del color del calendario enlazado — el
    fondo y el color de texto (negro o blanco, el que más contraste dé)

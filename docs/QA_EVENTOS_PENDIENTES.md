@@ -523,3 +523,73 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 462. [ ] En el menú "⋯" de una tarea (en iPhone), "✏️ Editar" y "🗑️ Borrar" empiezan AHORA sí exactamente en la misma vertical — comprobar con el teclado del sistema cerrado y abierto.
 463. [ ] Lo mismo dentro de una tarea agrupada en un "📦 NOMBRE" de Encargos (comparten el mismo menú) — sin tocar nada de la lógica de Encargos.
 464. [ ] El motor de prioridad (re-verificado, sin cambios) sigue sin bajar nunca una prioridad puesta a mano, y solo propone subirla o asignarla si no había ninguna.
+
+### Tanda integrada — Personas especiales, complementos, regalos, preparativos y encargos
+
+**Importante:** esta tanda CAMBIA de verdad el comportamiento descrito en los ítems 440-442 (ahora Complementos
+especiales es POR PERSONA, nunca un preparativo único para todo el grupo) y en el 404 (un encargo ya resuelto
+puede volver a mostrar «Resolver encargo» si aparece algo nuevo pendiente, en vez de quedarse fijo en «✅
+Resuelto»). Se conservan tal cual por historial, pero esos 4 ítems concretos quedan SUPERSEDIDOS por los de
+aquí abajo — no probar los antiguos como si siguieran siendo la conducta correcta.
+
+**Regresión obligatoria primero (contexto ya validado en iPhone antes de esta tanda — NO debe haber cambiado):**
+465. [ ] Alta, edición, cambio de papel y eliminación de Personas especiales siguen funcionando igual.
+466. [ ] Persistencia tras salir y volver a entrar en el evento.
+467. [ ] Al eliminar a una persona especial, desaparece de las selecciones de vestimenta y complementos y del selector de Detalles/recuerdos.
+468. [ ] Una persona que conserva sus selecciones y su registro de regalo no se ve afectada al borrar a otra.
+469. [ ] El estado del regalo Pendiente → Comprado sigue persistiendo igual.
+
+**Resúmenes de decisiones compactos:**
+470. [ ] "¿Habrá personas con un papel especial?" resuelto con gente ya añadida muestra "Personas especiales · N" (el número real), nunca la palabra "Resuelto".
+471. [ ] Resuelto en "Sí" pero sin ninguna persona añadida todavía muestra "· Sí", nunca un número inventado (0).
+472. [ ] Vestimenta/Complementos/Regalos decididos muestran "Vestimenta · Todos/Algunos/Ninguno", etc. — mínimo texto, respuesta real.
+473. [ ] "Todavía no lo sabemos" en cualquiera de las tres aparece en POR DECIDIR con ese mismo texto abreviado, distinto de una pregunta nunca respondida.
+474. [ ] Tocar cualquier fila del resumen sigue llevando a su pregunta exacta (no se ha roto la navegación al añadir el texto compacto).
+
+**Complementos especiales por persona:**
+475. [ ] Con "Todos" o "Solo algunos" en Complementos especiales, aparece una fila POR PERSONA del grupo elegido (no un único selector para todo el grupo).
+476. [ ] Marcar "Prendido floral" para María y "Ramo" para Ana crea DOS preparativos independientes, uno por persona, cada uno con su propio título.
+477. [ ] Una persona puede marcar varios complementos a la vez (p. ej. Ramo + Tocado); el preparativo de esa persona refleja los dos.
+478. [ ] "+Otro" admite texto libre por persona y no se asigna automáticamente a nadie más.
+479. [ ] Cambiar de "Todos" a "Solo algunos" (o al revés) no mezcla ni borra las asignaciones ya hechas de las personas que siguen en el grupo.
+480. [ ] Quitar a una persona del subconjunto (sin borrarla del roster) retira su preparativo de complemento sin tocar el de las demás.
+
+**Preparativos desglosados y Encargo de flores:**
+481. [ ] Un complemento del catálogo (Prendido floral, Ramo, Pulsera/corsage floral, Tocado) para una persona crea su tarea YA agrupada dentro de "🗂️ Encargos › Flores", sin tocar nada a mano.
+482. [ ] Un complemento de texto libre ("+Otro: diadema de perlas") NUNCA se agrupa en Flores — queda como tarea suelta.
+483. [ ] Si ya existe un encargo "Flores" (de La pareja, p. ej.), el complemento de la persona especial se une al MISMO encargo — nunca crea uno segundo.
+484. [ ] Cambiar el complemento de una persona (p. ej. de Ramo a Tocado) actualiza su tarea sin duplicarla ni perder su fecha/responsable/nota si ya los tenía puestos.
+485. [ ] Si la tarea de un complemento ya está completada y enriquecida (fecha, responsable, nota), cambiar la respuesta de la pregunta NO la borra ni la resetea — queda protegida igual que cualquier tarea manual.
+486. [ ] Borrar la persona especial protege la historia: su tarea de complemento ya creada no desaparece de golpe (se reconcilia como cualquier otra respuesta vaciada), nunca una tarea completada se reabre por esto.
+
+**Encargo ya resuelto que recibe algo nuevo pendiente (decisión explícita tomada con la usuaria):**
+487. [ ] Resolver "Flores" con proveedor y 150 € (p. ej.) lo marca resuelto, con el botón "Resolver encargo" seguido de "Antes resuelto: …" si se vuelve a necesitar.
+488. [ ] Decidir después un complemento floral nuevo (p. ej. un prendido para Ana) hace que "Flores" vuelva a mostrar el botón "Resolver encargo" ACTIVO — nunca se queda escondido detrás de un "✅ Resuelto" fijo.
+489. [ ] Debajo del botón se sigue viendo "Antes resuelto: [método] · [proveedor] — hay algo nuevo pendiente", conservando el proveedor y el importe anteriores sin borrarlos.
+490. [ ] Las tareas de Flores ya completadas ANTES de este nuevo pendiente siguen completadas — nunca se reabren.
+491. [ ] Volver a resolver "Flores" (p. ej. indicando que el prendido nuevo va incluido en el mismo encargo, o que supone un coste aparte) guarda una resolución nueva en el histórico sin borrar la anterior — las dos quedan consultables.
+492. [ ] Si el coste nuevo es aparte, el pago nuevo no duplica el importe de 150 € ya registrado (cada resolución con precio crea su propio pago, nunca se suma automáticamente al anterior en Presupuesto).
+493. [ ] No se crea un segundo encargo "Flores" para el evento en ningún momento de este flujo.
+494. [ ] El mismo comportamiento (reabrir sin borrar el historial) se puede comprobar también en un encargo distinto de Flores, creado a mano.
+
+**Detalles/recuerdos — regalos pendientes y el bug de edición corregido:**
+495. [ ] Un destinatario incluido en "Regalos o detalles" (Personas especiales) aparece en 🎁 Detalles/recuerdos como pendiente ("· Regalo por decidir") SIN tener que pulsar "+ Añadir persona especial" antes.
+496. [ ] "+ Añadir idea" sobre ese pendiente abre el alta ya con esa persona elegida; nombre y relación llegan rellenos y siguen siendo editables.
+497. [ ] BUG REAL CORREGIDO: en un registro YA existente, "Editar" permite cambiar nombre, relación, idea de detalle o vínculo sin tener que borrarlo y crearlo de nuevo.
+498. [ ] Cambiar solo la idea de detalle desde "Editar" conserva el estado (Pendiente/Comprado/Preparado) tal cual estaba.
+499. [ ] Añadir un regalo a otra persona manualmente (sin pasar por Personas especiales) sigue funcionando exactamente igual que antes.
+500. [ ] Una persona puede tener varios detalles/regalos a la vez, todos editables por separado.
+501. [ ] Borrar o cambiar de papel a una persona especial que YA tiene un regalo comprado/preparado nunca borra ese registro ni su historia — solo puede desvincular el enlace informativo.
+
+**Transición inteligente (propone, nunca ejecuta sola):**
+502. [ ] Cuando TODOS los destinatarios de "Regalos o detalles" tienen ya su idea decidida, aparece el aviso para marcar "Decidir regalos para personas especiales" como hecho.
+503. [ ] Si falta la idea de alguno, ese aviso NO aparece.
+504. [ ] "Marcar como hecho" completa esa tarea de verdad; "Ahora no" la descarta sin completarla ni volver a repetirse sola en este mismo estado.
+505. [ ] Con todos decididos pero no todos comprados/preparados, aparece la propuesta de crear "Comprar/encargar regalos para personas especiales" con el desglose por persona (p. ej. "María — Collar de plata").
+506. [ ] Si ya existe ese preparativo (o ya está todo comprado/preparado), la propuesta NO aparece — nunca duplica trabajo.
+507. [ ] "Crear preparativo" lo crea de verdad con el desglose en la nota; "No hace falta" lo descarta sin crear nada.
+
+**Consistencia/reconciliación general:**
+508. [ ] Guardar, recargar la pantalla, cambiar decisiones y añadir/quitar personas varias veces seguidas no genera tareas ni encargos duplicados en ningún momento de este flujo completo.
+509. [ ] Ningún precio ni proveedor aparece inventado en ningún paso de esta tanda — solo lo que la familia ha escrito a mano.
+510. [ ] La app sigue siendo cómoda de usar en iPhone (ancho estrecho) en cada pantalla nueva o modificada de esta tanda: Complementos por persona, Detalles/recuerdos con "Editar", y los avisos de transición inteligente.

@@ -86,7 +86,7 @@ const SRC = APP['/src/data/events.ts']
 describe('capa de datos — event_special_details: recipientName se conserva tal cual (TEST 7)', () => {
   it('SPECIAL_DETAIL_SELECT incluye member_id, y mapSpecialDetail lo mapea sin tocar recipient_name', () => {
     expect(SRC).toContain(
-      "const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, member_id, created_at'",
+      "const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, member_id, role_person_id, created_at'",
     )
     const body = SRC.slice(SRC.indexOf('function mapSpecialDetail'), SRC.indexOf('export async function listEventSpecialDetails'))
     expect(body).toContain('recipientName: r.recipient_name,')
@@ -99,9 +99,12 @@ describe('capa de datos — event_special_details: recipientName se conserva tal
     expect(body).toContain('member_id: input.memberId ?? null')
   })
 
-  it('member_id nunca se auto-sincroniza después del alta (TEST 17): updateEventSpecialDetail solo toca status', () => {
+  it('member_id nunca se auto-sincroniza después del alta (TEST 17): updateEventSpecialDetail nunca lo toca, aunque desde la tanda "regalos pendientes" ya admite editar recipientName/relationship/detail/rolePersonId (bug real corregido)', () => {
     const body = SRC.slice(SRC.indexOf('export async function updateEventSpecialDetail'), SRC.indexOf('export async function deleteEventSpecialDetail'))
     expect(body).not.toContain('member_id')
+    expect(body).toContain("if (patch.recipientName !== undefined) update.recipient_name = patch.recipientName.trim()")
+    expect(body).toContain('if (patch.detail !== undefined) update.detail = patch.detail')
+    expect(body).toContain('if (patch.rolePersonId !== undefined) update.role_person_id = patch.rolePersonId')
   })
 })
 

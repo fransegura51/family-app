@@ -786,6 +786,12 @@ export interface EventTask {
   // agrupar. Opcional por el mismo motivo que priority/notes arriba (fixtures de test anteriores a este
   // campo). Borrar el grupo nunca borra la tarea (ON DELETE SET NULL): solo la deja sin encargo.
   groupId?: string | null
+  // Tanda "Preparativos desglosados" (Personas especiales) — qué persona generó esta tarea, cuando viene
+  // de una decisión por persona (p. ej. complementos especiales: "María — Prendido floral"). Es la clave
+  // que distingue varias tareas de la MISMA decision_id, una por persona — nunca el título ni el nombre
+  // (ON DELETE SET NULL: borrar la persona nunca borra su tarea ya creada). null = tarea normal de
+  // siempre, una por decisión, sin desglose por persona.
+  rolePersonId?: string | null
 }
 
 // Cómo se resolvió un encargo (migración 0215) — ver EventTaskGroup.resolutionMethod.
@@ -811,6 +817,20 @@ export interface EventTaskGroup {
   providerId: string | null
   providerName: string | null
   paymentId: string | null
+}
+
+// Histórico de resoluciones de un encargo (migración 0220) — cada vez que se resuelve (la primera vez, o
+// de nuevo tras añadirle algo pendiente) se guarda una fila APARTE aquí, nunca se sobrescribe ni se borra
+// una ya escrita; las columnas de resolución de EventTaskGroup siguen reflejando solo la más reciente.
+export interface EventTaskGroupResolution {
+  id: string
+  groupId: string
+  method: EventTaskGroupResolutionMethod
+  note: string | null
+  providerId: string | null
+  providerName: string | null
+  paymentId: string | null
+  resolvedAt: string
 }
 
 // Preparativos (migración 0208) — propuesta de PEPA de cambiar una prioridad que fijó el usuario, con
@@ -1113,6 +1133,10 @@ export type EventSpecialDetailStatus = 'pendiente' | 'comprado' | 'preparado'
 // enlace OPCIONAL a una persona real desglosada (event_guest_members);
 // recipientName (texto libre) sigue siendo el dato que manda siempre,
 // nunca se sustituye por el nombre de memberId.
+// rolePersonId (tanda Personas especiales/Regalos) — enlace OPCIONAL y duradero a una persona especial
+// (event_role_people): a diferencia de memberId, SÍ se guarda al elegir "Elegir de Personas especiales"
+// (antes solo rellenaba el formulario sin dejar relación — ver fillFromRolePerson), para poder saber qué
+// personas especiales destinatarias de regalo TODAVÍA no tienen ningún registro.
 export interface EventSpecialDetail {
   id: string
   eventId: string
@@ -1125,6 +1149,7 @@ export interface EventSpecialDetail {
   deliveryNote: string | null
   notes: string | null
   memberId: string | null
+  rolePersonId: string | null
   createdAt: string
 }
 

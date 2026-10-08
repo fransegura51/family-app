@@ -129,9 +129,23 @@ describe('contenedor de Encargo en Preparativos (pendientes): un encabezado comp
     const looseTaskBlock = window_(PENDING_LIST, 'item.type === \'task\' ? (', ') : (')
     expect(looseTaskBlock).not.toContain('groupName=')
   })
-  it('un encargo ya resuelto muestra "✅ Resuelto" con el método, en vez del botón "Resolver encargo"', () => {
-    expect(PENDING_LIST).toContain('item.group.resolvedAt ? (')
-    expect(PENDING_LIST).toContain('✅ Resuelto · {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? \'otro\']}')
+  // Conflicto de integridad real, resuelto siguiendo la decisión explícita de la usuaria: un encargo con
+  // resolvedAt YA puesto pero con algo pendiente NUEVO (p. ej. un complemento floral añadido tras resolver
+  // Flores) nunca debe esconder ese pendiente detrás de "✅ Resuelto" — este contenedor solo se pinta a
+  // partir de tareas PENDIENTES (buildTaskGroupRenderItems sobre visibleTasks, ya filtrado a !done), así
+  // que el botón "Resolver encargo" sale siempre aquí; la resolución anterior se conserva como referencia,
+  // nunca se oculta ni se borra.
+  it('el botón "Resolver encargo" sale SIEMPRE que haya algo pendiente, incluso si el encargo ya tuvo una resolución antes', () => {
+    expect(PENDING_LIST).not.toContain('item.group.resolvedAt ? (')
+    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    expect(groupBlock).toContain('<button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>')
+    expect(groupBlock).toContain('Resolver encargo')
+  })
+  it('si ya hubo una resolución antes, se muestra como referencia histórica ("Antes resuelto: …"), sin ocultar que hay algo nuevo pendiente', () => {
+    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    expect(groupBlock).toContain('item.group.resolvedAt && (')
+    expect(groupBlock).toContain('Antes resuelto: {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? \'otro\']}')
+    expect(groupBlock).toContain('hay algo nuevo pendiente')
   })
 })
 

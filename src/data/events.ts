@@ -482,7 +482,7 @@ export async function duplicateEvent(id: string): Promise<string> {
 // ---------------------------------------------------------------------
 
 const TASK_SELECT =
-  'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id, priority, priority_source, priority_reason, notes, due_time, completed_at, group_id'
+  'id, event_id, family_id, title, done, due_date, source, sort_order, created_at, assigned_member_id, calendar_event_id, decision_id, priority, priority_source, priority_reason, notes, due_time, completed_at, group_id, role_person_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapTask(r: any): EventTask {
@@ -506,6 +506,7 @@ function mapTask(r: any): EventTask {
     dueTime: r.due_time ? String(r.due_time).slice(0, 5) : null,
     completedAt: r.completed_at ?? null,
     groupId: r.group_id ?? null,
+    rolePersonId: r.role_person_id ?? null,
     responsibleMemberIds: [],
     helpers: [],
   }
@@ -1845,7 +1846,7 @@ export async function deleteEventFavorItem(id: string): Promise<void> {
   if (error) throw error
 }
 
-const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, member_id, created_at'
+const SPECIAL_DETAIL_SELECT = 'id, event_id, family_id, recipient_name, relationship, detail, budget, status, delivery_note, notes, member_id, role_person_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapSpecialDetail(r: any): EventSpecialDetail {
@@ -1861,6 +1862,7 @@ function mapSpecialDetail(r: any): EventSpecialDetail {
     deliveryNote: r.delivery_note,
     notes: r.notes,
     memberId: r.member_id,
+    rolePersonId: r.role_person_id,
     createdAt: r.created_at,
   }
 }
@@ -1877,7 +1879,7 @@ export async function listEventSpecialDetails(eventId: string): Promise<EventSpe
 
 export async function addEventSpecialDetail(
   eventId: string,
-  input: { recipientName: string; relationship?: string | null; detail?: string | null; budget?: number | null; memberId?: string | null },
+  input: { recipientName: string; relationship?: string | null; detail?: string | null; budget?: number | null; memberId?: string | null; rolePersonId?: string | null },
 ): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('event_special_details').insert({
@@ -1888,13 +1890,38 @@ export async function addEventSpecialDetail(
     detail: input.detail ?? null,
     budget: input.budget ?? null,
     member_id: input.memberId ?? null,
+    role_person_id: input.rolePersonId ?? null,
   })
   if (error) throw error
 }
 
-export async function updateEventSpecialDetail(id: string, patch: { status?: EventSpecialDetailStatus }): Promise<void> {
+// Bug real (validación iPhone, tanda Personas especiales/Regalos): antes solo se podía cambiar el
+// estado — cambiar la idea del regalo obligaba a borrar y volver a crear el registro entero. Ahora
+// admite también recipientName/relationship/detail/budget/deliveryNote/notes. rolePersonId SÍ es
+// editable aquí a propósito (es el vínculo que el usuario puede corregir); memberId NUNCA se toca desde
+// esta función — eso sigue reservado a la sincronización original de Fase 14D (ver test que lo protege).
+export async function updateEventSpecialDetail(
+  id: string,
+  patch: {
+    status?: EventSpecialDetailStatus
+    recipientName?: string
+    relationship?: string | null
+    detail?: string | null
+    budget?: number | null
+    deliveryNote?: string | null
+    notes?: string | null
+    rolePersonId?: string | null
+  },
+): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.status !== undefined) update.status = patch.status
+  if (patch.recipientName !== undefined) update.recipient_name = patch.recipientName.trim()
+  if (patch.relationship !== undefined) update.relationship = patch.relationship
+  if (patch.detail !== undefined) update.detail = patch.detail
+  if (patch.budget !== undefined) update.budget = patch.budget
+  if (patch.deliveryNote !== undefined) update.delivery_note = patch.deliveryNote
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.rolePersonId !== undefined) update.role_person_id = patch.rolePersonId
   const { error } = await supabase.from('event_special_details').update(update).eq('id', id)
   if (error) throw error
 }
@@ -2349,10 +2376,49 @@ export async function applyPairDecisionGeneration(eventId: string, decisionId: s
   return result
 }
 
+const NONE_DESIRED: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+
+// Tanda "Preparativos desglosados" — variante de applyPairDecisionGeneration para una decisión que puede
+// generar VARIAS tareas, una por persona (role_person_id las distingue entre sí dentro de la MISMA
+// decision_id — ver migración 0219). Reutiliza reconcilePairGeneration/executeReconcileActions TAL CUAL,
+// una vez por persona — nunca un motor paralelo. Una persona que ya tenía tarea y deja de estar en
+// desiredList (complemento quitado o persona eliminada del roster) se reconcilia con NONE_DESIRED, igual
+// que cualquier otra respuesta vaciada: el motor decide por sí mismo detach/delete según isTaskUntouched,
+// nunca un borrado directo fuera de él.
+export async function applyPairDecisionGenerationPerPerson(
+  eventId: string,
+  decisionId: string,
+  desiredList: { personId: string; desired: DesiredPairGeneration }[],
+): Promise<ReconcileResult[]> {
+  const familyId = await currentFamilyId()
+  const { data: tasks, error: tasksError } = await supabase.from('event_tasks').select(TASK_SELECT).eq('decision_id', decisionId)
+  if (tasksError) throw tasksError
+  const existingByPerson = new Map<string, EventTask>()
+  for (const t of tasks.map(mapTask)) {
+    if (t.rolePersonId) existingByPerson.set(t.rolePersonId, t)
+  }
+  const desiredPersonIds = new Set(desiredList.map((d) => d.personId))
+  const results: ReconcileResult[] = []
+  for (const { personId, desired } of desiredList) {
+    const result = reconcilePairGeneration(desired, existingByPerson.get(personId), undefined)
+    await executeReconcileActions(eventId, familyId, decisionId, result, personId)
+    results.push(result)
+  }
+  for (const [personId, task] of existingByPerson) {
+    if (desiredPersonIds.has(personId)) continue
+    const result = reconcilePairGeneration(NONE_DESIRED, task, undefined)
+    await executeReconcileActions(eventId, familyId, decisionId, result, personId)
+    results.push(result)
+  }
+  return results
+}
+
 // Ejecuta tal cual la lista de acciones que decidió reconcilePairGeneration (puro). Extraído para que la
 // adopción de automatismos antiguos de "Comida y bebida" reutilice EXACTAMENTE el mismo ejecutor, sin un
-// segundo camino de escritura.
-async function executeReconcileActions(eventId: string, familyId: string, decisionId: string, result: ReconcileResult): Promise<void> {
+// segundo camino de escritura. rolePersonId (tanda "Preparativos desglosados") es opcional: solo lo pasan
+// los llamadores por persona (applyPairDecisionGenerationPerPerson) — cualquier otro llamador existente
+// sigue creando tareas con role_person_id null, exactamente como antes de esta tanda.
+async function executeReconcileActions(eventId: string, familyId: string, decisionId: string, result: ReconcileResult, rolePersonId?: string | null): Promise<void> {
   for (const action of result.actions) {
     switch (action.op) {
       case 'create_task': {
@@ -2366,6 +2432,7 @@ async function executeReconcileActions(eventId: string, familyId: string, decisi
             source: 'auto',
             sort_order: Date.now(),
             decision_id: decisionId,
+            role_person_id: rolePersonId ?? null,
             priority: proposal.priority,
             priority_source: 'pepa',
             priority_reason: proposal.reason,

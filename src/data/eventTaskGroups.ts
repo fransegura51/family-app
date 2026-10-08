@@ -3,7 +3,7 @@
 // Desde 0215, un encargo puede RESOLVERSE (proveedor real + precio total opcional, reutilizando
 // event_providers/event_payments tal cual — nunca event_budget_items, ver cabecera de esa migración).
 import { supabase } from '@/data/supabaseClient'
-import type { EventTaskGroup, EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroup, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
 
 const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id'
 
@@ -97,16 +97,24 @@ export async function findOrCreateEventTaskGroupByKind(eventId: string, familyId
   return data.id as string
 }
 
-// Resolución de un encargo (migración 0215): un único UPDATE — nunca toca las tareas del encargo (eso lo
-// decide y ejecuta quien llama, completando solo sus tareas PENDIENTES actuales) ni ningún otro encargo.
+// Resolución de un encargo (migración 0215, historial añadido en 0220): nunca toca las tareas del encargo
+// (eso lo decide y ejecuta quien llama, completando solo sus tareas PENDIENTES actuales) ni ningún otro
+// encargo. Las columnas de event_task_groups siguen reflejando solo la resolución MÁS RECIENTE (igual que
+// siempre, para no romper nada que ya las lea), pero AHORA cada resolución queda ADEMÁS como una fila
+// nueva en event_task_group_resolutions — nunca se sobrescribe ni se borra una resolución anterior.
+// Resolver dos veces el mismo encargo (p. ej. tras añadirle un complemento nuevo después de ya resuelto)
+// conserva intacta la primera: proveedor, importe y método anteriores siguen consultables en el histórico.
 export async function resolveEventTaskGroup(
   groupId: string,
   input: { method: EventTaskGroupResolutionMethod; note?: string | null; providerId?: string | null; providerName?: string | null; paymentId?: string | null },
 ): Promise<void> {
+  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id').eq('id', groupId).single()
+  if (groupError) throw groupError
+  const resolvedAt = new Date().toISOString()
   const { error } = await supabase
     .from('event_task_groups')
     .update({
-      resolved_at: new Date().toISOString(),
+      resolved_at: resolvedAt,
       resolution_method: input.method,
       resolution_note: input.note ?? null,
       provider_id: input.providerId ?? null,
@@ -115,4 +123,39 @@ export async function resolveEventTaskGroup(
     })
     .eq('id', groupId)
   if (error) throw error
+  const { error: historyError } = await supabase.from('event_task_group_resolutions').insert({
+    group_id: groupId,
+    family_id: group.family_id,
+    method: input.method,
+    note: input.note ?? null,
+    provider_id: input.providerId ?? null,
+    provider_name: input.providerName ?? null,
+    payment_id: input.paymentId ?? null,
+    resolved_at: resolvedAt,
+  })
+  if (historyError) throw historyError
+}
+
+const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, resolved_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapGroupResolution(r: any): EventTaskGroupResolution {
+  return {
+    id: r.id,
+    groupId: r.group_id,
+    method: r.method,
+    note: r.note,
+    providerId: r.provider_id,
+    providerName: r.provider_name,
+    paymentId: r.payment_id,
+    resolvedAt: r.resolved_at,
+  }
+}
+
+// Histórico completo de resoluciones de un encargo, de la más antigua a la más reciente — para poder
+// mostrar "antes resuelto: Floristería X · 150 €" aunque el encargo tenga ahora algo nuevo pendiente.
+export async function listEventTaskGroupResolutions(groupId: string): Promise<EventTaskGroupResolution[]> {
+  const { data, error } = await supabase.from('event_task_group_resolutions').select(GROUP_RESOLUTION_SELECT).eq('group_id', groupId).order('resolved_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapGroupResolution)
 }

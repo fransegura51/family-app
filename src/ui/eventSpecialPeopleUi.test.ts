@@ -53,18 +53,44 @@ describe('PersonasEspecialesBlock — revelado progresivo: roster y preguntas co
     expect(ESPECIAL).toContain("hay?.choice === 'si' && people.length > 0 && questionIsVisible(localFocus, ESPECIAL_COMPLEMENTOS_QUESTION_KEY)")
     expect(ESPECIAL).toContain("hay?.choice === 'si' && people.length > 0 && questionIsVisible(localFocus, ESPECIAL_REGALOS_QUESTION_KEY)")
   })
-  it('complementos/regalos pasan por el MISMO motor de reconciliación que el resto del configurador (applyPairDecisionGeneration vía saveGrouped)', () => {
+  it('regalos pasa por el MISMO motor de reconciliación que el resto del configurador (applyPairDecisionGeneration vía saveGrouped)', () => {
     expect(ESPECIAL).toContain('await applyPairDecisionGeneration(event.id, decision.id, desired)')
-    expect(ESPECIAL).toContain('desiredForEspecialComplementos(')
     expect(ESPECIAL).toContain('desiredForEspecialRegalos(')
   })
-  it('vestimenta coordinada NUNCA genera un preparativo (NONE_ESPECIAL fijo) — solo complementos y regalos pueden generar UNO', () => {
+  it('complementos usa la variante POR PERSONA (applyPairDecisionGenerationPerPerson), nunca un único DesiredPairGeneration para todo el grupo', () => {
+    expect(ESPECIAL).toContain('desiredForEspecialComplementosPorPersona(answer, peopleById)')
+    expect(ESPECIAL).toContain('await applyPairDecisionGenerationPerPerson(event.id, decision.id, desiredList)')
+  })
+  it('vestimenta coordinada NUNCA genera un preparativo (NONE_ESPECIAL fijo) — solo complementos y regalos pueden generar alguno', () => {
     const vestimentaBlock = window_(ESPECIAL, 'Vestimenta coordinada', 'Complementos especiales')
     expect(vestimentaBlock).toContain('NONE_ESPECIAL')
     expect(vestimentaBlock).not.toContain('desiredForEspecial')
   })
+  it('complementos: una fila POR PERSONA del subconjunto, nunca un complemento global asignado a todos a la vez', () => {
+    const complementosBlock = window_(ESPECIAL, 'Complementos especiales', 'Regalos o detalles')
+    expect(complementosBlock).toContain('resolveEspecialScopePersonIds(')
+    expect(complementosBlock).toContain('<ComplementoPersonaRow')
+  })
   it('usa el roster real (event_role_people vía listEventRolePeople) — nunca una lista aparte', () => {
     expect(ESPECIAL).toContain("listEventRolePeople(event.id, 'especial')")
+  })
+})
+
+describe('ComplementoPersonaRow — catálogo cerrado (toggle) + "+Otro" libre, por persona', () => {
+  const ROW = window_(UI, 'function ComplementoPersonaRow(', '\nfunction RolePersonForm(')
+
+  it('cada item del catálogo es un chip independiente que se activa/desactiva (toggleItem), nunca un selector único', () => {
+    expect(ROW).toContain('ESPECIAL_COMPLEMENTOS_CATALOG.map((item) =>')
+    expect(ROW).toContain("assignment.items.includes(item) ? assignment.items.filter((i) => i !== item) : [...assignment.items, item]")
+  })
+  it('"+Otro" admite texto libre, se guarda en customItems (nunca mezclado con el catálogo cerrado) y es eliminable', () => {
+    expect(ROW).toContain('function addCustom() {')
+    expect(ROW).toContain('assignment.customItems.includes(text)')
+    expect(ROW).toContain('function removeCustom(text: string) {')
+  })
+  it('disabled se propaga a todos los controles mientras se está guardando (nunca doble envío)', () => {
+    const chips = window_(ROW, 'ESPECIAL_COMPLEMENTOS_CATALOG.map', '+Otro')
+    expect(chips).toMatch(/disabled=\{disabled\}/)
   })
 })
 
@@ -115,5 +141,60 @@ describe('Detalles/Regalos — "alimentar" el roster de Personas especiales sin 
     expect(addSpecial).not.toContain('addEventSpecialDetail(eventId, { recipientName: person')
     expect(addGift).toContain('function fillFromRolePerson(personId: string) {')
     expect(addGift).not.toContain('addEventGift(eventId, { guestName: person')
+  })
+})
+
+describe('Detalles — bug real corregido: editar un registro existente sin borrar/recrear', () => {
+  const details = window_(UI, 'function DetailsSection(', '\nfunction AddFavorModal(')
+  const addSpecial = window_(UI, 'function AddSpecialDetailModal(', '\nfunction GiftsSection(')
+
+  it('cada fila de Detalles especiales tiene un botón "Editar" que abre el MISMO modal en modo edición', () => {
+    expect(details).toContain('onClick={() => setEditingSpecial(s)}')
+    expect(details).toContain('editing={editingSpecial}')
+  })
+  it('AddSpecialDetailModal acepta `editing` y entonces llama a updateEventSpecialDetail (nunca borra/recrea)', () => {
+    expect(addSpecial).toContain('editing?: EventSpecialDetail | null')
+    expect(addSpecial).toContain('if (editing) {')
+    expect(addSpecial).toContain('await updateEventSpecialDetail(editing.id, {')
+  })
+  it('el modal de edición precarga nombre/relación/idea/vínculo desde `editing`, nunca en blanco', () => {
+    expect(addSpecial).toContain("useState(editing?.recipientName ?? '')")
+    expect(addSpecial).toContain("useState(editing?.detail ?? '')")
+    expect(addSpecial).toContain("useState(editing?.rolePersonId ?? '')")
+  })
+})
+
+describe('Detalles — "Regalos pendientes" alimenta automáticamente desde la decisión de Personas especiales', () => {
+  const details = window_(UI, 'function DetailsSection(', '\nfunction AddFavorModal(')
+
+  it('un destinatario del subconjunto de Regalos sin registro vinculado aparece igual, sin obligar a "+ Añadir persona especial"', () => {
+    expect(details).toContain('const missingRecipients = rolePeople.filter((p) => regalosRecipientIds.includes(p.id) && !linkedRolePersonIds.has(p.id))')
+    expect(details).toContain('missingRecipients.map((p) =>')
+    expect(details).toContain('Regalo por decidir')
+  })
+  it('el vínculo real usa el ID estable (role_person_id), nunca el nombre, para no duplicar al coincidir nombres', () => {
+    expect(details).toContain('const linkedRolePersonIds = new Set(specials.map((s) => s.rolePersonId)')
+  })
+})
+
+describe('Detalles — "Transición inteligente": PEPA propone, nunca ejecuta sin permiso', () => {
+  const details = window_(UI, 'function DetailsSection(', '\nfunction AddFavorModal(')
+
+  it('solo propone completar "Decidir regalos..." cuando TODOS los destinatarios reales tienen ya su idea decidida', () => {
+    expect(details).toContain('const allRecipientsHaveDetail = regalosRecipientIds.length > 0 && regalosRecipientIds.every((id) => specials.some((s) => s.rolePersonId === id && !!s.detail))')
+    expect(details).toContain('allRecipientsHaveDetail && decidirTask && !dismissedDecidirPrompt')
+  })
+  it('nunca marca la tarea completada sola: exige pulsar "Marcar como hecho"', () => {
+    const prompt = window_(details, 'allRecipientsHaveDetail && decidirTask', 'allRecipientsHaveDetail && !allRecipientsPurchased')
+    expect(prompt).toContain('onClick={() => completeDecidirRegalosTask()}')
+    expect(prompt).toContain('Ahora no')
+  })
+  it('no propone "Comprar/encargar regalos" si ya está todo comprado/preparado, ni si ya existe ese preparativo', () => {
+    expect(details).toContain('const allRecipientsPurchased = allRecipientsHaveDetail && recipientSpecials.every((s) => s.status !== ')
+    expect(details).toContain('allRecipientsHaveDetail && !allRecipientsPurchased && !comprarTaskExists && !dismissedComprarPrompt')
+  })
+  it('al crear el preparativo de compra incluye el desglose por persona, nunca una tarea genérica sin detalle', () => {
+    expect(details).toContain('const breakdown = recipientSpecials.map((s) => `${s.recipientName} — ${s.detail}`).join(')
+    expect(details).toContain('addEventTask(eventId, COMPRAR_REGALOS_TASK_TITLE, null, null, { notes: breakdown })')
   })
 })

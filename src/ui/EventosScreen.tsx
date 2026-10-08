@@ -7,7 +7,7 @@ import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
 import { questionIsVisible, useConfiguratorQuestionFocus, type ConfiguratorFocusRequest } from '@/ui/useConfiguratorQuestionFocus'
 import { computeConfiguratorSummary, type ConfiguratorQuestionRef, type ConfiguratorSummary } from '@/domain/eventConfiguratorSummary'
 import {
-  desiredForEspecialComplementos,
+  desiredForEspecialComplementosPorPersona,
   desiredForEspecialRegalos,
   ESPECIAL_COMPLEMENTOS_CATALOG,
   ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
@@ -20,9 +20,12 @@ import {
   FAMILIARES_PARENTESCO_OPTIONS,
   listEspecialBlockQuestions,
   listFamiliaresBlockQuestions,
+  normalizeComplementosAnswer,
+  resolveEspecialScopePersonIds,
   suggestGuestMatches,
   summarizeEspecialBlock,
   summarizeFamiliaresBlock,
+  type ComplementoPersonaAsignacion,
   type ComplementosEspecialesAnswer,
   type FamiliaresNecesidadesAnswer,
   type GrupoAlcanceChoice,
@@ -106,6 +109,7 @@ import {
   listEventDecisions,
   upsertEventDecision,
   applyPairDecisionGeneration,
+  applyPairDecisionGenerationPerPerson,
   listDecisionProviders,
   linkDecisionProvider,
   unlinkDecisionProvider,
@@ -1564,16 +1568,26 @@ function EventDetail({
                   <div key={item.groupId} className="card member-form">
                     <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
                       <strong>📦 {item.groupName.toUpperCase()}</strong>
-                      {item.group.resolvedAt ? (
-                        <span className="muted" style={{ fontSize: 12 }}>
-                          ✅ Resuelto · {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? 'otro']}
-                        </span>
-                      ) : (
-                        <button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>
-                          Resolver encargo
-                        </button>
-                      )}
+                      {/* Bug real corregido (decisión explícita de la usuaria): todo "group" que llega aquí
+                          tiene SIEMPRE al menos una tarea pendiente (buildTaskGroupRenderItems solo lo crea
+                          a partir de visibleTasks, ya filtrado a !done) — así que un encargo con
+                          resolvedAt YA puesto pero con algo pendiente nuevo (p. ej. un complemento floral
+                          decidido después de resolver Flores) NUNCA debe mostrarse como "✅ Resuelto" sin
+                          más: eso ocultaba que había trabajo nuevo. El botón "Resolver encargo" sale
+                          SIEMPRE que haya algo pendiente; si además ya hubo una resolución antes, se
+                          conserva como referencia histórica (nunca se borra ni se sobrescribe aquí — ver
+                          resolveEventTaskGroup, que ahora además guarda cada resolución en
+                          event_task_group_resolutions). */}
+                      <button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>
+                        Resolver encargo
+                      </button>
                     </div>
+                    {item.group.resolvedAt && (
+                      <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+                        Antes resuelto: {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? 'otro']}
+                        {item.group.providerName ? ` · ${item.group.providerName}` : ''} — hay algo nuevo pendiente.
+                      </p>
+                    )}
                     <div className="event-list" style={{ marginTop: 6 }}>
                       {item.tasks.map((t) => (
                         <TaskCard
@@ -1759,7 +1773,7 @@ function EventDetail({
       case 'pagos':
         return <PaymentsSection event={event} />
       case 'detalles':
-        return <DetailsSection eventId={event.id} />
+        return <DetailsSection eventId={event.id} tasks={tasks} onTasksChanged={reloadTasks} />
       case 'regalos':
         return <GiftsSection eventId={event.id} />
       case 'plan_dia':
@@ -6843,7 +6857,7 @@ function DecisionSummaryDetails({ summary, onSelect }: { summary: DecisionSummar
         <div style={{ marginTop: 4 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
           {summary.taken.map((item) => (
-            <Row key={item.key} item={item} icon="✓" statusLabel="Resuelto" />
+            <Row key={item.key} item={item} icon="✓" statusLabel={item.statusLabel ?? 'Resuelto'} />
           ))}
         </div>
       )}
@@ -6851,7 +6865,7 @@ function DecisionSummaryDetails({ summary, onSelect }: { summary: DecisionSummar
         <div style={{ marginTop: 4 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>POR DECIDIR</div>
           {summary.pending.map((item) => (
-            <Row key={item.key} item={item} icon="○" statusLabel="Pendiente" />
+            <Row key={item.key} item={item} icon="○" statusLabel={item.statusLabel ?? 'Pendiente'} />
           ))}
         </div>
       )}
@@ -7329,6 +7343,78 @@ function PersonSubsetPicker({ people, selectedIds, onChange }: { people: EventRo
   )
 }
 
+// Tanda "Complementos por persona" — fila de UNA persona dentro de "Complementos especiales": sus propios
+// chips del catálogo + "+Otro" libre, independientes de cualquier otra persona (nunca se copia la
+// selección de una persona a otra). Guarda en cuanto se toca un chip, igual que el resto del bloque.
+function ComplementoPersonaRow({
+  person,
+  assignment,
+  onChange,
+  disabled,
+}: {
+  person: EventRolePerson
+  assignment: ComplementoPersonaAsignacion
+  onChange: (next: ComplementoPersonaAsignacion) => void
+  disabled?: boolean
+}) {
+  const [addingCustom, setAddingCustom] = useState(false)
+  const [customText, setCustomText] = useState('')
+
+  function toggleItem(item: string) {
+    const items = assignment.items.includes(item) ? assignment.items.filter((i) => i !== item) : [...assignment.items, item]
+    onChange({ ...assignment, items })
+  }
+  function removeCustom(text: string) {
+    onChange({ ...assignment, customItems: assignment.customItems.filter((c) => c !== text) })
+  }
+  function addCustom() {
+    const text = customText.trim()
+    setAddingCustom(false)
+    setCustomText('')
+    if (!text || assignment.customItems.includes(text)) return
+    onChange({ ...assignment, customItems: [...assignment.customItems, text] })
+  }
+
+  return (
+    <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #eee' }}>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>{person.name || 'Sin nombre'}</div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 2 }}>
+        {ESPECIAL_COMPLEMENTOS_CATALOG.map((item) => (
+          <button key={item} type="button" disabled={disabled} className={'chip' + (assignment.items.includes(item) ? ' chip-active' : '')} onClick={() => toggleItem(item)}>
+            {item}
+          </button>
+        ))}
+        {assignment.customItems.map((c) => (
+          <button key={c} type="button" disabled={disabled} className="chip chip-active" onClick={() => removeCustom(c)} aria-label={`Quitar «${c}»`}>
+            {c} ✕
+          </button>
+        ))}
+        {addingCustom ? (
+          <input
+            type="text"
+            autoFocus
+            value={customText}
+            onChange={(e) => setCustomText(e.target.value)}
+            onBlur={addCustom}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addCustom()
+              }
+            }}
+            placeholder="Otro complemento…"
+            style={{ maxWidth: 160 }}
+          />
+        ) : (
+          <button type="button" className="chip" disabled={disabled} onClick={() => setAddingCustom(true)}>
+            +Otro
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // Alta/edición de una persona del roster: nombre (opcional solo en Familiares), papeles (chips sugeridos +
 // "+Otro papel" libre) y, mientras escribe el nombre, sugerencia de coincidencia con Invitados — nunca un
 // vínculo automático, solo una pregunta que hay que confirmar.
@@ -7562,6 +7648,35 @@ function PersonasEspecialesBlock({
     }
   }
 
+  // Tanda "Preparativos desglosados" — variante de saveGrouped SOLO para complementos: UN
+  // DesiredPairGeneration POR PERSONA (desiredForEspecialComplementosPorPersona), nunca uno único para
+  // todo el grupo. applyPairDecisionGenerationPerPerson reutiliza el MISMO motor de reconciliación
+  // (reconcilePairGeneration) una vez por persona — nunca uno paralelo ni un segundo camino de escritura.
+  async function saveComplementos(answer: ComplementosEspecialesAnswer) {
+    setSavingKey(ESPECIAL_COMPLEMENTOS_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, {
+        blockKey: 'personas_especiales',
+        questionKey: ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
+        answer: answer as unknown as Record<string, unknown>,
+        isCustomOption: false,
+      })
+      const peopleById = new Map(people.map((p) => [p.id, p]))
+      const desiredList = desiredForEspecialComplementosPorPersona(answer, peopleById)
+      const results = await applyPairDecisionGenerationPerPerson(event.id, decision.id, desiredList)
+      await reload()
+      const allActions = results.flatMap((r) => r.actions)
+      if (allActions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(allActions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
   async function savePerson(input: { name: string | null; roles: string[]; guestMemberId: string | null }) {
     if (editingPerson) await updateEventRolePerson(editingPerson.id, input)
     else await addEventRolePerson(event.id, 'especial', input)
@@ -7570,8 +7685,28 @@ function PersonasEspecialesBlock({
     await reload()
   }
 
+  // Reconciliación (tanda Personas especiales/Complementos/Regalos) — hasta esta tanda, borrar una persona
+  // nunca limpiaba su id de ninguna respuesta ya guardada (auditado: no existía ningún camino que lo
+  // hiciera). Ahora, si la persona borrada estaba en el subconjunto o en una asignación de vestimenta/
+  // complementos/regalos, se vuelve a guardar esa respuesta sin ella — nunca un borrado silencioso fuera
+  // del motor: cada guardado pasa otra vez por saveGrouped/saveComplementos, que reconcilian la tarea
+  // asociada (detach/delete según isTaskUntouched) exactamente igual que cualquier otro cambio de verdad.
   async function deletePerson(p: EventRolePerson) {
     await deleteEventRolePerson(p.id)
+    if (vestimenta?.selectedPersonIds.includes(p.id)) {
+      await saveGrouped(ESPECIAL_VESTIMENTA_QUESTION_KEY, { ...vestimenta, selectedPersonIds: vestimenta.selectedPersonIds.filter((id) => id !== p.id) }, NONE_ESPECIAL)
+    }
+    if (complementosNormalized && (complementosNormalized.selectedPersonIds.includes(p.id) || (complementosNormalized.assignments ?? []).some((a) => a.personId === p.id))) {
+      await saveComplementos({
+        ...complementosNormalized,
+        selectedPersonIds: complementosNormalized.selectedPersonIds.filter((id) => id !== p.id),
+        assignments: (complementosNormalized.assignments ?? []).filter((a) => a.personId !== p.id),
+      })
+    }
+    if (regalos?.selectedPersonIds.includes(p.id)) {
+      const nextRegalos = { ...regalos, selectedPersonIds: regalos.selectedPersonIds.filter((id) => id !== p.id) }
+      await saveGrouped(ESPECIAL_REGALOS_QUESTION_KEY, nextRegalos, desiredForEspecialRegalos(nextRegalos))
+    }
     await reload()
   }
 
@@ -7579,7 +7714,8 @@ function PersonasEspecialesBlock({
   const hayDecision = findDecision(ESPECIAL_HAY_QUESTION_KEY)
   const hay = hayDecision?.answer as unknown as HayPersonasAnswer | undefined
   const vestimenta = findDecision(ESPECIAL_VESTIMENTA_QUESTION_KEY)?.answer as unknown as VestimentaCoordinadaAnswer | undefined
-  const complementos = findDecision(ESPECIAL_COMPLEMENTOS_QUESTION_KEY)?.answer as unknown as ComplementosEspecialesAnswer | undefined
+  const complementosRaw = findDecision(ESPECIAL_COMPLEMENTOS_QUESTION_KEY)?.answer as unknown as ComplementosEspecialesAnswer | undefined
+  const complementosNormalized = complementosRaw ? normalizeComplementosAnswer(complementosRaw, people.map((p) => p.id)) : undefined
   const regalos = findDecision(ESPECIAL_REGALOS_QUESTION_KEY)?.answer as unknown as RegalosEspecialesAnswer | undefined
   const summary = summarizeEspecialBlock(decisions, people.length)
   const decisionSummary = buildEspecialDecisionSummary(decisions, people.length)
@@ -7673,44 +7809,50 @@ function PersonasEspecialesBlock({
           </div>
           <ChoiceRow
             options={GRUPO_ALCANCE_OPTIONS}
-            value={complementos?.choice}
+            value={complementosNormalized?.choice}
             disabled={savingKey === ESPECIAL_COMPLEMENTOS_QUESTION_KEY}
-            onSelect={(choice) => {
-              const next: ComplementosEspecialesAnswer = { choice, selectedPersonIds: choice === 'algunos' ? (complementos?.selectedPersonIds ?? []) : [], selected: complementos?.selected ?? [], customItems: complementos?.customItems ?? [], note: complementos?.note ?? null }
-              saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
-            }}
+            onSelect={(choice) =>
+              saveComplementos({
+                choice,
+                selectedPersonIds: choice === 'algunos' ? (complementosNormalized?.selectedPersonIds ?? []) : [],
+                assignments: complementosNormalized?.assignments ?? [],
+                note: complementosNormalized?.note ?? null,
+              })
+            }
           />
-          {(complementos?.choice === 'todos' || complementos?.choice === 'algunos') && (
+          {(complementosNormalized?.choice === 'todos' || complementosNormalized?.choice === 'algunos') && (
             <>
-              {complementos.choice === 'algunos' && (
+              {complementosNormalized.choice === 'algunos' && (
                 <PersonSubsetPicker
                   people={people}
-                  selectedIds={complementos.selectedPersonIds}
-                  onChange={(ids) => {
-                    const next = { ...complementos, selectedPersonIds: ids }
-                    saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
-                  }}
+                  selectedIds={complementosNormalized.selectedPersonIds}
+                  onChange={(ids) => saveComplementos({ ...complementosNormalized, selectedPersonIds: ids })}
                 />
               )}
-              <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-                {ESPECIAL_COMPLEMENTOS_CATALOG.map((item) => {
-                  const checked = complementos.selected.includes(item)
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      className={'chip' + (checked ? ' chip-active' : '')}
-                      onClick={() => {
-                        const nextSelected = checked ? complementos.selected.filter((s) => s !== item) : [...complementos.selected, item]
-                        const next = { ...complementos, selected: nextSelected }
-                        saveGrouped(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, next as unknown as Record<string, unknown>, desiredForEspecialComplementos(next))
-                      }}
-                    >
-                      {item}
-                    </button>
-                  )
-                })}
-              </div>
+              {/* Tanda "Complementos por persona" — ya nunca un único complemento compartido por todo el
+                  grupo (petición real: "no asignar automáticamente el mismo complemento a todos"): cada
+                  persona del subconjunto tiene su propia fila. */}
+              {resolveEspecialScopePersonIds(
+                complementosNormalized.choice,
+                complementosNormalized.selectedPersonIds,
+                people.map((p) => p.id),
+              ).map((personId) => {
+                const person = people.find((p) => p.id === personId)
+                if (!person) return null
+                const assignment = complementosNormalized.assignments?.find((a) => a.personId === personId) ?? { personId, items: [], customItems: [] }
+                return (
+                  <ComplementoPersonaRow
+                    key={personId}
+                    person={person}
+                    assignment={assignment}
+                    disabled={savingKey === ESPECIAL_COMPLEMENTOS_QUESTION_KEY}
+                    onChange={(next) => {
+                      const others = (complementosNormalized.assignments ?? []).filter((a) => a.personId !== personId)
+                      saveComplementos({ ...complementosNormalized, assignments: [...others, next] })
+                    }}
+                  />
+                )
+              })}
             </>
           )}
         </div>
@@ -10741,15 +10883,38 @@ function AddActivityModal({ eventId, onClose, onAdded }: { eventId: string; onCl
 // distintas a propósito.
 // ---------------------------------------------------------------------
 
-function DetailsSection({ eventId }: { eventId: string }) {
+// Tanda "Transición inteligente entre preparativos" — props nuevas (tasks/onTasksChanged) SOLO para poder
+// proponer, nunca ejecutar sin permiso: cuando TODOS los destinatarios de "Regalos o detalles" tienen ya
+// una idea decidida, se ofrece (1) marcar como completado el preparativo "Decidir regalos para personas
+// especiales" y (2) crear "Comprar/encargar regalos para personas especiales" con el desglose por persona
+// — cada una con su propia confirmación aparte, reutilizando updateEventTask/addEventTask de siempre
+// (nunca un escritor nuevo). Mismo motor de "Siguiente preparativo" en espíritu (proponer, aceptar o
+// rechazar, nunca duplicar) aunque esta tanda vive en su propia tarjeta en vez de reutilizar el modal
+// compartido de Encargos — DetailsSection no formaba parte del árbol que tiene acceso a ese estado y
+// separarlo así evita arriesgar el mecanismo ya validado en iPhone.
+const DECIDIR_REGALOS_TASK_TITLE = 'Decidir regalos para personas especiales'
+const COMPRAR_REGALOS_TASK_TITLE = 'Comprar/encargar regalos para personas especiales'
+
+function DetailsSection({ eventId, tasks, onTasksChanged }: { eventId: string; tasks: EventTask[]; onTasksChanged: () => void }) {
   const [favors, setFavors] = useState<EventFavorItem[]>([])
   const [specials, setSpecials] = useState<EventSpecialDetail[]>([])
   const [members, setMembers] = useState<EventGuestMember[]>([])
   // Fase 2 (plan de pendientes) — "alimentar el módulo de Detalles/Regalos": el roster de "🎭 Personas
   // especiales" se ofrece como alta rápida en AddSpecialDetailModal, nunca se crea nada aquí por su cuenta.
   const [rolePeople, setRolePeople] = useState<EventRolePerson[]>([])
+  // Tanda "Detalles para personas especiales: regalos pendientes" — para saber a quién corresponde
+  // mostrar como destinatario automático (ver missingRecipients más abajo) sin esperar a que haya un
+  // registro creado a mano.
+  const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [showAddFavor, setShowAddFavor] = useState(false)
   const [showAddSpecial, setShowAddSpecial] = useState(false)
+  // Bug real corregido (validación iPhone): antes no había ningún camino para editar un registro ya
+  // creado — solo borrar y volver a crear. editingSpecial abre el MISMO AddSpecialDetailModal en modo
+  // edición (ver su prop `editing`), nunca un segundo formulario.
+  const [editingSpecial, setEditingSpecial] = useState<EventSpecialDetail | null>(null)
+  // "+ Añadir idea" de un destinatario pendiente abre el mismo alta de siempre, ya precargada con esa
+  // persona — nunca crea nada por su cuenta, el usuario sigue teniendo que escribir la idea y confirmar.
+  const [prefillRolePersonId, setPrefillRolePersonId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -10768,11 +10933,54 @@ function DetailsSection({ eventId }: { eventId: string }) {
     listEventRolePeople(eventId, 'especial')
       .then(setRolePeople)
       .catch(() => {})
+    listEventDecisions(eventId)
+      .then(setDecisions)
+      .catch(() => {})
   }
   useEffect(reload, [eventId])
 
   function memberName(memberId: string | null): string | null {
     return memberId ? (members.find((m) => m.id === memberId)?.name ?? null) : null
+  }
+
+  // "La decisión de Personas especiales es la fuente de verdad de a quién le toca regalo; la gestión
+  // concreta vive aquí" — quien esté en el subconjunto de la pregunta de Regalos pero TODAVÍA no tenga
+  // ningún registro vinculado (role_person_id) aparece igual, sin obligar a "+ Añadir persona especial".
+  const regalosAnswer = decisions.find((d) => d.questionKey === ESPECIAL_REGALOS_QUESTION_KEY)?.answer as unknown as RegalosEspecialesAnswer | undefined
+  const regalosRecipientIds = regalosAnswer
+    ? resolveEspecialScopePersonIds(regalosAnswer.choice, regalosAnswer.selectedPersonIds, rolePeople.map((p) => p.id))
+    : []
+  const linkedRolePersonIds = new Set(specials.map((s) => s.rolePersonId).filter((id): id is string => !!id))
+  const missingRecipients = rolePeople.filter((p) => regalosRecipientIds.includes(p.id) && !linkedRolePersonIds.has(p.id))
+
+  // "Transición inteligente" — SOLO cuando hay destinatarios de verdad y TODOS (ninguno sin registro,
+  // ninguno con la idea todavía en blanco) tienen ya su idea de regalo decidida. "Decidido" = existe un
+  // registro vinculado a esa persona con `detail` no vacío — no hace falta que ya esté comprado/preparado.
+  const recipientSpecials = regalosRecipientIds.map((id) => specials.find((s) => s.rolePersonId === id)).filter((s): s is EventSpecialDetail => !!s)
+  const allRecipientsHaveDetail = regalosRecipientIds.length > 0 && regalosRecipientIds.every((id) => specials.some((s) => s.rolePersonId === id && !!s.detail))
+  const allRecipientsPurchased = allRecipientsHaveDetail && recipientSpecials.every((s) => s.status !== 'pendiente')
+  const decidirTask = tasks.find((t) => t.title === DECIDIR_REGALOS_TASK_TITLE && !t.done)
+  const comprarTaskExists = tasks.some((t) => t.title === COMPRAR_REGALOS_TASK_TITLE && !t.done)
+  const [dismissedDecidirPrompt, setDismissedDecidirPrompt] = useState(false)
+  const [dismissedComprarPrompt, setDismissedComprarPrompt] = useState(false)
+  const [creatingComprarTask, setCreatingComprarTask] = useState(false)
+
+  async function completeDecidirRegalosTask() {
+    if (!decidirTask) return
+    await updateEventTask(decidirTask.id, { done: true })
+    onTasksChanged()
+  }
+
+  async function createComprarRegalosTask() {
+    setCreatingComprarTask(true)
+    try {
+      const breakdown = recipientSpecials.map((s) => `${s.recipientName} — ${s.detail}`).join('\n')
+      await addEventTask(eventId, COMPRAR_REGALOS_TASK_TITLE, null, null, { notes: breakdown })
+      onTasksChanged()
+    } finally {
+      setCreatingComprarTask(false)
+      setDismissedComprarPrompt(true)
+    }
   }
 
   return (
@@ -10826,16 +11034,78 @@ function DetailsSection({ eventId }: { eventId: string }) {
               {s.recipientName}
               {s.relationship ? ` (${s.relationship})` : ''}
               {s.detail ? ` · ${s.detail}` : ''}
+              {!s.detail ? ' · Regalo por decidir' : ''}
               {memberName(s.memberId) ? ` · 👤 ${memberName(s.memberId)}` : ''}
             </span>
+            <button type="button" className="link-button" onClick={() => setEditingSpecial(s)}>
+              Editar
+            </button>
             <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar" onConfirm={() => deleteEventSpecialDetail(s.id).then(reload)} />
           </div>
         ))}
-        {specials.length === 0 && <p className="muted">Ninguno todavía.</p>}
+        {/* Destinatarios de "Regalos o detalles" (Personas especiales) todavía sin ningún registro propio —
+            aparecen igual, sin tener que pulsar "+ Añadir persona especial" primero (petición real). Tocar
+            "+ Añadir idea" abre el mismo alta de siempre, ya precargada con esta persona. */}
+        {missingRecipients.map((p) => (
+          <div key={`missing-${p.id}`} className="inline-fields" style={{ alignItems: 'center' }}>
+            <span className="muted" style={{ fontSize: 12 }}>
+              Pendiente
+            </span>
+            <span style={{ flex: 1 }}>
+              {p.name || 'Sin nombre'}
+              {p.roles.length > 0 ? ` (${p.roles.join(', ')})` : ''} · Regalo por decidir
+            </span>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setPrefillRolePersonId(p.id)
+                setShowAddSpecial(true)
+              }}
+            >
+              + Añadir idea
+            </button>
+          </div>
+        ))}
+        {specials.length === 0 && missingRecipients.length === 0 && <p className="muted">Ninguno todavía.</p>}
       </div>
       <button type="button" className="link-button" onClick={() => setShowAddSpecial(true)}>
         + Añadir persona especial
       </button>
+
+      {/* "Transición inteligente" (plan de pendientes) — PEPA propone, nunca ejecuta sin permiso. Cada
+          aviso tiene su propia confirmación/descarte aparte, y nunca se repite solo (dismissedX) ni
+          duplica si ya existe la tarea siguiente (comprarTaskExists) o ya no hace falta (decidirTask). */}
+      {allRecipientsHaveDetail && decidirTask && !dismissedDecidirPrompt && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13 }}>
+            💡 Todos los regalos para personas especiales están decididos. ¿Marcar "{DECIDIR_REGALOS_TASK_TITLE}" como completado?
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" onClick={() => completeDecidirRegalosTask()}>
+              Marcar como hecho
+            </button>
+            <button type="button" className="link-button" onClick={() => setDismissedDecidirPrompt(true)}>
+              Ahora no
+            </button>
+          </div>
+        </div>
+      )}
+      {allRecipientsHaveDetail && !allRecipientsPurchased && !comprarTaskExists && !dismissedComprarPrompt && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13 }}>
+            💡 PEPA te propone como siguiente preparativo: «{COMPRAR_REGALOS_TASK_TITLE}», con el desglose por persona.
+          </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={creatingComprarTask} onClick={() => createComprarRegalosTask()}>
+              {creatingComprarTask ? 'Creando…' : 'Crear preparativo'}
+            </button>
+            <button type="button" className="link-button" onClick={() => setDismissedComprarPrompt(true)}>
+              No hace falta
+            </button>
+          </div>
+        </div>
+      )}
 
       {showAddFavor && (
         <AddFavorModal
@@ -10852,9 +11122,27 @@ function DetailsSection({ eventId }: { eventId: string }) {
           eventId={eventId}
           members={members}
           rolePeople={rolePeople}
-          onClose={() => setShowAddSpecial(false)}
+          initialRolePersonId={prefillRolePersonId}
+          onClose={() => {
+            setShowAddSpecial(false)
+            setPrefillRolePersonId(null)
+          }}
           onAdded={() => {
             setShowAddSpecial(false)
+            setPrefillRolePersonId(null)
+            reload()
+          }}
+        />
+      )}
+      {editingSpecial && (
+        <AddSpecialDetailModal
+          eventId={eventId}
+          members={members}
+          rolePeople={rolePeople}
+          editing={editingSpecial}
+          onClose={() => setEditingSpecial(null)}
+          onAdded={() => {
+            setEditingSpecial(null)
             reload()
           }}
         />
@@ -10922,10 +11210,16 @@ function AddFavorModal({ eventId, onClose, onAdded }: { eventId: string; onClose
   )
 }
 
+// Bug real corregido (validación iPhone): antes solo se podía ALTA — editar un registro existente
+// obligaba a borrarlo y crearlo de nuevo. Ahora el mismo formulario sirve para ambos casos: `editing`
+// (opcional) precarga todos los campos y cambia "Añadir" por "Guardar", llamando a
+// updateEventSpecialDetail en vez de addEventSpecialDetail — nunca un segundo componente.
 function AddSpecialDetailModal({
   eventId,
   members,
   rolePeople = [],
+  editing,
+  initialRolePersonId,
   onClose,
   onAdded,
 }: {
@@ -10934,15 +11228,26 @@ function AddSpecialDetailModal({
   // Fase 2 (plan de pendientes) — roster de "🎭 Personas especiales": elegir uno rellena nombre y papel(es)
   // de un tirón, pero el nombre sigue siendo editable — nunca sustituye la alta manual de siempre.
   rolePeople?: EventRolePerson[]
+  editing?: EventSpecialDetail | null
+  // Tanda "Regalos pendientes" — al tocar "+ Añadir idea" sobre un destinatario sin registro todavía, el
+  // alta llega ya con esa persona elegida (mismo fillFromRolePerson de siempre), sin obligar a repetir el
+  // "Elegir de Personas especiales" a mano.
+  initialRolePersonId?: string | null
   onClose: () => void
   onAdded: () => void
 }) {
-  const [recipientName, setRecipientName] = useState('')
-  const [relationship, setRelationship] = useState('')
-  const [detail, setDetail] = useState('')
-  const [memberId, setMemberId] = useState('')
+  const [recipientName, setRecipientName] = useState(editing?.recipientName ?? '')
+  const [relationship, setRelationship] = useState(editing?.relationship ?? '')
+  const [detail, setDetail] = useState(editing?.detail ?? '')
+  const [memberId, setMemberId] = useState(editing?.memberId ?? '')
+  const [rolePersonId, setRolePersonId] = useState(editing?.rolePersonId ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (initialRolePersonId && !editing) fillFromRolePerson(initialRolePersonId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRolePersonId])
 
   function fillFromRolePerson(personId: string) {
     const person = rolePeople.find((p) => p.id === personId)
@@ -10950,6 +11255,7 @@ function AddSpecialDetailModal({
     if (person.name) setRecipientName(person.name)
     if (person.roles.length > 0) setRelationship(person.roles.join(', '))
     if (person.guestMemberId) setMemberId(person.guestMemberId)
+    setRolePersonId(person.id)
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -10961,10 +11267,19 @@ function AddSpecialDetailModal({
     setSaving(true)
     setError(null)
     try {
-      await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null, memberId: memberId || null })
+      if (editing) {
+        await updateEventSpecialDetail(editing.id, {
+          recipientName,
+          relationship: relationship || null,
+          detail: detail || null,
+          rolePersonId: rolePersonId || null,
+        })
+      } else {
+        await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null, memberId: memberId || null, rolePersonId: rolePersonId || null })
+      }
       onAdded()
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
+      setError(errorMessage(err, editing ? 'No se pudo guardar' : 'No se pudo añadir'))
     } finally {
       setSaving(false)
     }
@@ -10975,7 +11290,7 @@ function AddSpecialDetailModal({
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
-            Persona especial
+            {editing ? 'Editar detalle' : 'Persona especial'}
           </h2>
           <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
@@ -11023,7 +11338,7 @@ function AddSpecialDetailModal({
             </label>
           )}
           <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Añadir'}
+            {saving ? 'Guardando…' : editing ? 'Guardar' : 'Añadir'}
           </button>
         </form>
       </div>

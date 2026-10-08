@@ -11,12 +11,24 @@ import { listCelebrationQuestions, ageTurning, longSpanishDate, type Celebration
 import { listPairBlockQuestions, type PairQuestionInfo } from '@/domain/eventPairDecisions'
 import { listGuestsBlockQuestions } from '@/domain/eventGuestDecisions'
 import { listMomentosEspecialesBlockQuestions, CLASES_BAILE_QUESTION_KEY, MOMENTOS_ESPECIALES_QUESTION_KEY } from '@/domain/eventSpecialMoments'
-import { ESPECIAL_HAY_QUESTION_KEY, ESPECIAL_REGALOS_QUESTION_KEY, listEspecialBlockQuestions, listFamiliaresBlockQuestions } from '@/domain/eventSpecialPeople'
+import {
+  ESPECIAL_HAY_QUESTION_KEY,
+  ESPECIAL_VESTIMENTA_QUESTION_KEY,
+  ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
+  ESPECIAL_REGALOS_QUESTION_KEY,
+  listEspecialBlockQuestions,
+  listFamiliaresBlockQuestions,
+} from '@/domain/eventSpecialPeople'
 import type { EventDecision, FamilyEvent } from '@/domain/types'
 
 export interface DecisionSummaryItem {
   key: string
   text: string
+  // Tanda "Resúmenes de decisiones compactos" — sustituye a la palabra genérica "Resuelto"/"Pendiente"
+  // por la respuesta real, con el mínimo texto posible (p. ej. "2", "Algunos", "Todavía no lo sabemos").
+  // Opcional y SOLO poblado por los bloques que ya lo calculan (ver buildEspecialDecisionSummary) — un
+  // bloque que no lo rellena sigue mostrando el genérico de siempre, sin ningún cambio de comportamiento.
+  statusLabel?: string
 }
 
 export interface DecisionSummary {
@@ -216,9 +228,24 @@ export function buildMomentosEspecialesDecisionSummary(decisions: EventDecision[
 // ---------------------------------------------------------------------
 // "🎭 Personas especiales" / "👪 Familiares" (Fase 2, plan de pendientes)
 // ---------------------------------------------------------------------
-const ESPECIAL_TAKEN_TEXT: Record<string, Record<string, string>> = {
-  [ESPECIAL_HAY_QUESTION_KEY]: { si: 'Habrá personas con un papel especial', no: 'No habrá personas con un papel especial' },
-  [ESPECIAL_REGALOS_QUESTION_KEY]: { ninguno: 'No habrá regalos para personas especiales' },
+// Tanda "Resúmenes de decisiones compactos" (sustituye al antiguo ESPECIAL_TAKEN_TEXT de frases largas:
+// "No habrá regalos para personas especiales"/"Habrá personas con un papel especial" — mismo criterio de
+// "mínimo texto posible" pedido explícitamente, ahora con el estado real en vez de una frase fija).
+//
+// Texto corto de pregunta ("Vestimenta" en vez de "Vestimenta
+// coordinada") SOLO para la fila del resumen; la pregunta real, dentro del bloque, conserva su etiqueta
+// larga de siempre (no se toca listEspecialBlockQuestions).
+const ESPECIAL_SHORT_LABEL: Record<string, string> = {
+  [ESPECIAL_VESTIMENTA_QUESTION_KEY]: 'Vestimenta',
+  [ESPECIAL_COMPLEMENTOS_QUESTION_KEY]: 'Complementos',
+  [ESPECIAL_REGALOS_QUESTION_KEY]: 'Regalos',
+}
+
+const GRUPO_ALCANCE_SHORT_LABEL: Record<string, string> = {
+  todos: 'Todos',
+  algunos: 'Algunos',
+  ninguno: 'Ninguno',
+  todavia_no_lo_sabemos: 'Todavía no lo sabemos',
 }
 
 export function buildEspecialDecisionSummary(decisions: EventDecision[], peopleCount: number): DecisionSummary {
@@ -226,12 +253,29 @@ export function buildEspecialDecisionSummary(decisions: EventDecision[], peopleC
   const pending: DecisionSummaryItem[] = []
   for (const q of listEspecialBlockQuestions(decisions, peopleCount)) {
     const choice = choiceOf(decisions, q.questionKey)
-    if (q.status !== 'decidida' || (choice !== null && PENDING_CHOICES.has(choice))) {
+    // Fase 1 (Personas especiales): "¿Habrá...?" se resume como "Personas especiales · N" (o "· Sí" si
+    // todavía no hay nadie añadido — nunca se inventa un número) / "· No". El resto de preguntas de este
+    // bloque comparten las mismas 4 respuestas (todos/algunos/ninguno/todavía no lo sabemos): "todavía no
+    // lo sabemos" se trata como POR DECIDIR (no es una decisión tomada) pero, a diferencia de una pregunta
+    // nunca respondida, muestra su propio estado con fidelidad en vez del genérico "Decidir: …".
+    if (q.questionKey === ESPECIAL_HAY_QUESTION_KEY) {
+      if (q.status !== 'decidida' || choice === null) {
+        pending.push({ key: q.questionKey, text: pendingText(q.label) })
+        continue
+      }
+      taken.push({ key: q.questionKey, text: 'Personas especiales', statusLabel: choice === 'si' ? (peopleCount > 0 ? String(peopleCount) : 'Sí') : 'No' })
+      continue
+    }
+    const shortLabel = ESPECIAL_SHORT_LABEL[q.questionKey] ?? q.label.replace(/^¿|\?$/g, '')
+    if (choice === 'todavia_no_lo_sabemos') {
+      pending.push({ key: q.questionKey, text: shortLabel, statusLabel: GRUPO_ALCANCE_SHORT_LABEL.todavia_no_lo_sabemos })
+      continue
+    }
+    if (q.status !== 'decidida' || choice === null || PENDING_CHOICES.has(choice)) {
       pending.push({ key: q.questionKey, text: pendingText(q.label) })
       continue
     }
-    const mapped = choice !== null ? ESPECIAL_TAKEN_TEXT[q.questionKey]?.[choice] : undefined
-    taken.push({ key: q.questionKey, text: mapped ?? q.label.replace(/^¿|\?$/g, '') })
+    taken.push({ key: q.questionKey, text: shortLabel, statusLabel: GRUPO_ALCANCE_SHORT_LABEL[choice] })
   }
   return { taken, pending }
 }

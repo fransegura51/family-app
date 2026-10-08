@@ -95,15 +95,69 @@ describe('findOrCreateEventTaskGroupByKind — idempotente por kind (nunca por n
   })
 })
 
-describe('resolveEventTaskGroup — un único UPDATE, nunca toca las tareas del encargo', () => {
+describe('resolveEventTaskGroup — un único UPDATE a event_task_groups, nunca toca las tareas del encargo', () => {
   it('fija resolved_at, resolution_method/note y provider/payment de una sola vez', () => {
     const body = fn(SRC, 'export async function resolveEventTaskGroup(')
-    expect(body).toContain('resolved_at: new Date().toISOString()')
+    expect(body).toContain('const resolvedAt = new Date().toISOString()')
+    expect(body).toContain('resolved_at: resolvedAt')
     expect(body).toContain('resolution_method: input.method')
     expect(body).toContain('provider_id: input.providerId ?? null')
     expect(body).toContain('provider_name: input.providerName ?? null')
     expect(body).toContain('payment_id: input.paymentId ?? null')
     expect(body).not.toMatch(/event_tasks|event_providers|event_payments/)
+  })
+})
+
+// Migración 0220 (plan de pendientes — "Reconciliación de encargos" tras la decisión real del usuario):
+// resolver dos veces el mismo encargo NUNCA sobrescribe ni borra la resolución anterior. event_task_groups
+// sigue reflejando solo la MÁS RECIENTE (igual que siempre, nada que lea esas columnas se rompe), pero
+// AHORA cada resolución queda ADEMÁS como fila nueva en event_task_group_resolutions — histórico append-only.
+describe('resolveEventTaskGroup — histórico append-only (migración 0220): resolver de nuevo conserva la resolución anterior', () => {
+  it('tras el UPDATE, inserta SIEMPRE una fila nueva en event_task_group_resolutions con el mismo resolvedAt/method/provider/payment', () => {
+    const body = fn(SRC, 'export async function resolveEventTaskGroup(')
+    expect(body).toContain("from('event_task_group_resolutions').insert({")
+    expect(body).toContain('group_id: groupId,')
+    expect(body).toContain('family_id: group.family_id,')
+    expect(body).toContain('resolved_at: resolvedAt,')
+  })
+  it('lee family_id del propio grupo (nunca inventado) antes de insertar el histórico', () => {
+    const body = fn(SRC, 'export async function resolveEventTaskGroup(')
+    expect(body).toContain("from('event_task_groups').select('family_id').eq('id', groupId).single()")
+  })
+  it('un error al insertar el histórico SÍ se propaga (throw), nunca se traga en silencio', () => {
+    const body = fn(SRC, 'export async function resolveEventTaskGroup(')
+    expect(body).toContain('if (historyError) throw historyError')
+  })
+})
+
+describe('listEventTaskGroupResolutions — histórico completo, de la más antigua a la más reciente', () => {
+  it('ordena por resolved_at ascendente (para poder mostrar "antes resuelto: X" en orden)', () => {
+    const body = fn(SRC, 'export async function listEventTaskGroupResolutions(')
+    expect(body).toContain(".eq('group_id', groupId).order('resolved_at', { ascending: true })")
+  })
+  it('solo lee — nunca modifica event_task_groups ni sus propias filas', () => {
+    const body = fn(SRC, 'export async function listEventTaskGroupResolutions(')
+    expect(body).not.toMatch(/\.update\(|\.delete\(|\.insert\(/)
+  })
+})
+
+describe('migración 0220 — event_task_group_resolutions es aditiva, nunca borra ni altera event_task_groups', () => {
+  const MIG220 = (import.meta.glob('/supabase/migrations/0220_event_task_group_resolution_history.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
+    '/supabase/migrations/0220_event_task_group_resolution_history.sql'
+  ]
+  it('crea una tabla nueva con FK a event_task_groups on delete cascade (el histórico no sobrevive a borrar el encargo entero)', () => {
+    expect(MIG220).toContain('create table event_task_group_resolutions')
+    expect(MIG220).toContain('references event_task_groups(id) on delete cascade')
+  })
+  it('tiene RLS familiar, igual que el resto del módulo', () => {
+    expect(MIG220).toContain('alter table event_task_group_resolutions enable row level security')
+    expect(MIG220).toContain("family_id = private.current_family_id() and private.has_section_access('eventos')")
+  })
+  it('no toca ninguna columna de event_task_groups ni de event_tasks', () => {
+    const code = MIG220.split('\n')
+      .filter((l) => !l.trim().startsWith('--'))
+      .join('\n')
+    expect(code).not.toMatch(/alter table event_task_groups\b|alter table event_tasks\b/)
   })
 })
 

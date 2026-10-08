@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { buildFoodContext } from '@/domain/eventFood'
 import { decisionStatus, pairQuestionKey, type PairQuestionInfo } from '@/domain/eventPairDecisions'
-import { buildFoodDecisionSummary, buildPairDecisionSummary, mergeTipoResolucionPairs } from '@/domain/eventDecisionsSummary'
+import { buildEspecialDecisionSummary, buildFoodDecisionSummary, buildPairDecisionSummary, mergeTipoResolucionPairs } from '@/domain/eventDecisionsSummary'
+import { ESPECIAL_HAY_QUESTION_KEY, ESPECIAL_VESTIMENTA_QUESTION_KEY, ESPECIAL_COMPLEMENTOS_QUESTION_KEY, ESPECIAL_REGALOS_QUESTION_KEY } from '@/domain/eventSpecialPeople'
 import { makeDecision, makeEvent } from '@/domain/eventFoodFixtures'
 import type { EventDecision } from '@/domain/types'
 
@@ -61,6 +62,48 @@ describe('resumen de decisiones — tomadas, por decidir, sin responder', () => 
       expect(item.text).not.toMatch(/comida\.|todavia_no_lo_sabemos|por_decidir|_/)
     }
     expect(texts(s.taken)).toContain('No habrá comida')
+  })
+})
+
+// Tanda "Resúmenes de decisiones compactos" — sustituye la palabra genérica "Resuelto" por la respuesta
+// real, con el mínimo texto posible (petición explícita: "Personas especiales · 2", "Vestimenta · Algunos").
+describe('buildEspecialDecisionSummary — statusLabel real en vez del genérico "Resuelto"', () => {
+  it('"¿Habrá...?" decidida con gente ya añadida: statusLabel es el NÚMERO real, nunca "Resuelto"', () => {
+    const s = buildEspecialDecisionSummary([makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'si' })], 2)
+    const item = s.taken.find((t) => t.key === ESPECIAL_HAY_QUESTION_KEY)
+    expect(item).toEqual({ key: ESPECIAL_HAY_QUESTION_KEY, text: 'Personas especiales', statusLabel: '2' })
+  })
+  it('"Sí" pero todavía sin ninguna persona añadida: statusLabel es "Sí", NUNCA inventa un número (0)', () => {
+    const s = buildEspecialDecisionSummary([makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'si' })], 0)
+    const item = s.taken.find((t) => t.key === ESPECIAL_HAY_QUESTION_KEY)
+    expect(item?.statusLabel).toBe('Sí')
+  })
+  it('"No" se resume como statusLabel "No"', () => {
+    const s = buildEspecialDecisionSummary([makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'no' })], 0)
+    expect(s.taken.find((t) => t.key === ESPECIAL_HAY_QUESTION_KEY)?.statusLabel).toBe('No')
+  })
+  it('Vestimenta/Complementos/Regalos decididos muestran el texto corto de la pregunta y Todos/Algunos/Ninguno como statusLabel', () => {
+    const base = [makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'si' })]
+    const vestimenta = buildEspecialDecisionSummary([...base, makeDecision(ESPECIAL_VESTIMENTA_QUESTION_KEY, { choice: 'algunos', selectedPersonIds: ['p1'] })], 2)
+    expect(vestimenta.taken.find((t) => t.key === ESPECIAL_VESTIMENTA_QUESTION_KEY)).toEqual({ key: ESPECIAL_VESTIMENTA_QUESTION_KEY, text: 'Vestimenta', statusLabel: 'Algunos' })
+    const complementos = buildEspecialDecisionSummary([...base, makeDecision(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, { choice: 'ninguno' })], 2)
+    expect(complementos.taken.find((t) => t.key === ESPECIAL_COMPLEMENTOS_QUESTION_KEY)?.statusLabel).toBe('Ninguno')
+    const regalos = buildEspecialDecisionSummary([...base, makeDecision(ESPECIAL_REGALOS_QUESTION_KEY, { choice: 'todos' })], 2)
+    expect(regalos.taken.find((t) => t.key === ESPECIAL_REGALOS_QUESTION_KEY)).toEqual({ key: ESPECIAL_REGALOS_QUESTION_KEY, text: 'Regalos', statusLabel: 'Todos' })
+  })
+  it('"Todavía no lo sabemos" aparece en PENDIENTES con su propio estado abreviado, distinto de una pregunta nunca respondida', () => {
+    const base = [makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'si' })]
+    const s = buildEspecialDecisionSummary([...base, makeDecision(ESPECIAL_COMPLEMENTOS_QUESTION_KEY, { choice: 'todavia_no_lo_sabemos' })], 2)
+    const item = s.pending.find((p) => p.key === ESPECIAL_COMPLEMENTOS_QUESTION_KEY)
+    expect(item).toEqual({ key: ESPECIAL_COMPLEMENTOS_QUESTION_KEY, text: 'Complementos', statusLabel: 'Todavía no lo sabemos' })
+    // Regalos, nunca respondida todavía: pendiente también, pero SIN ese statusLabel abreviado (genérico de siempre).
+    const nuncaRespondida = s.pending.find((p) => p.key === ESPECIAL_REGALOS_QUESTION_KEY)
+    expect(nuncaRespondida?.statusLabel).toBeUndefined()
+  })
+  it('elegir "Sí, hay" no selecciona por sí sola el trabajo como completado: sin personas añadidas, Vestimenta/Complementos/Regalos ni siquiera aparecen todavía (revelado progresivo, sin cambios)', () => {
+    const s = buildEspecialDecisionSummary([makeDecision(ESPECIAL_HAY_QUESTION_KEY, { choice: 'si' })], 0)
+    expect(s.taken.some((t) => t.key === ESPECIAL_VESTIMENTA_QUESTION_KEY)).toBe(false)
+    expect(s.pending.some((p) => p.key === ESPECIAL_VESTIMENTA_QUESTION_KEY)).toBe(false)
   })
 })
 

@@ -410,8 +410,11 @@ export function desiredForComplementos(answer: ComplementosAnswer, name: string)
 // pertenecen al mismo encargo comercial (ramo, prendidos de cada persona...), así que es el único sitio de
 // todo este motor que rellena groupKind/groupDefaultName — nunca se fabrica para Vestuario/Alianzas/Detalle
 // especial, que no tienen esa estructura real.
-const FLORAL_GROUP_KIND = 'flores'
-const FLORAL_GROUP_DEFAULT_NAME = 'Flores'
+// Exportadas (tanda Personas especiales/Complementos) para que desiredForEspecialComplementosPorPersona
+// (eventSpecialPeople.ts) agrupe en el MISMO "Flores" cuando un complemento asignado a una persona es
+// estructuralmente floral — nunca una segunda constante que pudiera desincronizarse de esta.
+export const FLORAL_GROUP_KIND = 'flores'
+export const FLORAL_GROUP_DEFAULT_NAME = 'Flores'
 
 export function desiredForFloral(answer: FloralAnswer, itemLabel: string, name: string): DesiredPairGeneration {
   if (answer.choice === 'todavia_no_lo_sabemos') return NONE

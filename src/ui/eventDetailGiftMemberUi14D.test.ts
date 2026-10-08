@@ -26,7 +26,9 @@ describe('Fase 14D — Detalles: selector opcional de persona (TEST: UX Detalles
 
   it('addEventSpecialDetail recibe memberId (o null si no se elige ninguno), sin tocar recipientName', () => {
     const body = window(modal, 'async function handleSubmit', 'return (')
-    expect(body).toContain('await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null, memberId: memberId || null })')
+    expect(body).toContain(
+      'await addEventSpecialDetail(eventId, { recipientName, relationship: relationship || null, detail: detail || null, memberId: memberId || null, rolePersonId: rolePersonId || null })',
+    )
   })
 
   it('DetailsSection carga los miembros del evento (listEventGuestMembersForEvent) y los pasa al modal', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  desiredForEspecialComplementos,
+  desiredForEspecialComplementosPorPersona,
   desiredForEspecialRegalos,
   ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
   ESPECIAL_HAY_QUESTION_KEY,
@@ -9,10 +9,13 @@ import {
   FAMILIARES_NECESIDADES_QUESTION_KEY,
   listEspecialBlockQuestions,
   listFamiliaresBlockQuestions,
+  normalizeComplementosAnswer,
+  resolveEspecialScopePersonIds,
   rolePeopleByRole,
   suggestGuestMatches,
+  type ComplementosEspecialesAnswer,
 } from '@/domain/eventSpecialPeople'
-import type { EventDecision } from '@/domain/types'
+import type { EventDecision, EventRolePerson } from '@/domain/types'
 
 function makeDecision(questionKey: string, answer: Record<string, unknown>): EventDecision {
   return {
@@ -71,19 +74,7 @@ describe('listEspecialBlockQuestions — revelado progresivo: vestimenta/complem
   })
 })
 
-describe('desiredForEspecialComplementos/Regalos — UN preparativo general, nunca uno por persona', () => {
-  it('complementos "ninguno" o "todavía no lo sabemos": nada', () => {
-    expect(desiredForEspecialComplementos({ choice: 'ninguno', selectedPersonIds: [], selected: [], customItems: [], note: null }).taskTitle).toBeNull()
-    expect(desiredForEspecialComplementos({ choice: 'todavia_no_lo_sabemos', selectedPersonIds: [], selected: [], customItems: [], note: null }).taskTitle).toBeNull()
-  })
-  it('complementos "todos" sin ningún ítem marcado todavía: nada (no se interpreta una selección vacía)', () => {
-    expect(desiredForEspecialComplementos({ choice: 'todos', selectedPersonIds: [], selected: [], customItems: [], note: null }).taskTitle).toBeNull()
-  })
-  it('complementos con al menos un ítem: UN preparativo general', () => {
-    const d = desiredForEspecialComplementos({ choice: 'todos', selectedPersonIds: [], selected: ['Ramo'], customItems: [], note: null })
-    expect(d.taskTitle).toBe('Preparar complementos de personas especiales')
-    expect(d.budgetCategory).toBeNull()
-  })
+describe('desiredForEspecialRegalos — UN preparativo general, nunca uno por persona', () => {
   it('regalos "ninguno"/"todavía no lo sabemos": nada — nunca se da por hecho que habrá regalos', () => {
     expect(desiredForEspecialRegalos({ choice: 'ninguno', selectedPersonIds: [] }).taskTitle).toBeNull()
     expect(desiredForEspecialRegalos({ choice: 'todavia_no_lo_sabemos', selectedPersonIds: [] }).taskTitle).toBeNull()
@@ -91,6 +82,99 @@ describe('desiredForEspecialComplementos/Regalos — UN preparativo general, nun
   it('regalos "todos"/"algunos": UN preparativo general "Decidir regalos para personas especiales"', () => {
     expect(desiredForEspecialRegalos({ choice: 'todos', selectedPersonIds: [] }).taskTitle).toBe('Decidir regalos para personas especiales')
     expect(desiredForEspecialRegalos({ choice: 'algunos', selectedPersonIds: ['p1'] }).taskTitle).toBe('Decidir regalos para personas especiales')
+  })
+})
+
+// Tanda "Preparativos desglosados" — sustituye al antiguo "un preparativo general para todo el grupo":
+// ahora cada persona con al menos un complemento asignado genera SU PROPIO DesiredPairGeneration.
+describe('desiredForEspecialComplementosPorPersona — UN preparativo POR PERSONA, nunca uno general para todo el grupo', () => {
+  const maria: Pick<EventRolePerson, 'id' | 'name'> = { id: 'p-maria', name: 'María' }
+  const ana: Pick<EventRolePerson, 'id' | 'name'> = { id: 'p-ana', name: 'Ana' }
+  const peopleById = new Map([
+    [maria.id, maria],
+    [ana.id, ana],
+  ])
+
+  it('"ninguno" o "todavía no lo sabemos": ninguna persona genera nada', () => {
+    expect(desiredForEspecialComplementosPorPersona({ choice: 'ninguno', selectedPersonIds: [], assignments: [{ personId: maria.id, items: ['Ramo'], customItems: [] }], note: null }, peopleById)).toEqual([])
+    expect(
+      desiredForEspecialComplementosPorPersona({ choice: 'todavia_no_lo_sabemos', selectedPersonIds: [], assignments: [{ personId: maria.id, items: ['Ramo'], customItems: [] }], note: null }, peopleById),
+    ).toEqual([])
+  })
+  it('una persona sin ningún ítem asignado todavía: no genera nada para ella (no se interpreta una asignación vacía)', () => {
+    const out = desiredForEspecialComplementosPorPersona({ choice: 'todos', selectedPersonIds: [], assignments: [{ personId: maria.id, items: [], customItems: [] }], note: null }, peopleById)
+    expect(out).toEqual([])
+  })
+  it('dos personas con complementos DISTINTOS: dos DesiredPairGeneration independientes, cada uno con el nombre y los ítems de SU persona', () => {
+    const out = desiredForEspecialComplementosPorPersona(
+      {
+        choice: 'todos',
+        selectedPersonIds: [],
+        assignments: [
+          { personId: maria.id, items: ['Prendido floral'], customItems: [] },
+          { personId: ana.id, items: ['Ramo'], customItems: [] },
+        ],
+        note: null,
+      },
+      peopleById,
+    )
+    expect(out).toHaveLength(2)
+    expect(out.find((o) => o.personId === maria.id)?.desired.taskTitle).toBe('María — Prendido floral')
+    expect(out.find((o) => o.personId === ana.id)?.desired.taskTitle).toBe('Ana — Ramo')
+  })
+  it('varios complementos para UNA persona: todos en el mismo título, separados por coma', () => {
+    const out = desiredForEspecialComplementosPorPersona({ choice: 'todos', selectedPersonIds: [], assignments: [{ personId: maria.id, items: ['Ramo', 'Tocado'], customItems: ['Pañuelo de la abuela'] }], note: null }, peopleById)
+    expect(out[0].desired.taskTitle).toBe('María — Ramo, Tocado, Pañuelo de la abuela')
+  })
+  it('un ítem del catálogo (floral) agrupa en "Flores" — el mismo groupKind que desiredForFloral', () => {
+    const out = desiredForEspecialComplementosPorPersona({ choice: 'todos', selectedPersonIds: [], assignments: [{ personId: maria.id, items: ['Ramo'], customItems: [] }], note: null }, peopleById)
+    expect(out[0].desired.groupKind).toBe('flores')
+    expect(out[0].desired.groupDefaultName).toBe('Flores')
+  })
+  it('un "+Otro" de texto libre NUNCA se da por floral — nada de coincidencias frágiles de texto', () => {
+    const out = desiredForEspecialComplementosPorPersona({ choice: 'todos', selectedPersonIds: [], assignments: [{ personId: maria.id, items: [], customItems: ['Ramo de flores silvestres'] }], note: null }, peopleById)
+    expect(out[0].desired.groupKind).toBeNull()
+  })
+  it('una persona que ya no existe en peopleById (borrada) se omite, sin lanzar error', () => {
+    const out = desiredForEspecialComplementosPorPersona({ choice: 'todos', selectedPersonIds: [], assignments: [{ personId: 'persona-borrada', items: ['Ramo'], customItems: [] }], note: null }, peopleById)
+    expect(out).toEqual([])
+  })
+})
+
+describe('resolveEspecialScopePersonIds — reutilizado por vestimenta/complementos/regalos', () => {
+  it('"todos" son TODAS las personas actuales del roster, nunca una lista guardada que pueda desfasarse', () => {
+    expect(resolveEspecialScopePersonIds('todos', ['viejo-id-ya-no-existe'], ['p1', 'p2'])).toEqual(['p1', 'p2'])
+  })
+  it('"algunos" son justo las elegidas', () => {
+    expect(resolveEspecialScopePersonIds('algunos', ['p1'], ['p1', 'p2'])).toEqual(['p1'])
+  })
+  it('"ninguno"/"todavía no lo sabemos" no afectan a nadie', () => {
+    expect(resolveEspecialScopePersonIds('ninguno', [], ['p1'])).toEqual([])
+    expect(resolveEspecialScopePersonIds('todavia_no_lo_sabemos', [], ['p1'])).toEqual([])
+  })
+})
+
+describe('normalizeComplementosAnswer — migra una respuesta ANTIGUA sin perder lo que ya estaba marcado', () => {
+  it('una respuesta que YA trae `assignments` se devuelve tal cual, sin reinterpretar', () => {
+    const answer: ComplementosEspecialesAnswer = { choice: 'todos', selectedPersonIds: [], assignments: [{ personId: 'p1', items: ['Ramo'], customItems: [] }], note: null }
+    expect(normalizeComplementosAnswer(answer, ['p1', 'p2'])).toBe(answer)
+  })
+  it('una respuesta ANTIGUA ("todos" + selected/customItems compartido) se migra: CADA persona del alcance recibe la MISMA asignación que ya tenía', () => {
+    const legacy = { choice: 'todos', selectedPersonIds: [], selected: ['Ramo'], customItems: ['Pañuelo'], note: null } as unknown as ComplementosEspecialesAnswer
+    const normalized = normalizeComplementosAnswer(legacy, ['p1', 'p2'])
+    expect(normalized.assignments).toEqual([
+      { personId: 'p1', items: ['Ramo'], customItems: ['Pañuelo'] },
+      { personId: 'p2', items: ['Ramo'], customItems: ['Pañuelo'] },
+    ])
+  })
+  it('una respuesta ANTIGUA "algunos" se migra solo para las personas que estaban en selectedPersonIds', () => {
+    const legacy = { choice: 'algunos', selectedPersonIds: ['p1'], selected: ['Tocado'], customItems: [], note: null } as unknown as ComplementosEspecialesAnswer
+    const normalized = normalizeComplementosAnswer(legacy, ['p1', 'p2'])
+    expect(normalized.assignments).toEqual([{ personId: 'p1', items: ['Tocado'], customItems: [] }])
+  })
+  it('una respuesta ANTIGUA sin nada marcado (selected/customItems vacíos) migra a assignments vacío, sin inventar nada', () => {
+    const legacy = { choice: 'todos', selectedPersonIds: [], selected: [], customItems: [], note: null } as unknown as ComplementosEspecialesAnswer
+    expect(normalizeComplementosAnswer(legacy, ['p1']).assignments).toEqual([])
   })
 })
 

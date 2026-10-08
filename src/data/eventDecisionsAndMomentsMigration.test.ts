@@ -238,6 +238,6 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
     // 0197 (recordatorios de Calendario: claim_due_reminders y reminder_deliveries) no toca esta funcionalidad.
     // 0213/0214 (puente con OwnTracks y su retirada), 0215 (Encargos: resolución con proveedor/precio) y
     // 0216 (Personas especiales/Familiares) no tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(217)
+    expect(Math.max(...numbers)).toBe(220)
   })
 })

@@ -8881,6 +8881,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [matchedExpenseIds, setMatchedExpenseIds] = useState<Set<string>>(new Set())
   const [dismissedCandidateKeys, setDismissedCandidateKeys] = useState<Set<string>>(new Set())
   const [reconcileOpen, setReconcileOpen] = useState(false)
+  // Fase 4 (plan de pendientes) — histórico de conciliaciones: plegado por defecto, aparte de "recientemente",
+  // para no volcar meses de conciliaciones ya hechas en cuanto se abre la sección.
+  const [reconciliationHistoryOpen, setReconciliationHistoryOpen] = useState(false)
   const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
   // Fase 1D-f — "Gestionar movimiento": mismas etiquetas que ya usa Movimientos (nunca un sistema
@@ -9050,6 +9053,18 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   // siguiente mejor candidato entre el resto de movimientos disponibles, tal como se pidió.
   const reconciliationCandidates = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds, dismissedCandidateKeys)
   const reconciledRecently = reconciliationOccurrences.filter((o) => !!o.matchedExpenseId)
+
+  // Fase 4 (plan de pendientes) — histórico de conciliaciones: todo lo conciliado ANTES de la ventana de
+  // "recientemente" (para no duplicar ni mezclar ambas listas), con el mismo motor y los mismos overrides
+  // ya cargados sin filtro de fecha — nunca una consulta ni un cálculo nuevo. Acotado a los últimos 2 años
+  // porque no tiene sentido real revisar conciliaciones más antiguas que eso.
+  const reconciliationHistoryRangeEnd = stepDays(reconciliationRangeStart, -1)
+  const reconciliationHistoryRangeStart = stepDays(today, -730)
+  const reconciliationHistoryOccurrences: ForecastOccurrence[] = []
+  for (const p of activePayments) {
+    reconciliationHistoryOccurrences.push(...expandForecastOccurrences(p, overridesByPayment.get(p.id) ?? [], reconciliationHistoryRangeStart, reconciliationHistoryRangeEnd, p.installments))
+  }
+  const reconciliationHistory = reconciliationHistoryOccurrences.filter((o) => !!o.matchedExpenseId).sort((a, b) => b.expectedPaymentDate.localeCompare(a.expectedPaymentDate))
 
   // Fase 1D-g — detección de posibles pagos recurrentes: TODO el histórico bancario real (nunca solo la
   // ventana de conciliación de arriba, que es deliberadamente corta) porque el motor necesita ver varios
@@ -9450,7 +9465,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               revisar. HIGH/MEDIUM se proponen para confirmar a mano — LOW nunca se enseña (demasiado
               ruido, no aporta confianza suficiente); ni siquiera "high" concilia solo (auditoría, sección
               7: sin auto-conciliación todavía). */}
-          {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0) && (
+          {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0 || reconciliationHistory.length > 0) && (
             <>
               <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setReconcileOpen((v) => !v)}>
                 {reconcileOpen ? '▾' : '▸'} 🔎{' '}
@@ -9515,6 +9530,33 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                           </button>
                         </p>
                       ))}
+                    </>
+                  )}
+                  {reconciliationHistory.length > 0 && (
+                    <>
+                      <button
+                        type="button"
+                        className="link-button"
+                        style={{ fontSize: 12, marginTop: 8, display: 'block' }}
+                        onClick={() => setReconciliationHistoryOpen((v) => !v)}
+                      >
+                        {reconciliationHistoryOpen ? '▾' : '▸'} Histórico de conciliaciones ({reconciliationHistory.length})
+                      </button>
+                      {reconciliationHistoryOpen &&
+                        reconciliationHistory.map((o) => (
+                          <p key={`${o.forecastPaymentId}-${o.occurrenceDate}-${o.installmentSequenceIndex ?? 0}`} className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                            ✓ {o.title} · {formatSpanishDate(o.expectedPaymentDate)} ·{' '}
+                            {o.amountStatus === 'unknown' ? 'Importe pendiente' : formatForecastAmount(o.amount ?? 0, o.currency)}{' '}
+                            <button
+                              type="button"
+                              className="link-button"
+                              style={{ fontSize: 12, padding: 0 }}
+                              onClick={() => setManaging({ expenseId: o.matchedExpenseId!, forecastCategoryId: o.categoryId })}
+                            >
+                              Gestionar
+                            </button>
+                          </p>
+                        ))}
                     </>
                   )}
                 </div>

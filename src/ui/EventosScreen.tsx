@@ -2635,6 +2635,7 @@ function TaskCard({
                   }
                   confirmLabel="Borrar"
                   className="link-button"
+                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onConfirm={onDelete}
                 />
               )}

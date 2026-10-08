@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 
 // Confirmación de dos toques antes de borrar cualquier cosa de la
 // aplicación (petición real: "que tenga una mediana seguridad que haya
@@ -17,6 +17,7 @@ export function ConfirmButton({
   confirmMessage = '¿Seguro?',
   className = 'link-button',
   ariaLabel,
+  style,
 }: {
   onConfirm: () => void
   // Casi siempre texto; acepta nodo (p. ej. icono + texto en columnas alineadas) cuando el sitio que
@@ -26,6 +27,11 @@ export function ConfirmButton({
   confirmMessage?: string
   className?: string
   ariaLabel?: string
+  // Bug real (menú ⋯ de una tarea): sin esta vía, quien llama no podía igualar la maquetación de este
+  // botón con la de un <button> normal de al lado (p. ej. "Editar" a ancho completo y alineado a la
+  // izquierda) — ConfirmButton se quedaba centrado por .link-button, desalineado del resto del menú. Solo
+  // se aplica al botón SIN confirmar; Confirmar/Cancelar (fila aparte, otro layout) no lo necesitan.
+  style?: CSSProperties
 }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -44,7 +50,7 @@ export function ConfirmButton({
   }
 
   return (
-    <button type="button" className={className} onClick={() => setConfirming(true)} aria-label={ariaLabel}>
+    <button type="button" className={className} style={style} onClick={() => setConfirming(true)} aria-label={ariaLabel}>
       {label}
     </button>
   )

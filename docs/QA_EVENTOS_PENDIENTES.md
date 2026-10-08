@@ -250,8 +250,8 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 216. [ ] «Pepa te recomienda» muestra una explicación por cada tarea recomendada.
 217. [ ] Completar una recomendada: sale del bloque y entra la siguiente relevante.
 218. [ ] La nota se ve en una línea y se corta con puntos suspensivos; el editor muestra el texto completo.
-219. [ ] Filtro por responsable: NO existe todavía (pendiente de la siguiente tanda).
-220. [ ] Campana de recordatorio en la tarjeta: NO existe todavía (pendiente).
+219. [ ] Filtro por responsable (una o varias personas, "Sin asignar" y "Limpiar filtros") ya existe: comprobar que solo cambia la lista visible, nunca los datos.
+220. [ ] Campana de recordatorio en la tarjeta ya existe (🔔/🔕): comprobar que explica por qué está desactivada (sin fecha / no está en Calendario) y que ofrece añadir la tarea al Calendario desde ahí mismo.
 221. [ ] Calendario: la tarea enlazada tiene una sola entrada; el responsable sincronizado es el principal.
 222. [ ] Tarea antigua sin prioridad guardada: muestra la prioridad propuesta por PEPA sin haberla editado (sin backfill).
 223. [ ] Al cambiar la prioridad de una tarea antigua, queda guardada con origen usuario.
@@ -517,3 +517,9 @@ Estado: `[ ]` pendiente · `[x]` validada por el equipo (solo lo marca el equipo
 459. [ ] El enlace abierto ("¿Quién viene?" sin invitado previo) no ofrece este formulario — solo existe en el enlace personal de un invitado ya dado de alta.
 460. [ ] En "¿Cómo vais a resolver el menú infantil?", elegir "Menú infantil (sus platos van en Menú del evento)" o "Alternativa concreta" muestra ahora el acceso directo a Menú del evento (antes solo lo mostraba la respuesta antigua "Lo prepararemos nosotros").
 461. [ ] Ese acceso lleva a la sección "Menú infantil" de Menú del evento, igual que con la respuesta antigua — no crea una sección nueva.
+
+### Plan general de pendientes — Fase 7: Preparativos y notificaciones
+
+462. [ ] En el menú "⋯" de una tarea (en iPhone), "✏️ Editar" y "🗑️ Borrar" empiezan AHORA sí exactamente en la misma vertical — comprobar con el teclado del sistema cerrado y abierto.
+463. [ ] Lo mismo dentro de una tarea agrupada en un "📦 NOMBRE" de Encargos (comparten el mismo menú) — sin tocar nada de la lógica de Encargos.
+464. [ ] El motor de prioridad (re-verificado, sin cambios) sigue sin bajar nunca una prioridad puesta a mano, y solo propone subirla o asignarla si no había ninguna.

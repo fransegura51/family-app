@@ -588,6 +588,7 @@ import { canShareFiles, shareFiles, shareText } from '@/services/share'
 import { downloadTextFile } from '@/services/exportFile'
 import { buildVcf } from '@/domain/vcardParser'
 import { analyzeProviderContactDocument, type ProviderContactScanResult } from '@/services/providerContactDocument'
+import { analyzeOfferBudgetDocument, type OfferBudgetScanItem, type OfferBudgetScanResult } from '@/services/offerBudgetDocument'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ChoiceRow } from '@/ui/ChoiceRow'
@@ -3785,6 +3786,114 @@ function OffersComparison({
   )
 }
 
+// Fase 6 (Parte B3, prompt maestro) — "Importar presupuesto": lee una foto/PDF de un proveedor y
+// PROPONE los datos de la oferta y sus servicios; la familia revisa (incluida la lista de servicios, uno
+// a uno) antes de que nada se aplique al formulario. Mismo patrón que ImportProviderPhotoButton (A6):
+// nunca guarda nada por sí sola, solo entrega la propuesta ya revisada a quien la usa.
+function ImportOfferBudgetButton({ onImported }: { onImported: (result: OfferBudgetScanResult, includedItems: OfferBudgetScanItem[]) => void }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<OfferBudgetScanResult | null>(null)
+  const [included, setIncluded] = useState<Set<number>>(new Set())
+
+  async function handleFile(file: File) {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const scanned = await analyzeOfferBudgetDocument(file)
+      if (scanned.amount === null && scanned.items.length === 0 && !scanned.providerName) {
+        setError('No se ha podido leer ningún dato en este documento — prueba con otro, o rellena los datos a mano.')
+      } else {
+        setResult(scanned)
+        setIncluded(new Set(scanned.items.map((_, i) => i)))
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo leer el documento'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function toggleItem(i: number) {
+    setIncluded((prev) => {
+      const next = new Set(prev)
+      if (next.has(i)) next.delete(i)
+      else next.add(i)
+      return next
+    })
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginBottom: 6 }}>
+      <label className="link-button" style={{ display: 'inline-block', cursor: 'pointer' }}>
+        📷 Importar presupuesto (foto o PDF)
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void handleFile(file)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {loading && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Leyendo el documento…
+        </p>
+      )}
+      {error && (
+        <p className="error" style={{ fontSize: 12 }}>
+          {error}
+        </p>
+      )}
+      {result && (
+        <div className="card" style={{ padding: 8, marginTop: 6 }}>
+          <p className="muted" style={{ fontSize: 12 }}>
+            Esto es lo que se ha leído — revísalo, podrás corregirlo después:
+          </p>
+          <p style={{ fontSize: 13, margin: '2px 0' }}>
+            {[result.providerName, result.amount !== null ? `${result.amount.toFixed(2)} €` : null, result.offerDate].filter(Boolean).join(' · ')}
+          </p>
+          {result.items.length > 0 && (
+            <ul style={{ margin: '4px 0', paddingLeft: 18 }}>
+              {result.items.map((it, i) => (
+                <li key={i} style={{ fontSize: 12 }}>
+                  <label>
+                    <input type="checkbox" checked={included.has(i)} onChange={() => toggleItem(i)} /> {it.name}
+                    {it.subtotal !== null ? ` — ${it.subtotal.toFixed(2)} €` : ''}
+                    {it.isPackage ? ' · 📦 paquete' : ''}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="filter-row">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                onImported(
+                  result,
+                  result.items.filter((_, i) => included.has(i)),
+                )
+                setResult(null)
+              }}
+            >
+              Usar estos datos
+            </button>
+            <button type="button" className="link-button" onClick={() => setResult(null)}>
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AddOfferForm({
   groupId,
   providers,
@@ -3810,8 +3919,21 @@ function AddOfferForm({
   const [conditions, setConditions] = useState('')
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [pendingItems, setPendingItems] = useState<OfferBudgetScanItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // "Importar presupuesto" solo rellena lo que esté VACÍO (igual que el resto de importaciones de PEPA) —
+  // los servicios se guardan aparte, YA revisados por la familia en el propio botón de importar.
+  function applyImported(result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) {
+    if (providerMode === 'new' && !newProviderName && result.providerName) setNewProviderName(result.providerName)
+    if (!amount && result.amount !== null) setAmount(String(result.amount))
+    if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
+    if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!conditions && result.conditions) setConditions(result.conditions)
+    if (!notes && result.notes) setNotes(result.notes)
+    setPendingItems(items)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -3841,6 +3963,17 @@ function AddOfferForm({
         supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      for (const item of pendingItems) {
+        await addEventTaskGroupOfferItem(offer, {
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+          isPackage: item.isPackage,
+        })
+      }
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir la oferta'))
@@ -3852,6 +3985,12 @@ function AddOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
+      <ImportOfferBudgetButton onImported={applyImported} />
+      {pendingItems.length > 0 && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Se añadirán {pendingItems.length} {pendingItems.length === 1 ? 'servicio' : 'servicios'} al guardar.
+        </p>
+      )}
       {existingOffers.length > 0 && (
         <label>
           ¿Es una revisión de una oferta anterior? (opcional)
@@ -4223,8 +4362,20 @@ function AddLooseOfferForm({
   const [notes, setNotes] = useState('')
   const [supersedesOfferId, setSupersedesOfferId] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [pendingItems, setPendingItems] = useState<OfferBudgetScanItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // "Importar presupuesto" solo rellena lo que esté VACÍO — el proveedor ya viene fijo del contexto, así
+  // que un providerName distinto leído del documento se ignora (nunca sustituye al proveedor elegido).
+  function applyImported(result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) {
+    if (!amount && result.amount !== null) setAmount(String(result.amount))
+    if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
+    if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!conditions && result.conditions) setConditions(result.conditions)
+    if (!notes && result.notes) setNotes(result.notes)
+    setPendingItems(items)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -4250,6 +4401,17 @@ function AddLooseOfferForm({
         supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      for (const item of pendingItems) {
+        await addEventTaskGroupOfferItem(offer, {
+          name: item.name,
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+          isPackage: item.isPackage,
+        })
+      }
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir la oferta'))
@@ -4261,6 +4423,12 @@ function AddLooseOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
+      <ImportOfferBudgetButton onImported={applyImported} />
+      {pendingItems.length > 0 && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Se añadirán {pendingItems.length} {pendingItems.length === 1 ? 'servicio' : 'servicios'} al guardar.
+        </p>
+      )}
       {existingOffers.length > 0 && (
         <label>
           ¿Es una revisión de una oferta anterior? (opcional)

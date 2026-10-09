@@ -839,11 +839,18 @@ export interface EventTaskGroupResolution {
 // presupuesto por sí sola — eso sigue pasando exclusivamente al "Resolver encargo" de siempre.
 export type EventTaskGroupOfferStatus = 'recibida' | 'seleccionada' | 'descartada'
 
+// Desde la migración 0225 (prompt maestro, Parte B1) una oferta ya no exige un encargo: groupId es
+// nullable — null significa "oferta suelta", registrada desde el registro global de proveedores o desde
+// Proveedores de un evento, todavía sin vincular a ningún encargo concreto. eventId/globalProviderId son
+// el puente no destructivo (mismo patrón que EventProvider.globalProviderId, migración 0224): providerId
+// sigue siendo event_providers tal cual (migración 0223), sin cambiar su significado.
 export interface EventTaskGroupOffer {
   id: string
-  groupId: string
+  groupId: string | null
+  eventId: string | null
   familyId: string
   providerId: string | null
+  globalProviderId: string | null
   providerName: string
   amount: number
   scopeIncluded: string | null

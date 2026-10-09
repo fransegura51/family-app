@@ -41,10 +41,16 @@ describe('migración 0223 — aditiva, RLS familiar, nunca event_payments/event_
 describe('data/eventTaskGroups.ts — CRUD de ofertas', () => {
   it('addEventTaskGroupOffer usa el family_id real del encargo (nunca inventado) y devuelve la oferta completa', () => {
     const body = fn(SRC, 'export async function addEventTaskGroupOffer(')
-    expect(body).toContain("from('event_task_groups').select('family_id')")
+    expect(body).toContain("from('event_task_groups').select('family_id, event_id')")
     expect(body).toContain('family_id: group.family_id')
     expect(body).toContain('.select(OFFER_SELECT)')
     expect(body).toContain('return mapOffer(data)')
+  })
+  // Fase 5 (migración 0225, Parte B1) — además de group_id, guarda el event_id real del encargo (puente
+  // no destructivo): sigue sin inventar nada, lo lee del propio grupo, nunca de otra parte.
+  it('addEventTaskGroupOffer guarda también event_id (el del encargo), para que el puente de la Fase 5 no quede vacío en las ofertas nuevas', () => {
+    const body = fn(SRC, 'export async function addEventTaskGroupOffer(')
+    expect(body).toContain('event_id: group.event_id,')
   })
   it('updateEventTaskGroupOffer solo actualiza los campos presentes en el patch (nunca pisa el resto con null)', () => {
     const body = fn(SRC, 'export async function updateEventTaskGroupOffer(')

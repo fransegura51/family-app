@@ -172,12 +172,16 @@ import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHel
 import {
   addEventTaskGroup,
   addEventTaskGroupOffer,
+  addLooseTaskGroupOffer,
   countTasksInGroup,
   deleteEventTaskGroup,
   deleteEventTaskGroupOffer,
   getEventTaskGroupOfferAttachmentUrl,
+  linkLooseTaskGroupOfferToGroup,
   listEventTaskGroupOffers,
   listEventTaskGroups,
+  listLooseOffersForEvent,
+  listLooseOffersForProvider,
   renameEventTaskGroup,
   resolveEventTaskGroup,
   saveEventTaskGroupOfferAttachment,
@@ -3602,6 +3606,7 @@ function OffersComparison({
   onUseOffer: (offer: EventTaskGroupOffer) => void
 }) {
   const [offers, setOffers] = useState<EventTaskGroupOffer[]>([])
+  const [looseOffers, setLooseOffers] = useState<EventTaskGroupOffer[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -3612,6 +3617,26 @@ function OffersComparison({
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las ofertas')))
   }
   useEffect(reload, [group.id])
+
+  // Fase 5 (Parte B1) — ofertas sueltas de ESTE evento (registradas desde Proveedores, sin encargo
+  // todavía): poder vincularlas aquí sin tener que volver a escribirlas, nunca en automático.
+  function reloadLoose() {
+    listLooseOffersForEvent(group.eventId)
+      .then(setLooseOffers)
+      .catch(() => {})
+  }
+  useEffect(reloadLoose, [group.eventId])
+
+  async function handleLinkLoose(offer: EventTaskGroupOffer) {
+    setError(null)
+    try {
+      await linkLooseTaskGroupOfferToGroup(offer, group.id)
+      reloadLoose()
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo vincular'))
+    }
+  }
 
   async function handleSelect(offer: EventTaskGroupOffer) {
     setError(null)
@@ -3647,6 +3672,21 @@ function OffersComparison({
     <div className="card" style={{ padding: 8, marginTop: 6 }}>
       <strong style={{ fontSize: 13 }}>📋 Ofertas recibidas{offers.length > 0 ? ` (${offers.length})` : ''}</strong>
       {error && <p className="error">{error}</p>}
+      {looseOffers.length > 0 && (
+        <div style={{ marginTop: 4, marginBottom: 6 }}>
+          <strong style={{ fontSize: 12 }}>🔗 Ofertas sueltas de este evento (sin encargo todavía)</strong>
+          {looseOffers.map((o) => (
+            <div key={o.id} className="inline-fields" style={{ alignItems: 'center', marginTop: 4 }}>
+              <span style={{ flex: 1, fontSize: 12 }}>
+                {o.providerName} · {o.amount.toFixed(2)} €
+              </span>
+              <button type="button" className="link-button" onClick={() => void handleLinkLoose(o)}>
+                Vincular a este encargo
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {offers.length === 0 && !showAdd && (
         <p className="muted" style={{ fontSize: 12 }}>
           Todavía no hay ninguna oferta apuntada — compara precios de varios proveedores antes de resolver, si quieres.
@@ -3975,6 +4015,250 @@ function EditOfferForm({
         </button>
       </div>
     </div>
+  )
+}
+
+// Fase 5 (Parte B1, prompt maestro) — ofertas SUELTAS de un proveedor concreto, sin encargo todavía:
+// se usa tanto desde el registro global (eventId null) como desde Proveedores de un evento (eventId
+// puesto). Reutiliza EditOfferForm (sirve igual para una oferta suelta: updateEventTaskGroupOffer y
+// saveEventTaskGroupOfferAttachment no tocan group/event/global_provider_id).
+function ProviderOffersPanel({
+  eventId,
+  globalProviderId,
+  providerName,
+}: {
+  eventId: string | null
+  globalProviderId: string
+  providerName: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [offers, setOffers] = useState<EventTaskGroupOffer[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listLooseOffersForProvider(globalProviderId, eventId)
+      .then(setOffers)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las ofertas')))
+  }
+  useEffect(() => {
+    if (open) reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, eventId, globalProviderId])
+
+  async function handleToggleDiscard(offer: EventTaskGroupOffer) {
+    setError(null)
+    try {
+      await setEventTaskGroupOfferStatus(offer.id, offer.status === 'descartada' ? 'recibida' : 'descartada')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar el estado'))
+    }
+  }
+
+  async function handleViewAttachment(offer: EventTaskGroupOffer) {
+    if (!offer.attachmentStoragePath) return
+    try {
+      const url = await getEventTaskGroupOfferAttachmentUrl(offer.attachmentStoragePath)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo abrir el adjunto'))
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)} style={{ fontSize: 12 }}>
+        {open ? '▾' : '▸'} 💰 Ofertas{offers.length > 0 ? ` (${offers.length})` : ''}
+      </button>
+      {open && (
+        <div className="card" style={{ padding: 8, marginTop: 4 }}>
+          {error && <p className="error">{error}</p>}
+          {offers.length === 0 && !showAdd && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Todavía no hay ninguna oferta registrada con este proveedor{eventId ? ' para este evento' : ''}.
+            </p>
+          )}
+          {offers.map((o) =>
+            editingId === o.id ? (
+              <EditOfferForm key={o.id} offer={o} providers={[]} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+            ) : (
+              <div key={o.id} className="card" style={{ padding: 8, marginTop: 6, opacity: o.status === 'descartada' ? 0.6 : 1 }}>
+                <div className="inline-fields" style={{ alignItems: 'center' }}>
+                  <div style={{ flex: 1 }}>
+                    <strong>{o.amount.toFixed(2)} €</strong>
+                  </div>
+                  <span className="muted" style={{ fontSize: 11 }}>
+                    {OFFER_STATUS_LABELS[o.status]}
+                  </span>
+                </div>
+                {(o.scopeIncluded || o.scopeExcluded) && (
+                  <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                    {o.scopeIncluded && <>Incluye: {o.scopeIncluded}</>}
+                    {o.scopeIncluded && o.scopeExcluded ? ' · ' : ''}
+                    {o.scopeExcluded && <>No incluye: {o.scopeExcluded}</>}
+                  </p>
+                )}
+                {(o.offerDate || o.validUntil) && (
+                  <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                    {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
+                    {o.offerDate && o.validUntil ? ' · ' : ''}
+                    {o.validUntil ? `Válida hasta: ${o.validUntil}` : ''}
+                  </p>
+                )}
+                {o.conditions && (
+                  <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                    Condiciones: {o.conditions}
+                  </p>
+                )}
+                {o.notes && (
+                  <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                    📝 {o.notes}
+                  </p>
+                )}
+                {o.attachmentStoragePath && (
+                  <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => void handleViewAttachment(o)}>
+                    📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+                  </button>
+                )}
+                {eventId && (
+                  <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
+                    Sin encargo todavía — vincúlala desde "🗂️ Encargos" cuando corresponda.
+                  </p>
+                )}
+                <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                  <button type="button" className="link-button" onClick={() => void handleToggleDiscard(o)}>
+                    {o.status === 'descartada' ? '↩️ Recibida' : '🗑 Descartar'}
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setEditingId(o.id)}>
+                    ✏️ Editar
+                  </button>
+                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar oferta" onConfirm={() => deleteEventTaskGroupOffer(o).then(reload)} />
+                </div>
+              </div>
+            ),
+          )}
+          {showAdd ? (
+            <AddLooseOfferForm
+              eventId={eventId}
+              globalProviderId={globalProviderId}
+              providerName={providerName}
+              onClose={() => setShowAdd(false)}
+              onAdded={() => { setShowAdd(false); reload() }}
+            />
+          ) : (
+            <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
+              + Añadir oferta
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddLooseOfferForm({
+  eventId,
+  globalProviderId,
+  providerName,
+  onClose,
+  onAdded,
+}: {
+  eventId: string | null
+  globalProviderId: string
+  providerName: string
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [amount, setAmount] = useState('')
+  const [scopeIncluded, setScopeIncluded] = useState('')
+  const [scopeExcluded, setScopeExcluded] = useState('')
+  const [offerDate, setOfferDate] = useState('')
+  const [validUntil, setValidUntil] = useState('')
+  const [conditions, setConditions] = useState('')
+  const [notes, setNotes] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    const amountNum = Number(amount)
+    if (amount.trim() === '' || Number.isNaN(amountNum) || amountNum < 0) {
+      setError('Pon un importe válido.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const offer = await addLooseTaskGroupOffer({
+        globalProviderId,
+        eventId,
+        providerName,
+        amount: amountNum,
+        scopeIncluded: scopeIncluded.trim() || null,
+        scopeExcluded: scopeExcluded.trim() || null,
+        offerDate: offerDate || null,
+        validUntil: validUntil || null,
+        conditions: conditions.trim() || null,
+        notes: notes.trim() || null,
+      })
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la oferta'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Importe (€)
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué incluye (opcional)
+        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué NO incluye (opcional)
+        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
+      </label>
+      <div className="inline-fields" style={{ marginTop: 6 }}>
+        <label style={{ flex: 1 }}>
+          Fecha de la oferta (opcional)
+          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
+        </label>
+        <label style={{ flex: 1 }}>
+          Válida hasta (opcional)
+          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+        </label>
+      </div>
+      <label style={{ marginTop: 6 }}>
+        Condiciones (opcional)
+        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} placeholder="Forma de pago, cancelación..." />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Notas (opcional)
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Adjunto (opcional)
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Añadir oferta'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -11618,6 +11902,7 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
                   onConfirm={() => updateProviderGlobal(p.id, { archived: !p.archived }).then(reload)}
                 />
               </div>
+              <ProviderOffersPanel eventId={null} globalProviderId={p.id} providerName={p.name} />
             </div>
           ),
         )}
@@ -11929,6 +12214,7 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                   onConfirm={() => unlinkProviderFromEvent(link.id).then(reload)}
                 />
               </div>
+              <ProviderOffersPanel eventId={eventId} globalProviderId={g.id} providerName={g.name} />
             </div>
           )
         })}

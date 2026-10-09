@@ -3,10 +3,22 @@
 // Desde 0215, un encargo puede RESOLVERSE (proveedor real + precio total opcional, reutilizando
 // event_providers/event_payments tal cual — nunca event_budget_items, ver cabecera de esa migración).
 // Desde 0223 (Parte B Fase 6), un encargo puede recibir varias OFERTAS para comparar antes de resolverlo
-// — ver EventTaskGroupOffer en domain/types.ts: solo información, nunca un compromiso económico.
+// — ver EventTaskGroupOffer en domain/types.ts: solo información, nunca un compromiso económico. Desde
+// 0225 (Fase 5) una oferta puede existir SIN encargo (grupo); ver las funciones "sueltas" más abajo.
 import { compressImageFile } from '@/domain/imageCompression'
 import { supabase } from '@/data/supabaseClient'
 import type { EventTaskGroup, EventTaskGroupOffer, EventTaskGroupOfferStatus, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
+
+// events.ts importa de aquí (findOrCreateEventTaskGroupByKind) y providersGlobal.ts importa de events.ts
+// — para no crear un ciclo, esta función se repite tal cual (igual que ya hace providersGlobal.ts en vez
+// de importarla de events.ts).
+async function currentFamilyId(): Promise<string> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: profileRow, error } = await supabase.from('profiles').select('family_id').eq('id', userResult.user.id).single()
+  if (error) throw error
+  return profileRow.family_id
+}
 
 const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id'
 
@@ -170,15 +182,17 @@ export async function listEventTaskGroupResolutions(groupId: string): Promise<Ev
 // ---------------------------------------------------------------------
 
 const OFFER_SELECT =
-  'id, group_id, family_id, provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, created_at'
+  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapOffer(r: any): EventTaskGroupOffer {
   return {
     id: r.id,
     groupId: r.group_id,
+    eventId: r.event_id,
     familyId: r.family_id,
     providerId: r.provider_id,
+    globalProviderId: r.global_provider_id,
     providerName: r.provider_name,
     amount: Number(r.amount),
     scopeIncluded: r.scope_included,
@@ -218,12 +232,13 @@ export interface EventTaskGroupOfferInput {
 // Devuelve la oferta completa (no solo el id) — quien llama la necesita entera para poder subirle un
 // adjunto justo después de crearla (saveEventTaskGroupOfferAttachment pide family_id/group_id).
 export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGroupOfferInput): Promise<EventTaskGroupOffer> {
-  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id').eq('id', groupId).single()
+  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id, event_id').eq('id', groupId).single()
   if (groupError) throw groupError
   const { data, error } = await supabase
     .from('event_task_group_offers')
     .insert({
       group_id: groupId,
+      event_id: group.event_id,
       family_id: group.family_id,
       provider_id: input.providerId ?? null,
       provider_name: input.providerName.trim(),
@@ -284,6 +299,83 @@ export async function deleteEventTaskGroupOffer(offer: EventTaskGroupOffer): Pro
   }
 }
 
+// ---------------------------------------------------------------------
+// Ofertas SUELTAS (migración 0225, Parte B1) — sin encargo todavía. Se registran desde el registro
+// global de proveedores (sin evento) o desde Proveedores de un evento (con evento, sin encargo). Nunca
+// crean ni completan nada por sí solas; linkLooseTaskGroupOfferToGroup es la única forma de que pasen a
+// estar ligadas a un encargo, y sigue siendo una acción explícita de la familia, nunca automática.
+// ---------------------------------------------------------------------
+
+// Ofertas de un proveedor concreto sin encargo: pasando eventId, las de ESE evento; sin eventId, las
+// puramente globales (registradas desde el registro, sin ningún evento de por medio).
+export async function listLooseOffersForProvider(globalProviderId: string, eventId?: string | null): Promise<EventTaskGroupOffer[]> {
+  let query = supabase.from('event_task_group_offers').select(OFFER_SELECT).eq('global_provider_id', globalProviderId).is('group_id', null)
+  query = eventId ? query.eq('event_id', eventId) : query.is('event_id', null)
+  const { data, error } = await query.order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(mapOffer)
+}
+
+// Todas las ofertas sueltas de un evento (cualquier proveedor) — para "Encargos": poder vincular una
+// oferta ya registrada a un encargo concreto sin tener que volver a escribirla.
+export async function listLooseOffersForEvent(eventId: string): Promise<EventTaskGroupOffer[]> {
+  const { data, error } = await supabase.from('event_task_group_offers').select(OFFER_SELECT).eq('event_id', eventId).is('group_id', null).order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(mapOffer)
+}
+
+export interface LooseEventTaskGroupOfferInput extends EventTaskGroupOfferInput {
+  globalProviderId: string
+  eventId?: string | null
+}
+
+// Family_id: si hay evento, el del evento (consistente con addEventTaskGroupOffer); si es puramente
+// global, la familia actual (igual que providersGlobal.ts).
+export async function addLooseTaskGroupOffer(input: LooseEventTaskGroupOfferInput): Promise<EventTaskGroupOffer> {
+  let resolvedFamilyId: string
+  if (input.eventId) {
+    const { data: event, error: eventError } = await supabase.from('events').select('family_id').eq('id', input.eventId).single()
+    if (eventError) throw eventError
+    resolvedFamilyId = event.family_id
+  } else {
+    resolvedFamilyId = await currentFamilyId()
+  }
+  const { data, error } = await supabase
+    .from('event_task_group_offers')
+    .insert({
+      group_id: null,
+      event_id: input.eventId ?? null,
+      family_id: resolvedFamilyId,
+      provider_id: input.providerId ?? null,
+      global_provider_id: input.globalProviderId,
+      provider_name: input.providerName.trim(),
+      amount: input.amount,
+      scope_included: input.scopeIncluded ?? null,
+      scope_excluded: input.scopeExcluded ?? null,
+      offer_date: input.offerDate ?? null,
+      valid_until: input.validUntil ?? null,
+      conditions: input.conditions ?? null,
+      notes: input.notes ?? null,
+    })
+    .select(OFFER_SELECT)
+    .single()
+  if (error) throw error
+  return mapOffer(data)
+}
+
+// Vincular una oferta suelta a un encargo concreto — la única forma de que una oferta pase de "suelta" a
+// pertenecer a un encargo; acción explícita de la familia, nunca automática ni al crear/seleccionar la
+// oferta. Si la oferta todavía no tenía evento (una suelta puramente global), toma el del encargo.
+export async function linkLooseTaskGroupOfferToGroup(offer: EventTaskGroupOffer, groupId: string): Promise<void> {
+  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('event_id').eq('id', groupId).single()
+  if (groupError) throw groupError
+  const { error } = await supabase
+    .from('event_task_group_offers')
+    .update({ group_id: groupId, event_id: offer.eventId ?? group.event_id })
+    .eq('id', offer.id)
+  if (error) throw error
+}
+
 // Documento adjunto opcional (presupuesto en PDF/foto de un proveedor) — se sube y se enlaza a una oferta
 // YA creada, nunca al crearla (igual que saveEventFoodDocument: nunca se sube un archivo que la familia
 // pueda acabar descartando sin llegar a guardar la oferta). Un único adjunto por oferta; subir uno nuevo
@@ -291,7 +383,9 @@ export async function deleteEventTaskGroupOffer(offer: EventTaskGroupOffer): Pro
 export async function saveEventTaskGroupOfferAttachment(offer: EventTaskGroupOffer, file: File): Promise<EventTaskGroupOffer> {
   const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
   const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
-  const path = `${offer.familyId}/${offer.groupId}/${crypto.randomUUID()}.${ext}`
+  // La política de storage solo exige que el primer segmento sea la familia (ver migración 0223); el
+  // resto es libre — una oferta suelta (sin encargo) usa su evento, o "global" si tampoco tiene evento.
+  const path = `${offer.familyId}/${offer.groupId ?? offer.eventId ?? 'global'}/${crypto.randomUUID()}.${ext}`
   const { error: uploadError } = await supabase.storage.from('event_task_group_offers').upload(path, prepared)
   if (uploadError) throw uploadError
   const { data, error } = await supabase

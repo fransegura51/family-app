@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import webpush from "npm:web-push@3.6.7"
+import { FCM_PREFIX, sendFcm, type FcmServiceAccount } from "./fcm.ts"
 
 // Manda un Web Push a los dispositivos de UNA familia. Lo llama la propia base de datos (pg_net, ver
 // migración 0186_server_side_automations.sql) en el instante en que alguien llega a un lugar, se va de
@@ -15,6 +16,39 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 
 const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+// Entrega de UN aviso: a los móviles de la app nativa (dirección «fcm:<token>») por Firebase, al resto por Web Push. Los errores llevan
+// statusCode (404/410 = suscripción caducada), así que el código que borra suscripciones muertas sirve para los dos caminos.
+// La cuenta de servicio de Firebase vive en el Vault (secreto fcm_service_account); sin ella, los móviles nativos no reciben avisos pero el
+// resto sigue igual.
+let fcmServiceAccountPromise: Promise<FcmServiceAccount | null> | null = null
+function loadFcmServiceAccount(): Promise<FcmServiceAccount | null> {
+  fcmServiceAccountPromise ??= (async () => {
+    const { data, error } = await supabaseAdmin.rpc("get_app_secret", { p_name: "fcm_service_account" })
+    if (error || !data) return null
+    try {
+      const parsed = JSON.parse(data as string) as FcmServiceAccount
+      return parsed.client_email && parsed.private_key && parsed.project_id ? parsed : null
+    } catch {
+      return null
+    }
+  })()
+  return fcmServiceAccountPromise
+}
+
+async function deliverPush(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: { title: string; body: string; tag?: string; url?: string },
+  options: { TTL: number; urgency: "high" },
+): Promise<void> {
+  if (sub.endpoint.startsWith(FCM_PREFIX)) {
+    const sa = await loadFcmServiceAccount()
+    if (!sa) throw Object.assign(new Error("FCM sin configurar (falta el secreto fcm_service_account)"), { statusCode: 0 })
+    await sendFcm(sa, sub.endpoint.slice(FCM_PREFIX.length), { ...payload, ttlSeconds: options.TTL })
+    return
+  }
+  await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), options)
+}
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -80,7 +114,7 @@ Deno.serve(async (req) => {
     ])
     webpush.setVapidDetails("mailto:family-app@example.com", vapidPublicKey as string, vapidPrivateKey as string)
 
-    const payload = JSON.stringify({ title: input.title.slice(0, 120), body: input.body.slice(0, 300), url })
+    const payload = { title: input.title.slice(0, 120), body: input.body.slice(0, 300), url }
     let sent = 0
     let expired = 0
     // TTL corto + urgencia alta: un "Paco ha llegado a casa" de hace una hora ya no sirve, y sin
@@ -89,7 +123,7 @@ Deno.serve(async (req) => {
     await Promise.all(
       (subs ?? []).map(async (s) => {
         try {
-          await webpush.sendNotification({ endpoint: s.endpoint as string, keys: { p256dh: s.p256dh as string, auth: s.auth as string } }, payload, options)
+          await deliverPush({ endpoint: s.endpoint as string, p256dh: s.p256dh as string, auth: s.auth as string }, payload, options)
           sent++
         } catch (err) {
           const status = (err as { statusCode?: number }).statusCode

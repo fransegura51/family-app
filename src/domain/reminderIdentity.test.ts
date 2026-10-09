@@ -73,7 +73,7 @@ describe('2. Identidad (etiqueta) estable del recordatorio', () => {
   })
   it('la Edge Function construye exactamente el mismo formato', () => {
     expect(EDGE).toContain('`reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`')
-    expect(EDGE).toContain('JSON.stringify({ title: r.out_event_title, body, tag })')
+    expect(EDGE).toContain('{ title: r.out_event_title, body, tag },')
   })
 })
 

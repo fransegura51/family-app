@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import webpush from "npm:web-push@3.6.7"
+import { FCM_PREFIX, sendFcm, type FcmServiceAccount } from "./fcm.ts"
 
 // Recordatorios con la app cerrada: pg_cron llama a esta función cada
 // minuto (ver migración 0005_schedule_reminder_cron.sql). Autenticación
@@ -19,6 +20,39 @@ const supabaseAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 // aparezca a las 14:00 si el móvil estuvo apagado.
 const PUSH_OPTIONS_SOON = { TTL: 3600, urgency: "high" as const }
 const PUSH_OPTIONS_DAY = { TTL: 6 * 3600, urgency: "high" as const }
+
+// Entrega de UN aviso: a los móviles de la app nativa (dirección «fcm:<token>») por Firebase, al resto por Web Push. Los errores llevan
+// statusCode (404/410 = suscripción caducada), así que el código que borra suscripciones muertas sirve para los dos caminos.
+// La cuenta de servicio de Firebase vive en el Vault (secreto fcm_service_account); sin ella, los móviles nativos no reciben avisos pero el
+// resto sigue igual.
+let fcmServiceAccountPromise: Promise<FcmServiceAccount | null> | null = null
+function loadFcmServiceAccount(): Promise<FcmServiceAccount | null> {
+  fcmServiceAccountPromise ??= (async () => {
+    const { data, error } = await supabaseAdmin.rpc("get_app_secret", { p_name: "fcm_service_account" })
+    if (error || !data) return null
+    try {
+      const parsed = JSON.parse(data as string) as FcmServiceAccount
+      return parsed.client_email && parsed.private_key && parsed.project_id ? parsed : null
+    } catch {
+      return null
+    }
+  })()
+  return fcmServiceAccountPromise
+}
+
+async function deliverPush(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: { title: string; body: string; tag?: string; url?: string },
+  options: { TTL: number; urgency: "high" },
+): Promise<void> {
+  if (sub.endpoint.startsWith(FCM_PREFIX)) {
+    const sa = await loadFcmServiceAccount()
+    if (!sa) throw Object.assign(new Error("FCM sin configurar (falta el secreto fcm_service_account)"), { statusCode: 0 })
+    await sendFcm(sa, sub.endpoint.slice(FCM_PREFIX.length), { ...payload, ttlSeconds: options.TTL })
+    return
+  }
+  await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), options)
+}
 
 // ============================================================
 // Previsión de pagos (Economía) — pipeline de avisos financieros. Independiente del de arriba: nunca
@@ -290,9 +324,9 @@ async function sendDueForecastReminders(): Promise<{ checked: number; sent: numb
   let expired = 0
   for (const c of claimed ?? []) {
     try {
-      await webpush.sendNotification(
-        { endpoint: c.out_endpoint, keys: { p256dh: c.out_p256dh, auth: c.out_auth } },
-        JSON.stringify({ title: `Previsión: ${c.out_title}`, body: "Vence pronto", url: "/dinero" }),
+      await deliverPush(
+        { endpoint: c.out_endpoint, p256dh: c.out_p256dh, auth: c.out_auth },
+        { title: `Previsión: ${c.out_title}`, body: "Vence pronto", url: "/dinero" },
         PUSH_OPTIONS_DAY,
       )
       sent++
@@ -357,12 +391,9 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
     // ocurrencia + ancla + minutos. La app abierta la usa para no duplicar este aviso.
     const tag = `reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`
     try {
-      await webpush.sendNotification(
-        {
-          endpoint: r.out_endpoint,
-          keys: { p256dh: r.out_p256dh, auth: r.out_auth },
-        },
-        JSON.stringify({ title: r.out_event_title, body, tag }),
+      await deliverPush(
+        { endpoint: r.out_endpoint, p256dh: r.out_p256dh, auth: r.out_auth },
+        { title: r.out_event_title, body, tag },
         PUSH_OPTIONS_SOON,
       )
       sent++

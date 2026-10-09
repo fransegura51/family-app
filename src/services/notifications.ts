@@ -1,3 +1,5 @@
+import { isNativeApp } from '@/services/nativeApp'
+import { getNativePermission, getNativePushToken, requestNativePermission, showNativeNotification, stopNativePush } from '@/services/nativePush'
 // Notificaciones del navegador. Dos caminos distintos:
 // - showNotification: aviso LOCAL, solo con la app abierta (ReminderWatcher).
 // - subscribeToPush (más abajo) + service worker (src/sw.ts): Web Push, el que llega con la app
@@ -13,11 +15,14 @@ export function isIos(): boolean {
 }
 
 export function getPermissionState(): NotificationPermissionState {
+  // App nativa: el permiso es el de Android (plugin de avisos), no el de la API web, que dentro de la app no existe.
+  if (isNativeApp()) return getNativePermission()
   if (!('Notification' in window)) return 'unsupported'
   return Notification.permission
 }
 
 export async function requestPermission(): Promise<NotificationPermissionState> {
+  if (isNativeApp()) return requestNativePermission()
   if (!('Notification' in window)) return 'unsupported'
   return Notification.requestPermission()
 }
@@ -48,6 +53,7 @@ export function setNotificationsDisabledByUser(disabled: boolean): void {
 
 // ¿Este móvil está dado de alta para recibir avisos con la app cerrada?
 export async function hasPushSubscription(): Promise<boolean> {
+  if (isNativeApp()) return getNativePushToken() !== null
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
   try {
     const registration = await navigator.serviceWorker.ready
@@ -60,6 +66,7 @@ export async function hasPushSubscription(): Promise<boolean> {
 // Da de baja este móvil del envío de avisos y devuelve su dirección de envío (para borrarla también del
 // servidor), o null si no estaba dado de alta.
 export async function unsubscribeFromPush(): Promise<string | null> {
+  if (isNativeApp()) return stopNativePush()
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null
   const registration = await navigator.serviceWorker.ready
   const subscription = await registration.pushManager.getSubscription()
@@ -79,6 +86,12 @@ export async function unsubscribeFromPush(): Promise<string | null> {
 // mostrada una notificación con ESA etiqueta no se muestra otra. Esto NO sustituye a la coordinación entre el
 // aviso del servidor y el local (ReminderWatcher): iOS/Safari no reemplaza por etiqueta de forma fiable.
 export function showNotification(title: string, body: string, tag?: string): void {
+  if (isNativeApp()) {
+    // App nativa: aviso local por Android (no existe la API web de notificaciones dentro de la app).
+    if (isNotificationsDisabledByUser() || getNativePermission() !== 'granted') return
+    void showNativeNotification(title, body).catch(() => undefined)
+    return
+  }
   if (!('Notification' in window) || Notification.permission !== 'granted') return
   if (isNotificationsDisabledByUser()) return
 

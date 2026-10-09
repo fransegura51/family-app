@@ -1,5 +1,7 @@
 import { supabase } from '@/data/supabaseClient'
 import { reportClientError } from '@/data/errorReports'
+import { fcmEndpoint, startNativePush } from '@/services/nativePush'
+import { isNativeApp } from '@/services/nativeApp'
 import {
   getPermissionState,
   requestPermission,
@@ -32,6 +34,21 @@ export async function savePushSubscription(sub: PushSubscriptionData): Promise<v
 
 let gestureAtRequest = 'n/d'
 
+// Da de alta ESTE móvil nativo: pide el token a Firebase y lo guarda como «fcm:<token>» en push_subscriptions (misma tabla que Web Push).
+// Firebase renueva el token a veces, así que cada token nuevo que llega se vuelve a guardar. Sin google-services.json en el APK falla con el
+// motivo, que se anota (client_errors) para verlo desde fuera.
+export async function registerNativeDevice(): Promise<void> {
+  const saved = new Promise<void>((resolve, reject) => {
+    void startNativePush(
+      (token) => {
+        savePushSubscription({ endpoint: fcmEndpoint(token), p256dh: 'native', auth: 'native' }).then(resolve, reject)
+      },
+      (message) => reject(new Error(message)),
+    ).catch(reject)
+  })
+  await withTimeout(saved, 15_000, 'Firebase no ha respondido al registrar los avisos de la app.')
+}
+
 // Activa los avisos en ESTE móvil: pide el permiso si todavía no se ha decidido, da de alta el envío y
 // quita la marca de "desactivado". Lo usan el botón de Familia y la tarjeta de Inicio, para que los dos
 // hagan exactamente lo mismo.
@@ -41,6 +58,13 @@ let gestureAtRequest = 'n/d'
 // contestar, devuelve ese estado para que la pantalla lo explique.
 export async function enablePushNotifications(): Promise<NotificationPermissionState> {
   setNotificationsDisabledByUser(false)
+  if (isNativeApp()) {
+    // App nativa: el permiso y el registro son los de Android + Firebase (services/nativePush.ts), no los del navegador.
+    const native = await requestPermission()
+    if (native !== 'granted') return native
+    await registerNativeDevice()
+    return native
+  }
   let permission = getPermissionState()
   if (permission === 'default') {
     // Chrome solo deja preguntar por los avisos como respuesta a un toque: se anota si en ese instante

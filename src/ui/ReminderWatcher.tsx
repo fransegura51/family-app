@@ -3,6 +3,7 @@ import { listActiveReminders, listEventCompletions, listUpcomingEvents } from '@
 import { expandOccurrences } from '@/domain/calendar'
 import { daysBetweenDates, localReminderAction, madridParts, reminderBody, reminderTag } from '@/domain/reminderIdentity'
 import { hasPushSubscription, showNotification } from '@/services/notifications'
+import { isNativeApp } from '@/services/nativeApp'
 import { hasReminderReceipt } from '@/services/reminderReceipts'
 
 const SHOWN_KEY = 'family-app:shown-reminders'
@@ -81,6 +82,9 @@ export function ReminderWatcher() {
     let cancelled = false
 
     async function checkReminders() {
+      // App nativa ya registrada en Firebase: el servidor es el único que avisa de los recordatorios (no hay recibo del service worker que
+      // permita saber si ya llegó), así que no se avisa por duplicado desde aquí ni se gastan consultas.
+      if (isNativeApp() && (await hasPushSubscription())) return
       const reminders = await listActiveReminders()
       if (cancelled) return
       const now = Date.now()

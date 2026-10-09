@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
-import { reportPushProblem, savePushSubscription } from '@/data/push'
+import { registerNativeDevice, reportPushProblem, savePushSubscription } from '@/data/push'
+import { isNativeApp } from '@/services/nativeApp'
+import { refreshNativePermission } from '@/services/nativePush'
 import { getPermissionState, isNotificationsDisabledByUser, subscribeToPush, VAPID_PUBLIC_KEY } from '@/services/notifications'
 
 // Componente sin UI. Petición real: "los avisos... están llegando mucho después... en todos los
@@ -14,6 +16,14 @@ import { getPermissionState, isNotificationsDisabledByUser, subscribeToPush, VAP
 // avisos en este móvil (también desde el botón de Familia).
 export function PushSubscriptionKeeper() {
   useEffect(() => {
+    if (isNativeApp()) {
+      // App nativa: si Android ya dio permiso de notificaciones, el móvil se (re)registra en Firebase al abrir la app.
+      if (isNotificationsDisabledByUser()) return
+      refreshNativePermission()
+        .then((permission) => (permission === 'granted' ? registerNativeDevice() : undefined))
+        .catch((err) => void reportPushProblem('registro nativo al abrir la app', err))
+      return
+    }
     if (!VAPID_PUBLIC_KEY || getPermissionState() !== 'granted' || isNotificationsDisabledByUser()) return
     subscribeToPush(VAPID_PUBLIC_KEY)
       .then((subscription) => (subscription ? savePushSubscription(subscription) : undefined))

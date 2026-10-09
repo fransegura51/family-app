@@ -30,6 +30,18 @@ jobs:
         run: |
           SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
           yes | "$SDKMANAGER" --licenses > /dev/null || true
+      # Avisos nativos (Firebase): el archivo google-services.json va como secreto del repositorio (GOOGLE_SERVICES_JSON_B64), nunca en el código.
+      # Sin él la app se construye igual, pero no recibe avisos nativos.
+      - name: Preparar Firebase (si está configurado)
+        env:
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON_B64" ]; then
+            echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > android/app/google-services.json
+            echo "Firebase configurado"
+          else
+            echo "Sin Firebase: esta app no recibirá avisos nativos"
+          fi
       - name: Sincronizar el proyecto de Android
         run: npx cap sync android
       - name: Preparar la llave de firma

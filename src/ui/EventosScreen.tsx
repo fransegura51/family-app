@@ -578,6 +578,7 @@ import type {
 import { canShareFiles, shareFiles, shareText } from '@/services/share'
 import { downloadTextFile } from '@/services/exportFile'
 import { buildVcf } from '@/domain/vcardParser'
+import { analyzeProviderContactDocument, type ProviderContactScanResult } from '@/services/providerContactDocument'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ChoiceRow } from '@/ui/ChoiceRow'
@@ -11648,6 +11649,19 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
   const [address, setAddress] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" solo rellena lo que esté VACÍO:
+  // nunca sobrescribe algo que la familia ya haya escrito a mano, sin avisar.
+  const [importedExtra, setImportedExtra] = useState(false)
+  function applyImported(r: ProviderContactScanResult) {
+    if (!name && r.name) setName(r.name)
+    if (!type && r.type) setType(r.type)
+    if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
+    if (!phone && r.phone) setPhone(r.phone)
+    if (!email && r.email) setEmail(r.email)
+    if (!website && r.website) setWebsite(r.website)
+    if (!address && r.address) setAddress(r.address)
+    if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -11678,6 +11692,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
+      <ImportProviderPhotoButton onImported={applyImported} />
       <label>
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -11697,7 +11712,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
         setWebsite={setWebsite}
         address={address}
         setAddress={setAddress}
-        forceOpen={false}
+        forceOpen={importedExtra}
       />
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="submit" disabled={saving}>
@@ -11984,6 +11999,19 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
   const [address, setAddress] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" solo rellena lo que esté VACÍO:
+  // nunca sobrescribe algo que la familia ya haya escrito a mano, sin avisar.
+  const [importedExtra, setImportedExtra] = useState(false)
+  function applyImported(r: ProviderContactScanResult) {
+    if (!name && r.name) setName(r.name)
+    if (!type && r.type) setType(r.type)
+    if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
+    if (!phone && r.phone) setPhone(r.phone)
+    if (!email && r.email) setEmail(r.email)
+    if (!website && r.website) setWebsite(r.website)
+    if (!address && r.address) setAddress(r.address)
+    if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+  }
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -12015,6 +12043,7 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
+      <ImportProviderPhotoButton onImported={applyImported} />
       <label>
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
@@ -12034,7 +12063,7 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
         setWebsite={setWebsite}
         address={address}
         setAddress={setAddress}
-        forceOpen={false}
+        forceOpen={importedExtra}
       />
       <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
         Se guarda en el registro familiar — podrás reutilizarlo en otros eventos más adelante.
@@ -12048,6 +12077,88 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
         </button>
       </div>
     </form>
+  )
+}
+
+// PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto": fotografía de una tarjeta de visita,
+// captura de Google Maps o documento similar → IA (analyze-provider-contact-document) extrae los datos →
+// REVISIÓN EDITABLE → solo al pulsar "Usar estos datos" se aplican al formulario (onImported). Nunca se
+// aplica solo: ver el merge en cada formulario (solo rellena campos que el usuario tenga vacíos, nunca
+// sobrescribe algo ya escrito sin avisar).
+function ImportProviderPhotoButton({ onImported }: { onImported: (result: ProviderContactScanResult) => void }) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<ProviderContactScanResult | null>(null)
+
+  async function handleFile(file: File) {
+    setLoading(true)
+    setError(null)
+    setResult(null)
+    try {
+      const scanned = await analyzeProviderContactDocument(file)
+      if (!scanned.name && !scanned.phone && !scanned.email && !scanned.address && !scanned.website && !scanned.contactPerson) {
+        setError('No se ha podido leer ningún dato en esta imagen — prueba con otra foto, o rellena los datos a mano.')
+      } else {
+        setResult(scanned)
+      }
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo leer el documento'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      <label className="link-button" style={{ display: 'inline-block', cursor: 'pointer' }}>
+        📷 Importar datos con foto
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void handleFile(file)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      {loading && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Leyendo la imagen…
+        </p>
+      )}
+      {error && (
+        <p className="error" style={{ fontSize: 12 }}>
+          {error}
+        </p>
+      )}
+      {result && (
+        <div className="card" style={{ padding: 8, marginTop: 6 }}>
+          <p className="muted" style={{ fontSize: 12 }}>
+            Esto es lo que se ha leído — revísalo, podrás corregirlo después:
+          </p>
+          <p style={{ fontSize: 13, margin: '2px 0' }}>
+            {[result.name, result.type, result.contactPerson, result.phone, result.email, result.website, result.address].filter(Boolean).join(' · ')}
+          </p>
+          <div className="filter-row">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                onImported(result)
+                setResult(null)
+              }}
+            >
+              Usar estos datos
+            </button>
+            <button type="button" className="link-button" onClick={() => setResult(null)}>
+              Descartar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -12080,6 +12191,12 @@ function ProviderExtraFields({
   forceOpen: boolean
 }) {
   const [open, setOpen] = useState(forceOpen)
+  // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" puede rellenar estos campos
+  // mientras siguen plegados; forceOpen reacciona (no solo el valor inicial) para que la familia vea de
+  // inmediato lo que se acaba de importar, sin tener que adivinar que hay que desplegar "+ Más datos".
+  useEffect(() => {
+    if (forceOpen) setOpen(true)
+  }, [forceOpen])
   if (!open) {
     return (
       <button type="button" className="link-button" onClick={() => setOpen(true)}>

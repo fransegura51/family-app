@@ -25,7 +25,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      # Los servidores de GitHub ya traen el SDK de Android; solo hay que aceptar sus licencias para que Gradle descargue lo que falte.
+      - name: Aceptar licencias del SDK de Android
+        run: |
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | head -1)
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
       - name: Sincronizar el proyecto de Android
         run: npx cap sync android
       - name: Preparar la llave de firma

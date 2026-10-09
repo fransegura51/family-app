@@ -33,13 +33,23 @@ describe('saveProviderToContacts — comparte si puede, descarga si no, nunca to
   })
 })
 
-describe('"📱 Guardar en contactos" está disponible en el registro global Y dentro de un evento', () => {
-  it('ProvidersGlobalScreen lo ofrece en cada ficha', () => {
-    const screen = window_(UI, 'function ProvidersGlobalScreen(', '\nfunction AddProviderGlobalForm(')
-    expect(screen).toContain('onClick={() => void saveProviderToContacts(p)}')
+// Bloque B1 (prompt maestro "Continuidad automática") — las dos pantallas dejaron de repetir cada botón
+// (Editar/Guardar en contactos/Descartar.../Archivar...) por su cuenta: ahora comparten un único menú ⋯
+// (ProviderCardMenu) que es quien de verdad llama a saveProviderToContacts — una sola implementación,
+// nunca una copia por pantalla. Esto hace el test ANTERIOR más fuerte, no más débil: antes había que
+// confiar en que las dos copias se mantuvieran iguales a mano; ahora es estructuralmente imposible que
+// diverjan.
+describe('"📱 Guardar en contactos" está disponible en el registro global Y dentro de un evento, vía el menú ⋯ compartido', () => {
+  it('ProviderCardMenu (el único sitio que llama a saveProviderToContacts) usa el proveedor recibido por props', () => {
+    const menu = window_(UI, 'function ProviderCardMenu(', '\nfunction ProvidersGlobalScreen(')
+    expect(menu).toContain('onClick={() => void saveProviderToContacts(provider)}')
   })
-  it('ProvidersSection (dentro de un evento) también lo ofrece, sobre la ficha global vinculada', () => {
+  it('ProvidersGlobalScreen renderiza ProviderCardMenu en cada ficha (así hereda "Guardar en contactos")', () => {
+    const screen = window_(UI, 'function ProvidersGlobalScreen(', '\nfunction AddProviderGlobalForm(')
+    expect(screen).toContain('<ProviderCardMenu')
+  })
+  it('ProvidersSection (dentro de un evento) también renderiza ProviderCardMenu, sobre la ficha global vinculada', () => {
     const section = window_(UI, 'function ProvidersSection({ eventId }', '\nfunction LinkExistingProviderForm(')
-    expect(section).toContain('onClick={() => void saveProviderToContacts(g)}')
+    expect(section).toContain('<ProviderCardMenu')
   })
 })

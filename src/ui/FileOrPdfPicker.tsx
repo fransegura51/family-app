@@ -96,8 +96,17 @@ export function FileOrPdfPicker({
   if (sheetTitle) {
     return (
       <div>
-        <button type="button" className="link-button" onClick={() => setSheetOpen(true)}>
-          {file ? `📎 ${file.name}` : '+ Añadir foto o PDF'}
+        {/* FIX REAL (prompt maestro, Bloque B5): un nombre de archivo largo y sin espacios (típico de
+            una foto de cámara, "IMG_20261009_224512.jpg") no tiene dónde partir la línea — sin
+            overflow/ellipsis se salía de la pantalla en móvil en vez de cortarse con "…" visible. */}
+        <button type="button" className="link-button" style={{ maxWidth: '100%', overflow: 'hidden' }} onClick={() => setSheetOpen(true)}>
+          {file ? (
+            <span style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+              📎 {file.name}
+            </span>
+          ) : (
+            '+ Añadir foto o PDF'
+          )}
         </button>
         {hiddenInputs}
         {sheetOpen && (

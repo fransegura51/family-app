@@ -30,7 +30,7 @@ describe('OffersComparison — seleccionar una oferta nunca paga ni resuelve nad
     expect(OFFERS_COMPARISON).toContain('onClick={() => onUseOffer(o)}')
   })
   it('borrar una oferta nunca toca event_payments/event_budget_items/tareas del encargo', () => {
-    expect(OFFERS_COMPARISON).toContain('onConfirm={() => deleteEventTaskGroupOffer(o).then(reload)}')
+    expect(OFFERS_COMPARISON).toContain('onDelete={() => deleteEventTaskGroupOffer(o).then(reload)}')
   })
 })
 

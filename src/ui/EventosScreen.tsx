@@ -593,6 +593,7 @@ import { analyzeProviderContactDocument, type ProviderContactScanResult } from '
 import { analyzeOfferBudgetDocument, type OfferBudgetScanItem, type OfferBudgetScanResult } from '@/services/offerBudgetDocument'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ChoiceRow } from '@/ui/ChoiceRow'
 import { DayPlanSection } from '@/ui/EventDayPlan'
 import { EventMenuSection } from '@/ui/EventMenu'
@@ -3621,6 +3622,45 @@ const OFFER_STATUS_LABELS: Record<EventTaskGroupOfferStatus, string> = {
 // información para comparar: seleccionar una aquí NUNCA crea un pago ni toca el presupuesto — eso sigue
 // pasando exclusivamente al "Marcar encargo como resuelto" de ResolveGroupModal; "Usar esta oferta al
 // resolver" solo rellena ese formulario como atajo (onUseOffer), nunca en automático.
+// PEPA — prompt maestro, Bloque B6: menú ⋯ de una oferta — mismo patrón ya usado en proveedores
+// (ProviderCardMenu) y en Familia (member-row-more/member-row-actions). "Seleccionar"/"Usar esta oferta
+// al resolver" se quedan fuera del menú a propósito: son la acción principal del flujo de una oferta
+// recibida/seleccionada, no una acción secundaria de mantenimiento como editar/descartar/eliminar.
+function OfferCardMenu({
+  open,
+  onToggle,
+  onEdit,
+  discarded,
+  onToggleDiscard,
+  onDelete,
+}: {
+  open: boolean
+  onToggle: () => void
+  onEdit: () => void
+  discarded: boolean
+  onToggleDiscard: () => void
+  onDelete: () => void
+}) {
+  return (
+    <>
+      <button type="button" className="member-row-more" aria-label="Acciones de la oferta" aria-expanded={open} onClick={onToggle}>
+        ⋯
+      </button>
+      {open && (
+        <div className="member-row-actions">
+          <button type="button" className="link-button" onClick={onEdit}>
+            ✏️ Editar oferta
+          </button>
+          <button type="button" className="link-button" onClick={onToggleDiscard}>
+            {discarded ? '↩️ Recuperar oferta' : '🗑 Descartar oferta'}
+          </button>
+          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Eliminar oferta" onConfirm={onDelete} />
+        </div>
+      )}
+    </>
+  )
+}
+
 function OffersComparison({
   group,
   providers,
@@ -3634,6 +3674,7 @@ function OffersComparison({
   const [looseOffers, setLooseOffers] = useState<EventTaskGroupOffer[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -3733,6 +3774,14 @@ function OffersComparison({
               <span className="muted" style={{ fontSize: 11 }}>
                 {OFFER_STATUS_LABELS[o.status]}
               </span>
+              <OfferCardMenu
+                open={menuOpenId === o.id}
+                onToggle={() => setMenuOpenId((cur) => (cur === o.id ? null : o.id))}
+                onEdit={() => setEditingId(o.id)}
+                discarded={o.status === 'descartada'}
+                onToggleDiscard={() => void handleToggleDiscard(o)}
+                onDelete={() => deleteEventTaskGroupOffer(o).then(reload)}
+              />
             </div>
             {o.supersedesOfferId && (
               <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
@@ -3767,30 +3816,27 @@ function OffersComparison({
               </p>
             )}
             {o.attachmentStoragePath && (
-              <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => void handleViewAttachment(o)}>
-                📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+              <button type="button" className="link-button" style={{ fontSize: 12, maxWidth: '100%', overflow: 'hidden' }} onClick={() => void handleViewAttachment(o)}>
+                <span style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+                  📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+                </span>
               </button>
             )}
             <OfferItemsPanel offer={o} />
-            <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
-              {o.status === 'recibida' && (
-                <button type="button" className="link-button" onClick={() => void handleSelect(o)}>
-                  ✓ Seleccionar
-                </button>
-              )}
-              {o.status === 'seleccionada' && (
-                <button type="button" className="link-button" onClick={() => onUseOffer(o)}>
-                  Usar esta oferta al resolver
-                </button>
-              )}
-              <button type="button" className="link-button" onClick={() => void handleToggleDiscard(o)}>
-                {o.status === 'descartada' ? '↩️ Recibida' : '🗑 Descartar'}
-              </button>
-              <button type="button" className="link-button" onClick={() => setEditingId(o.id)}>
-                ✏️ Editar
-              </button>
-              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar oferta" onConfirm={() => deleteEventTaskGroupOffer(o).then(reload)} />
-            </div>
+            {(o.status === 'recibida' || o.status === 'seleccionada') && (
+              <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                {o.status === 'recibida' && (
+                  <button type="button" className="link-button" onClick={() => void handleSelect(o)}>
+                    ✓ Seleccionar
+                  </button>
+                )}
+                {o.status === 'seleccionada' && (
+                  <button type="button" className="link-button" onClick={() => onUseOffer(o)}>
+                    Usar esta oferta al resolver
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         ),
       )}
@@ -3845,19 +3891,17 @@ function ImportOfferBudgetButton({ onImported }: { onImported: (result: OfferBud
 
   return (
     <div className="card" style={{ padding: 8, marginBottom: 6 }}>
-      <label className="link-button" style={{ display: 'inline-block', cursor: 'pointer' }}>
-        📷 Importar presupuesto (foto o PDF)
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void handleFile(file)
-            e.target.value = ''
-          }}
-        />
-      </label>
+      {/* PEPA — prompt maestro B5: mismo selector de Cámara/Galería/Archivo ya usado en Compras/
+          Documentos (FileOrPdfPicker), en vez del <input type=file> suelto de antes — nunca se
+          construye un segundo selector. `file` siempre null porque este botón no conserva el archivo
+          tras leerlo (su propio resultado ya se enseña debajo, revisable antes de aplicar). */}
+      <FileOrPdfPicker
+        file={null}
+        sheetTitle="Importar presupuesto"
+        onChange={(file) => {
+          if (file) void handleFile(file)
+        }}
+      />
       {loading && (
         <p className="muted" style={{ fontSize: 12 }}>
           Leyendo el documento…
@@ -4224,6 +4268,7 @@ function ProviderOffersPanel({
   const [offers, setOffers] = useState<EventTaskGroupOffer[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -4281,6 +4326,14 @@ function ProviderOffersPanel({
                   <span className="muted" style={{ fontSize: 11 }}>
                     {OFFER_STATUS_LABELS[o.status]}
                   </span>
+                  <OfferCardMenu
+                    open={menuOpenId === o.id}
+                    onToggle={() => setMenuOpenId((cur) => (cur === o.id ? null : o.id))}
+                    onEdit={() => setEditingId(o.id)}
+                    discarded={o.status === 'descartada'}
+                    onToggleDiscard={() => void handleToggleDiscard(o)}
+                    onDelete={() => deleteEventTaskGroupOffer(o).then(reload)}
+                  />
                 </div>
                 {o.supersedesOfferId && (
                   <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
@@ -4315,8 +4368,10 @@ function ProviderOffersPanel({
                   </p>
                 )}
                 {o.attachmentStoragePath && (
-                  <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => void handleViewAttachment(o)}>
-                    📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+                  <button type="button" className="link-button" style={{ fontSize: 12, maxWidth: '100%', overflow: 'hidden' }} onClick={() => void handleViewAttachment(o)}>
+                    <span style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+                      📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+                    </span>
                   </button>
                 )}
                 {eventId && (
@@ -4325,15 +4380,6 @@ function ProviderOffersPanel({
                   </p>
                 )}
                 <OfferItemsPanel offer={o} />
-                <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
-                  <button type="button" className="link-button" onClick={() => void handleToggleDiscard(o)}>
-                    {o.status === 'descartada' ? '↩️ Recibida' : '🗑 Descartar'}
-                  </button>
-                  <button type="button" className="link-button" onClick={() => setEditingId(o.id)}>
-                    ✏️ Editar
-                  </button>
-                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar oferta" onConfirm={() => deleteEventTaskGroupOffer(o).then(reload)} />
-                </div>
               </div>
             ),
           )}
@@ -12396,12 +12442,80 @@ async function saveProviderToContacts(provider: { name: string; type?: string | 
 // Inicio sin depender de entrar en un evento (nunca filtrado por evento). Fase 2 del encargo: CRUD +
 // búsqueda funcionando de verdad — el rediseño visual en fichas compactas desplegables (A4) llega en la
 // Fase 3, reutilizando esta misma pantalla y datos, nunca un sistema paralelo.
+// PEPA — prompt maestro "Continuidad automática", Bloque B1: menú ⋯ de acciones de un proveedor, mismo
+// patrón ya usado en Familia (member-row-more/member-row-actions, FamilyScreen.tsx) en vez de inventar
+// uno nuevo. Editar, llamar/email/copiar y "Guardar en contactos" son comunes a las 2 pantallas de
+// proveedores (registro global y por evento); "extraActions" son las propias de cada una (Desvincular
+// aquí, Archivar/Reactivar allá).
+function ProviderCardMenu({
+  provider,
+  open,
+  onToggle,
+  onEdit,
+  extraActions,
+}: {
+  provider: ProviderGlobal
+  open: boolean
+  onToggle: () => void
+  onEdit: () => void
+  extraActions: ReactNode
+}) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <>
+      <button type="button" className="member-row-more" aria-label={`Acciones de ${provider.name}`} aria-expanded={open} onClick={onToggle}>
+        ⋯
+      </button>
+      {open && (
+        <div className="member-row-actions">
+          <button type="button" className="link-button" onClick={onEdit}>
+            ✏️ Editar
+          </button>
+          {provider.phone && (
+            <a className="link-button" href={`tel:${provider.phone}`}>
+              📞 Llamar
+            </a>
+          )}
+          {provider.email && (
+            <>
+              <a className="link-button" href={`mailto:${provider.email}`}>
+                ✉️ Email
+              </a>
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(provider.email!)
+                    .then(() => {
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 2000)
+                    })
+                    .catch(() => {})
+                }}
+              >
+                {copied ? '✓ Copiado' : '📋 Copiar email'}
+              </button>
+            </>
+          )}
+          <button type="button" className="link-button" onClick={() => void saveProviderToContacts(provider)}>
+            📱 Guardar en contactos
+          </button>
+          {extraActions}
+        </div>
+      )}
+    </>
+  )
+}
+
 function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
   const [providers, setProviders] = useState<ProviderGlobal[]>([])
   const [query, setQuery] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [showIntro, setShowIntro] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -12422,10 +12536,28 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
         ← Volver a Eventos
       </button>
       <h2 className="section-title">📇 Proveedores y ofertas</h2>
-      <p className="muted" style={{ fontSize: 13 }}>
-        Toda la agenda de proveedores de la familia, de cualquier evento — un proveedor descartado en una boda sigue aquí para un cumpleaños o una comunión.
-      </p>
+      <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => setShowIntro((v) => !v)}>
+        {showIntro ? '▾' : '▸'} ℹ️ Qué es esto
+      </button>
+      {showIntro && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          Toda la agenda de proveedores de la familia, de cualquier evento — un proveedor descartado en una boda sigue aquí para un cumpleaños o una comunión.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
+      {showAdd ? (
+        <AddProviderGlobalForm
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      ) : (
+        <button type="button" style={{ marginTop: 8 }} onClick={() => setShowAdd(true)}>
+          + Nuevo proveedor
+        </button>
+      )}
       <input
         type="text"
         value={query}
@@ -12458,9 +12590,19 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
                   {p.type ? ` · ${p.type}` : ''}
                   {p.phone ? ` · ${p.phone}` : ''}
                 </span>
-                <button type="button" className="link-button" onClick={() => setEditingId(p.id)}>
-                  ✏️ Editar
-                </button>
+                <ProviderCardMenu
+                  provider={p}
+                  open={menuOpenId === p.id}
+                  onToggle={() => setMenuOpenId((cur) => (cur === p.id ? null : p.id))}
+                  onEdit={() => setEditingId(p.id)}
+                  extraActions={
+                    <ConfirmButton
+                      label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
+                      confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero conserva su historial.`}
+                      onConfirm={() => updateProviderGlobal(p.id, { archived: !p.archived }).then(reload)}
+                    />
+                  }
+                />
               </div>
               {(p.contactPerson || p.email || p.website || p.address) && (
                 <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
@@ -12472,34 +12614,11 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
                   📝 {p.notes}
                 </p>
               )}
-              <div className="filter-row" style={{ marginTop: 4 }}>
-                <button type="button" className="link-button" onClick={() => void saveProviderToContacts(p)}>
-                  📱 Guardar en contactos
-                </button>
-                <ConfirmButton
-                  label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
-                  confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero conserva su historial.`}
-                  onConfirm={() => updateProviderGlobal(p.id, { archived: !p.archived }).then(reload)}
-                />
-              </div>
               <ProviderOffersPanel eventId={null} globalProviderId={p.id} providerName={p.name} />
             </div>
           ),
         )}
       </div>
-      {showAdd ? (
-        <AddProviderGlobalForm
-          onClose={() => setShowAdd(false)}
-          onAdded={() => {
-            setShowAdd(false)
-            reload()
-          }}
-        />
-      ) : (
-        <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 8 }}>
-          + Nuevo proveedor
-        </button>
-      )}
     </div>
   )
 }
@@ -12685,6 +12804,8 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   const [editingGlobalId, setEditingGlobalId] = useState<string | null>(null)
   const [showLink, setShowLink] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [showIntro, setShowIntro] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   function reload() {
@@ -12733,11 +12854,41 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>📇 Proveedores y ofertas</strong>
-      <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
-        Proveedores de la agenda familiar vinculados a este evento. Descartar aquí no los borra del registro global — siguen disponibles para otros eventos.
-      </p>
+      <button type="button" className="link-button" style={{ fontSize: 11, display: 'block', margin: '2px 0' }} onClick={() => setShowIntro((v) => !v)}>
+        {showIntro ? '▾' : '▸'} ℹ️ Qué es esto
+      </button>
+      {showIntro && (
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+          Proveedores de la agenda familiar vinculados a este evento. Descartar aquí no los borra del registro global — siguen disponibles para otros eventos.
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+        <button type="button" onClick={() => setShowAdd(true)}>
+          + Nuevo proveedor
+        </button>
+        <button type="button" onClick={() => setShowLink(true)}>
+          + Vincular proveedor existente
+        </button>
+      </div>
+      {showAdd && (
+        <AddProviderAndLinkForm
+          eventId={eventId}
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      )}
+      {showLink && (
+        <LinkExistingProviderForm
+          options={availableToLink}
+          onClose={() => setShowLink(false)}
+          onLink={handleLink}
+        />
+      )}
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
         <button type="button" className={'chip' + (filter === 'interesado' ? ' chip-active' : '')} onClick={() => setFilter('interesado')}>
           De interés
         </button>
@@ -12772,58 +12923,35 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                   {g.phone ? ` · ${g.phone}` : ''}
                   {(habitualCounts.get(g.id) ?? 0) >= 2 ? ' · ⭐ Habitual' : ''}
                 </span>
-                <button type="button" className="link-button" onClick={() => setEditingGlobalId(g.id)}>
-                  ✏️ Editar
-                </button>
+                <ProviderCardMenu
+                  provider={g}
+                  open={menuOpenId === link.id}
+                  onToggle={() => setMenuOpenId((cur) => (cur === link.id ? null : link.id))}
+                  onEdit={() => setEditingGlobalId(g.id)}
+                  extraActions={
+                    <>
+                      <button type="button" className="link-button" onClick={() => void handleToggleDiscard(link)}>
+                        {link.status === 'descartado' ? '↩️ Recuperar' : '🗑 Descartar'}
+                      </button>
+                      <ConfirmButton
+                        label="Desvincular"
+                        confirmMessage={`¿Desvincular «${g.name}» de este evento? Sigue disponible en el registro familiar.`}
+                        onConfirm={() => unlinkProviderFromEvent(link.id).then(reload)}
+                      />
+                    </>
+                  }
+                />
               </div>
               {(g.contactPerson || g.email || g.website || g.address) && (
                 <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
                   {[g.contactPerson, g.email, g.website, g.address].filter(Boolean).join(' · ')}
                 </p>
               )}
-              <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
-                <button type="button" className="link-button" onClick={() => void saveProviderToContacts(g)}>
-                  📱 Guardar en contactos
-                </button>
-                <button type="button" className="link-button" onClick={() => void handleToggleDiscard(link)}>
-                  {link.status === 'descartado' ? '↩️ Recuperar' : '🗑 Descartar'}
-                </button>
-                <ConfirmButton
-                  label="Desvincular"
-                  confirmMessage={`¿Desvincular «${g.name}» de este evento? Sigue disponible en el registro familiar.`}
-                  onConfirm={() => unlinkProviderFromEvent(link.id).then(reload)}
-                />
-              </div>
               <ProviderOffersPanel eventId={eventId} globalProviderId={g.id} providerName={g.name} />
             </div>
           )
         })}
       </div>
-      <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-        <button type="button" className="link-button" onClick={() => setShowLink(true)}>
-          + Vincular proveedor existente
-        </button>
-        <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
-          + Nuevo proveedor
-        </button>
-      </div>
-      {showLink && (
-        <LinkExistingProviderForm
-          options={availableToLink}
-          onClose={() => setShowLink(false)}
-          onLink={handleLink}
-        />
-      )}
-      {showAdd && (
-        <AddProviderAndLinkForm
-          eventId={eventId}
-          onClose={() => setShowAdd(false)}
-          onAdded={() => {
-            setShowAdd(false)
-            reload()
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -12976,19 +13104,15 @@ function ImportProviderPhotoButton({ onImported }: { onImported: (result: Provid
 
   return (
     <div className="card" style={{ padding: 8, marginTop: 6 }}>
-      <label className="link-button" style={{ display: 'inline-block', cursor: 'pointer' }}>
-        📷 Importar datos con foto
-        <input
-          type="file"
-          accept="image/*,application/pdf"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) void handleFile(file)
-            e.target.value = ''
-          }}
-        />
-      </label>
+      {/* PEPA — prompt maestro B5: mismo selector de Cámara/Galería/Archivo de siempre, nunca un
+          <input type=file> suelto aparte. */}
+      <FileOrPdfPicker
+        file={null}
+        sheetTitle="Importar datos del proveedor"
+        onChange={(file) => {
+          if (file) void handleFile(file)
+        }}
+      />
       {loading && (
         <p className="muted" style={{ fontSize: 12 }}>
           Leyendo la imagen…

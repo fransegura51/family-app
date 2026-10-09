@@ -1754,7 +1754,7 @@ function FamilyDayView({
     // columnas se desplazan de lado para ver a cada persona, y ese
     // mismo gesto se confundía con "cambiar de día" a mitad de
     // deslizar. Solo las flechas cambian de día en esta vista.
-    <div>
+    <div className="family-view-root">
       <div className="month-nav">
         <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
           ‹

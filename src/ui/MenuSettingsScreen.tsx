@@ -1986,6 +1986,11 @@ export function MenuSettingsScreen() {
         open={openGroup === 'calendario'}
         onToggle={() => toggle('calendario')}
       >
+        {/* Petición real: enlace discreto para volver tras gestionar calendarios enlazados — la gestión
+            de Google/iCal se trasladó aquí desde el antiguo "Externos" del propio Calendario. */}
+        <Link to="/calendario" className="link-button">
+          ← Volver al calendario
+        </Link>
         <CalendarPreferencesSection />
         <CalendarCategoriesSection />
         <CalendarExternalLinksSection />

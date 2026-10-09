@@ -5150,6 +5150,17 @@ textarea {
   margin-top: 0;
 }
 
+/* Bug real reportado (iPhone): los dos botones flotantes de Calendario (calendar-fab-group, "+ Nuevo
+   evento"/"+ Nueva tarea" apilados) ocupan más alto que el hueco genérico que ya reserva .app-content
+   (80px) para un único FAB — confirmado en el navegador: con varias tarjetas en una columna, los botones
+   flotantes llegan a tapar los últimos ~12px de la última tarjeta al hacer scroll hasta el final. Las
+   demás vistas rara vez llegan a tener tanto contenido apilado como para notarlo; Familiar, con varias
+   columnas de tarjetas completas, es la que más lo expone. Hueco extra SOLO en esta vista, nunca tocando
+   el padding genérico de .app-content/.screen que comparten el resto de pantallas de la app. */
+.family-view-root {
+  padding-bottom: 110px;
+}
+
 .family-view-columns {
   display: flex;
   gap: 10px;
@@ -5223,6 +5234,11 @@ textarea {
 
 .time-grid-allday-cell {
   flex: 1;
+  /* Bug real en iPhone (Vista 3 días/Día): un título largo de "todo el día" desbordaba la columna y
+     empujaba el documento entero a un ancho enorme con scroll horizontal — sin min-width:0 un flex item
+     nunca se encoge por debajo del ancho de su contenido sin saltos de línea (aquí, el nombre entero del
+     evento), aunque el chip de dentro ya tuviera overflow:hidden. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -5237,6 +5253,9 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   position: relative;
+  /* Ver nota en .time-grid-allday-cell: el propio chip también necesita min-width:0 para que el
+     ellipsis funcione en vez de desbordar. */
+  min-width: 0;
 }
 
 /* Ver nota en .month-grid-event-bar-title: por encima de .color-segments. */
@@ -5259,6 +5278,10 @@ textarea {
 
 .time-grid-tasks-cell {
   flex: 1;
+  /* Mismo bug/arreglo que .time-grid-allday-cell: una Tarea con título largo desbordaba la columna y
+     el documento entero (confirmado en el navegador: la fila crecía hasta el ancho del texto sin
+     saltos de línea). */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -5283,6 +5306,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 5px;
+  min-width: 0;
 }
 
 .time-grid-task-row .completion-circle-chip {
@@ -5306,6 +5330,10 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
+  /* flex:1 (no solo min-width:0) — sin flex-grow explícito el span de texto se queda a su ancho
+     mínimo (0) en vez de ocupar el hueco disponible antes de recortar con ellipsis. */
+  flex: 1;
+  min-width: 0;
 }
 
 .time-grid-task-title-struck {

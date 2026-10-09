@@ -112,22 +112,15 @@ export function NavShell({ profile }: { profile: Profile }) {
     return () => window.removeEventListener('family-app:tab-order-changed', handleOrderChanged)
   }, [])
 
-  // Un invitado con allowedSections no ve en el menú las secciones que
-  // no le tocan — "Inicio" siempre visible, el resto según permiso.
-  // Para un hijo con su propia cuenta (role 'child'), Economía
-  // (/dinero) se queda visible aunque 'dinero' no esté en su
-  // allowedSections: ahí vive también Educación financiera, que sí debe
-  // verse (FinanceScreen filtra las demás pestañas por dentro).
+  // Un invitado o un hijo con allowedSections no ve en el menú las
+  // secciones que no le tocan — "Inicio" siempre visible, el resto según
+  // permiso. Educación financiera ya no vive dentro de Economía (Pequeños
+  // Grandes, Fase 5): bloquear 'dinero' ahora sí bloquea Economía del
+  // todo para un hijo, sin la excepción que había antes.
   const visibleTabs = order
     .map((path) => NAV_TAB_BY_PATH.get(path))
     .filter((t): t is NavTab => !!t)
-    .filter(
-      (t) =>
-        profile.allowedSections == null ||
-        t.to === '/' ||
-        (profile.role === 'child' && t.to === '/dinero') ||
-        profile.allowedSections.includes(navSectionId(t)),
-    )
+    .filter((t) => profile.allowedSections == null || t.to === '/' || profile.allowedSections.includes(navSectionId(t)))
   const pinned = visibleTabs.slice(0, PINNED_COUNT)
   const rest = visibleTabs.slice(PINNED_COUNT)
 

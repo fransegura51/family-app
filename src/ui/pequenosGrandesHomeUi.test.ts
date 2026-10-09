@@ -45,8 +45,10 @@ describe('PequenosGrandesScreen — hub con tres accesos, ninguno muestra saldos
     expect(PG_SCREEN).toContain("import { RewardsScreen } from '@/ui/RewardsScreen'")
     expect(PG_SCREEN).toContain("if (openModule === 'recompensas') return <RewardsScreen profile={profile} />")
   })
-  it('"Educación financiera" enlaza a donde el módulo vive hoy (Economía) — la Fase 5 es quien lo traslada de verdad, nunca se duplica aquí', () => {
-    expect(PG_SCREEN).toContain('<Link to="/dinero"')
+  it('"Educación financiera" reutiliza KidsFinanceTab de FinanceScreen tal cual (Fase 5) — nunca un segundo mecanismo ni un enlace a /dinero', () => {
+    expect(PG_SCREEN).toContain("import { KidsFinanceTab } from '@/ui/FinanceScreen'")
+    expect(PG_SCREEN).toContain('<KidsFinanceTab />')
+    expect(PG_SCREEN).not.toContain('to="/dinero"')
   })
   it('"Lista de deseos" es un hueco honesto (en construcción), nunca una función fingida ni un enlace roto', () => {
     expect(PG_SCREEN).toContain('ListaDeseosComingSoon')

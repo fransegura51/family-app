@@ -11143,7 +11143,11 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
 // por índice basta y así nunca cambia entre visitas.
 const WALLET_TAB_COLORS = pastelPalette(WALLET_TABS.length)
 
-function KidsFinanceTab() {
+// Pequeños Grandes (prompt maestro, Fase 5) reutiliza este mismo componente
+// como punto de entrada principal para la educación financiera — nunca se
+// duplica su lógica. Sigue usándose también aquí dentro de Economía (vista
+// restringida de un hijo y pestaña "Educación financiera" para un adulto).
+export function KidsFinanceTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
   const [walletTab, setWalletTab] = useState<WalletTransactionType>('ingreso')

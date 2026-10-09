@@ -66,11 +66,12 @@ describe('SectionBreadcrumb — integración: una llamada justo debajo de cada k
   // Las fijas usan un literal JSX (subsection="Inicio"); las que dependen del estado de la propia
   // pantalla usan una expresión (subsection={...}) — se comprueba el texto exacto que de verdad aparece.
   // EventosScreen.tsx queda fuera de esta lista genérica a propósito: su llamada ya no cabe en una
-  // línea (puede subir a tres niveles), así que tiene su propio describe más abajo.
+  // línea (puede subir a tres niveles), así que tiene su propio describe más abajo. RewardsScreen.tsx
+  // también queda fuera: desde Pequeños Grandes (Fase 4/5) ya no es la raíz de su sección, vive anidado
+  // dentro del hub — su caso se cubre en pequenosGrandesEducacionFase5Ui.test.ts.
   const SCREENS: { file: string; expectedCall: string }[] = [
     { file: '/src/ui/FamilyScreen.tsx', expectedCall: "subsection={tab === 'Miembros' ? 'Inicio' : tab}" },
     { file: '/src/ui/CalendarScreen.tsx', expectedCall: 'subsection={CALENDARIO_MENU_ITEM_META[view].label}' },
-    { file: '/src/ui/RewardsScreen.tsx', expectedCall: 'subsection="Inicio"' },
     { file: '/src/ui/AlimentacionScreen.tsx', expectedCall: 'subsection={ALIMENTACION_MENU_ITEM_META[tab].label}' },
     { file: '/src/ui/LocationScreen.tsx', expectedCall: 'subsection={UBICACION_MENU_ITEM_META[tab].label}' },
     { file: '/src/ui/BirthdaysScreen.tsx', expectedCall: 'subsection="Inicio"' },

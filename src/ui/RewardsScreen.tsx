@@ -77,7 +77,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       <div className="kitchen-header kitchen-header-wide">
         <img src={puntosHeaderImg} alt="Puntos y recompensas" className="kitchen-header-img" />
       </div>
-      <SectionBreadcrumb subsection="Inicio" />
+      <SectionBreadcrumb subsection="Puntos y recompensas" />
       <p className="muted">
         Se ganan puntos al marcar "Hecho" un evento o una tarea del calendario que lleve puntos (se pone al crear o editar, cuando es de una sola persona), o si un adulto te los da directamente.
       </p>

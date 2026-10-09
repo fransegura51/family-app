@@ -188,9 +188,10 @@ body {
   background: rgba(255, 255, 255, 0.55);
 }
 
-/* Pequeños Grandes — las tarjetas del hub (Puntos y recompensas / Educación financiera / Lista de
-   deseos) usan una ilustración propia con el título ya dibujado dentro, en vez de color pastel + emoji +
-   texto (petición real: "imagen a toda tarjeta, sin el emoji ni el título en texto encima"). */
+/* Pequeños Grandes — las 4 tarjetas de tipo (Recibir/Ahorrar/Gastar/Impuestos) dentro de Educación
+   financiera usan una ilustración propia con el título ya dibujado dentro, en vez de color pastel + emoji
+   + texto. Las 3 tarjetas de acceso del hub (ver .pg-access-card más abajo) tienen su propio estilo —
+   más pequeñas, en una sola columna, sin recorte. */
 .home-card-photo {
   display: flex;
   flex-direction: column;
@@ -210,6 +211,42 @@ body {
 .home-card-photo-caption {
   padding: 8px 10px;
   text-align: center;
+}
+
+/* Pequeños Grandes — los 3 accesos de la pantalla principal (Puntos y recompensas / Educación
+   financiera / Lista de deseos). Petición real, segunda ronda: una sola columna también en móvil, más
+   pequeñas que la cabecera (~65-70% de su altura — se consigue dándoles el mismo ~66% del ancho de la
+   cabecera, ya que ambas comparten proporción 16:9, así que el alto se achica en la misma medida sin
+   tocar aspect-ratio dos veces), sin recortar al personaje/título (object-fit: contain, nunca cover), sin
+   bloques blancos ni subtítulo debajo (el nombre accesible va en aria-label del propio botón, no pintado
+   en pantalla), sin flechas ni iconos superpuestos. */
+.pg-access-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+}
+
+.pg-access-card {
+  display: block;
+  width: 66%;
+  max-width: 420px;
+  min-width: 200px;
+  aspect-ratio: 16 / 9;
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: var(--card-bg);
+  cursor: pointer;
+}
+
+.pg-access-card-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .card-grid {

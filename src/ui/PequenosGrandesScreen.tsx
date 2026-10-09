@@ -22,8 +22,10 @@ import type { Profile } from '@/domain/types'
 // guardado de Inicio).
 type PequenosGrandesModule = 'recompensas' | 'educacion' | 'deseos' | null
 
-// Cada imagen ya lleva el título dibujado dentro (petición real: "imagen a toda tarjeta, sin el emoji ni
-// el título en texto encima") — el botón no repite ni el icono ni el <h2>, solo el subtítulo debajo.
+// Cada imagen ya lleva el título dibujado dentro — el botón no repite ni el icono ni un texto de
+// título/subtítulo encima ni debajo (petición real, segunda ronda: "eliminar los subtítulos grises
+// visibles, ya que los títulos están incorporados en las ilustraciones"); "stat" solo queda como el
+// nombre accesible del botón (aria-label), nunca pintado en pantalla.
 const MODULE_CARDS: { key: Exclude<PequenosGrandesModule, null>; label: string; stat: string; img: string }[] = [
   { key: 'recompensas', label: 'Puntos y recompensas', stat: 'Gana puntos y canjea premios', img: recompensasCardImg },
   { key: 'educacion', label: 'Educación financiera', stat: 'Ahorrar, gastar y aportar', img: educacionFinancieraCardImg },
@@ -45,11 +47,10 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
       </div>
       <SectionBreadcrumb subsection="Inicio" />
       <p className="muted">Aprender, jugar y soñar</p>
-      <div className="card-grid" style={{ marginTop: 8 }}>
+      <div className="pg-access-list">
         {MODULE_CARDS.map((card) => (
-          <button key={card.key} type="button" className="card event-module-card home-card-photo" onClick={() => setOpenModule(card.key)}>
-            <img src={card.img} alt={card.label} className="home-card-photo-img" />
-            <p className="muted home-card-photo-caption">{card.stat}</p>
+          <button key={card.key} type="button" className="pg-access-card" aria-label={`${card.label} — ${card.stat}`} onClick={() => setOpenModule(card.key)}>
+            <img src={card.img} alt="" className="pg-access-card-img" />
           </button>
         ))}
       </div>

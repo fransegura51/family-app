@@ -28,9 +28,10 @@ describe('PequenosGrandesScreen — las 3 tarjetas del hub usan su propia imagen
     expect(PG_SCREEN).not.toContain('icon:')
     expect(PG_SCREEN).not.toContain('pastelPalette')
   })
-  it('el botón de cada tarjeta es la imagen completa (home-card-photo), con el subtítulo debajo', () => {
-    expect(PG_SCREEN).toContain('className="card event-module-card home-card-photo"')
-    expect(PG_SCREEN).toContain('<img src={card.img} alt={card.label} className="home-card-photo-img" />')
+  it('el botón de cada tarjeta es la imagen completa, sin recortar y sin texto encima ni debajo (Bloque A, segunda ronda)', () => {
+    expect(PG_SCREEN).toContain('className="pg-access-card"')
+    expect(PG_SCREEN).toContain('<img src={card.img} alt="" className="pg-access-card-img" />')
+    expect(PG_SCREEN).not.toContain('home-card-photo-caption')
   })
 })
 

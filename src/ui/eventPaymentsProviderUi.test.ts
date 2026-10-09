@@ -43,3 +43,27 @@ describe('AddPaymentModal — "+ Añadir pago" manual también puede enlazar un 
     expect(submitFn).toContain('providerName: provider?.name ?? null')
   })
 })
+
+// Bug real reportado (Parte B, Fase 2): "Marcar como pagado del todo" se podía tocar sin querer, sin
+// confirmación, y sin forma de corregirlo después sin borrar el pago entero.
+describe('PaymentsSection — "Marcar como pagado del todo" pide confirmación con el importe exacto', () => {
+  it('usa ConfirmButton (dos toques) en vez de un botón directo', () => {
+    expect(PAYMENTS_SECTION).toContain('<ConfirmButton')
+    expect(PAYMENTS_SECTION).toContain('label="Marcar como pagado del todo"')
+  })
+  it('el mensaje de confirmación muestra el importe exacto que queda pendiente y el total', () => {
+    expect(PAYMENTS_SECTION).toContain('confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}')
+  })
+})
+
+describe('PaymentsSection — el importe pagado se puede corregir siempre, no solo mientras queda pendiente', () => {
+  it('"✏️ Corregir lo pagado" no depende de remaining > 0 — está disponible también con el pago ya completo', () => {
+    const editorBlock = window_(PAYMENTS_SECTION, 'editingId === p.id ? (', '{remaining > 0 && (')
+    expect(editorBlock).toContain('✏️ Corregir lo pagado')
+    expect(editorBlock).not.toContain('remaining > 0 &&')
+  })
+  it('guardar recalcula el estado (pendiente/parcial/pagado) a partir del nuevo importe, nunca lo deja desincronizado', () => {
+    const saveFn = window_(PAYMENTS_SECTION, 'async function saveEditingDeposit(', '\n  }')
+    expect(saveFn).toContain('updateEventPayment(p.id, { depositPaid, status: paymentStatusForAmounts(p.totalAmount, depositPaid) })')
+  })
+})

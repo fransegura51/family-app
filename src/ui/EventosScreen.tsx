@@ -541,6 +541,7 @@ import type {
   EventModuleKey,
   EventMoment,
   EventPayment,
+  EventPaymentStatus,
   EventProvider,
   EventServiceId,
   EventSpecialDetail,
@@ -11113,12 +11114,24 @@ function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onCl
 // Pagos / fianzas.
 // ---------------------------------------------------------------------
 
+// Status según los importes, igual que ya calcula addEventPayment al crear uno — reutilizado aquí para
+// que editar el importe pagado a mano (Fase 2, "corregir un pagado del todo por error") recalcule el
+// mismo estado, en vez de dejarlo desincronizado.
+function paymentStatusForAmounts(totalAmount: number, depositPaid: number): EventPaymentStatus {
+  return depositPaid <= 0 ? 'pendiente' : depositPaid >= totalAmount ? 'pagado' : 'parcial'
+}
+
 function PaymentsSection({ event }: { event: FamilyEvent }) {
   const eventId = event.id
   const [payments, setPayments] = useState<EventPayment[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [linkingReminderId, setLinkingReminderId] = useState<string | null>(null)
+  // Fase 2 (bug real: "pagado del todo" sin forma de corregirlo) — editar el importe pagado está SIEMPRE
+  // disponible, nunca solo mientras remaining > 0, para poder deshacer una marca accidental sin borrar el
+  // pago entero.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState('')
 
   function reload() {
     listEventPayments(eventId)
@@ -11140,6 +11153,21 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
     }
   }
 
+  async function saveEditingDeposit(p: EventPayment) {
+    const depositPaid = Number(editingValue)
+    if (Number.isNaN(depositPaid) || depositPaid < 0) {
+      setError('El importe pagado no es válido.')
+      return
+    }
+    try {
+      await updateEventPayment(p.id, { depositPaid, status: paymentStatusForAmounts(p.totalAmount, depositPaid) })
+      setEditingId(null)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo corregir el importe pagado'))
+    }
+  }
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>🧾 Pagos y fianzas</strong>
@@ -11157,18 +11185,49 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
                   </div>
                   <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
                 </div>
-                <p className="muted" style={{ margin: '2px 0' }}>
-                  {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
-                  {p.dueDate ? ` · vence ${p.dueDate}` : ''}
-                </p>
+                {editingId === p.id ? (
+                  <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
+                    <span className="muted">{p.totalAmount.toFixed(2)} € · pagado</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={editingValue}
+                      onChange={(e) => setEditingValue(e.target.value)}
+                      style={{ width: 90 }}
+                      autoFocus
+                    />
+                    <button type="button" className="link-button" onClick={() => saveEditingDeposit(p)}>
+                      Guardar
+                    </button>
+                    <button type="button" className="link-button" onClick={() => setEditingId(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <p className="muted" style={{ margin: '2px 0' }}>
+                    {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
+                    {p.dueDate ? ` · vence ${p.dueDate}` : ''}
+                    {' · '}
+                    <button
+                      type="button"
+                      className="link-button"
+                      style={{ display: 'inline', padding: 0 }}
+                      onClick={() => {
+                        setEditingId(p.id)
+                        setEditingValue(String(p.depositPaid))
+                      }}
+                    >
+                      ✏️ Corregir lo pagado
+                    </button>
+                  </p>
+                )}
                 {remaining > 0 && (
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
-                  >
-                    Marcar como pagado del todo
-                  </button>
+                  <ConfirmButton
+                    label="Marcar como pagado del todo"
+                    confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}
+                    onConfirm={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
+                  />
                 )}
                 {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
                   <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>

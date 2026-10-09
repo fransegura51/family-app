@@ -1,4 +1,6 @@
+import { postLiveLocationNative } from '@/data/liveLocationNative'
 import { supabase } from '@/data/supabaseClient'
+import { isNativeApp } from '@/services/nativeApp'
 import type {
   AutomationRule,
   AutomationTriggerType,
@@ -8,6 +10,18 @@ import type {
   MemberLocation,
   MemberLocationPoint,
 } from '@/domain/types'
+
+// Contexto para escribir la posición desde la app nativa: token de la sesión (local, sin red salvo que caduque) y familia recordada por usuario.
+let nativeFamilyCache: { userId: string; familyId: string } | null = null
+async function nativeWriteContext(): Promise<{ accessToken: string; familyId: string }> {
+  const { data } = await supabase.auth.getSession()
+  const session = data.session
+  if (!session) throw new Error('No autenticado')
+  if (!nativeFamilyCache || nativeFamilyCache.userId !== session.user.id) {
+    nativeFamilyCache = { userId: session.user.id, familyId: await currentFamilyId() }
+  }
+  return { accessToken: session.access_token, familyId: nativeFamilyCache.familyId }
+}
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -166,6 +180,22 @@ export async function listMemberLocations(): Promise<MemberLocation[]> {
 // de puntos en pocas horas quieta en un solo sitio (ver
 // services/locationSharing.ts).
 export async function updateMemberLocation(memberId: string, latitude: number, longitude: number): Promise<void> {
+  if (isNativeApp()) {
+    // App nativa: la petición la hace la capa nativa (Android frena las de la web en segundo plano) y la familia se recuerda en memoria
+    // para no preguntarla en cada posición.
+    const ctx = await nativeWriteContext()
+    await postLiveLocationNative({
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
+      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      accessToken: ctx.accessToken,
+      familyId: ctx.familyId,
+      memberId,
+      latitude,
+      longitude,
+      recordedAt: new Date().toISOString(),
+    })
+    return
+  }
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('member_locations').upsert({
     member_id: memberId,

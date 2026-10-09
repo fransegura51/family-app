@@ -1,3 +1,6 @@
+import { isNativeApp } from '@/services/nativeApp'
+import { watchNativePosition } from '@/services/nativeLocation'
+
 // Wrapper fino sobre la Geolocation API del navegador. Nunca se llama
 // automáticamente: solo tras una acción explícita del usuario (Skill 23).
 
@@ -46,6 +49,8 @@ export function watchPosition(
   onUpdate: (coords: Coordinates) => void,
   onError?: (message: string, code: number) => void,
 ): () => void {
+  // Dentro de la app nativa, la ubicación sigue con el móvil bloqueado (la API web del navegador se para al bloquear).
+  if (isNativeApp()) return watchNativePosition(onUpdate, onError)
   if (!isGeolocationSupported()) {
     onError?.('Este dispositivo no soporta geolocalización.', -1)
     return () => {}

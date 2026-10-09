@@ -1,0 +1,51 @@
+name: Android APK
+
+# Fabrica el archivo de instalación (APK) de la app de Android de PEPA. Se lanza a mano (Actions → Android APK → Run workflow); no toca el
+# despliegue de la web. La app es una cáscara que abre la PEPA publicada (ver capacitor.config.ts), así que solo hace falta una APK nueva
+# cuando cambia algo NATIVO (permisos, ubicación en segundo plano, icono…). La llave de firma vive en los secretos del repositorio
+# (ANDROID_KEYSTORE_B64 y compañía), nunca en el código: el repositorio es público.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - name: Sincronizar el proyecto de Android
+        run: npx cap sync android
+      - name: Preparar la llave de firma
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/pepa-android.p12"
+      - name: Compilar el APK firmado
+        working-directory: android
+        env:
+          PEPA_KEYSTORE_PATH: ${{ runner.temp }}/pepa-android.p12
+          PEPA_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PEPA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PEPA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon -PpepaVersionCode=${{ github.run_number }} -PpepaVersionName=1.0.${{ github.run_number }}
+      - name: Renombrar
+        run: cp android/app/build/outputs/apk/release/app-release.apk PEPA-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PEPA-android
+          path: PEPA-android.apk
+          if-no-files-found: error

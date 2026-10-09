@@ -21,9 +21,12 @@ import {
   listBudgets,
   listExpenses,
   listGoals,
+  listKidIncomeSplitConfigs,
   listResolvedInternalTransferDestinations,
   listTags,
   listWalletTransactions,
+  registerKidIncome,
+  setKidIncomeSplitConfig,
   updateBudgetCategory,
   updateExpense,
   updateTag,
@@ -190,12 +193,14 @@ import {
   budgetPeriodRange,
   budgetSpent,
   computeSavingsDestinedByMember,
+  DEFAULT_KID_INCOME_SPLIT,
   stableCategoryColors,
   isComprasExpense,
   isFoodCategory,
   isInternalTransferCategory,
   resolveCategoryClassification,
   resolveExpenseFixed,
+  splitKidIncome,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
@@ -228,6 +233,7 @@ import type {
   ExpenseSource,
   FamilyMember,
   KidGoal,
+  KidIncomeSplitConfig,
   KidWalletTransaction,
   Product,
   ProductPrice,
@@ -556,7 +562,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
         </div>
         <SectionBreadcrumb subsection="Educación financiera" />
-        <KidsFinanceTab />
+        <KidsFinanceTab profile={profile} />
       </div>
     )
   }
@@ -699,7 +705,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Previsión de pagos' && <PrevisionPagosTab key={refreshKey} categories={categories} />}
-      {tab === 'Educación financiera' && <KidsFinanceTab />}
+      {tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}
 
       {showNewMovement && (
         <NewMovementModal
@@ -11182,7 +11188,8 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
 // como punto de entrada principal para la educación financiera — nunca se
 // duplica su lógica. Sigue usándose también aquí dentro de Economía (vista
 // restringida de un hijo y pestaña "Educación financiera" para un adulto).
-export function KidsFinanceTab() {
+export function KidsFinanceTab({ profile }: { profile: Profile }) {
+  const isAdult = profile.role === 'admin' || profile.role === 'adult'
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
   // null = el grid de 4 tarjetas grandes (Fase 6); una vez tocada una tarjeta, su vista de detalle
@@ -11190,6 +11197,7 @@ export function KidsFinanceTab() {
   const [openCard, setOpenCard] = useState<WalletTransactionType | null>(null)
   const [transactions, setTransactions] = useState<KidWalletTransaction[]>([])
   const [goals, setGoals] = useState<KidGoal[]>([])
+  const [splitConfigs, setSplitConfigs] = useState<KidIncomeSplitConfig[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -11199,13 +11207,14 @@ export function KidsFinanceTab() {
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listFamilyMembers(), listWalletTransactions(), listGoals()])
-      .then(([m, t, g]) => {
+    Promise.all([listFamilyMembers(), listWalletTransactions(), listGoals(), listKidIncomeSplitConfigs()])
+      .then(([m, t, g, s]) => {
         const kids = m.filter((x) => x.memberType === 'child' || x.memberType === 'baby')
         setMembers(kids)
         if (kids.length > 0 && !activeMemberId) setActiveMemberId(kids[0].id)
         setTransactions(t)
         setGoals(g)
+        setSplitConfigs(s)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => {
@@ -11222,6 +11231,9 @@ export function KidsFinanceTab() {
   const balance = activeMemberId ? walletBalance(activeMemberId, transactions) : 0
   const savedTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'ahorro', transactions) : 0
   const memberGoals = goals.filter((g) => g.memberId === activeMemberId)
+  // Reparto automático de Fase 7 — un niño sin fila propia en kid_income_split_configs usa el 60/20/20
+  // obligatorio por defecto (mismo criterio que el RPC register_kid_income en el servidor).
+  const activeSplitConfig = splitConfigs.find((c) => c.memberId === activeMemberId) ?? DEFAULT_KID_INCOME_SPLIT
 
   if (loading) return <p className="muted">Cargando…</p>
   if (members.length === 0) return <p className="muted">No hay niños/bebés en la familia todavía.</p>
@@ -11258,6 +11270,10 @@ export function KidsFinanceTab() {
           {cardInfo.label}: {categoryTotal.toFixed(2)} €
         </h2>
         <p className="muted">{cardInfo.explain}</p>
+
+        {openCard === 'ingreso' && (
+          <IncomeSplitInfo isAdult={isAdult} memberId={activeMemberId} config={activeSplitConfig} onSaved={reload} />
+        )}
 
         {openCard === 'ahorro' && (
           <>
@@ -11299,7 +11315,7 @@ export function KidsFinanceTab() {
           ))}
           {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
         </div>
-        <AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} onAdded={reload} />
+        <AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} splitConfig={openCard === 'ingreso' ? activeSplitConfig : null} onAdded={reload} />
       </div>
     )
   }
@@ -11321,6 +11337,111 @@ export function KidsFinanceTab() {
         ))}
       </div>
     </div>
+  )
+}
+
+// Pequeños Grandes, Fase 7 — el reparto SIEMPRE se ve (para que el niño entienda por qué solo una parte
+// de lo que recibe queda disponible); solo un adulto puede cambiarlo ("adulto-configurable por niño",
+// petición real del prompt maestro) — nunca el propio niño, ni siquiera por aquí (RLS, migración 0230).
+function IncomeSplitInfo({
+  isAdult,
+  memberId,
+  config,
+  onSaved,
+}: {
+  isAdult: boolean
+  memberId: string
+  config: { ahorroPct: number; impuestoPct: number }
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const disponiblePct = 100 - config.ahorroPct - config.impuestoPct
+
+  if (editing) {
+    return <EditIncomeSplitForm memberId={memberId} config={config} onDone={() => setEditing(false)} onSaved={onSaved} />
+  }
+
+  return (
+    <p className="muted">
+      Reparto automático: {config.ahorroPct}% a ahorro · {config.impuestoPct}% a impuestos · {disponiblePct}% queda disponible.
+      {isAdult && (
+        <button type="button" className="link-button" onClick={() => setEditing(true)} style={{ marginLeft: 6 }}>
+          ✏️ Editar reparto
+        </button>
+      )}
+    </p>
+  )
+}
+
+// "Los cambios afectan solo a ingresos futuros" — petición real: el reparto guardado aquí solo lo lee
+// register_kid_income al registrar un ingreso NUEVO (migración 0230); nunca recalcula movimientos ya
+// hechos, así que no hace falta ninguna lógica especial para "no tocar el pasado": estructuralmente no
+// puede tocarlo.
+function EditIncomeSplitForm({
+  memberId,
+  config,
+  onDone,
+  onSaved,
+}: {
+  memberId: string
+  config: { ahorroPct: number; impuestoPct: number }
+  onDone: () => void
+  onSaved: () => void
+}) {
+  const [ahorroPct, setAhorroPct] = useState(String(config.ahorroPct))
+  const [impuestoPct, setImpuestoPct] = useState(String(config.impuestoPct))
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const ahorroNum = Number(ahorroPct)
+  const impuestoNum = Number(impuestoPct)
+  const disponibleNum = 100 - ahorroNum - impuestoNum
+  // "Los porcentajes deben sumar 100" — ahorro + impuestos nunca puede superar 100 (lo disponible es el
+  // resto, puede ser 0 si se reparte todo, pero nunca negativo).
+  const valid = Number.isInteger(ahorroNum) && Number.isInteger(impuestoNum) && ahorroNum >= 0 && impuestoNum >= 0 && ahorroNum + impuestoNum <= 100
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!valid) {
+      setError('Ahorro + impuestos no puede superar el 100%.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await setKidIncomeSplitConfig({ memberId, ahorroPct: ahorroNum, impuestoPct: impuestoNum })
+      onSaved()
+      onDone()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <h2>Reparto automático al recibir dinero</h2>
+      <p className="muted">Solo afecta a los ingresos a partir de ahora — no cambia lo ya repartido.</p>
+      <label>
+        % a ahorro
+        <input type="number" step="1" min="0" max="100" value={ahorroPct} onChange={(e) => setAhorroPct(e.target.value)} required />
+      </label>
+      <label>
+        % a impuestos
+        <input type="number" step="1" min="0" max="100" value={impuestoPct} onChange={(e) => setImpuestoPct(e.target.value)} required />
+      </label>
+      <p className="muted">% disponible (el resto): {disponibleNum}</p>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving || !valid}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -11369,15 +11490,23 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
 // que estés (Ingresos/Ahorro/Gastos/Impuestos), así no hay que elegirlo
 // dos veces ni se puede registrar un ingreso sin querer en la pestaña
 // de gastos.
+//
+// Pequeños Grandes, Fase 7 — un "ingreso" ya no es un insert directo: pasa SIEMPRE por
+// registerKidIncome (el RPC register_kid_income reparte ahorro/impuesto en la misma transacción
+// atómica, migración 0230) — nunca un segundo mecanismo ni 2-3 inserts sueltos desde el cliente que
+// pudieran quedarse a medias. splitConfig solo se usa para la vista previa (el reparto real lo decide el
+// servidor con la configuración guardada en ese momento).
 function AddTransactionForm({
   memberId,
   type,
   formLabel,
+  splitConfig,
   onAdded,
 }: {
   memberId: string
   type: WalletTransactionType
   formLabel: string
+  splitConfig: { ahorroPct: number; impuestoPct: number } | null
   onAdded: () => void
 }) {
   const [amount, setAmount] = useState('')
@@ -11385,12 +11514,19 @@ function AddTransactionForm({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const parsedAmount = Number(amount)
+  const preview = splitConfig && parsedAmount > 0 ? splitKidIncome(parsedAmount, splitConfig) : null
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     try {
-      await addWalletTransaction({ memberId, type, amount: Number(amount), description })
+      if (type === 'ingreso') {
+        await registerKidIncome({ memberId, amount: parsedAmount, description })
+      } else {
+        await addWalletTransaction({ memberId, type, amount: parsedAmount, description })
+      }
       setAmount('')
       setDescription('')
       onAdded()
@@ -11408,6 +11544,11 @@ function AddTransactionForm({
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
       </label>
+      {preview && (
+        <p className="muted">
+          Se repartirá: {preview.ahorro.toFixed(2)} € a ahorro · {preview.impuesto.toFixed(2)} € a impuestos · {preview.disponible.toFixed(2)} € quedan disponibles.
+        </p>
+      )}
       <label>
         Descripción
         <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />

@@ -22,13 +22,15 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
+// El detalle de la firma (profile como prop, Fase 7) se cubre en kidsIncomeSplitFase7Ui.test.ts — aquí
+// solo se comprueba que sigue siendo la MISMA función exportada, reutilizada en los 3 sitios de siempre.
 describe('FinanceScreen — KidsFinanceTab se exporta para reutilizarse, nunca se duplica', () => {
   it('sigue siendo la misma función, ahora exportada', () => {
-    expect(FINANCE_SCREEN).toContain('export function KidsFinanceTab()')
+    expect(FINANCE_SCREEN).toContain('export function KidsFinanceTab(')
   })
   it('sigue usándose también dentro de Economía (vista restringida de un hijo y pestaña de un adulto)', () => {
-    expect(FINANCE_SCREEN).toContain('<KidsFinanceTab />')
-    const matches = FINANCE_SCREEN.match(/<KidsFinanceTab \/>/g) ?? []
+    expect(FINANCE_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
+    const matches = FINANCE_SCREEN.match(/<KidsFinanceTab profile=\{profile\} \/>/g) ?? []
     expect(matches.length).toBe(2)
   })
 })
@@ -36,7 +38,7 @@ describe('FinanceScreen — KidsFinanceTab se exporta para reutilizarse, nunca s
 describe('PequenosGrandesScreen — Educación financiera reutiliza KidsFinanceTab como punto de acceso principal', () => {
   it('importa KidsFinanceTab de FinanceScreen, nunca un enlace a /dinero ni una copia', () => {
     expect(PG_SCREEN).toContain("import { KidsFinanceTab } from '@/ui/FinanceScreen'")
-    expect(PG_SCREEN).toContain('<KidsFinanceTab />')
+    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
   })
   it('la tarjeta del hub abre el módulo "educacion"', () => {
     expect(PG_SCREEN).toContain("{ key: 'educacion', label: 'Educación financiera'")

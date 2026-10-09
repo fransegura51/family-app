@@ -10,6 +10,7 @@ import {
   isInternalTransferCategory,
   resolveCategoryClassification,
   resolveExpenseFixed,
+  splitKidIncome,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
@@ -288,16 +289,33 @@ describe('categoryColors', () => {
 
 describe('hucha de los niños', () => {
   const tx: KidWalletTransaction[] = [
-    { id: '1', familyId: 'f', memberId: 'eric', type: 'ingreso', amount: 10, description: '', createdAt: '' },
-    { id: '2', familyId: 'f', memberId: 'eric', type: 'ahorro', amount: 3, description: '', createdAt: '' },
-    { id: '3', familyId: 'f', memberId: 'eric', type: 'gasto', amount: 2, description: '', createdAt: '' },
-    { id: '4', familyId: 'f', memberId: 'eric', type: 'impuesto', amount: 1, description: '', createdAt: '' },
-    { id: '5', familyId: 'f', memberId: 'fernando', type: 'ingreso', amount: 50, description: '', createdAt: '' },
+    { id: '1', familyId: 'f', memberId: 'eric', type: 'ingreso', amount: 10, description: '', createdAt: '', sourceIncomeId: null },
+    { id: '2', familyId: 'f', memberId: 'eric', type: 'ahorro', amount: 3, description: '', createdAt: '', sourceIncomeId: '1' },
+    { id: '3', familyId: 'f', memberId: 'eric', type: 'gasto', amount: 2, description: '', createdAt: '', sourceIncomeId: null },
+    { id: '4', familyId: 'f', memberId: 'eric', type: 'impuesto', amount: 1, description: '', createdAt: '', sourceIncomeId: '1' },
+    { id: '5', familyId: 'f', memberId: 'fernando', type: 'ingreso', amount: 50, description: '', createdAt: '', sourceIncomeId: null },
   ]
   it('el disponible descuenta ahorro, gasto e impuestos, y no mezcla niños', () => {
     expect(walletBalance('eric', tx)).toBe(4)
     expect(walletBalance('fernando', tx)).toBe(50)
     expect(walletCategoryTotal('eric', 'ahorro', tx)).toBe(3)
+  })
+})
+
+describe('splitKidIncome — Pequeños Grandes, Fase 7: reparto automático, siempre suma el importe exacto', () => {
+  it('60/20/20 con un importe redondo', () => {
+    expect(splitKidIncome(10, { ahorroPct: 60, impuestoPct: 20 })).toEqual({ ahorro: 6, impuesto: 2, disponible: 2 })
+  })
+  it('60/20/20 con decimales — disponible absorbe el resto, nunca un redondeo propio descuadrado', () => {
+    const { ahorro, impuesto, disponible } = splitKidIncome(7.33, { ahorroPct: 60, impuestoPct: 20 })
+    expect(Math.round((ahorro + impuesto + disponible) * 100) / 100).toBe(7.33)
+  })
+  it('un céntimo (caso límite) también cuadra exacto', () => {
+    const { ahorro, impuesto, disponible } = splitKidIncome(0.01, { ahorroPct: 60, impuestoPct: 20 })
+    expect(Math.round((ahorro + impuesto + disponible) * 100) / 100).toBe(0.01)
+  })
+  it('0% a ahorro/impuesto deja todo disponible (reproduce el comportamiento de antes de esta fase)', () => {
+    expect(splitKidIncome(10, { ahorroPct: 0, impuestoPct: 0 })).toEqual({ ahorro: 0, impuesto: 0, disponible: 10 })
   })
 })
 

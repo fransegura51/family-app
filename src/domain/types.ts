@@ -359,6 +359,9 @@ export interface KidWalletTransaction {
   amount: number
   description: string
   createdAt: string
+  // Pequeños Grandes, Fase 7: cuando este movimiento es el reparto automático (ahorro/impuesto) generado
+  // al registrar un ingreso, apunta a ese ingreso — null en cualquier movimiento manual de siempre.
+  sourceIncomeId: string | null
 }
 
 export interface KidGoal {
@@ -367,6 +370,15 @@ export interface KidGoal {
   memberId: string
   title: string
   targetAmount: number
+}
+
+// Pequeños Grandes, Fase 7: reparto automático al recibir dinero. Solo ahorro/impuesto se guardan — lo
+// disponible es siempre el resto (100 - ahorroPct - impuestoPct), nunca una tercera cifra que pudiera
+// desincronizarse. Configuración obligatoria por defecto 60/20/20; un adulto puede cambiarla por niño.
+export interface KidIncomeSplitConfig {
+  memberId: string
+  ahorroPct: number
+  impuestoPct: number
 }
 
 export type AutomationTriggerType = 'llegada' | 'salida' | 'hora_diaria'

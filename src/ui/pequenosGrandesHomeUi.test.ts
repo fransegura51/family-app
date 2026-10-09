@@ -47,7 +47,7 @@ describe('PequenosGrandesScreen — hub con tres accesos, ninguno muestra saldos
   })
   it('"Educación financiera" reutiliza KidsFinanceTab de FinanceScreen tal cual (Fase 5) — nunca un segundo mecanismo ni un enlace a /dinero', () => {
     expect(PG_SCREEN).toContain("import { KidsFinanceTab } from '@/ui/FinanceScreen'")
-    expect(PG_SCREEN).toContain('<KidsFinanceTab />')
+    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
     expect(PG_SCREEN).not.toContain('to="/dinero"')
   })
   it('"Lista de deseos" es un hueco honesto (en construcción), nunca una función fingida ni un enlace roto', () => {

@@ -1,0 +1,19 @@
+-- FIX REAL (descubierto probando en vivo la Fase 7 de Pequeños Grandes): register_kid_income fallaba con
+-- "permission denied for schema private" al llamarlo desde la app. El rol `authenticated` ya tenía
+-- EXECUTE en cada función de private.* (current_family_id, current_role_in_family,
+-- member_in_current_family...) pero nunca se le concedió USAGE sobre el propio esquema `private` —
+-- Postgres exige las dos cosas para resolver una llamada `private.funcion()` dentro del CUERPO de una
+-- función `security invoker` (se resuelve con los privilegios de quien llama, en el momento de
+-- ejecutarse). Dentro de una política RLS esto nunca dio problema porque el nombre se resuelve una sola
+-- vez, al crear la política, con privilegios de superusuario — por eso cientos de políticas llevan
+-- private.* sin fallar nunca, pero una función nueva como register_kid_income sí lo nota en cuanto la
+-- llama un usuario real.
+--
+-- Mismo motivo explica por qué request_reward_redemption (Fase 4, migración 0229) muy probablemente
+-- nunca ha completado un canje real en producción hasta ahora — este grant lo arregla también, sin
+-- tocar su código. USAGE en un esquema no expone nada nuevo por sí solo: cada función de private.* sigue
+-- necesitando su propio GRANT EXECUTE aparte (ya existía antes de esta migración, se mantiene igual), y
+-- `private` no contiene ninguna tabla — solo funciones, varias de ellas deliberadamente sin EXECUTE para
+-- authenticated (evaluate_location_rules, fire_daily_automations, send_family_push — uso interno/cron,
+-- sin cambios aquí).
+grant usage on schema private to authenticated;

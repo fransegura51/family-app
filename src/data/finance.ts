@@ -8,6 +8,7 @@ import type {
   ExpenseKind,
   ExpenseSource,
   KidGoal,
+  KidIncomeSplitConfig,
   KidWalletTransaction,
   Tag,
   WalletTransactionType,
@@ -492,7 +493,7 @@ export async function reorderTags(orderedIds: string[]): Promise<void> {
 export async function listWalletTransactions(): Promise<KidWalletTransaction[]> {
   const { data, error } = await supabase
     .from('kid_wallet_transactions')
-    .select('id, family_id, member_id, type, amount, description, created_at')
+    .select('id, family_id, member_id, type, amount, description, created_at, source_income_id')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -503,6 +504,7 @@ export async function listWalletTransactions(): Promise<KidWalletTransaction[]> 
     amount: Number(r.amount),
     description: r.description,
     createdAt: r.created_at,
+    sourceIncomeId: r.source_income_id,
   }))
 }
 
@@ -520,6 +522,34 @@ export async function addWalletTransaction(input: {
     amount: input.amount,
     description: input.description,
   })
+  if (error) throw error
+}
+
+// Pequeños Grandes, Fase 7 — un ingreso pasa SIEMPRE por este RPC (nunca un insert directo): reparte
+// ahorro/impuesto en la misma transacción atómica del servidor, con el reparto configurado para ese niño
+// (o 60/20/20 por defecto si todavía no tiene uno propio) — ver migración 0230.
+export async function registerKidIncome(input: { memberId: string; amount: number; description: string }): Promise<void> {
+  const { error } = await supabase.rpc('register_kid_income', {
+    p_member_id: input.memberId,
+    p_amount: input.amount,
+    p_description: input.description,
+  })
+  if (error) throw error
+}
+
+export async function listKidIncomeSplitConfigs(): Promise<KidIncomeSplitConfig[]> {
+  const { data, error } = await supabase.from('kid_income_split_configs').select('member_id, ahorro_pct, impuesto_pct')
+  if (error) throw error
+  return data.map((r) => ({ memberId: r.member_id, ahorroPct: r.ahorro_pct, impuestoPct: r.impuesto_pct }))
+}
+
+// Solo un adulto puede guardar (ver RLS, migración 0230) — "disponible" nunca se manda ni se guarda, es
+// siempre 100 - ahorroPct - impuestoPct.
+export async function setKidIncomeSplitConfig(input: { memberId: string; ahorroPct: number; impuestoPct: number }): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('kid_income_split_configs')
+    .upsert({ member_id: input.memberId, family_id: familyId, ahorro_pct: input.ahorroPct, impuesto_pct: input.impuestoPct, updated_at: new Date().toISOString() })
   if (error) throw error
 }
 

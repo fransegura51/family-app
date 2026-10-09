@@ -35,7 +35,7 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
   useSectionHome(() => setOpenModule(null))
 
   if (openModule === 'recompensas') return <RewardsScreen profile={profile} />
-  if (openModule === 'educacion') return <EducacionFinancieraTab onBack={() => setOpenModule(null)} />
+  if (openModule === 'educacion') return <EducacionFinancieraTab profile={profile} onBack={() => setOpenModule(null)} />
   if (openModule === 'deseos') return <ListaDeseosComingSoon onBack={() => setOpenModule(null)} />
 
   return (
@@ -64,7 +64,7 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
 // 'dinero', ver NavShell) llega aquí igual, porque kid_wallet_transactions/kid_goals tienen su propia
 // RLS (migración 0097) completamente independiente de 'dinero' — nunca toca bank_accounts/bank_
 // connections/bank_transactions, ni directa ni indirectamente.
-function EducacionFinancieraTab({ onBack }: { onBack: () => void }) {
+function EducacionFinancieraTab({ profile, onBack }: { profile: Profile; onBack: () => void }) {
   return (
     <div className="screen">
       <div className="kitchen-header kitchen-header-wide">
@@ -74,7 +74,7 @@ function EducacionFinancieraTab({ onBack }: { onBack: () => void }) {
       <button type="button" className="link-button" onClick={onBack}>
         ← Volver a Pequeños Grandes
       </button>
-      <KidsFinanceTab />
+      <KidsFinanceTab profile={profile} />
     </div>
   )
 }

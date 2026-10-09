@@ -56,7 +56,7 @@ describe('KidsFinanceTab — grid de 4 tarjetas grandes, toca para ver el detall
   it('el formulario de nuevo movimiento (AddTransactionForm) solo se renderiza dentro del detalle de una tarjeta abierta, nunca en el grid', () => {
     const grid = body.slice(0, body.indexOf('if (openCard)'))
     expect(grid).not.toContain('<AddTransactionForm')
-    expect(body).toContain('<AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} onAdded={reload} />')
+    expect(body).toContain('<AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} splitConfig={openCard === \'ingreso\' ? activeSplitConfig : null} onAdded={reload} />')
   })
   it('"← Volver" cierra la tarjeta y vuelve al grid', () => {
     expect(body).toContain('onClick={() => setOpenCard(null)}')

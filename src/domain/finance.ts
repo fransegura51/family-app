@@ -382,3 +382,20 @@ export function walletCategoryTotal(
     .filter((t) => t.memberId === memberId && t.type === type)
     .reduce((sum, t) => sum + t.amount, 0)
 }
+
+// Pequeños Grandes, Fase 7 — reparto automático de un ingreso (vista previa en el cliente; el registro
+// de verdad lo hace el RPC register_kid_income, con exactamente el mismo cálculo). Redondea ahorro e
+// impuesto al céntimo y deja que lo disponible sea SIEMPRE el resto (amount - ahorro - impuesto), nunca
+// un tercer redondeo independiente — así los tres trozos suman el importe original exacto, céntimo a
+// céntimo, igual que ya hace el reparto de "Previsión de pagos".
+export function splitKidIncome(
+  amount: number,
+  config: { ahorroPct: number; impuestoPct: number },
+): { ahorro: number; impuesto: number; disponible: number } {
+  const ahorro = Math.round(amount * config.ahorroPct) / 100
+  const impuesto = Math.round(amount * config.impuestoPct) / 100
+  const disponible = Math.round((amount - ahorro - impuesto) * 100) / 100
+  return { ahorro, impuesto, disponible }
+}
+
+export const DEFAULT_KID_INCOME_SPLIT = { ahorroPct: 60, impuestoPct: 20 }

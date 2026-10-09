@@ -25,26 +25,12 @@ describe('data/events.ts — isEventProviderLinked comprueba pagos, encargos act
   })
 })
 
-describe('ProvidersSection — borrar comprueba el historial antes; archivar nunca borra nada', () => {
-  const PROVIDERS_SECTION = window_(UI, 'function ProvidersSection(', '\nfunction ProviderExtraFields(')
-
-  it('handleDelete llama a isEventProviderLinked antes de deleteEventProvider, y si está enlazado NO borra', () => {
-    const fn = window_(PROVIDERS_SECTION, 'async function handleDelete(', '\n  }')
-    expect(fn).toContain('await isEventProviderLinked(p.id)')
-    const linkedBranch = window_(fn, 'if (await isEventProviderLinked(p.id)) {', 'return')
-    expect(linkedBranch).not.toContain('deleteEventProvider')
-    expect(fn.indexOf('deleteEventProvider')).toBeGreaterThan(fn.indexOf('return'))
-  })
-  it('"📦 Archivar"/"♻️ Reactivar" usa updateEventProvider({ archived }), nunca deleteEventProvider', () => {
-    const archiveBtn = window_(PROVIDERS_SECTION, 'label={p.archived', 'onConfirm={() => updateEventProvider(p.id, { archived: !p.archived }).then(reload)}')
-    expect(archiveBtn.length).toBeGreaterThan(0)
-  })
-  it('los proveedores archivados se separan de los activos y solo se ven tras pedirlo explícitamente', () => {
-    expect(PROVIDERS_SECTION).toContain('providers.filter((p) => !p.archived)')
-    expect(PROVIDERS_SECTION).toContain('providers.filter((p) => p.archived)')
-    expect(PROVIDERS_SECTION).toContain('showArchived')
-  })
-})
+// NOTA (PEPA Eventos, prompt maestro Fase 3): el "borrar con comprobación de historial"/"archivar" de
+// ProvidersSection que se probaba aquí (Fase 5) se sustituyó por el registro global — ya no hay NINGÚN
+// botón de borrado en esta pantalla (ni aquí ni en ProvidersGlobalScreen): solo archivar/reactivar
+// (registro global, ver providersGlobalUi.test.ts) y, dentro de un evento, descartar/recuperar o
+// desvincular (nunca borran nada) — ver eventProvidersSectionFase3Ui.test.ts. isEventProviderLinked (data
+// layer, arriba) se conserva por si se necesita en el futuro, pero ProvidersSection ya no la usa.
 
 describe('Un proveedor archivado nunca se ofrece para un enlace NUEVO, pero su nombre no desaparece de los ya existentes', () => {
   it('ResolveGroupModal: el selector de "proveedor existente" excluye los archivados', () => {

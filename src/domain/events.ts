@@ -181,7 +181,7 @@ export const EVENT_MODULES: { key: EventModuleKey; label: string; icon: string }
   { key: 'actividades', label: 'Actividades y juegos', icon: '🎲' },
   { key: 'mesas', label: 'Mesas', icon: '🪑' },
   { key: 'ceremonia', label: 'Ceremonia', icon: '🕊️' },
-  { key: 'proveedores', label: 'Proveedores', icon: '📇' },
+  { key: 'proveedores', label: 'Proveedores y ofertas', icon: '📇' },
   { key: 'detalles', label: 'Detalles / recuerdos', icon: '🎁' },
   { key: 'regalos', label: 'Regalos recibidos', icon: '🎀' },
   { key: 'plan_dia', label: 'Plan del día', icon: '🗓️' },

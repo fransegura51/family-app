@@ -76,7 +76,6 @@ import {
   deleteEventGuestQuestionOption,
   deleteEventMoment,
   deleteEventPayment,
-  deleteEventProvider,
   deleteEventSpecialDetail,
   deleteEventTable,
   deleteEventTask,
@@ -137,8 +136,6 @@ import {
   updateEventBudgetItem,
   updateEventMoment,
   updateEventPayment,
-  updateEventProvider,
-  isEventProviderLinked,
   updateEventSpecialDetail,
   updateEventTask,
   reconcileFoodForVenueChange,
@@ -209,7 +206,16 @@ import {
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, unitAndAmountFromMinutes, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
-import { addProviderGlobal, listProvidersGlobal, updateProviderGlobal } from '@/data/providersGlobal'
+import {
+  addProviderGlobal,
+  countProviderGlobalEventLinks,
+  linkProviderGlobalToEvent,
+  listEventProviderLinks,
+  listProvidersGlobal,
+  setEventProviderLinkStatus,
+  unlinkProviderFromEvent,
+  updateProviderGlobal,
+} from '@/data/providersGlobal'
 import {
   buildMapsUrl,
   CELEBRATION_SUBTYPES,
@@ -554,6 +560,8 @@ import type {
   EventPayment,
   EventPaymentStatus,
   EventProvider,
+  EventProviderLink,
+  EventProviderLinkStatus,
   EventServiceId,
   ProviderGlobal,
   EventSpecialDetail,
@@ -5652,7 +5660,7 @@ function ProviderLinker({ event, decision }: { event: FamilyEvent; decision: Eve
       ) : (
         providers.length === 0 && (
           <p className="muted" style={{ fontSize: 12 }}>
-            Todavía no hay proveedores en este evento — podrás relacionar uno real en cuanto lo deis de alta en 📇 Proveedores.
+            Todavía no hay proveedores en este evento — podrás relacionar uno real en cuanto lo deis de alta en 📇 Proveedores y ofertas.
           </p>
         )
       )}
@@ -11761,89 +11769,148 @@ function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: Provi
   )
 }
 
+// PEPA Eventos, prompt maestro Parte A3 — dentro de un evento se ve EXCLUSIVAMENTE lo vinculado a él: los
+// proveedores de la agenda familiar (registro global, Fase 2) con los que este evento tiene relación,
+// nunca los de otros eventos. "De interés"/"Todos"/"Descartados" es el estado LOCAL de ese vínculo
+// (event_provider_links) — descartar o desvincular aquí nunca borra nada del registro global ni afecta a
+// otros eventos (A3: "un proveedor descartado para una boda puede volver a ser útil para un cumpleaños").
+// La ficha que se edita es siempre la global (EditProviderGlobalForm, ya usada en Proveedores y ofertas
+// de Inicio) — una sola fuente de datos, nunca un duplicado por evento.
 function ProvidersSection({ eventId }: { eventId: string }) {
-  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [links, setLinks] = useState<EventProviderLink[]>([])
+  const [globals, setGlobals] = useState<ProviderGlobal[]>([])
+  const [habitualCounts, setHabitualCounts] = useState<Map<string, number>>(new Map())
+  const [filter, setFilter] = useState<EventProviderLinkStatus | 'todos'>('interesado')
+  const [editingGlobalId, setEditingGlobalId] = useState<string | null>(null)
+  const [showLink, setShowLink] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  // Fase 5 (ficha completa de Proveedores) — los archivados quedan fuera de la vista normal (y de los
-  // selectores de "elegir proveedor" en Pagos/Resolver encargo), pero nunca desaparecen ni se borran.
-  const [showArchived, setShowArchived] = useState(false)
 
   function reload() {
-    listEventProviders(eventId)
-      .then(setProviders)
+    Promise.all([listEventProviderLinks(eventId), listProvidersGlobal()])
+      .then(([ls, gs]) => {
+        setLinks(ls)
+        setGlobals(gs)
+        // A2: "habitual" = vinculado a 2 o más eventos — se calcula, nunca se guarda aparte (no hay
+        // marca que desincronizar). N llamadas pequeñas (una por proveedor vinculado aquí), nunca un
+        // listado global de todos los vínculos de la familia.
+        Promise.all(ls.map((l) => countProviderGlobalEventLinks(l.globalProviderId).then((n) => [l.globalProviderId, n] as const)))
+          .then((pairs) => setHabitualCounts(new Map(pairs)))
+          .catch(() => {})
+      })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los proveedores')))
   }
   useEffect(reload, [eventId])
 
-  async function handleDelete(p: EventProvider) {
+  const globalById = new Map(globals.map((g) => [g.id, g]))
+  const visibleLinks = links.filter((l) => (filter === 'todos' ? true : l.status === filter))
+  const descartadosCount = links.filter((l) => l.status === 'descartado').length
+  const linkedGlobalIds = new Set(links.map((l) => l.globalProviderId))
+  const availableToLink = globals.filter((g) => !g.archived && !linkedGlobalIds.has(g.id))
+
+  async function handleLink(global: ProviderGlobal) {
     setError(null)
     try {
-      if (await isEventProviderLinked(p.id)) {
-        setError(`«${p.name}» tiene pagos o encargos en su historial — archívalo en vez de borrarlo, para no perder esa referencia.`)
-        return
-      }
-      await deleteEventProvider(p.id)
+      await linkProviderGlobalToEvent(eventId, global)
+      setShowLink(false)
       reload()
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo borrar el proveedor'))
+      setError(errorMessage(err, 'No se pudo vincular'))
     }
   }
 
-  const active = providers.filter((p) => !p.archived)
-  const archived = providers.filter((p) => p.archived)
-  const visible = showArchived ? archived : active
+  async function handleToggleDiscard(link: EventProviderLink) {
+    setError(null)
+    try {
+      await setEventProviderLinkStatus(link.id, link.status === 'descartado' ? 'interesado' : 'descartado')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar el estado'))
+    }
+  }
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
-      <strong>📇 Proveedores</strong>
+      <strong>📇 Proveedores y ofertas</strong>
+      <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
+        Proveedores de la agenda familiar vinculados a este evento. Descartar aquí no los borra del registro global — siguen disponibles para otros eventos.
+      </p>
       {error && <p className="error">{error}</p>}
+      <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+        <button type="button" className={'chip' + (filter === 'interesado' ? ' chip-active' : '')} onClick={() => setFilter('interesado')}>
+          De interés
+        </button>
+        <button type="button" className={'chip' + (filter === 'todos' ? ' chip-active' : '')} onClick={() => setFilter('todos')}>
+          Todos
+        </button>
+        <button type="button" className={'chip' + (filter === 'descartado' ? ' chip-active' : '')} onClick={() => setFilter('descartado')}>
+          Descartados{descartadosCount > 0 ? ` (${descartadosCount})` : ''}
+        </button>
+      </div>
       <div className="event-list" style={{ marginTop: 8 }}>
-        {visible.map((p) =>
-          editingId === p.id ? (
-            <EditProviderForm key={p.id} provider={p} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+        {visibleLinks.length === 0 && (
+          <p className="muted">
+            {filter === 'descartado'
+              ? 'No hay proveedores descartados.'
+              : filter === 'interesado'
+                ? 'Todavía no hay proveedores de interés — vincula uno del registro familiar o crea uno nuevo.'
+                : 'Todavía no hay proveedores vinculados a este evento.'}
+          </p>
+        )}
+        {visibleLinks.map((link) => {
+          const g = globalById.get(link.globalProviderId)
+          if (!g) return null
+          return editingGlobalId === g.id ? (
+            <EditProviderGlobalForm key={link.id} provider={g} onDone={() => setEditingGlobalId(null)} onSaved={() => { setEditingGlobalId(null); reload() }} />
           ) : (
-            <div key={p.id} className="card" style={{ padding: 8 }}>
+            <div key={link.id} className="card" style={{ padding: 8, opacity: link.status === 'descartado' ? 0.7 : 1 }}>
               <div className="inline-fields" style={{ alignItems: 'center' }}>
                 <span style={{ flex: 1 }}>
-                  {p.name}
-                  {p.type ? ` · ${p.type}` : ''}
+                  <strong>{g.name}</strong>
+                  {g.type ? ` · ${g.type}` : ''}
+                  {g.phone ? ` · ${g.phone}` : ''}
+                  {(habitualCounts.get(g.id) ?? 0) >= 2 ? ' · ⭐ Habitual' : ''}
                 </span>
-                <button type="button" className="link-button" onClick={() => setEditingId(p.id)}>
+                <button type="button" className="link-button" onClick={() => setEditingGlobalId(g.id)}>
                   ✏️ Editar
                 </button>
               </div>
-              {(p.contactPerson || p.phone || p.email || p.website || p.address || p.contactNote) && (
+              {(g.contactPerson || g.email || g.website || g.address) && (
                 <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                  {[p.contactPerson, p.phone, p.email, p.website, p.address, p.contactNote].filter(Boolean).join(' · ')}
+                  {[g.contactPerson, g.email, g.website, g.address].filter(Boolean).join(' · ')}
                 </p>
               )}
-              <div className="filter-row" style={{ marginTop: 4 }}>
+              <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                <button type="button" className="link-button" onClick={() => void handleToggleDiscard(link)}>
+                  {link.status === 'descartado' ? '↩️ Recuperar' : '🗑 Descartar'}
+                </button>
                 <ConfirmButton
-                  label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
-                  confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores de proveedor.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero no se borra nada de su historial.`}
-                  onConfirm={() => updateEventProvider(p.id, { archived: !p.archived }).then(reload)}
+                  label="Desvincular"
+                  confirmMessage={`¿Desvincular «${g.name}» de este evento? Sigue disponible en el registro familiar.`}
+                  onConfirm={() => unlinkProviderFromEvent(link.id).then(reload)}
                 />
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar proveedor" onConfirm={() => handleDelete(p)} />
               </div>
             </div>
-          ),
-        )}
-        {visible.length === 0 && <p className="muted">{showArchived ? 'No hay proveedores archivados.' : 'Todavía no hay proveedores.'}</p>}
+          )
+        })}
       </div>
-      <div className="filter-row">
-        <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
-          + Añadir proveedor
+      <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+        <button type="button" className="link-button" onClick={() => setShowLink(true)}>
+          + Vincular proveedor existente
         </button>
-        {archived.length > 0 && (
-          <button type="button" className="link-button" onClick={() => setShowArchived((v) => !v)}>
-            {showArchived ? '← Ver activos' : `Ver archivados (${archived.length})`}
-          </button>
-        )}
+        <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+          + Nuevo proveedor
+        </button>
       </div>
+      {showLink && (
+        <LinkExistingProviderForm
+          options={availableToLink}
+          onClose={() => setShowLink(false)}
+          onLink={handleLink}
+        />
+      )}
       {showAdd && (
-        <AddProviderModal
+        <AddProviderAndLinkForm
           eventId={eventId}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
@@ -11853,6 +11920,110 @@ function ProvidersSection({ eventId }: { eventId: string }) {
         />
       )}
     </div>
+  )
+}
+
+function LinkExistingProviderForm({ options, onClose, onLink }: { options: ProviderGlobal[]; onClose: () => void; onLink: (g: ProviderGlobal) => void }) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const filtered = options.filter((g) => (q ? [g.name, g.type, g.phone].some((v) => v?.toLowerCase().includes(q)) : true))
+  return (
+    <div className="card member-form" style={{ padding: 8, marginTop: 6 }}>
+      <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar en el registro familiar…" autoFocus style={{ width: '100%' }} />
+      <div className="event-list" style={{ marginTop: 6, maxHeight: 220, overflowY: 'auto' }}>
+        {filtered.length === 0 && (
+          <p className="muted" style={{ fontSize: 12 }}>
+            {options.length === 0 ? 'Todos los proveedores de la familia ya están vinculados a este evento.' : 'Nada coincide con esa búsqueda.'}
+          </p>
+        )}
+        {filtered.map((g) => (
+          <button key={g.id} type="button" className="link-button" style={{ display: 'block', width: '100%', textAlign: 'left' }} onClick={() => onLink(g)}>
+            {g.name}
+            {g.type ? ` · ${g.type}` : ''}
+          </button>
+        ))}
+      </div>
+      <button type="button" className="link-button" onClick={onClose} style={{ marginTop: 6 }}>
+        Cancelar
+      </button>
+    </div>
+  )
+}
+
+function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('')
+  const [contactPerson, setContactPerson] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [website, setWebsite] = useState('')
+  const [address, setAddress] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const global = await addProviderGlobal({
+        name,
+        type: type || null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        email: email || null,
+        website: website || null,
+        address: address || null,
+      })
+      await linkProviderGlobalToEvent(eventId, global)
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Categoría o servicio (opcional)
+        <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo, floristería..." />
+      </label>
+      <ProviderExtraFields
+        contactPerson={contactPerson}
+        setContactPerson={setContactPerson}
+        phone={phone}
+        setPhone={setPhone}
+        email={email}
+        setEmail={setEmail}
+        website={website}
+        setWebsite={setWebsite}
+        address={address}
+        setAddress={setAddress}
+        forceOpen={false}
+      />
+      <p className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+        Se guarda en el registro familiar — podrás reutilizarlo en otros eventos más adelante.
+      </p>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Añadir y vincular'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -11915,177 +12086,6 @@ function ProviderExtraFields({
         <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} />
       </label>
     </>
-  )
-}
-
-function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
-  const [name, setName] = useState('')
-  const [type, setType] = useState('')
-  const [contactNote, setContactNote] = useState('')
-  const [contactPerson, setContactPerson] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
-  const [website, setWebsite] = useState('')
-  const [address, setAddress] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(ev: FormEvent) {
-    ev.preventDefault()
-    if (!name.trim()) {
-      setError('Ponle un nombre.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await addEventProvider(eventId, {
-        name,
-        type: type || null,
-        contactNote: contactNote || null,
-        contactPerson: contactPerson || null,
-        phone: phone || null,
-        email: email || null,
-        website: website || null,
-        address: address || null,
-      })
-      onAdded()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Nuevo proveedor
-          </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
-            ✕
-          </button>
-        </div>
-        <form className="card member-form" onSubmit={handleSubmit}>
-          {error && <p className="error">{error}</p>}
-          <label>
-            Nombre
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-          </label>
-          <label>
-            Tipo (opcional)
-            <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo..." />
-          </label>
-          <label>
-            Contacto (opcional)
-            <input type="text" value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Teléfono, email..." />
-          </label>
-          <ProviderExtraFields
-            contactPerson={contactPerson}
-            setContactPerson={setContactPerson}
-            phone={phone}
-            setPhone={setPhone}
-            email={email}
-            setEmail={setEmail}
-            website={website}
-            setWebsite={setWebsite}
-            address={address}
-            setAddress={setAddress}
-            forceOpen={false}
-          />
-          <button type="submit" disabled={saving}>
-            {saving ? 'Guardando…' : 'Añadir'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function EditProviderForm({ provider, onDone, onSaved }: { provider: EventProvider; onDone: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(provider.name)
-  const [type, setType] = useState(provider.type ?? '')
-  const [contactNote, setContactNote] = useState(provider.contactNote ?? '')
-  const [contactPerson, setContactPerson] = useState(provider.contactPerson ?? '')
-  const [phone, setPhone] = useState(provider.phone ?? '')
-  const [email, setEmail] = useState(provider.email ?? '')
-  const [website, setWebsite] = useState(provider.website ?? '')
-  const [address, setAddress] = useState(provider.address ?? '')
-  const [notes, setNotes] = useState(provider.notes ?? '')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const hadExtraData = Boolean(provider.contactPerson || provider.phone || provider.email || provider.website || provider.address)
-
-  async function save() {
-    if (!name.trim()) {
-      setError('Ponle un nombre.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await updateEventProvider(provider.id, {
-        name,
-        type: type || null,
-        contactNote: contactNote || null,
-        contactPerson: contactPerson || null,
-        phone: phone || null,
-        email: email || null,
-        website: website || null,
-        address: address || null,
-        notes: notes || null,
-      })
-      onSaved()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="card member-form" style={{ padding: 8 }}>
-      {error && <p className="error">{error}</p>}
-      <label>
-        Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-      </label>
-      <label>
-        Tipo (opcional)
-        <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo..." />
-      </label>
-      <label>
-        Contacto (opcional)
-        <input type="text" value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Teléfono, email..." />
-      </label>
-      <ProviderExtraFields
-        contactPerson={contactPerson}
-        setContactPerson={setContactPerson}
-        phone={phone}
-        setPhone={setPhone}
-        email={email}
-        setEmail={setEmail}
-        website={website}
-        setWebsite={setWebsite}
-        address={address}
-        setAddress={setAddress}
-        forceOpen={hadExtraData}
-      />
-      <label>
-        Notas (opcional)
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
-      </label>
-      <div className="filter-row" style={{ marginTop: 4 }}>
-        <button type="button" onClick={() => void save()} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button type="button" className="link-button" onClick={onDone}>
-          Cancelar
-        </button>
-      </div>
-    </div>
   )
 }
 

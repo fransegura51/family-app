@@ -8,7 +8,8 @@
 // event_task_group_offers/event_decision_providers.provider_id) — event_providers solo gana una
 // referencia nueva (global_provider_id, ver data/events.ts) a la ficha de aquí.
 import { supabase } from '@/data/supabaseClient'
-import type { EventProviderLink, EventProviderLinkStatus, ProviderGlobal } from '@/domain/types'
+import { addEventProvider, listEventProviders } from '@/data/events'
+import type { EventProvider, EventProviderLink, EventProviderLinkStatus, ProviderGlobal } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -142,6 +143,34 @@ export async function linkProviderToEvent(eventId: string, globalProviderId: str
     .single()
   if (error) throw error
   return mapLink(data)
+}
+
+// Vincular desde el registro global (A3) es UNA acción para la familia, pero por debajo conserva las dos
+// piezas que ya existían: el vínculo de interés/descartado (arriba) Y una ficha event_providers
+// utilizable en Pagos/Resolver encargo/Decisiones — esas 5 FK siguen señalando a event_providers, nunca
+// al registro global directamente (ver cabecera del fichero). Si ya existía una ficha event_providers
+// para este proveedor global en este evento, la reutiliza; si no, crea una NUEVA copiando los datos
+// actuales del registro global — snapshot, igual que ya hace providerName en pagos/encargos: si el
+// registro global cambia después, el histórico ya guardado en este evento no se mueve solo.
+export async function linkProviderGlobalToEvent(eventId: string, globalProvider: ProviderGlobal): Promise<{ link: EventProviderLink; eventProvider: EventProvider }> {
+  const link = await linkProviderToEvent(eventId, globalProvider.id)
+  const existingEventProviders = await listEventProviders(eventId)
+  const existing = existingEventProviders.find((p) => p.globalProviderId === globalProvider.id)
+  if (existing) return { link, eventProvider: existing }
+  const newId = await addEventProvider(eventId, {
+    name: globalProvider.name,
+    type: globalProvider.type,
+    contactPerson: globalProvider.contactPerson,
+    phone: globalProvider.phone,
+    email: globalProvider.email,
+    website: globalProvider.website,
+    address: globalProvider.address,
+    globalProviderId: globalProvider.id,
+  })
+  const refreshed = await listEventProviders(eventId)
+  const created = refreshed.find((p) => p.id === newId)
+  if (!created) throw new Error('No se pudo enlazar el proveedor')
+  return { link, eventProvider: created }
 }
 
 // "Descartar"/"Recuperar" (A3) — nunca borra el vínculo, solo cambia su estado dentro de ESTE evento.

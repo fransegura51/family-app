@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { pastelPalette } from '@/domain/colors'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { RewardsScreen } from '@/ui/RewardsScreen'
 import { KidsFinanceTab } from '@/ui/FinanceScreen'
+import pequenosGrandesHeaderImg from '@/assets/puntos/pequenos-grandes-header.jpg'
+import educacionFinancieraHeaderImg from '@/assets/puntos/educacion-financiera-header.jpg'
+import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'
+import recompensasCardImg from '@/assets/puntos/recompensas-card.jpg'
+import educacionFinancieraCardImg from '@/assets/puntos/educacion-financiera-card.jpg'
+import deseosCardImg from '@/assets/puntos/deseos-card.jpg'
 import type { Profile } from '@/domain/types'
 
 // «Pequeños Grandes» (prompt maestro) — sustituye la antigua tarjeta suelta "Puntos" del Inicio por un
@@ -17,10 +22,12 @@ import type { Profile } from '@/domain/types'
 // guardado de Inicio).
 type PequenosGrandesModule = 'recompensas' | 'educacion' | 'deseos' | null
 
-const MODULE_CARDS: { key: Exclude<PequenosGrandesModule, null>; label: string; stat: string; icon: string }[] = [
-  { key: 'recompensas', label: 'Puntos y recompensas', stat: 'Gana puntos y canjea premios', icon: '⭐' },
-  { key: 'educacion', label: 'Educación financiera', stat: 'Ahorrar, gastar y aportar', icon: '🐷' },
-  { key: 'deseos', label: 'Lista de deseos', stat: 'Sueños y regalos', icon: '🎁' },
+// Cada imagen ya lleva el título dibujado dentro (petición real: "imagen a toda tarjeta, sin el emoji ni
+// el título en texto encima") — el botón no repite ni el icono ni el <h2>, solo el subtítulo debajo.
+const MODULE_CARDS: { key: Exclude<PequenosGrandesModule, null>; label: string; stat: string; img: string }[] = [
+  { key: 'recompensas', label: 'Puntos y recompensas', stat: 'Gana puntos y canjea premios', img: recompensasCardImg },
+  { key: 'educacion', label: 'Educación financiera', stat: 'Ahorrar, gastar y aportar', img: educacionFinancieraCardImg },
+  { key: 'deseos', label: 'Lista de deseos', stat: 'Sueños y regalos', img: deseosCardImg },
 ]
 
 export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
@@ -31,26 +38,18 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
   if (openModule === 'educacion') return <EducacionFinancieraTab onBack={() => setOpenModule(null)} />
   if (openModule === 'deseos') return <ListaDeseosComingSoon onBack={() => setOpenModule(null)} />
 
-  const cardColors = pastelPalette(MODULE_CARDS.length)
-
   return (
     <div className="screen">
-      {/* Cabecera MASTER propia (Fase 3, prompt maestro) — Pepa con Eric, Susana y Fernando bebé.
-          Pendiente de la imagen oficial definitiva: en vez de improvisar una ilustración, de momento no
-          se pinta ninguna imagen aquí (nunca un boceto hecho pasar por oficial) — en cuanto llegue el
-          archivo real, basta con añadir el import y este mismo bloque "kitchen-header", igual que en el
-          resto de la app (ver AlimentacionScreen.tsx, EventosScreen.tsx...). */}
+      <div className="kitchen-header kitchen-header-wide">
+        <img src={pequenosGrandesHeaderImg} alt="Pequeños Grandes" className="kitchen-header-img" />
+      </div>
       <SectionBreadcrumb subsection="Inicio" />
-      <h1 className="section-title">👨‍👩‍👧‍👦 Pequeños Grandes</h1>
       <p className="muted">Aprender, jugar y soñar</p>
       <div className="card-grid" style={{ marginTop: 8 }}>
-        {MODULE_CARDS.map((card, i) => (
-          <button key={card.key} type="button" className="card event-module-card home-card" style={{ background: cardColors[i] }} onClick={() => setOpenModule(card.key)}>
-            <div>
-              <h2>{card.label}</h2>
-              <p className="muted">{card.stat}</p>
-            </div>
-            <span className="home-card-icon">{card.icon}</span>
+        {MODULE_CARDS.map((card) => (
+          <button key={card.key} type="button" className="card event-module-card home-card-photo" onClick={() => setOpenModule(card.key)}>
+            <img src={card.img} alt={card.label} className="home-card-photo-img" />
+            <p className="muted home-card-photo-caption">{card.stat}</p>
           </button>
         ))}
       </div>
@@ -68,11 +67,10 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
 function EducacionFinancieraTab({ onBack }: { onBack: () => void }) {
   return (
     <div className="screen">
-      {/* Cabecera propia pendiente de imagen oficial (Fase 3) — nunca la de Economía (economia-header.jpg):
-          esta pantalla es deliberadamente distinta de la banca real, también a nivel visual. En cuanto
-          llegue el archivo real, basta con añadir el import y el bloque "kitchen-header" habitual. */}
+      <div className="kitchen-header kitchen-header-wide">
+        <img src={educacionFinancieraHeaderImg} alt="Educación financiera" className="kitchen-header-img" />
+      </div>
       <SectionBreadcrumb subsection="Educación financiera" />
-      <h1 className="section-title">🐷 Educación financiera</h1>
       <button type="button" className="link-button" onClick={onBack}>
         ← Volver a Pequeños Grandes
       </button>
@@ -86,8 +84,10 @@ function EducacionFinancieraTab({ onBack }: { onBack: () => void }) {
 function ListaDeseosComingSoon({ onBack }: { onBack: () => void }) {
   return (
     <div className="screen">
+      <div className="kitchen-header kitchen-header-wide">
+        <img src={deseosHeaderImg} alt="Lista de deseos" className="kitchen-header-img" />
+      </div>
       <SectionBreadcrumb subsection="Lista de deseos" />
-      <h1 className="section-title">🎁 Lista de deseos</h1>
       <p className="muted">Esta parte de Pequeños Grandes todavía se está construyendo — vuelve en una próxima actualización.</p>
       <button type="button" className="link-button" onClick={onBack}>
         ← Volver a Pequeños Grandes

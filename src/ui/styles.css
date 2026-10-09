@@ -188,6 +188,30 @@ body {
   background: rgba(255, 255, 255, 0.55);
 }
 
+/* Pequeños Grandes — las tarjetas del hub (Puntos y recompensas / Educación financiera / Lista de
+   deseos) usan una ilustración propia con el título ya dibujado dentro, en vez de color pastel + emoji +
+   texto (petición real: "imagen a toda tarjeta, sin el emoji ni el título en texto encima"). */
+.home-card-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.home-card-photo-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.home-card-photo-caption {
+  padding: 8px 10px;
+  text-align: center;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

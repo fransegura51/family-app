@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseVcf } from '@/domain/vcardParser'
+import { buildVcf, parseVcf } from '@/domain/vcardParser'
 
 const VCF = [
   'BEGIN:VCARD',
@@ -54,5 +54,45 @@ describe('parseVcf', () => {
 
   it('texto vacío: lista vacía', () => {
     expect(parseVcf('')).toEqual([])
+  })
+})
+
+// PEPA Eventos, prompt maestro Parte A7 — "Guardar en contactos" (dirección contraria: proveedor → .vcf
+// real, nunca modifica la ficha de PEPA). Ficha de EMPRESA: FN/ORG llevan el nombre del proveedor.
+describe('buildVcf — genera un .vcf real a partir de un proveedor', () => {
+  it('incluye FN/ORG (nombre), teléfono, email y web cuando existen', () => {
+    const vcf = buildVcf({ name: 'Floristería Margarita', phone: '+34 600 111 222', email: 'info@margarita.es', website: 'https://margarita.es' })
+    expect(vcf).toContain('BEGIN:VCARD')
+    expect(vcf).toContain('FN:Floristería Margarita')
+    expect(vcf).toContain('ORG:Floristería Margarita')
+    expect(vcf).toContain('TEL;TYPE=WORK,VOICE:+34 600 111 222')
+    expect(vcf).toContain('EMAIL:info@margarita.es')
+    expect(vcf).toContain('URL:https://margarita.es')
+    expect(vcf).toContain('END:VCARD')
+  })
+  it('nunca inventa un campo que no exista — sin teléfono/email/web/dirección, no salen esas líneas', () => {
+    const vcf = buildVcf({ name: 'Solo nombre' })
+    expect(vcf).not.toContain('TEL')
+    expect(vcf).not.toContain('EMAIL')
+    expect(vcf).not.toContain('URL')
+    expect(vcf).not.toContain('ADR')
+    expect(vcf).not.toContain('NOTE')
+  })
+  it('categoría, persona de contacto y notas se juntan en NOTE, nunca se pierden', () => {
+    const vcf = buildVcf({ name: 'Catering Los Olivos', type: 'Catering', contactPerson: 'Marta', notes: 'Pide presupuesto con 2 semanas de margen' })
+    expect(vcf).toContain('NOTE:Categoría: Catering — Contacto: Marta — Pide presupuesto con 2 semanas de margen')
+  })
+  it('escapa comas/punto y coma/saltos de línea (RFC 6350) — una dirección con comas no rompe el formato', () => {
+    const vcf = buildVcf({ name: 'Proveedor, S.L.', address: 'Calle Mayor, 12; 2º' })
+    expect(vcf).toContain('FN:Proveedor\\, S.L.')
+    expect(vcf).toContain('ADR;TYPE=WORK:;;Calle Mayor\\, 12\\; 2º;;;;')
+  })
+  it('round-trip: lo que genera buildVcf, parseVcf lo vuelve a leer igual (nombre, teléfono, email)', () => {
+    const vcf = buildVcf({ name: 'Pastelería La Dulce', phone: '+34 600 333 444', email: 'pedidos@ladulce.es' })
+    const parsed = parseVcf(vcf)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].name).toBe('Pastelería La Dulce')
+    expect(parsed[0].phone).toBe('+34 600 333 444')
+    expect(parsed[0].email).toBe('pedidos@ladulce.es')
   })
 })

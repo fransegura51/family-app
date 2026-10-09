@@ -42,6 +42,39 @@ function parseLine(line: string): { name: string; value: string } | null {
   return { name: name.toUpperCase(), value }
 }
 
+// PEPA Eventos, prompt maestro Parte A7 — "Guardar en contactos" genera un .vcf a partir de un proveedor,
+// dirección contraria a parseVcf de arriba. Escapado inverso de unescapeText (RFC 6350: \, ; y saltos de
+// línea). Ficha de EMPRESA (no de persona): FN/ORG llevan el nombre del proveedor; la persona de contacto
+// (si la hay) va en NOTE, igual que categoría y notas propias — nunca se inventa un campo que no exista.
+function escapeText(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')
+}
+
+export function buildVcf(provider: {
+  name: string
+  type?: string | null
+  contactPerson?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+  address?: string | null
+  notes?: string | null
+}): string {
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0', `FN:${escapeText(provider.name)}`, `ORG:${escapeText(provider.name)}`]
+  if (provider.phone) lines.push(`TEL;TYPE=WORK,VOICE:${provider.phone}`)
+  if (provider.email) lines.push(`EMAIL:${provider.email}`)
+  if (provider.website) lines.push(`URL:${provider.website}`)
+  if (provider.address) lines.push(`ADR;TYPE=WORK:;;${escapeText(provider.address)};;;;`)
+  const noteParts = [
+    provider.type ? `Categoría: ${provider.type}` : null,
+    provider.contactPerson ? `Contacto: ${provider.contactPerson}` : null,
+    provider.notes ?? null,
+  ].filter((v): v is string => Boolean(v))
+  if (noteParts.length > 0) lines.push(`NOTE:${escapeText(noteParts.join(' — '))}`)
+  lines.push('END:VCARD')
+  return lines.join('\r\n')
+}
+
 export function parseVcf(text: string): ParsedVCard[] {
   const lines = unfold(text)
   const cards: ParsedVCard[] = []

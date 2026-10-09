@@ -576,6 +576,8 @@ import type {
   InvitationCanvas,
 } from '@/domain/types'
 import { canShareFiles, shareFiles, shareText } from '@/services/share'
+import { downloadTextFile } from '@/services/exportFile'
+import { buildVcf } from '@/domain/vcardParser'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ChoiceRow } from '@/ui/ChoiceRow'
@@ -11509,6 +11511,22 @@ function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem
 // Proveedores.
 // ---------------------------------------------------------------------
 
+// PEPA Eventos, prompt maestro Parte A7 — "Guardar en contactos" genera un .vcf real (nunca modifica la
+// ficha de PEPA) y lo manda al menú nativo de compartir; si el teléfono/navegador no lo soporta, lo
+// descarga directamente (en iPhone/Android/ordenador, abrir ese archivo ya ofrece "Añadir a Contactos"
+// por sí solo — mejor plan B que un texto suelto). Un solo sitio para las dos pantallas de Proveedores
+// (registro global y dentro de un evento), nunca una copia de esta lógica por pantalla.
+async function saveProviderToContacts(provider: { name: string; type?: string | null; contactPerson?: string | null; phone?: string | null; email?: string | null; website?: string | null; address?: string | null; notes?: string | null }) {
+  const vcf = buildVcf(provider)
+  const filename = `${provider.name.replace(/[^\p{L}\p{N} ]/gu, '').trim() || 'proveedor'}.vcf`
+  const file = new File([vcf], filename, { type: 'text/vcard;charset=utf-8' })
+  if (canShareFiles([file])) {
+    const shared = await shareFiles([file], { title: provider.name })
+    if (shared) return
+  }
+  downloadTextFile(filename, vcf, 'text/vcard;charset=utf-8')
+}
+
 // PEPA Eventos, prompt maestro Parte A1/A2 — registro GLOBAL de proveedores, accesible desde Eventos →
 // Inicio sin depender de entrar en un evento (nunca filtrado por evento). Fase 2 del encargo: CRUD +
 // búsqueda funcionando de verdad — el rediseño visual en fichas compactas desplegables (A4) llega en la
@@ -11590,6 +11608,9 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
                 </p>
               )}
               <div className="filter-row" style={{ marginTop: 4 }}>
+                <button type="button" className="link-button" onClick={() => void saveProviderToContacts(p)}>
+                  📱 Guardar en contactos
+                </button>
                 <ConfirmButton
                   label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
                   confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero conserva su historial.`}
@@ -11881,6 +11902,9 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                 </p>
               )}
               <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+                <button type="button" className="link-button" onClick={() => void saveProviderToContacts(g)}>
+                  📱 Guardar en contactos
+                </button>
                 <button type="button" className="link-button" onClick={() => void handleToggleDiscard(link)}>
                   {link.status === 'descartado' ? '↩️ Recuperar' : '🗑 Descartar'}
                 </button>

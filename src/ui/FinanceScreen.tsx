@@ -239,6 +239,10 @@ import type {
 } from '@/domain/types'
 import economiaHeaderImg from '@/assets/economia/economia-header.jpg'
 import pepaConclusionsImg from '@/assets/economia/pepa-conclusiones.jpg'
+import walletRecibirImg from '@/assets/puntos/educacion/recibir.jpg'
+import walletAhorrarImg from '@/assets/puntos/educacion/ahorrar.jpg'
+import walletGastarImg from '@/assets/puntos/educacion/gastar.jpg'
+import walletImpuestosImg from '@/assets/puntos/educacion/impuestos.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { classifyPurchase } from '@/data/classifyPurchase'
 import { reportClientError } from '@/data/errorReports'
@@ -11131,17 +11135,48 @@ function ForecastPaymentForm({
 // pestaña cada una, para poder ver en cualquier momento cuánto tiene
 // disponible, cuánto ha ahorrado, cuánto ha ingresado en total y
 // cuánto ha gastado, todo por separado.
-const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: string }[] = [
-  { key: 'ingreso', label: 'Ingresos', formLabel: 'ingreso' },
-  { key: 'ahorro', label: 'Ahorro', formLabel: 'ahorro' },
-  { key: 'gasto', label: 'Gastos', formLabel: 'gasto' },
-  { key: 'impuesto', label: 'Impuestos', formLabel: 'impuesto' },
+//
+// Pequeños Grandes (prompt maestro, Fase 6) — las 4 pestañas pequeñas se sustituyen por 4 tarjetas
+// grandes ilustradas (imágenes reales del usuario), cada una con su explicación en lenguaje de niño; se
+// mantienen los mismos 4 tipos de siempre (walletBalance/walletCategoryTotal de domain/finance.ts no
+// cambian, solo la UI). "explain" es el texto largo de la vista de detalle al tocar la tarjeta; "teaser"
+// es la frase corta que se ve en la propia tarjeta del grid — a propósito SIN cifras en € ahí (petición
+// real: mostrar disponible/ahorro acumulado con claridad "sin presentarlo como 4 saldos independientes",
+// que es justo lo que hacía el diseño anterior al repetir un € por pestaña).
+const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: string; img: string; teaser: string; explain: string }[] = [
+  {
+    key: 'ingreso',
+    label: 'Recibir',
+    formLabel: 'ingreso',
+    img: walletRecibirImg,
+    teaser: 'Cuando te dan dinero',
+    explain: 'Aquí apuntas el dinero que te dan: la paga, un regalo, o algo que has ganado por ayudar en casa.',
+  },
+  {
+    key: 'ahorro',
+    label: 'Ahorrar',
+    formLabel: 'ahorro',
+    img: walletAhorrarImg,
+    teaser: 'Guardas para más tarde',
+    explain: 'Guardar dinero para algo que quieres conseguir más adelante, como la hucha de verdad.',
+  },
+  {
+    key: 'gasto',
+    label: 'Gastar',
+    formLabel: 'gasto',
+    img: walletGastarImg,
+    teaser: 'Compras algo',
+    explain: 'Cuando usas tu dinero para comprar algo que quieres.',
+  },
+  {
+    key: 'impuesto',
+    label: 'Impuestos',
+    formLabel: 'impuesto',
+    img: walletImpuestosImg,
+    teaser: 'Ayudas a todos',
+    explain: 'Una parte del dinero va a un fondo común de la familia, como el que se usa para el cole, el médico o el parque.',
+  },
 ]
-
-// Petición real: extender el pastel a Educación financiera — sin una
-// categoría real detrás (son solo 4 tipos fijos de hucha), un color
-// por índice basta y así nunca cambia entre visitas.
-const WALLET_TAB_COLORS = pastelPalette(WALLET_TABS.length)
 
 // Pequeños Grandes (prompt maestro, Fase 5) reutiliza este mismo componente
 // como punto de entrada principal para la educación financiera — nunca se
@@ -11150,7 +11185,9 @@ const WALLET_TAB_COLORS = pastelPalette(WALLET_TABS.length)
 export function KidsFinanceTab() {
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
-  const [walletTab, setWalletTab] = useState<WalletTransactionType>('ingreso')
+  // null = el grid de 4 tarjetas grandes (Fase 6); una vez tocada una tarjeta, su vista de detalle
+  // (mismo contenido de siempre: historial + formulario, y Objetivos de ahorro si es 'ahorro').
+  const [openCard, setOpenCard] = useState<WalletTransactionType | null>(null)
   const [transactions, setTransactions] = useState<KidWalletTransaction[]>([])
   const [goals, setGoals] = useState<KidGoal[]>([])
   const [loading, setLoading] = useState(true)
@@ -11179,95 +11216,110 @@ export function KidsFinanceTab() {
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Las dos únicas cifras que importan de un vistazo (petición real, Fase 6): lo que tiene disponible
+  // para gastar AHORA y lo que lleva ahorrado en total — nunca 4 cifras en fila como si fueran 4 saldos
+  // independientes (eso era justo lo que hacía el diseño anterior).
   const balance = activeMemberId ? walletBalance(activeMemberId, transactions) : 0
+  const savedTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'ahorro', transactions) : 0
   const memberGoals = goals.filter((g) => g.memberId === activeMemberId)
-  const activeTabInfo = WALLET_TABS.find((t) => t.key === walletTab)!
-  const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, walletTab, transactions) : 0
-  const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === walletTab)
 
   if (loading) return <p className="muted">Cargando…</p>
   if (members.length === 0) return <p className="muted">No hay niños/bebés en la familia todavía.</p>
 
+  const memberChips = (
+    <div className="filter-row">
+      {members.map((m) => (
+        <button
+          key={m.id}
+          className={'chip' + (activeMemberId === m.id ? ' chip-active' : '')}
+          style={{ borderColor: m.color }}
+          onClick={() => setActiveMemberId(m.id)}
+        >
+          <MemberAvatar member={m} size={18} />
+          {m.name}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (openCard) {
+    const cardInfo = WALLET_TABS.find((t) => t.key === openCard)!
+    const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, openCard, transactions) : 0
+    const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === openCard)
+    return (
+      <div>
+        {error && <p className="error">{error}</p>}
+        {memberChips}
+        <button type="button" className="link-button" onClick={() => setOpenCard(null)}>
+          ← Volver
+        </button>
+
+        <h2 className="section-title">
+          {cardInfo.label}: {categoryTotal.toFixed(2)} €
+        </h2>
+        <p className="muted">{cardInfo.explain}</p>
+
+        {openCard === 'ahorro' && (
+          <>
+            <h3>Objetivos de ahorro</h3>
+            <div className="event-list">
+              {memberGoals.map((goal, i) => {
+                const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
+                return (
+                  <div key={goal.id} className="card task-card" style={{ background: pastelPalette(memberGoals.length)[i] }}>
+                    <div className="task-card-main">
+                      <strong>{goal.title}</strong>
+                      <p className="muted">
+                        {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
+                      </p>
+                      <div className="progress-bar">
+                        <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(reload)} />
+                  </div>
+                )
+              })}
+              {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
+            </div>
+            <AddGoalForm memberId={activeMemberId} onAdded={reload} />
+          </>
+        )}
+
+        <div className="event-list">
+          {categoryTransactions.map((t) => (
+            <div key={t.id} className="card task-card">
+              <div className="task-card-main">
+                <strong>
+                  {t.amount.toFixed(2)} € — {t.description}
+                </strong>
+              </div>
+              <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
+            </div>
+          ))}
+          {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
+        </div>
+        <AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} onAdded={reload} />
+      </div>
+    )
+  }
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row">
-        {members.map((m) => (
-          <button
-            key={m.id}
-            className={'chip' + (activeMemberId === m.id ? ' chip-active' : '')}
-            style={{ borderColor: m.color }}
-            onClick={() => setActiveMemberId(m.id)}
-          >
-            <MemberAvatar member={m} size={18} />
-            {m.name}
-          </button>
-        ))}
-      </div>
+      {memberChips}
 
       <p className="points-badge">Disponible: {balance.toFixed(2)} €</p>
-      <p className="muted">
-        {WALLET_TABS.map((t) => `${t.label} ${walletCategoryTotal(activeMemberId, t.key, transactions).toFixed(2)} €`).join(' · ')}
-      </p>
+      <p className="muted">Ahorro acumulado: {savedTotal.toFixed(2)} €</p>
 
-      <div className="filter-row">
-        {WALLET_TABS.map((t, i) => (
-          <button
-            key={t.key}
-            className={'chip' + (walletTab === t.key ? ' chip-active' : '')}
-            style={{ background: WALLET_TAB_COLORS[i] }}
-            onClick={() => setWalletTab(t.key)}
-          >
-            {t.label}
+      <div className="card-grid" style={{ marginTop: 8 }}>
+        {WALLET_TABS.map((t) => (
+          <button key={t.key} type="button" className="card event-module-card home-card-photo" onClick={() => setOpenCard(t.key)}>
+            <img src={t.img} alt={t.label} className="home-card-photo-img" style={{ aspectRatio: '1 / 1' }} />
+            <p className="muted home-card-photo-caption">{t.teaser}</p>
           </button>
         ))}
       </div>
-
-      <h2 className="section-title">
-        {activeTabInfo.label}: {categoryTotal.toFixed(2)} €
-      </h2>
-
-      {walletTab === 'ahorro' && (
-        <>
-          <h3>Objetivos de ahorro</h3>
-          <div className="event-list">
-            {memberGoals.map((goal, i) => {
-              const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
-              return (
-                <div key={goal.id} className="card task-card" style={{ background: pastelPalette(memberGoals.length)[i] }}>
-                  <div className="task-card-main">
-                    <strong>{goal.title}</strong>
-                    <p className="muted">
-                      {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
-                    </p>
-                    <div className="progress-bar">
-                      <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                  <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(reload)} />
-                </div>
-              )
-            })}
-            {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
-          </div>
-          <AddGoalForm memberId={activeMemberId} onAdded={reload} />
-        </>
-      )}
-
-      <div className="event-list">
-        {categoryTransactions.map((t) => (
-          <div key={t.id} className="card task-card">
-            <div className="task-card-main">
-              <strong>
-                {t.amount.toFixed(2)} € — {t.description}
-              </strong>
-            </div>
-            <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
-          </div>
-        ))}
-        {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
-      </div>
-      <AddTransactionForm memberId={activeMemberId} type={walletTab} formLabel={activeTabInfo.formLabel} onAdded={reload} />
     </div>
   )
 }

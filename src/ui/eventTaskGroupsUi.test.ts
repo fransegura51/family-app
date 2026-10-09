@@ -100,8 +100,9 @@ describe('bloque F: ver las tareas de un encargo juntas, y la tarjeta las marca 
     expect(GROUPS_MODAL).toContain('const groupTasks = tasks.filter((t) => t.groupId === g.id)')
     expect(GROUPS_MODAL).toContain('{t.title}')
   })
-  it('en Completadas (fuera del contenedor agrupado) la tarjeta sigue mostrando el nombre del encargo como etiqueta ligera, sin rediseñarla', () => {
-    expect(UI).toContain('{groupName && <span>🗂️ {groupName}</span>}')
+  it('en Completadas (fuera del contenedor agrupado) la tarjeta sigue mostrando el nombre del encargo como etiqueta ligera (ahora con su punto de color, Fase 8 Parte C5 — ver eventTaskGroupColorsUi.test.ts)', () => {
+    expect(UI).toContain('{groupName && (')
+    expect(UI).toContain('🗂️ {groupName}')
   })
 })
 

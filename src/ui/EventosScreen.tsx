@@ -543,7 +543,7 @@ import type { EventDietaryNeed, EventHelper, EventMenuOption, EventMenuOptionAud
 // Previsión (Economía) en vez de escribir uno nuevo para Eventos; es
 // una función pura sin ninguna dependencia de Previsión/Economía.
 import { formatSpanishDate } from '@/domain/forecastInstallmentPlanForm'
-import { pastelPalette } from '@/domain/colors'
+import { pastelPalette, paletteByName } from '@/domain/colors'
 import { listShoppingItems } from '@/data/shopping'
 import type {
   EventActivity,
@@ -1131,6 +1131,10 @@ function EventDetail({
   // aspecto para quien no la use (eventTaskGroups vacío = cero diferencia visual).
   const [eventTaskGroups, setEventTaskGroups] = useState<EventTaskGroup[]>([])
   const [managingGroups, setManagingGroups] = useState(false)
+  // Fase 8 (Parte C5, prompt maestro) — color por encargo, reutilizando el MISMO sistema pastel/vivo/
+  // neutro de siempre (paletteByName: mismo nombre siempre el mismo color, nunca una paleta paralela). El
+  // color identifica el ENCARGO, nunca su estado — se usa igual esté pendiente o ya resuelto/completado.
+  const groupColors = useMemo(() => paletteByName(eventTaskGroups.map((g) => g.name)), [eventTaskGroups])
   // Al crear una tarea desde dentro de un encargo concreto ("+ Tarea en este encargo"), ese grupo llega
   // ya preseleccionado al formulario de creación.
   const [creatingTaskInGroup, setCreatingTaskInGroup] = useState<string | null>(null)
@@ -1672,7 +1676,7 @@ function EventDetail({
                   // "📦 NOMBRE" se muestra UNA vez, como cabecera del encargo entero — nunca repetido en
                   // cada tarjeta (ver TaskCard, que ya no recibe groupName aquí). Cada tarea conserva
                   // todos sus controles normales (checkbox, campana, ⋯...).
-                  <div key={item.groupId} className="card member-form">
+                  <div key={item.groupId} className="card member-form" style={{ background: groupColors.get(item.groupName) }}>
                     <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
                       <strong>📦 {item.groupName.toUpperCase()}</strong>
                       {/* Bug real corregido (decisión explícita de la usuaria): todo "group" que llega aquí
@@ -1745,6 +1749,7 @@ function EventDetail({
                         responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
                         responsibleNames={taskResponsibleNames(t, familyMembers)}
                         groupName={eventTaskGroups.find((g) => g.id === t.groupId)?.name ?? null}
+                        groupColor={groupColors.get(eventTaskGroups.find((g) => g.id === t.groupId)?.name ?? '') ?? null}
                         onToggleDone={() => updateEventTask(t.id, { done: false }).then(reloadTasks)}
                         onEdit={() => setEditingTaskId(t.id)}
                       />
@@ -2635,6 +2640,7 @@ function TaskCard({
   responsible,
   responsibleNames,
   groupName = null,
+  groupColor = null,
   reminder,
   highlighted = false,
   onToggleDone,
@@ -2651,6 +2657,9 @@ function TaskCard({
   // Bloque D — nombre del encargo/grupo, si la tarea pertenece a uno. Solo una etiqueta ligera en la
   // línea de meta-datos; nunca cambia la composición de la tarjeta ni oculta nada.
   groupName?: string | null
+  // Fase 8 (Parte C5) — mismo color que la cabecera "📦 NOMBRE" de ese encargo (paletteByName), para
+  // reconocerlo también aquí (p. ej. en Completadas) sin repetir el cálculo por tarjeta.
+  groupColor?: string | null
   // Campana: aviso actual y cómo cambiarlo; ausente = la tarjeta no ofrece campana (p. ej. completadas).
   reminder?: {
     reminders: EventReminder[]
@@ -2699,7 +2708,12 @@ function TaskCard({
             ) : (
               responsible && <span>👤 {responsible.name}</span>
             )}
-            {groupName && <span>🗂️ {groupName}</span>}
+            {groupName && (
+              <span>
+                {groupColor && <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: groupColor, marginRight: 3 }} />}
+                🗂️ {groupName}
+              </span>
+            )}
           </div>
         )}
         {task.notes && (
@@ -3383,6 +3397,9 @@ function EventTaskGroupsModal({
   const [addingExistingToGroupId, setAddingExistingToGroupId] = useState<string | null>(null)
   const [selectedExistingTaskId, setSelectedExistingTaskId] = useState('')
   const ungroupedTasks = tasks.filter((t) => !t.groupId)
+  // Fase 8 (Parte C5) — mismo cálculo que en Preparativos (paletteByName): mismo nombre, mismo color aquí
+  // también, para reconocer el encargo igual en las dos pantallas.
+  const groupColors = useMemo(() => paletteByName(groups.map((g) => g.name)), [groups])
 
   async function addExistingTask(groupId: string) {
     if (!selectedExistingTaskId) return
@@ -3482,7 +3499,7 @@ function EventTaskGroupsModal({
                 </div>
               </div>
             ) : (
-              <div key={g.id} className="card" style={{ padding: 8 }}>
+              <div key={g.id} className="card" style={{ padding: 8, background: groupColors.get(g.name) }}>
                 <div className="inline-fields" style={{ alignItems: 'center' }}>
                   <strong style={{ flex: 1 }}>{g.name}</strong>
                   <button type="button" className="link-button" onClick={() => setEditing({ id: g.id, name: g.name })}>

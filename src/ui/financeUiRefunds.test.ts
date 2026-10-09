@@ -238,9 +238,10 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // nueva, no toca event_payments ni event_budget_items) y 0224 (registro global de proveedores —
     // providers_global/event_provider_links, tablas nuevas; event_providers solo gana una columna
     // global_provider_id, sus FK existentes no cambian) tampoco tocan esta funcionalidad.
-    // 0226 (registro de uso por cuenta para el panel de propietaria) y 0227 (servicios estructurados y
-    // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(227)
+    // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
+    // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
+    // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(228)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

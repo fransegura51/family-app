@@ -20,7 +20,7 @@ async function currentFamilyId(): Promise<string> {
   return profileRow.family_id
 }
 
-const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id'
+const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id, offer_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGroup(r: any): EventTaskGroup {
@@ -36,6 +36,7 @@ function mapGroup(r: any): EventTaskGroup {
     providerId: r.provider_id,
     providerName: r.provider_name,
     paymentId: r.payment_id,
+    offerId: r.offer_id,
   }
 }
 
@@ -113,15 +114,25 @@ export async function findOrCreateEventTaskGroupByKind(eventId: string, familyId
 }
 
 // Resolución de un encargo (migración 0215, historial añadido en 0220): nunca toca las tareas del encargo
-// (eso lo decide y ejecuta quien llama, completando solo sus tareas PENDIENTES actuales) ni ningún otro
-// encargo. Las columnas de event_task_groups siguen reflejando solo la resolución MÁS RECIENTE (igual que
-// siempre, para no romper nada que ya las lea), pero AHORA cada resolución queda ADEMÁS como una fila
-// nueva en event_task_group_resolutions — nunca se sobrescribe ni se borra una resolución anterior.
-// Resolver dos veces el mismo encargo (p. ej. tras añadirle un complemento nuevo después de ya resuelto)
-// conserva intacta la primera: proveedor, importe y método anteriores siguen consultables en el histórico.
+// ni ningún otro encargo — desde la Fase 7 (Parte C3, decisión explícita del usuario) "contratar" (esta
+// función) y "completar tareas" son acciones totalmente separadas: resolver un encargo YA NO completa
+// ninguna tarea por su cuenta, cada tarea se marca hecha individualmente como cualquier otra. Las columnas
+// de event_task_groups siguen reflejando solo la resolución MÁS RECIENTE (igual que siempre, para no
+// romper nada que ya las lea), pero AHORA cada resolución queda ADEMÁS como una fila nueva en
+// event_task_group_resolutions — nunca se sobrescribe ni se borra una resolución anterior. Resolver dos
+// veces el mismo encargo (p. ej. tras añadirle un complemento nuevo después de ya resuelto) conserva
+// intacta la primera: proveedor, importe y método anteriores siguen consultables en el histórico.
 export async function resolveEventTaskGroup(
   groupId: string,
-  input: { method: EventTaskGroupResolutionMethod; note?: string | null; providerId?: string | null; providerName?: string | null; paymentId?: string | null },
+  input: {
+    method: EventTaskGroupResolutionMethod
+    note?: string | null
+    providerId?: string | null
+    providerName?: string | null
+    paymentId?: string | null
+    // Fase 7 (Parte C2) — de qué oferta viene esta resolución, si viene de alguna (trazabilidad).
+    offerId?: string | null
+  },
 ): Promise<void> {
   const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id').eq('id', groupId).single()
   if (groupError) throw groupError
@@ -135,6 +146,7 @@ export async function resolveEventTaskGroup(
       provider_id: input.providerId ?? null,
       provider_name: input.providerName ?? null,
       payment_id: input.paymentId ?? null,
+      offer_id: input.offerId ?? null,
     })
     .eq('id', groupId)
   if (error) throw error
@@ -146,12 +158,13 @@ export async function resolveEventTaskGroup(
     provider_id: input.providerId ?? null,
     provider_name: input.providerName ?? null,
     payment_id: input.paymentId ?? null,
+    offer_id: input.offerId ?? null,
     resolved_at: resolvedAt,
   })
   if (historyError) throw historyError
 }
 
-const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, resolved_at'
+const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, offer_id, resolved_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGroupResolution(r: any): EventTaskGroupResolution {
@@ -163,6 +176,7 @@ function mapGroupResolution(r: any): EventTaskGroupResolution {
     providerId: r.provider_id,
     providerName: r.provider_name,
     paymentId: r.payment_id,
+    offerId: r.offer_id,
     resolvedAt: r.resolved_at,
   }
 }

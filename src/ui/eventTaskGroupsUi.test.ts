@@ -162,16 +162,22 @@ describe('bloque G: no romper filtros ni completadas al agrupar', () => {
   })
 })
 
-// Tanda Encargos v2 — "Marcar encargo como resuelto": completa EXCLUSIVAMENTE las tareas PENDIENTES
-// ACTUALES del encargo que se está resolviendo (las que llegan en su propio prop `tasks`, ya filtradas por
-// el padre) — nunca otro encargo, nunca una tarea ya hecha de antes, nunca una tarea posterior aunque el
-// título se parezca (p. ej. "Recoger las flores" nunca se completa al resolver "Flores").
-describe('ResolveGroupModal — resuelve exclusivamente las tareas actuales de ESE encargo', () => {
-  it('EventosScreen le pasa solo las tareas pendientes de ESE grupo concreto (filtradas por group_id y !done)', () => {
+// Tanda Encargos v2, revisada en la Fase 7 (Parte C3, prompt maestro PEPA) por decisión EXPLÍCITA del
+// usuario: "contratar" (resolver el encargo: proveedor, precio, método) y "completar tareas" son acciones
+// SEPARADAS. Antes, "Marcar encargo como resuelto" completaba también las tareas pendientes del encargo
+// — eso YA NO pasa: cada tarea se marca hecha a mano, como cualquier otra, nunca como efecto colateral de
+// resolver el encargo.
+describe('ResolveGroupModal — "contratar" nunca completa tareas (Fase 7, Parte C3)', () => {
+  it('EventosScreen le sigue pasando las tareas pendientes de ESE grupo (para el aviso informativo), aunque ya no se usen para completarlas', () => {
     expect(UI).toContain('tasks={tasks.filter((t) => t.groupId === resolvingGroup.id && !t.done)}')
   })
-  it('completa cada una de esas tareas con updateEventTask({ done: true }) — nunca con un endpoint "completar encargo" aparte', () => {
-    expect(RESOLVE_MODAL).toContain('for (const t of tasks) await updateEventTask(t.id, { done: true })')
+  it('handleSubmit NUNCA llama a updateEventTask ni completa tareas por su cuenta', () => {
+    const submitFn = window_(RESOLVE_MODAL, 'async function handleSubmit(', '\n  }\n\n  return (')
+    expect(submitFn).not.toMatch(/updateEventTask\(/)
+    expect(submitFn).not.toContain('done: true')
+  })
+  it('el aviso informativo deja claro que resolver no completa las tareas — hay que marcarlas a mano', () => {
+    expect(RESOLVE_MODAL).toContain('no las completa: marca cada una a mano cuando esté hecha de verdad')
   })
   it('el precio TOTAL (si se pone) crea UN único event_payments — nunca uno por tarea, nunca toca event_budget_items', () => {
     expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })')
@@ -182,8 +188,10 @@ describe('ResolveGroupModal — resuelve exclusivamente las tareas actuales de E
   it('un proveedor nuevo se da de alta vía el sistema de Proveedores de siempre (addEventProvider), nunca un modelo paralelo', () => {
     expect(RESOLVE_MODAL).toContain('addEventProvider(event.id, { name: newProviderName })')
   })
-  it('resolveEventTaskGroup guarda el método/nota/proveedor/pago en el propio encargo — nunca en las tareas', () => {
-    expect(RESOLVE_MODAL).toContain('resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId })')
+  it('resolveEventTaskGroup guarda el método/nota/proveedor/pago/oferta en el propio encargo — nunca en las tareas', () => {
+    expect(RESOLVE_MODAL).toContain(
+      'resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId, offerId: usedOfferId })',
+    )
   })
   it('si el método no es "Empresa/proveedor", nunca se intenta crear ni proveedor ni pago', () => {
     const submitFn = window_(RESOLVE_MODAL, 'async function handleSubmit(', '\n  return (')
@@ -191,6 +199,22 @@ describe('ResolveGroupModal — resuelve exclusivamente las tareas actuales de E
     expect(providerBlock).toContain("if (method === 'empresa') {")
     const paymentBlock = submitFn.slice(submitFn.indexOf('let paymentId: string | null = null'))
     expect(paymentBlock).toContain("method === 'empresa' && price.trim()")
+  })
+})
+
+// Fase 7 (Parte C2/C4) — "Usar esta oferta al resolver" ahora además guarda de qué oferta viene (para
+// poder consultarlo después) y propone el precio POR SERVICIOS seleccionados cuando la oferta los tiene
+// desglosados, en vez del total simple siempre — pero el campo sigue siendo editable, nunca se fija solo.
+describe('ResolveGroupModal — trazabilidad oferta→encargo y precio por servicios (Fase 7, Parte C2/C4)', () => {
+  it('onUseOffer guarda usedOfferId (la oferta usada) además de proveedor/precio', () => {
+    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
+    expect(onUseOfferProp).toContain('setUsedOfferId(offer.id)')
+  })
+  it('el precio se calcula a partir de listEventTaskGroupOfferItems — la suma de las líneas seleccionadas si hay alguna con importe, el total simple si no', () => {
+    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
+    expect(onUseOfferProp).toContain('listEventTaskGroupOfferItems(offer.id)')
+    expect(onUseOfferProp).toContain('i.selected && i.subtotal !== null')
+    expect(onUseOfferProp).toContain('setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))')
   })
 })
 

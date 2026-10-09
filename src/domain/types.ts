@@ -817,6 +817,8 @@ export interface EventTaskGroup {
   providerId: string | null
   providerName: string | null
   paymentId: string | null
+  // Fase 7 (Parte C2, migración 0228) — trazabilidad: de qué oferta (si alguna) viene esta resolución.
+  offerId: string | null
 }
 
 // Histórico de resoluciones de un encargo (migración 0220) — cada vez que se resuelve (la primera vez, o
@@ -830,6 +832,7 @@ export interface EventTaskGroupResolution {
   providerId: string | null
   providerName: string | null
   paymentId: string | null
+  offerId: string | null
   resolvedAt: string
 }
 

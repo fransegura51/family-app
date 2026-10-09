@@ -34,6 +34,7 @@ function makeGroup(overrides: Partial<EventTaskGroup> = {}): EventTaskGroup {
     providerId: null,
     providerName: null,
     paymentId: null,
+    offerId: null,
     ...overrides,
   }
 }

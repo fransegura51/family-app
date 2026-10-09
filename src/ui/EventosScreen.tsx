@@ -4795,6 +4795,9 @@ function ResolveGroupModal({
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [newProviderName, setNewProviderName] = useState('')
   const [price, setPrice] = useState('')
+  // Fase 7 (Parte C2) — qué oferta se usó para rellenar este formulario, si alguna (trazabilidad
+  // oferta → encargo). Puramente informativo: cambiar a mano lo que la oferta rellenó no borra el vínculo.
+  const [usedOfferId, setUsedOfferId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -4839,9 +4842,10 @@ function ResolveGroupModal({
         // UN único pago por el TOTAL del encargo — nunca uno por tarea ni por decisión (ver cabecera).
         paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })
       }
-      await resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId })
-      // Completa EXCLUSIVAMENTE las tareas pendientes actuales de este encargo — nunca ninguna otra.
-      for (const t of tasks) await updateEventTask(t.id, { done: true })
+      await resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId, offerId: usedOfferId })
+      // Fase 7 (Parte C3, decisión explícita del usuario): "contratar" y "completar tareas" son acciones
+      // separadas — resolver un encargo YA NO completa ninguna tarea; cada una se marca hecha a mano, como
+      // cualquier otra tarea del evento.
       await onResolved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo resolver el encargo'))
@@ -4864,7 +4868,7 @@ function ResolveGroupModal({
         <div className="card member-form">
           <p className="muted" style={{ fontSize: 13, margin: 0 }}>
             {tasks.length > 0
-              ? `Se completarán sus ${tasks.length} tarea${tasks.length === 1 ? '' : 's'} pendiente${tasks.length === 1 ? '' : 's'} (las ya hechas no cambian).`
+              ? `Este encargo tiene ${tasks.length} tarea${tasks.length === 1 ? '' : 's'} pendiente${tasks.length === 1 ? '' : 's'} — resolverlo registra cómo y con quién, pero no las completa: marca cada una a mano cuando esté hecha de verdad.`
               : 'Este encargo no tiene ninguna tarea pendiente — se marcará resuelto igualmente.'}
           </p>
           {error && <p className="error">{error}</p>}
@@ -4880,7 +4884,16 @@ function ResolveGroupModal({
                 setProviderMode('new')
                 setNewProviderName(offer.providerName)
               }
-              setPrice(String(offer.amount))
+              setUsedOfferId(offer.id)
+              // Parte C4 — si la oferta tiene servicios desglosados con importe, el precio se propone POR
+              // SERVICIOS (la suma de los seleccionados); si no, el total simple de la oferta tal cual.
+              // Siempre editable después — nunca se fija ni se sustituye sin que la familia lo confirme.
+              listEventTaskGroupOfferItems(offer.id)
+                .then((items) => {
+                  const selectedSum = items.filter((i) => i.selected && i.subtotal !== null).reduce((s, i) => s + (i.subtotal ?? 0), 0)
+                  setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))
+                })
+                .catch(() => setPrice(String(offer.amount)))
             }}
           />
           <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>

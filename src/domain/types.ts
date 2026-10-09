@@ -863,6 +863,29 @@ export interface EventTaskGroupOffer {
   attachmentStoragePath: string | null
   attachmentOriginalName: string | null
   attachmentMimeType: string | null
+  // Fase 6 (Parte B4, migración 0227) — "nueva versión" de una oferta anterior del mismo proveedor, con
+  // precio/alcance actualizado: puramente informativo, nunca oculta ni sustituye la oferta anterior.
+  supersedesOfferId: string | null
+  createdAt: string
+}
+
+// Servicio/línea estructurada de una oferta (Fase 6, Parte B2, migración 0227) — SOLO desglosa lo que ya
+// dice amount; no lo sustituye ni lo recalcula. isPackage: quantity/unitPrice pueden no multiplicar a
+// subtotal (un paquete indivisible no tiene "precio por unidad" real) — subtotal es siempre el dato que
+// manda. selected: qué líneas interesan de verdad al comparar, información aparte de status de la oferta.
+export interface EventTaskGroupOfferItem {
+  id: string
+  offerId: string
+  familyId: string
+  name: string
+  description: string | null
+  quantity: number | null
+  unit: string | null
+  unitPrice: number | null
+  subtotal: number | null
+  isPackage: boolean
+  selected: boolean
+  sortOrder: number
   createdAt: string
 }
 

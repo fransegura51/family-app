@@ -245,7 +245,8 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
     // nueva, no toca event_payments ni event_budget_items) y 0224 (registro global de proveedores —
     // providers_global/event_provider_links, tablas nuevas; event_providers solo gana una columna
     // global_provider_id, sus FK existentes no cambian) tampoco tocan esta funcionalidad.
-    // 0226 (registro de uso por cuenta para el panel de propietaria) no toca esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(226)
+    // 0226 (registro de uso por cuenta para el panel de propietaria) y 0227 (servicios estructurados y
+    // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) tampoco tocan esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(227)
   })
 })

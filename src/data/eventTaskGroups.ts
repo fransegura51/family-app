@@ -7,7 +7,7 @@
 // 0225 (Fase 5) una oferta puede existir SIN encargo (grupo); ver las funciones "sueltas" más abajo.
 import { compressImageFile } from '@/domain/imageCompression'
 import { supabase } from '@/data/supabaseClient'
-import type { EventTaskGroup, EventTaskGroupOffer, EventTaskGroupOfferStatus, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroup, EventTaskGroupOffer, EventTaskGroupOfferItem, EventTaskGroupOfferStatus, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
 
 // events.ts importa de aquí (findOrCreateEventTaskGroupByKind) y providersGlobal.ts importa de events.ts
 // — para no crear un ciclo, esta función se repite tal cual (igual que ya hace providersGlobal.ts en vez
@@ -182,7 +182,7 @@ export async function listEventTaskGroupResolutions(groupId: string): Promise<Ev
 // ---------------------------------------------------------------------
 
 const OFFER_SELECT =
-  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, created_at'
+  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, supersedes_offer_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapOffer(r: any): EventTaskGroupOffer {
@@ -205,6 +205,7 @@ function mapOffer(r: any): EventTaskGroupOffer {
     attachmentStoragePath: r.attachment_storage_path,
     attachmentOriginalName: r.attachment_original_name,
     attachmentMimeType: r.attachment_mime_type,
+    supersedesOfferId: r.supersedes_offer_id,
     createdAt: r.created_at,
   }
 }
@@ -227,6 +228,8 @@ export interface EventTaskGroupOfferInput {
   validUntil?: string | null
   conditions?: string | null
   notes?: string | null
+  // Fase 6 (Parte B4) — marcar esta oferta nueva como revisión de una anterior, sin fusionarlas.
+  supersedesOfferId?: string | null
 }
 
 // Devuelve la oferta completa (no solo el id) — quien llama la necesita entera para poder subirle un
@@ -249,6 +252,7 @@ export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGr
       valid_until: input.validUntil ?? null,
       conditions: input.conditions ?? null,
       notes: input.notes ?? null,
+      supersedes_offer_id: input.supersedesOfferId ?? null,
     })
     .select(OFFER_SELECT)
     .single()
@@ -267,6 +271,7 @@ export async function updateEventTaskGroupOffer(id: string, patch: Partial<Event
   if (patch.validUntil !== undefined) update.valid_until = patch.validUntil
   if (patch.conditions !== undefined) update.conditions = patch.conditions
   if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.supersedesOfferId !== undefined) update.supersedes_offer_id = patch.supersedesOfferId
   const { error } = await supabase.from('event_task_group_offers').update(update).eq('id', id)
   if (error) throw error
 }
@@ -356,6 +361,7 @@ export async function addLooseTaskGroupOffer(input: LooseEventTaskGroupOfferInpu
       valid_until: input.validUntil ?? null,
       conditions: input.conditions ?? null,
       notes: input.notes ?? null,
+      supersedes_offer_id: input.supersedesOfferId ?? null,
     })
     .select(OFFER_SELECT)
     .single()
@@ -413,4 +419,96 @@ export async function getEventTaskGroupOfferAttachmentUrl(storagePath: string): 
   const { data, error } = await supabase.storage.from('event_task_group_offers').createSignedUrl(storagePath, 3600)
   if (error) throw error
   return data.signedUrl
+}
+
+// ---------------------------------------------------------------------
+// Servicios estructurados de una oferta (migración 0227, Parte B2) — desglose OPCIONAL de amount, nunca
+// lo sustituye. subtotal es siempre el dato autoritativo de la línea (nunca se recalcula en el servidor).
+// ---------------------------------------------------------------------
+
+const OFFER_ITEM_SELECT = 'id, offer_id, family_id, name, description, quantity, unit, unit_price, subtotal, is_package, selected, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapOfferItem(r: any): EventTaskGroupOfferItem {
+  return {
+    id: r.id,
+    offerId: r.offer_id,
+    familyId: r.family_id,
+    name: r.name,
+    description: r.description,
+    quantity: r.quantity === null ? null : Number(r.quantity),
+    unit: r.unit,
+    unitPrice: r.unit_price === null ? null : Number(r.unit_price),
+    subtotal: r.subtotal === null ? null : Number(r.subtotal),
+    isPackage: r.is_package,
+    selected: r.selected,
+    sortOrder: Number(r.sort_order),
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventTaskGroupOfferItems(offerId: string): Promise<EventTaskGroupOfferItem[]> {
+  const { data, error } = await supabase.from('event_task_group_offer_items').select(OFFER_ITEM_SELECT).eq('offer_id', offerId).order('sort_order', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapOfferItem)
+}
+
+export interface EventTaskGroupOfferItemInput {
+  name: string
+  description?: string | null
+  quantity?: number | null
+  unit?: string | null
+  unitPrice?: number | null
+  subtotal?: number | null
+  isPackage?: boolean
+  selected?: boolean
+}
+
+// family_id se lee de la propia oferta (nunca inventado) — mismo criterio que addEventTaskGroupOffer.
+export async function addEventTaskGroupOfferItem(offer: EventTaskGroupOffer, input: EventTaskGroupOfferItemInput): Promise<EventTaskGroupOfferItem> {
+  const { data, error } = await supabase
+    .from('event_task_group_offer_items')
+    .insert({
+      offer_id: offer.id,
+      family_id: offer.familyId,
+      name: input.name.trim(),
+      description: input.description ?? null,
+      quantity: input.quantity ?? null,
+      unit: input.unit ?? null,
+      unit_price: input.unitPrice ?? null,
+      subtotal: input.subtotal ?? null,
+      is_package: input.isPackage ?? false,
+      selected: input.selected ?? true,
+      sort_order: Date.now(),
+    })
+    .select(OFFER_ITEM_SELECT)
+    .single()
+  if (error) throw error
+  return mapOfferItem(data)
+}
+
+export async function updateEventTaskGroupOfferItem(id: string, patch: Partial<EventTaskGroupOfferItemInput>): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.description !== undefined) update.description = patch.description
+  if (patch.quantity !== undefined) update.quantity = patch.quantity
+  if (patch.unit !== undefined) update.unit = patch.unit
+  if (patch.unitPrice !== undefined) update.unit_price = patch.unitPrice
+  if (patch.subtotal !== undefined) update.subtotal = patch.subtotal
+  if (patch.isPackage !== undefined) update.is_package = patch.isPackage
+  if (patch.selected !== undefined) update.selected = patch.selected
+  const { error } = await supabase.from('event_task_group_offer_items').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// "Seleccionar"/"Quitar de seleccionadas" — solo información para comparar, nunca toca la oferta ni crea
+// nada; varias líneas pueden estar seleccionadas a la vez (a diferencia de status de la oferta).
+export async function setEventTaskGroupOfferItemSelected(id: string, selected: boolean): Promise<void> {
+  const { error } = await supabase.from('event_task_group_offer_items').update({ selected }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventTaskGroupOfferItem(id: string): Promise<void> {
+  const { error } = await supabase.from('event_task_group_offer_items').delete().eq('id', id)
+  if (error) throw error
 }

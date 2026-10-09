@@ -172,12 +172,15 @@ import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHel
 import {
   addEventTaskGroup,
   addEventTaskGroupOffer,
+  addEventTaskGroupOfferItem,
   addLooseTaskGroupOffer,
   countTasksInGroup,
   deleteEventTaskGroup,
   deleteEventTaskGroupOffer,
+  deleteEventTaskGroupOfferItem,
   getEventTaskGroupOfferAttachmentUrl,
   linkLooseTaskGroupOfferToGroup,
+  listEventTaskGroupOfferItems,
   listEventTaskGroupOffers,
   listEventTaskGroups,
   listLooseOffersForEvent,
@@ -187,12 +190,14 @@ import {
   saveEventTaskGroupOfferAttachment,
   selectEventTaskGroupOffer,
   setEventTaskGroup,
+  setEventTaskGroupOfferItemSelected,
   setEventTaskGroupOfferStatus,
   updateEventTaskGroupOffer,
+  updateEventTaskGroupOfferItem,
 } from '@/data/eventTaskGroups'
 import { buildTaskGroupRenderItems } from '@/domain/eventTaskGroupDisplay'
 import { suggestNextStepsForGroup, suggestNextStepsForTask, type NextStepSuggestion } from '@/domain/eventNextSteps'
-import type { EventTaskGroupOffer, EventTaskGroupOfferStatus, EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroupOffer, EventTaskGroupOfferItem, EventTaskGroupOfferStatus, EventTaskGroupResolutionMethod } from '@/domain/types'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
@@ -3709,6 +3714,14 @@ function OffersComparison({
                 {OFFER_STATUS_LABELS[o.status]}
               </span>
             </div>
+            {o.supersedesOfferId && (
+              <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
+                🔁 Revisión de otra oferta{(() => {
+                  const prev = offers.find((p) => p.id === o.supersedesOfferId)
+                  return prev ? ` de ${prev.providerName} (antes ${prev.amount.toFixed(2)} €)` : ''
+                })()}
+              </p>
+            )}
             {(o.scopeIncluded || o.scopeExcluded) && (
               <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
                 {o.scopeIncluded && <>Incluye: {o.scopeIncluded}</>}
@@ -3738,6 +3751,7 @@ function OffersComparison({
                 📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
               </button>
             )}
+            <OfferItemsPanel offer={o} />
             <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
               {o.status === 'recibida' && (
                 <button type="button" className="link-button" onClick={() => void handleSelect(o)}>
@@ -3761,7 +3775,7 @@ function OffersComparison({
         ),
       )}
       {showAdd ? (
-        <AddOfferForm groupId={group.id} providers={providers} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />
+        <AddOfferForm groupId={group.id} providers={providers} existingOffers={offers} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />
       ) : (
         <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
           + Añadir oferta
@@ -3774,17 +3788,20 @@ function OffersComparison({
 function AddOfferForm({
   groupId,
   providers,
+  existingOffers,
   onClose,
   onAdded,
 }: {
   groupId: string
   providers: EventProvider[]
+  existingOffers: EventTaskGroupOffer[]
   onClose: () => void
   onAdded: () => void
 }) {
   const [providerMode, setProviderMode] = useState<'existing' | 'new'>(providers.length > 0 ? 'existing' : 'new')
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [newProviderName, setNewProviderName] = useState('')
+  const [supersedesOfferId, setSupersedesOfferId] = useState('')
   const [amount, setAmount] = useState('')
   const [scopeIncluded, setScopeIncluded] = useState('')
   const [scopeExcluded, setScopeExcluded] = useState('')
@@ -3821,6 +3838,7 @@ function AddOfferForm({
         validUntil: validUntil || null,
         conditions: conditions.trim() || null,
         notes: notes.trim() || null,
+        supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
       onAdded()
@@ -3834,7 +3852,20 @@ function AddOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row">
+      {existingOffers.length > 0 && (
+        <label>
+          ¿Es una revisión de una oferta anterior? (opcional)
+          <select value={supersedesOfferId} onChange={(e) => setSupersedesOfferId(e.target.value)}>
+            <option value="">No, es una oferta nueva</option>
+            {existingOffers.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.providerName} · {o.amount.toFixed(2)} € {o.offerDate ? `(${o.offerDate})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <div className="filter-row" style={{ marginTop: existingOffers.length > 0 ? 6 : 0 }}>
         <button type="button" className={'chip' + (providerMode === 'existing' ? ' chip-active' : '')} onClick={() => setProviderMode('existing')}>
           Proveedor ya existente
         </button>
@@ -4093,6 +4124,14 @@ function ProviderOffersPanel({
                     {OFFER_STATUS_LABELS[o.status]}
                   </span>
                 </div>
+                {o.supersedesOfferId && (
+                  <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
+                    🔁 Revisión de otra oferta{(() => {
+                      const prev = offers.find((p) => p.id === o.supersedesOfferId)
+                      return prev ? ` (antes ${prev.amount.toFixed(2)} €)` : ''
+                    })()}
+                  </p>
+                )}
                 {(o.scopeIncluded || o.scopeExcluded) && (
                   <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
                     {o.scopeIncluded && <>Incluye: {o.scopeIncluded}</>}
@@ -4127,6 +4166,7 @@ function ProviderOffersPanel({
                     Sin encargo todavía — vincúlala desde "🗂️ Encargos" cuando corresponda.
                   </p>
                 )}
+                <OfferItemsPanel offer={o} />
                 <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
                   <button type="button" className="link-button" onClick={() => void handleToggleDiscard(o)}>
                     {o.status === 'descartada' ? '↩️ Recibida' : '🗑 Descartar'}
@@ -4144,6 +4184,7 @@ function ProviderOffersPanel({
               eventId={eventId}
               globalProviderId={globalProviderId}
               providerName={providerName}
+              existingOffers={offers}
               onClose={() => setShowAdd(false)}
               onAdded={() => { setShowAdd(false); reload() }}
             />
@@ -4162,12 +4203,14 @@ function AddLooseOfferForm({
   eventId,
   globalProviderId,
   providerName,
+  existingOffers,
   onClose,
   onAdded,
 }: {
   eventId: string | null
   globalProviderId: string
   providerName: string
+  existingOffers: EventTaskGroupOffer[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -4178,6 +4221,7 @@ function AddLooseOfferForm({
   const [validUntil, setValidUntil] = useState('')
   const [conditions, setConditions] = useState('')
   const [notes, setNotes] = useState('')
+  const [supersedesOfferId, setSupersedesOfferId] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -4203,6 +4247,7 @@ function AddLooseOfferForm({
         validUntil: validUntil || null,
         conditions: conditions.trim() || null,
         notes: notes.trim() || null,
+        supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
       onAdded()
@@ -4216,6 +4261,19 @@ function AddLooseOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
+      {existingOffers.length > 0 && (
+        <label>
+          ¿Es una revisión de una oferta anterior? (opcional)
+          <select value={supersedesOfferId} onChange={(e) => setSupersedesOfferId(e.target.value)}>
+            <option value="">No, es una oferta nueva</option>
+            {existingOffers.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.amount.toFixed(2)} € {o.offerDate ? `(${o.offerDate})` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Importe (€)
         <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
@@ -4259,6 +4317,280 @@ function AddLooseOfferForm({
         </button>
       </div>
     </form>
+  )
+}
+
+// Fase 6 (Parte B2, prompt maestro) — servicios estructurados dentro de una oferta: SOLO desglosa el
+// importe total de la oferta (nunca lo sustituye ni lo recalcula). Un paquete indivisible (is_package)
+// puede no tener relación matemática entre cantidad/precio unitario y subtotal — subtotal manda siempre.
+// "Seleccionada" (por línea) es solo para comparar qué servicios interesan de esta oferta en concreto;
+// nunca contrata ni completa nada por sí sola — eso sigue siendo cosa de "Resolver encargo".
+function OfferItemsPanel({ offer }: { offer: EventTaskGroupOffer }) {
+  const [open, setOpen] = useState(false)
+  const [items, setItems] = useState<EventTaskGroupOfferItem[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventTaskGroupOfferItems(offer.id)
+      .then(setItems)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los servicios')))
+  }
+  useEffect(() => {
+    if (open) reload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, offer.id])
+
+  async function handleToggleSelected(item: EventTaskGroupOfferItem) {
+    setError(null)
+    try {
+      await setEventTaskGroupOfferItemSelected(item.id, !item.selected)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar'))
+    }
+  }
+
+  const sumAll = items.reduce((s, i) => s + (i.subtotal ?? 0), 0)
+  const sumSelected = items.filter((i) => i.selected).reduce((s, i) => s + (i.subtotal ?? 0), 0)
+  const hasAnySubtotal = items.some((i) => i.subtotal !== null)
+  const amountMismatch = hasAnySubtotal && Math.abs(sumAll - offer.amount) > 0.009
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)} style={{ fontSize: 12 }}>
+        {open ? '▾' : '▸'} 📋 Servicios{items.length > 0 ? ` (${items.length})` : ''}
+      </button>
+      {open && (
+        <div className="card" style={{ padding: 8, marginTop: 4 }}>
+          {error && <p className="error">{error}</p>}
+          {items.length === 0 && !showAdd && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Esta oferta todavía no tiene servicios desglosados — el importe de arriba es el total tal cual, sin desglose.
+            </p>
+          )}
+          {items.map((item) =>
+            editingId === item.id ? (
+              <EditOfferItemForm key={item.id} item={item} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+            ) : (
+              <div key={item.id} className="inline-fields" style={{ alignItems: 'center', marginTop: 4, opacity: item.selected ? 1 : 0.55 }}>
+                <input type="checkbox" checked={item.selected} onChange={() => void handleToggleSelected(item)} aria-label="Seleccionada para comparar" />
+                <div style={{ flex: 1 }}>
+                  <strong style={{ fontSize: 13 }}>{item.name}</strong>
+                  {item.isPackage ? <span className="muted" style={{ fontSize: 11 }}> · 📦 paquete</span> : null}
+                  {(item.quantity !== null || item.unit) && (
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      {' '}
+                      · {item.quantity ?? ''} {item.unit ?? ''}
+                      {item.unitPrice !== null ? ` × ${item.unitPrice.toFixed(2)} €` : ''}
+                    </span>
+                  )}
+                  {item.description && (
+                    <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                      {item.description}
+                    </p>
+                  )}
+                </div>
+                <span style={{ fontSize: 12 }}>{item.subtotal !== null ? `${item.subtotal.toFixed(2)} €` : 'sin importe'}</span>
+                <button type="button" className="link-button" onClick={() => setEditingId(item.id)}>
+                  ✏️
+                </button>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar servicio" onConfirm={() => deleteEventTaskGroupOfferItem(item.id).then(reload)} />
+              </div>
+            ),
+          )}
+          {hasAnySubtotal && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Suma de las líneas: {sumAll.toFixed(2)} € · Seleccionadas: {sumSelected.toFixed(2)} €
+              {amountMismatch && <> · El total de la oferta ({offer.amount.toFixed(2)} €) no coincide — puede incluir descuento, impuestos u otro cargo aparte.</>}
+            </p>
+          )}
+          {showAdd ? (
+            <AddOfferItemForm offer={offer} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />
+          ) : (
+            <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
+              + Añadir servicio
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AddOfferItemForm({ offer, onClose, onAdded }: { offer: EventTaskGroupOffer; onClose: () => void; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [quantity, setQuantity] = useState('')
+  const [unit, setUnit] = useState('')
+  const [unitPrice, setUnitPrice] = useState('')
+  const [subtotal, setSubtotal] = useState('')
+  const [isPackage, setIsPackage] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre al servicio.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addEventTaskGroupOfferItem(offer, {
+        name,
+        description: description.trim() || null,
+        quantity: quantity.trim() === '' ? null : Number(quantity),
+        unit: unit.trim() || null,
+        unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
+        subtotal: subtotal.trim() === '' ? null : Number(subtotal),
+        isPackage,
+      })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir el servicio'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre del servicio
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Ramo de novia, hora extra de barra libre..." />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Descripción (opcional)
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 6 }}>
+        <button type="button" className={'chip' + (!isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(false)}>
+          Por cantidad/precio
+        </button>
+        <button type="button" className={'chip' + (isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(true)}>
+          📦 Paquete indivisible
+        </button>
+      </div>
+      {!isPackage && (
+        <div className="inline-fields" style={{ marginTop: 6 }}>
+          <label style={{ flex: 1 }}>
+            Cantidad (opcional)
+            <input type="number" min={0} step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          </label>
+          <label style={{ flex: 1 }}>
+            Unidad (opcional)
+            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ud, hora, menú..." />
+          </label>
+          <label style={{ flex: 1 }}>
+            Precio unitario (opcional)
+            <input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+          </label>
+        </div>
+      )}
+      <label style={{ marginTop: 6 }}>
+        Subtotal de esta línea (opcional — el dato que manda, aunque no coincida con cantidad × precio)
+        <input type="number" min={0} step="0.01" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Añadir servicio'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function EditOfferItemForm({ item, onDone, onSaved }: { item: EventTaskGroupOfferItem; onDone: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(item.name)
+  const [description, setDescription] = useState(item.description ?? '')
+  const [quantity, setQuantity] = useState(item.quantity === null ? '' : String(item.quantity))
+  const [unit, setUnit] = useState(item.unit ?? '')
+  const [unitPrice, setUnitPrice] = useState(item.unitPrice === null ? '' : String(item.unitPrice))
+  const [subtotal, setSubtotal] = useState(item.subtotal === null ? '' : String(item.subtotal))
+  const [isPackage, setIsPackage] = useState(item.isPackage)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    if (!name.trim()) {
+      setError('Ponle un nombre al servicio.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventTaskGroupOfferItem(item.id, {
+        name,
+        description: description.trim() || null,
+        quantity: quantity.trim() === '' ? null : Number(quantity),
+        unit: unit.trim() || null,
+        unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
+        subtotal: subtotal.trim() === '' ? null : Number(subtotal),
+        isPackage,
+      })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" style={{ padding: 8, marginTop: 6 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre del servicio
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Descripción (opcional)
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 6 }}>
+        <button type="button" className={'chip' + (!isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(false)}>
+          Por cantidad/precio
+        </button>
+        <button type="button" className={'chip' + (isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(true)}>
+          📦 Paquete indivisible
+        </button>
+      </div>
+      {!isPackage && (
+        <div className="inline-fields" style={{ marginTop: 6 }}>
+          <label style={{ flex: 1 }}>
+            Cantidad (opcional)
+            <input type="number" min={0} step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          </label>
+          <label style={{ flex: 1 }}>
+            Unidad (opcional)
+            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ud, hora, menú..." />
+          </label>
+          <label style={{ flex: 1 }}>
+            Precio unitario (opcional)
+            <input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+          </label>
+        </div>
+      )}
+      <label style={{ marginTop: 6 }}>
+        Subtotal de esta línea (opcional — el dato que manda, aunque no coincida con cantidad × precio)
+        <input type="number" min={0} step="0.01" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" onClick={() => void save()} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
+      </div>
+    </div>
   )
 }
 

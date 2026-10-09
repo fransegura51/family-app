@@ -99,3 +99,6 @@ app/src/main/assets/public
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
 app/src/main/res/xml/config.xml
+
+# Configuración de Firebase: va como secreto de GitHub (GOOGLE_SERVICES_JSON_B64), nunca en el repositorio.
+app/google-services.json

@@ -26,6 +26,7 @@ const AlimentacionScreen = lazy(() => import('@/ui/AlimentacionScreen').then((m)
 const FinanceScreen = lazy(() => import('@/ui/FinanceScreen').then((m) => ({ default: m.FinanceScreen })))
 const LocationScreen = lazy(() => import('@/ui/LocationScreen').then((m) => ({ default: m.LocationScreen })))
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
+import { UsageTracker } from '@/ui/UsageTracker'
 import { PushSubscriptionKeeper } from '@/ui/PushSubscriptionKeeper'
 import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
 import { AppLockGate } from '@/ui/AppLockGate'
@@ -120,6 +121,7 @@ function AuthedApp() {
           error visible (bug real encontrado probando el despliegue). */}
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <ReminderWatcher />
+        <UsageTracker />
         <PushSubscriptionKeeper />
         <LocationSharingWatcher profileId={profile.id} />
         <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>

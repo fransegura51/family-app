@@ -5,6 +5,7 @@ import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/dat
 import { deleteFamilyInvite, generateFamilyInvite, listFamilyInvites, type FamilyInvite } from '@/data/familyInvites'
 import { getAmazonWebhookToken, regenerateAmazonWebhookToken } from '@/data/family'
 import { errorMessage } from '@/domain/errorMessage'
+import { AppActivityPanel } from '@/ui/AppActivityPanel'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 
 function formatDate(iso: string | null): string {
@@ -235,6 +236,8 @@ export function AdminUsageScreen() {
           })}
         </div>
       )}
+
+      {isAppOwnerView && <AppActivityPanel accounts={rows} />}
 
       <h2 className="section-title">Familias y cuentas</h2>
       <p className="muted">

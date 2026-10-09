@@ -156,7 +156,8 @@ describe('lo que esta fase NO toca', () => {
     // nueva, no toca event_payments ni event_budget_items) y 0224 (registro global de proveedores —
     // providers_global/event_provider_links, tablas nuevas; event_providers solo gana una columna
     // global_provider_id, sus FK existentes no cambian) tampoco tocan devoluciones.
-    expect(Math.max(...numbers)).toBe(224)
+    // 0226 (registro de uso por cuenta para el panel de propietaria) no toca esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(226)
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

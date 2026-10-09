@@ -833,6 +833,32 @@ export interface EventTaskGroupResolution {
   resolvedAt: string
 }
 
+// Oferta recibida para un encargo (migración 0223, Parte B Fase 6) — SOLO información para comparar,
+// nunca un compromiso económico: "una oferta de 150€, un contrato de 100€ y un pago parcial de 40€ no son
+// 290€ de gasto". status distingue cuál os gusta más, pero elegir una NUNCA crea un pago ni toca el
+// presupuesto por sí sola — eso sigue pasando exclusivamente al "Resolver encargo" de siempre.
+export type EventTaskGroupOfferStatus = 'recibida' | 'seleccionada' | 'descartada'
+
+export interface EventTaskGroupOffer {
+  id: string
+  groupId: string
+  familyId: string
+  providerId: string | null
+  providerName: string
+  amount: number
+  scopeIncluded: string | null
+  scopeExcluded: string | null
+  offerDate: string | null
+  validUntil: string | null
+  conditions: string | null
+  notes: string | null
+  status: EventTaskGroupOfferStatus
+  attachmentStoragePath: string | null
+  attachmentOriginalName: string | null
+  attachmentMimeType: string | null
+  createdAt: string
+}
+
 // Preparativos (migración 0208) — propuesta de PEPA de cambiar una prioridad que fijó el usuario, con
 // motivo. Solo existe mientras 'pendiente'; aceptarla o rechazarla la resuelve (nunca se borra).
 export interface EventTaskPrioritySuggestion {

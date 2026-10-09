@@ -2,8 +2,11 @@
 // relacionadas (p. ej. "Flores": ramo, prendidos, decoración, recoger). UN grupo principal por tarea.
 // Desde 0215, un encargo puede RESOLVERSE (proveedor real + precio total opcional, reutilizando
 // event_providers/event_payments tal cual — nunca event_budget_items, ver cabecera de esa migración).
+// Desde 0223 (Parte B Fase 6), un encargo puede recibir varias OFERTAS para comparar antes de resolverlo
+// — ver EventTaskGroupOffer en domain/types.ts: solo información, nunca un compromiso económico.
+import { compressImageFile } from '@/domain/imageCompression'
 import { supabase } from '@/data/supabaseClient'
-import type { EventTaskGroup, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroup, EventTaskGroupOffer, EventTaskGroupOfferStatus, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
 
 const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id'
 
@@ -158,4 +161,162 @@ export async function listEventTaskGroupResolutions(groupId: string): Promise<Ev
   const { data, error } = await supabase.from('event_task_group_resolutions').select(GROUP_RESOLUTION_SELECT).eq('group_id', groupId).order('resolved_at', { ascending: true })
   if (error) throw error
   return (data ?? []).map(mapGroupResolution)
+}
+
+// ---------------------------------------------------------------------
+// Ofertas de un encargo (migración 0223, Parte B Fase 6) — comparar antes de resolver. SOLO información:
+// elegir una ("seleccionada") nunca crea un event_payment ni toca event_budget_items, eso sigue pasando
+// exclusivamente en resolveEventTaskGroup de arriba.
+// ---------------------------------------------------------------------
+
+const OFFER_SELECT =
+  'id, group_id, family_id, provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapOffer(r: any): EventTaskGroupOffer {
+  return {
+    id: r.id,
+    groupId: r.group_id,
+    familyId: r.family_id,
+    providerId: r.provider_id,
+    providerName: r.provider_name,
+    amount: Number(r.amount),
+    scopeIncluded: r.scope_included,
+    scopeExcluded: r.scope_excluded,
+    offerDate: r.offer_date,
+    validUntil: r.valid_until,
+    conditions: r.conditions,
+    notes: r.notes,
+    status: r.status,
+    attachmentStoragePath: r.attachment_storage_path,
+    attachmentOriginalName: r.attachment_original_name,
+    attachmentMimeType: r.attachment_mime_type,
+    createdAt: r.created_at,
+  }
+}
+
+// De más reciente a más antigua — al comparar, la última oferta (p. ej. una revisión de precio del mismo
+// proveedor) interesa más arriba que la primera.
+export async function listEventTaskGroupOffers(groupId: string): Promise<EventTaskGroupOffer[]> {
+  const { data, error } = await supabase.from('event_task_group_offers').select(OFFER_SELECT).eq('group_id', groupId).order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(mapOffer)
+}
+
+export interface EventTaskGroupOfferInput {
+  providerId?: string | null
+  providerName: string
+  amount: number
+  scopeIncluded?: string | null
+  scopeExcluded?: string | null
+  offerDate?: string | null
+  validUntil?: string | null
+  conditions?: string | null
+  notes?: string | null
+}
+
+// Devuelve la oferta completa (no solo el id) — quien llama la necesita entera para poder subirle un
+// adjunto justo después de crearla (saveEventTaskGroupOfferAttachment pide family_id/group_id).
+export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGroupOfferInput): Promise<EventTaskGroupOffer> {
+  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id').eq('id', groupId).single()
+  if (groupError) throw groupError
+  const { data, error } = await supabase
+    .from('event_task_group_offers')
+    .insert({
+      group_id: groupId,
+      family_id: group.family_id,
+      provider_id: input.providerId ?? null,
+      provider_name: input.providerName.trim(),
+      amount: input.amount,
+      scope_included: input.scopeIncluded ?? null,
+      scope_excluded: input.scopeExcluded ?? null,
+      offer_date: input.offerDate ?? null,
+      valid_until: input.validUntil ?? null,
+      conditions: input.conditions ?? null,
+      notes: input.notes ?? null,
+    })
+    .select(OFFER_SELECT)
+    .single()
+  if (error) throw error
+  return mapOffer(data)
+}
+
+export async function updateEventTaskGroupOffer(id: string, patch: Partial<EventTaskGroupOfferInput>): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.providerId !== undefined) update.provider_id = patch.providerId
+  if (patch.providerName !== undefined) update.provider_name = patch.providerName.trim()
+  if (patch.amount !== undefined) update.amount = patch.amount
+  if (patch.scopeIncluded !== undefined) update.scope_included = patch.scopeIncluded
+  if (patch.scopeExcluded !== undefined) update.scope_excluded = patch.scopeExcluded
+  if (patch.offerDate !== undefined) update.offer_date = patch.offerDate
+  if (patch.validUntil !== undefined) update.valid_until = patch.validUntil
+  if (patch.conditions !== undefined) update.conditions = patch.conditions
+  if (patch.notes !== undefined) update.notes = patch.notes
+  const { error } = await supabase.from('event_task_group_offers').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// "Descartar"/"Volver a recibida" — cambio de estado simple, sin efectos sobre otras ofertas.
+export async function setEventTaskGroupOfferStatus(id: string, status: Extract<EventTaskGroupOfferStatus, 'recibida' | 'descartada'>): Promise<void> {
+  const { error } = await supabase.from('event_task_group_offers').update({ status }).eq('id', id)
+  if (error) throw error
+}
+
+// "Seleccionar" — a lo sumo UNA oferta "seleccionada" por encargo, para que quede claro cuál es la
+// elegida al comparar; las demás vuelven a "recibida" (nunca se descartan solas, por si se cambia de
+// opinión). Nunca crea un pago ni toca el presupuesto — eso es cosa exclusiva de "Resolver encargo".
+export async function selectEventTaskGroupOffer(id: string, groupId: string): Promise<void> {
+  const { error: revertError } = await supabase
+    .from('event_task_group_offers')
+    .update({ status: 'recibida' })
+    .eq('group_id', groupId)
+    .eq('status', 'seleccionada')
+  if (revertError) throw revertError
+  const { error } = await supabase.from('event_task_group_offers').update({ status: 'seleccionada' }).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventTaskGroupOffer(offer: EventTaskGroupOffer): Promise<void> {
+  const { error } = await supabase.from('event_task_group_offers').delete().eq('id', offer.id)
+  if (error) throw error
+  if (offer.attachmentStoragePath) {
+    await supabase.storage.from('event_task_group_offers').remove([offer.attachmentStoragePath])
+  }
+}
+
+// Documento adjunto opcional (presupuesto en PDF/foto de un proveedor) — se sube y se enlaza a una oferta
+// YA creada, nunca al crearla (igual que saveEventFoodDocument: nunca se sube un archivo que la familia
+// pueda acabar descartando sin llegar a guardar la oferta). Un único adjunto por oferta; subir uno nuevo
+// sustituye al anterior y borra el archivo viejo del storage.
+export async function saveEventTaskGroupOfferAttachment(offer: EventTaskGroupOffer, file: File): Promise<EventTaskGroupOffer> {
+  const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
+  const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
+  const path = `${offer.familyId}/${offer.groupId}/${crypto.randomUUID()}.${ext}`
+  const { error: uploadError } = await supabase.storage.from('event_task_group_offers').upload(path, prepared)
+  if (uploadError) throw uploadError
+  const { data, error } = await supabase
+    .from('event_task_group_offers')
+    .update({
+      attachment_storage_path: path,
+      attachment_original_name: file.name.slice(0, 160),
+      attachment_mime_type: prepared.type || file.type || null,
+    })
+    .eq('id', offer.id)
+    .select(OFFER_SELECT)
+    .single()
+  if (error) {
+    // No dejar un archivo huérfano si la fila no se pudo actualizar.
+    await supabase.storage.from('event_task_group_offers').remove([path])
+    throw error
+  }
+  if (offer.attachmentStoragePath) {
+    await supabase.storage.from('event_task_group_offers').remove([offer.attachmentStoragePath])
+  }
+  return mapOffer(data)
+}
+
+export async function getEventTaskGroupOfferAttachmentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('event_task_group_offers').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }

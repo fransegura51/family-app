@@ -174,16 +174,24 @@ import { listEventReminders, replaceReminders } from '@/data/calendar'
 import { addEventHelper, countHelperAssignments, deleteEventHelper, listEventHelpers, setEventTaskHelpers, setEventTaskResponsibles, updateEventHelper } from '@/data/eventTaskResponsibles'
 import {
   addEventTaskGroup,
+  addEventTaskGroupOffer,
   countTasksInGroup,
   deleteEventTaskGroup,
+  deleteEventTaskGroupOffer,
+  getEventTaskGroupOfferAttachmentUrl,
+  listEventTaskGroupOffers,
   listEventTaskGroups,
   renameEventTaskGroup,
   resolveEventTaskGroup,
+  saveEventTaskGroupOfferAttachment,
+  selectEventTaskGroupOffer,
   setEventTaskGroup,
+  setEventTaskGroupOfferStatus,
+  updateEventTaskGroupOffer,
 } from '@/data/eventTaskGroups'
 import { buildTaskGroupRenderItems } from '@/domain/eventTaskGroupDisplay'
 import { suggestNextStepsForGroup, suggestNextStepsForTask, type NextStepSuggestion } from '@/domain/eventNextSteps'
-import type { EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroupOffer, EventTaskGroupOfferStatus, EventTaskGroupResolutionMethod } from '@/domain/types'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
@@ -3550,6 +3558,402 @@ function EventTaskGroupsModal({
   )
 }
 
+const OFFER_STATUS_LABELS: Record<EventTaskGroupOfferStatus, string> = {
+  recibida: 'Recibida',
+  seleccionada: '✓ Seleccionada',
+  descartada: 'Descartada',
+}
+
+// Fase 6 (Parte B) — comparar varias ofertas de proveedores antes de resolver un encargo. SOLO
+// información para comparar: seleccionar una aquí NUNCA crea un pago ni toca el presupuesto — eso sigue
+// pasando exclusivamente al "Marcar encargo como resuelto" de ResolveGroupModal; "Usar esta oferta al
+// resolver" solo rellena ese formulario como atajo (onUseOffer), nunca en automático.
+function OffersComparison({
+  group,
+  providers,
+  onUseOffer,
+}: {
+  group: EventTaskGroup
+  providers: EventProvider[]
+  onUseOffer: (offer: EventTaskGroupOffer) => void
+}) {
+  const [offers, setOffers] = useState<EventTaskGroupOffer[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventTaskGroupOffers(group.id)
+      .then(setOffers)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las ofertas')))
+  }
+  useEffect(reload, [group.id])
+
+  async function handleSelect(offer: EventTaskGroupOffer) {
+    setError(null)
+    try {
+      await selectEventTaskGroupOffer(offer.id, group.id)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo seleccionar'))
+    }
+  }
+
+  async function handleToggleDiscard(offer: EventTaskGroupOffer) {
+    setError(null)
+    try {
+      await setEventTaskGroupOfferStatus(offer.id, offer.status === 'descartada' ? 'recibida' : 'descartada')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo cambiar el estado'))
+    }
+  }
+
+  async function handleViewAttachment(offer: EventTaskGroupOffer) {
+    if (!offer.attachmentStoragePath) return
+    try {
+      const url = await getEventTaskGroupOfferAttachmentUrl(offer.attachmentStoragePath)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo abrir el adjunto'))
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      <strong style={{ fontSize: 13 }}>📋 Ofertas recibidas{offers.length > 0 ? ` (${offers.length})` : ''}</strong>
+      {error && <p className="error">{error}</p>}
+      {offers.length === 0 && !showAdd && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Todavía no hay ninguna oferta apuntada — compara precios de varios proveedores antes de resolver, si quieres.
+        </p>
+      )}
+      {offers.map((o) =>
+        editingId === o.id ? (
+          <EditOfferForm key={o.id} offer={o} providers={providers} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+        ) : (
+          <div key={o.id} className="card" style={{ padding: 8, marginTop: 6, opacity: o.status === 'descartada' ? 0.6 : 1 }}>
+            <div className="inline-fields" style={{ alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <strong>{o.providerName}</strong>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {' '}
+                  · {o.amount.toFixed(2)} €
+                </span>
+              </div>
+              <span className="muted" style={{ fontSize: 11 }}>
+                {OFFER_STATUS_LABELS[o.status]}
+              </span>
+            </div>
+            {(o.scopeIncluded || o.scopeExcluded) && (
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                {o.scopeIncluded && <>Incluye: {o.scopeIncluded}</>}
+                {o.scopeIncluded && o.scopeExcluded ? ' · ' : ''}
+                {o.scopeExcluded && <>No incluye: {o.scopeExcluded}</>}
+              </p>
+            )}
+            {(o.offerDate || o.validUntil) && (
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
+                {o.offerDate && o.validUntil ? ' · ' : ''}
+                {o.validUntil ? `Válida hasta: ${o.validUntil}` : ''}
+              </p>
+            )}
+            {o.conditions && (
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                Condiciones: {o.conditions}
+              </p>
+            )}
+            {o.notes && (
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                📝 {o.notes}
+              </p>
+            )}
+            {o.attachmentStoragePath && (
+              <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => void handleViewAttachment(o)}>
+                📎 {o.attachmentOriginalName ?? 'Ver adjunto'}
+              </button>
+            )}
+            <div className="filter-row" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+              {o.status === 'recibida' && (
+                <button type="button" className="link-button" onClick={() => void handleSelect(o)}>
+                  ✓ Seleccionar
+                </button>
+              )}
+              {o.status === 'seleccionada' && (
+                <button type="button" className="link-button" onClick={() => onUseOffer(o)}>
+                  Usar esta oferta al resolver
+                </button>
+              )}
+              <button type="button" className="link-button" onClick={() => void handleToggleDiscard(o)}>
+                {o.status === 'descartada' ? '↩️ Recibida' : '🗑 Descartar'}
+              </button>
+              <button type="button" className="link-button" onClick={() => setEditingId(o.id)}>
+                ✏️ Editar
+              </button>
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar oferta" onConfirm={() => deleteEventTaskGroupOffer(o).then(reload)} />
+            </div>
+          </div>
+        ),
+      )}
+      {showAdd ? (
+        <AddOfferForm groupId={group.id} providers={providers} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />
+      ) : (
+        <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
+          + Añadir oferta
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AddOfferForm({
+  groupId,
+  providers,
+  onClose,
+  onAdded,
+}: {
+  groupId: string
+  providers: EventProvider[]
+  onClose: () => void
+  onAdded: () => void
+}) {
+  const [providerMode, setProviderMode] = useState<'existing' | 'new'>(providers.length > 0 ? 'existing' : 'new')
+  const [selectedProviderId, setSelectedProviderId] = useState('')
+  const [newProviderName, setNewProviderName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [scopeIncluded, setScopeIncluded] = useState('')
+  const [scopeExcluded, setScopeExcluded] = useState('')
+  const [offerDate, setOfferDate] = useState('')
+  const [validUntil, setValidUntil] = useState('')
+  const [conditions, setConditions] = useState('')
+  const [notes, setNotes] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    const providerName = providerMode === 'existing' ? (providers.find((p) => p.id === selectedProviderId)?.name ?? '') : newProviderName.trim()
+    if (!providerName) {
+      setError('Pon el nombre del proveedor.')
+      return
+    }
+    const amountNum = Number(amount)
+    if (amount.trim() === '' || Number.isNaN(amountNum) || amountNum < 0) {
+      setError('Pon un importe válido.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const offer = await addEventTaskGroupOffer(groupId, {
+        providerId: providerMode === 'existing' ? selectedProviderId || null : null,
+        providerName,
+        amount: amountNum,
+        scopeIncluded: scopeIncluded.trim() || null,
+        scopeExcluded: scopeExcluded.trim() || null,
+        offerDate: offerDate || null,
+        validUntil: validUntil || null,
+        conditions: conditions.trim() || null,
+        notes: notes.trim() || null,
+      })
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir la oferta'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row">
+        <button type="button" className={'chip' + (providerMode === 'existing' ? ' chip-active' : '')} onClick={() => setProviderMode('existing')}>
+          Proveedor ya existente
+        </button>
+        <button type="button" className={'chip' + (providerMode === 'new' ? ' chip-active' : '')} onClick={() => setProviderMode('new')}>
+          Proveedor nuevo / sin dar de alta
+        </button>
+      </div>
+      {providerMode === 'existing' ? (
+        providers.length > 0 ? (
+          <select value={selectedProviderId} onChange={(e) => setSelectedProviderId(e.target.value)} style={{ marginTop: 6 }}>
+            <option value="">Elige un proveedor…</option>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+            Todavía no hay proveedores en este evento — escribe el nombre.
+          </p>
+        )
+      ) : (
+        <label style={{ marginTop: 6 }}>
+          Nombre del proveedor
+          <input type="text" value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Floristería..." />
+        </label>
+      )}
+      <label style={{ marginTop: 6 }}>
+        Importe (€)
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué incluye (opcional)
+        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué NO incluye (opcional)
+        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
+      </label>
+      <div className="inline-fields" style={{ marginTop: 6 }}>
+        <label style={{ flex: 1 }}>
+          Fecha de la oferta (opcional)
+          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
+        </label>
+        <label style={{ flex: 1 }}>
+          Válida hasta (opcional)
+          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+        </label>
+      </div>
+      <label style={{ marginTop: 6 }}>
+        Condiciones (opcional)
+        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} placeholder="Forma de pago, cancelación..." />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Notas (opcional)
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Adjunto (opcional)
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Añadir oferta'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function EditOfferForm({
+  offer,
+  providers,
+  onDone,
+  onSaved,
+}: {
+  offer: EventTaskGroupOffer
+  providers: EventProvider[]
+  onDone: () => void
+  onSaved: () => void
+}) {
+  const [providerName, setProviderName] = useState(offer.providerName)
+  const [amount, setAmount] = useState(String(offer.amount))
+  const [scopeIncluded, setScopeIncluded] = useState(offer.scopeIncluded ?? '')
+  const [scopeExcluded, setScopeExcluded] = useState(offer.scopeExcluded ?? '')
+  const [offerDate, setOfferDate] = useState(offer.offerDate ?? '')
+  const [validUntil, setValidUntil] = useState(offer.validUntil ?? '')
+  const [conditions, setConditions] = useState(offer.conditions ?? '')
+  const [notes, setNotes] = useState(offer.notes ?? '')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function save() {
+    const amountNum = Number(amount)
+    if (!providerName.trim() || amount.trim() === '' || Number.isNaN(amountNum) || amountNum < 0) {
+      setError('Revisa el proveedor y el importe.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventTaskGroupOffer(offer.id, {
+        providerName,
+        amount: amountNum,
+        scopeIncluded: scopeIncluded.trim() || null,
+        scopeExcluded: scopeExcluded.trim() || null,
+        offerDate: offerDate || null,
+        validUntil: validUntil || null,
+        conditions: conditions.trim() || null,
+        notes: notes.trim() || null,
+      })
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" style={{ padding: 8, marginTop: 6 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Proveedor
+        <input type="text" value={providerName} onChange={(e) => setProviderName(e.target.value)} list="edit-offer-providers" />
+        <datalist id="edit-offer-providers">
+          {providers.map((p) => (
+            <option key={p.id} value={p.name} />
+          ))}
+        </datalist>
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Importe (€)
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué incluye (opcional)
+        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Qué NO incluye (opcional)
+        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
+      </label>
+      <div className="inline-fields" style={{ marginTop: 6 }}>
+        <label style={{ flex: 1 }}>
+          Fecha de la oferta (opcional)
+          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
+        </label>
+        <label style={{ flex: 1 }}>
+          Válida hasta (opcional)
+          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+        </label>
+      </div>
+      <label style={{ marginTop: 6 }}>
+        Condiciones (opcional)
+        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Notas (opcional)
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        {offer.attachmentStoragePath ? 'Sustituir adjunto (opcional)' : 'Adjunto (opcional)'}
+        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" onClick={() => void save()} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 const RESOLUTION_METHOD_OPTIONS: { value: EventTaskGroupResolutionMethod; label: string }[] = [
   { value: 'empresa', label: 'Empresa/proveedor' },
   { value: 'nosotros', label: 'Lo hacemos nosotros' },
@@ -3586,12 +3990,13 @@ function ResolveGroupModal({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Antes solo se cargaban al elegir "Empresa/proveedor"; ahora hacen falta desde el principio para la
+  // comparación de ofertas (OffersComparison), que se ve aunque todavía no se haya elegido el método.
   useEffect(() => {
-    if (method !== 'empresa') return
     listEventProviders(event.id)
       .then((all) => setProviders(all.filter((p) => !p.archived)))
       .catch(() => {})
-  }, [method, event.id])
+  }, [event.id])
 
   async function handleSubmit() {
     if (!method) {
@@ -3655,6 +4060,21 @@ function ResolveGroupModal({
               : 'Este encargo no tiene ninguna tarea pendiente — se marcará resuelto igualmente.'}
           </p>
           {error && <p className="error">{error}</p>}
+          <OffersComparison
+            group={group}
+            providers={providers}
+            onUseOffer={(offer) => {
+              setMethod('empresa')
+              if (offer.providerId) {
+                setProviderMode('existing')
+                setSelectedProviderId(offer.providerId)
+              } else {
+                setProviderMode('new')
+                setNewProviderName(offer.providerName)
+              }
+              setPrice(String(offer.amount))
+            }}
+          />
           <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>
             ¿Cómo se ha resuelto?
           </div>

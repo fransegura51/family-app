@@ -155,7 +155,9 @@ describe('bloque G: no romper filtros ni completadas al agrupar', () => {
     expect(UI).toContain('const completedTasks = tasks.filter((t) => t.done)')
   })
   it('el modal de gestión manual de encargos (crear/renombrar/borrar/asociar) nunca completa tareas por su cuenta — solo "Resolver encargo" lo hace, y de forma explícita', () => {
-    const groupsModalDoneCalls = GROUPS_MODAL.match(/updateEventTask/g) ?? []
+    // updateEventTask( con el paréntesis, no updateEventTask a secas — si no, "updateEventTaskGroupOffer("
+    // (Fase 6: ofertas) cuenta como un falso positivo al compartir el mismo prefijo.
+    const groupsModalDoneCalls = GROUPS_MODAL.match(/updateEventTask\(/g) ?? []
     expect(groupsModalDoneCalls).toHaveLength(0)
   })
 })

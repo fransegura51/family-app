@@ -1440,7 +1440,7 @@ export async function saveEventMenuSections(eventId: string, sections: StoredSec
 // ---------------------------------------------------------------------
 
 const PROVIDER_SELECT =
-  'id, event_id, family_id, name, type, contact_note, notes, created_at, decision_id, contact_person, phone, email, website, address, archived'
+  'id, event_id, family_id, name, type, contact_note, notes, created_at, decision_id, contact_person, phone, email, website, address, archived, global_provider_id'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProvider(r: any): EventProvider {
@@ -1460,6 +1460,7 @@ function mapProvider(r: any): EventProvider {
     website: r.website,
     address: r.address,
     archived: r.archived,
+    globalProviderId: r.global_provider_id,
   }
 }
 
@@ -1480,6 +1481,9 @@ export interface EventProviderInput {
   email?: string | null
   website?: string | null
   address?: string | null
+  // Vincular desde el registro global (PEPA Eventos, prompt maestro Parte A) — al crear una ficha de
+  // evento a partir de un proveedor global ya existente, se enlaza directamente en vez de quedar suelta.
+  globalProviderId?: string | null
 }
 
 export async function addEventProvider(eventId: string, input: EventProviderInput): Promise<string> {
@@ -1499,6 +1503,7 @@ export async function addEventProvider(eventId: string, input: EventProviderInpu
       email: input.email ?? null,
       website: input.website ?? null,
       address: input.address ?? null,
+      global_provider_id: input.globalProviderId ?? null,
     })
     .select('id')
     .single()
@@ -1518,6 +1523,7 @@ export async function updateEventProvider(id: string, patch: Partial<EventProvid
   if (patch.website !== undefined) update.website = patch.website
   if (patch.address !== undefined) update.address = patch.address
   if (patch.archived !== undefined) update.archived = patch.archived
+  if (patch.globalProviderId !== undefined) update.global_provider_id = patch.globalProviderId
   const { error } = await supabase.from('event_providers').update(update).eq('id', id)
   if (error) throw error
 }

@@ -235,8 +235,10 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // (historial de resolución de encargos), 0221 (provider_name en event_payments, snapshot del nombre
     // del proveedor en el pago) y 0222 (ficha ampliada de event_providers: contacto/teléfono/email/web/
     // dirección/archivado) y 0223 (ofertas de proveedores por encargo, event_task_group_offers — tabla
-    // nueva, no toca event_payments ni event_budget_items) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(223)
+    // nueva, no toca event_payments ni event_budget_items) y 0224 (registro global de proveedores —
+    // providers_global/event_provider_links, tablas nuevas; event_providers solo gana una columna
+    // global_provider_id, sus FK existentes no cambian) tampoco tocan esta funcionalidad.
+    expect(Math.max(...numbers)).toBe(224)
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

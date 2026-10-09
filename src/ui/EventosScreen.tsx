@@ -209,6 +209,7 @@ import {
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, unitAndAmountFromMinutes, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import { errorMessage } from '@/domain/errorMessage'
+import { addProviderGlobal, listProvidersGlobal, updateProviderGlobal } from '@/data/providersGlobal'
 import {
   buildMapsUrl,
   CELEBRATION_SUBTYPES,
@@ -554,6 +555,7 @@ import type {
   EventPaymentStatus,
   EventProvider,
   EventServiceId,
+  ProviderGlobal,
   EventSpecialDetail,
   EventTableSeat,
   EventTask,
@@ -746,6 +748,9 @@ export function EventosScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [showArchived, setShowArchived] = useState(false)
+  // PEPA Eventos, prompt maestro Parte A1 — registro global de proveedores, accesible desde Eventos →
+  // Inicio SIN depender de entrar en un evento concreto (nunca selectedId).
+  const [showGlobalProviders, setShowGlobalProviders] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [initialModule, setInitialModule] = useState<EventModuleKey | null>(null)
   // "Eventos" del breadcrumb siempre vuelve a la lista (Inicio), incluso ya estando en /eventos.
@@ -754,6 +759,7 @@ export function EventosScreen() {
   useSectionHome(() => {
     setSelectedId(null)
     setInitialModule(null)
+    setShowGlobalProviders(false)
   })
   // Tercer nivel del breadcrumb ("Eventos / Boda de plata / Preparativos"): el módulo abierto vive como
   // estado LOCAL dentro de EventDetail (openModule), así que EventDetail avisa aquí arriba de su label
@@ -804,19 +810,23 @@ export function EventosScreen() {
           /eventos a secas. */}
       <SectionBreadcrumb
         subsection={
-          !selected
-            ? 'Inicio'
-            : !openModuleLabel
-              ? selected.title
-              : ([
-                  { label: selected.title, to: '/eventos', state: { eventHome: true } },
-                  { label: openModuleLabel },
-                ] satisfies BreadcrumbLevel[])
+          showGlobalProviders
+            ? ([{ label: 'Inicio', to: '/eventos' }, { label: 'Proveedores y ofertas' }] satisfies BreadcrumbLevel[])
+            : !selected
+              ? 'Inicio'
+              : !openModuleLabel
+                ? selected.title
+                : ([
+                    { label: selected.title, to: '/eventos', state: { eventHome: true } },
+                    { label: openModuleLabel },
+                  ] satisfies BreadcrumbLevel[])
         }
       />
       {error && <p className="error">{error}</p>}
 
-      {selected ? (
+      {showGlobalProviders ? (
+        <ProvidersGlobalScreen onBack={() => setShowGlobalProviders(false)} />
+      ) : selected ? (
         <EventDetail
           event={selected}
           initialModule={initialModule}
@@ -836,6 +846,9 @@ export function EventosScreen() {
         <>
           <button type="button" onClick={() => setShowCreate(true)}>
             + Nuevo evento
+          </button>
+          <button type="button" className="link-button" onClick={() => setShowGlobalProviders(true)} style={{ marginLeft: 8 }}>
+            📇 Proveedores y ofertas
           </button>
           {showCreate && (
             <CreateEventModal
@@ -11487,6 +11500,266 @@ function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem
 // ---------------------------------------------------------------------
 // Proveedores.
 // ---------------------------------------------------------------------
+
+// PEPA Eventos, prompt maestro Parte A1/A2 — registro GLOBAL de proveedores, accesible desde Eventos →
+// Inicio sin depender de entrar en un evento (nunca filtrado por evento). Fase 2 del encargo: CRUD +
+// búsqueda funcionando de verdad — el rediseño visual en fichas compactas desplegables (A4) llega en la
+// Fase 3, reutilizando esta misma pantalla y datos, nunca un sistema paralelo.
+function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
+  const [providers, setProviders] = useState<ProviderGlobal[]>([])
+  const [query, setQuery] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listProvidersGlobal()
+      .then(setProviders)
+      .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los proveedores')))
+  }
+  useEffect(reload, [])
+
+  const q = query.trim().toLowerCase()
+  const filtered = providers
+    .filter((p) => p.archived === showArchived)
+    .filter((p) => (q ? [p.name, p.type, p.phone, p.email, p.contactPerson].some((v) => v?.toLowerCase().includes(q)) : true))
+
+  return (
+    <div>
+      <button type="button" className="link-button" onClick={onBack}>
+        ← Volver a Eventos
+      </button>
+      <h2 className="section-title">📇 Proveedores y ofertas</h2>
+      <p className="muted" style={{ fontSize: 13 }}>
+        Toda la agenda de proveedores de la familia, de cualquier evento — un proveedor descartado en una boda sigue aquí para un cumpleaños o una comunión.
+      </p>
+      {error && <p className="error">{error}</p>}
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar por nombre, categoría, servicio o teléfono…"
+        style={{ marginTop: 8, width: '100%' }}
+      />
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" className={'chip' + (!showArchived ? ' chip-active' : '')} onClick={() => setShowArchived(false)}>
+          Activos
+        </button>
+        <button type="button" className={'chip' + (showArchived ? ' chip-active' : '')} onClick={() => setShowArchived(true)}>
+          Archivados
+        </button>
+      </div>
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {filtered.length === 0 && (
+          <p className="muted">
+            {q ? 'Nada coincide con esa búsqueda.' : showArchived ? 'No hay proveedores archivados.' : 'Todavía no hay proveedores — añade el primero.'}
+          </p>
+        )}
+        {filtered.map((p) =>
+          editingId === p.id ? (
+            <EditProviderGlobalForm key={p.id} provider={p} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+          ) : (
+            <div key={p.id} className="card" style={{ padding: 8 }}>
+              <div className="inline-fields" style={{ alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>
+                  <strong>{p.name}</strong>
+                  {p.type ? ` · ${p.type}` : ''}
+                  {p.phone ? ` · ${p.phone}` : ''}
+                </span>
+                <button type="button" className="link-button" onClick={() => setEditingId(p.id)}>
+                  ✏️ Editar
+                </button>
+              </div>
+              {(p.contactPerson || p.email || p.website || p.address) && (
+                <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                  {[p.contactPerson, p.email, p.website, p.address].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              {p.notes && (
+                <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                  📝 {p.notes}
+                </p>
+              )}
+              <div className="filter-row" style={{ marginTop: 4 }}>
+                <ConfirmButton
+                  label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
+                  confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero conserva su historial.`}
+                  onConfirm={() => updateProviderGlobal(p.id, { archived: !p.archived }).then(reload)}
+                />
+              </div>
+            </div>
+          ),
+        )}
+      </div>
+      {showAdd ? (
+        <AddProviderGlobalForm
+          onClose={() => setShowAdd(false)}
+          onAdded={() => {
+            setShowAdd(false)
+            reload()
+          }}
+        />
+      ) : (
+        <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 8 }}>
+          + Nuevo proveedor
+        </button>
+      )}
+    </div>
+  )
+}
+
+function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('')
+  const [contactPerson, setContactPerson] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [website, setWebsite] = useState('')
+  const [address, setAddress] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addProviderGlobal({
+        name,
+        type: type || null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        email: email || null,
+        website: website || null,
+        address: address || null,
+      })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Categoría o servicio (opcional)
+        <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo, floristería..." />
+      </label>
+      <ProviderExtraFields
+        contactPerson={contactPerson}
+        setContactPerson={setContactPerson}
+        phone={phone}
+        setPhone={setPhone}
+        email={email}
+        setEmail={setEmail}
+        website={website}
+        setWebsite={setWebsite}
+        address={address}
+        setAddress={setAddress}
+        forceOpen={false}
+      />
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Añadir proveedor'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: ProviderGlobal; onDone: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(provider.name)
+  const [type, setType] = useState(provider.type ?? '')
+  const [contactPerson, setContactPerson] = useState(provider.contactPerson ?? '')
+  const [phone, setPhone] = useState(provider.phone ?? '')
+  const [email, setEmail] = useState(provider.email ?? '')
+  const [website, setWebsite] = useState(provider.website ?? '')
+  const [address, setAddress] = useState(provider.address ?? '')
+  const [notes, setNotes] = useState(provider.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const hadExtraData = Boolean(provider.contactPerson || provider.phone || provider.email || provider.website || provider.address)
+
+  async function save() {
+    if (!name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateProviderGlobal(provider.id, {
+        name,
+        type: type || null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        email: email || null,
+        website: website || null,
+        address: address || null,
+        notes: notes || null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" style={{ padding: 8 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Categoría o servicio (opcional)
+        <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo, floristería..." />
+      </label>
+      <ProviderExtraFields
+        contactPerson={contactPerson}
+        setContactPerson={setContactPerson}
+        phone={phone}
+        setPhone={setPhone}
+        email={email}
+        setEmail={setEmail}
+        website={website}
+        setWebsite={setWebsite}
+        address={address}
+        setAddress={setAddress}
+        forceOpen={hadExtraData}
+      />
+      <label style={{ marginTop: 6 }}>
+        Notas (opcional)
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" onClick={() => void save()} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
 
 function ProvidersSection({ eventId }: { eventId: string }) {
   const [providers, setProviders] = useState<EventProvider[]>([])

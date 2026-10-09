@@ -1,0 +1,158 @@
+// PEPA Eventos — prompt maestro, Parte A: registro GLOBAL de proveedores (por familia, nunca por evento)
+// — migración 0224. "Un proveedor descartado para una boda puede volver a ser útil para un cumpleaños o
+// una comunión": providers_global nunca se filtra por evento, y event_provider_links es solo el estado
+// "interesado/descartado" de un proveedor global DENTRO de un evento concreto, sin afectar a los demás.
+//
+// Decisión explícita (el usuario, tras preguntárselo): esto NUNCA toca el significado de las FK que ya
+// apuntan a event_providers (event_payments/event_task_groups/event_task_group_resolutions/
+// event_task_group_offers/event_decision_providers.provider_id) — event_providers solo gana una
+// referencia nueva (global_provider_id, ver data/events.ts) a la ficha de aquí.
+import { supabase } from '@/data/supabaseClient'
+import type { EventProviderLink, EventProviderLinkStatus, ProviderGlobal } from '@/domain/types'
+
+async function currentFamilyId(): Promise<string> {
+  const { data: userResult } = await supabase.auth.getUser()
+  if (!userResult.user) throw new Error('No autenticado')
+  const { data: profileRow, error } = await supabase.from('profiles').select('family_id').eq('id', userResult.user.id).single()
+  if (error) throw error
+  return profileRow.family_id
+}
+
+const PROVIDER_GLOBAL_SELECT = 'id, family_id, name, type, contact_person, phone, email, website, address, notes, archived, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapProviderGlobal(r: any): ProviderGlobal {
+  return {
+    id: r.id,
+    familyId: r.family_id,
+    name: r.name,
+    type: r.type,
+    contactPerson: r.contact_person,
+    phone: r.phone,
+    email: r.email,
+    website: r.website,
+    address: r.address,
+    notes: r.notes,
+    archived: r.archived,
+    createdAt: r.created_at,
+  }
+}
+
+// Toda la agenda de la familia — nunca filtrado por evento (A2: "consultar todos los proveedores de la
+// familia"). El filtrado por evento ("de interés / todos / descartados") vive en listEventProviderLinks.
+export async function listProvidersGlobal(): Promise<ProviderGlobal[]> {
+  const { data, error } = await supabase.from('providers_global').select(PROVIDER_GLOBAL_SELECT).order('name', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapProviderGlobal)
+}
+
+export interface ProviderGlobalInput {
+  name: string
+  type?: string | null
+  contactPerson?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+  address?: string | null
+  notes?: string | null
+}
+
+export async function addProviderGlobal(input: ProviderGlobalInput): Promise<ProviderGlobal> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase
+    .from('providers_global')
+    .insert({
+      family_id: familyId,
+      name: input.name.trim(),
+      type: input.type ?? null,
+      contact_person: input.contactPerson ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      website: input.website ?? null,
+      address: input.address ?? null,
+      notes: input.notes ?? null,
+    })
+    .select(PROVIDER_GLOBAL_SELECT)
+    .single()
+  if (error) throw error
+  return mapProviderGlobal(data)
+}
+
+export async function updateProviderGlobal(id: string, patch: Partial<ProviderGlobalInput> & { archived?: boolean }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.type !== undefined) update.type = patch.type
+  if (patch.contactPerson !== undefined) update.contact_person = patch.contactPerson
+  if (patch.phone !== undefined) update.phone = patch.phone
+  if (patch.email !== undefined) update.email = patch.email
+  if (patch.website !== undefined) update.website = patch.website
+  if (patch.address !== undefined) update.address = patch.address
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.archived !== undefined) update.archived = patch.archived
+  const { error } = await supabase.from('providers_global').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// Cuántos eventos distintos tienen este proveedor vinculado — "habitual" (A2) se calcula a partir de
+// esto (≥2 eventos) en vez de guardar una marca aparte que se podría desincronizar.
+export async function countProviderGlobalEventLinks(globalProviderId: string): Promise<number> {
+  const { count, error } = await supabase.from('event_provider_links').select('id', { count: 'exact', head: true }).eq('global_provider_id', globalProviderId)
+  if (error) throw error
+  return count ?? 0
+}
+
+const LINK_SELECT = 'id, event_id, family_id, global_provider_id, status, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapLink(r: any): EventProviderLink {
+  return {
+    id: r.id,
+    eventId: r.event_id,
+    familyId: r.family_id,
+    globalProviderId: r.global_provider_id,
+    status: r.status,
+    createdAt: r.created_at,
+  }
+}
+
+// Vínculos de ESTE evento con el registro global — "de interés" (por defecto) o "descartado", nunca
+// oculta el proveedor del registro global (A3).
+export async function listEventProviderLinks(eventId: string): Promise<EventProviderLink[]> {
+  const { data, error } = await supabase.from('event_provider_links').select(LINK_SELECT).eq('event_id', eventId).order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapLink)
+}
+
+// Vincular un proveedor YA existente del registro global a este evento — idempotente (si ya estaba
+// vinculado, no duplica la fila, por el unique(event_id, global_provider_id) de la migración 0224).
+export async function linkProviderToEvent(eventId: string, globalProviderId: string): Promise<EventProviderLink> {
+  const familyId = await currentFamilyId()
+  const { data: existing, error: selectError } = await supabase
+    .from('event_provider_links')
+    .select(LINK_SELECT)
+    .eq('event_id', eventId)
+    .eq('global_provider_id', globalProviderId)
+    .maybeSingle()
+  if (selectError) throw selectError
+  if (existing) return mapLink(existing)
+  const { data, error } = await supabase
+    .from('event_provider_links')
+    .insert({ event_id: eventId, family_id: familyId, global_provider_id: globalProviderId })
+    .select(LINK_SELECT)
+    .single()
+  if (error) throw error
+  return mapLink(data)
+}
+
+// "Descartar"/"Recuperar" (A3) — nunca borra el vínculo, solo cambia su estado dentro de ESTE evento.
+export async function setEventProviderLinkStatus(linkId: string, status: EventProviderLinkStatus): Promise<void> {
+  const { error } = await supabase.from('event_provider_links').update({ status }).eq('id', linkId)
+  if (error) throw error
+}
+
+// "Desvincular sin eliminar globalmente" (A3) — borra SOLO el vínculo con este evento; providers_global
+// (y su historial en otros eventos) no se toca.
+export async function unlinkProviderFromEvent(linkId: string): Promise<void> {
+  const { error } = await supabase.from('event_provider_links').delete().eq('id', linkId)
+  if (error) throw error
+}

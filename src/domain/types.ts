@@ -1081,9 +1081,47 @@ export interface EventProvider {
   // Retirar de las listas de "elegir proveedor" sin borrarlo ni perder el histórico de pagos/encargos que
   // ya lo referencian (ON DELETE SET NULL perdería esa referencia; archivar no).
   archived: boolean
+  // Puente NO DESTRUCTIVO al registro global (PEPA Eventos, prompt maestro Parte A, migración 0224) —
+  // esta ficha de evento y sus 5 FK (pagos/encargos/resoluciones/ofertas/decisiones) siguen significando
+  // EXACTAMENTE lo mismo que antes; esto solo enlaza con la ficha familiar para poder verla también fuera
+  // de este evento. null en fichas creadas antes de la migración que todavía no se hayan vinculado.
+  globalProviderId: string | null
 }
 
 export type EventPaymentStatus = 'pendiente' | 'parcial' | 'pagado'
+
+// Registro GLOBAL de proveedores (PEPA Eventos, prompt maestro Parte A, migración 0224) — por FAMILIA,
+// nunca por evento: "un proveedor descartado para una boda puede volver a ser útil para un cumpleaños".
+// Accesible desde "Eventos → Proveedores y ofertas" sin depender de entrar en un evento concreto.
+export interface ProviderGlobal {
+  id: string
+  familyId: string
+  name: string
+  type: string | null
+  contactPerson: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  address: string | null
+  notes: string | null
+  // Igual que EventProvider.archived: retira de los selectores de "elegir proveedor" sin perder nada de
+  // su historial (ofertas, eventos en los que se usó...).
+  archived: boolean
+  createdAt: string
+}
+
+// Vínculo entre un proveedor global y UN evento concreto — "interesado"/"descartado" es un estado LOCAL a
+// ESE evento (nunca afecta a otros eventos ni al registro global); descartar siempre se puede deshacer.
+export type EventProviderLinkStatus = 'interesado' | 'descartado'
+
+export interface EventProviderLink {
+  id: string
+  eventId: string
+  familyId: string
+  globalProviderId: string
+  status: EventProviderLinkStatus
+  createdAt: string
+}
 
 export interface EventPayment {
   id: string

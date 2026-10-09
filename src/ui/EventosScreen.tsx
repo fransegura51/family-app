@@ -3329,6 +3329,10 @@ function EventTaskGroupsModal({
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Fase 4 (bug real: dos contenedores "Flores" sueltos, uno con tareas y otro vacío) — "+ Nuevo encargo"
+  // creaba sin avisar aunque ya existiera uno con ese mismo nombre. Nunca se fusiona solo (dos encargos
+  // "Flores" pueden ir legítimamente a floristerías distintas): se avisa y la familia elige.
+  const [duplicateOfName, setDuplicateOfName] = useState<string | null>(null)
   // "+ Añadir tarea existente" (Tanda Encargos v2) — alternativa a "+ Tarea en este encargo" (que crea una
   // NUEVA): deja meter en el encargo una tarea que YA existe. Solo ofrece tareas sin encargo todavía — una
   // tarea pertenece como mucho a uno; mover entre encargos es un paso aparte, no ofrecido aquí.
@@ -3349,13 +3353,22 @@ function EventTaskGroupsModal({
     }
   }
 
-  async function add() {
-    if (!newName.trim()) return
+  async function add(force = false) {
+    const name = newName.trim()
+    if (!name) return
+    if (!force) {
+      const existing = groups.find((g) => g.name.trim().toLowerCase() === name.toLowerCase())
+      if (existing) {
+        setDuplicateOfName(existing.name)
+        return
+      }
+    }
     setError(null)
     setSaving(true)
     try {
-      await addEventTaskGroup(eventId, newName)
+      await addEventTaskGroup(eventId, name)
       setNewName('')
+      setDuplicateOfName(null)
       await onGroupsChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear el encargo'))
@@ -3496,11 +3509,38 @@ function EventTaskGroupsModal({
               + Nuevo encargo
             </div>
             <div className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 4 }}>
-              <input type="text" value={newName} placeholder="Nombre (p. ej. Flores)" onChange={(e) => setNewName(e.target.value)} aria-label="Nombre del nuevo encargo" style={{ minWidth: 0, flex: 1 }} />
+              <input
+                type="text"
+                value={newName}
+                placeholder="Nombre (p. ej. Flores)"
+                onChange={(e) => {
+                  setNewName(e.target.value)
+                  setDuplicateOfName(null)
+                }}
+                aria-label="Nombre del nuevo encargo"
+                style={{ minWidth: 0, flex: 1 }}
+              />
             </div>
-            <button type="button" onClick={() => void add()} disabled={!newName.trim() || saving} style={{ marginTop: 4 }}>
-              Añadir
-            </button>
+            {duplicateOfName ? (
+              <div className="card" style={{ padding: 8, marginTop: 4 }}>
+                <p className="muted" style={{ margin: 0 }}>Ya existe un encargo llamado «{duplicateOfName}». ¿Es el mismo, o uno distinto (p. ej. otro proveedor)?</p>
+                <div className="filter-row" style={{ marginTop: 4 }}>
+                  <button type="button" className="link-button" onClick={() => { setNewName(''); setDuplicateOfName(null) }}>
+                    Es el mismo, usar el existente
+                  </button>
+                  <button type="button" className="link-button" onClick={() => void add(true)} disabled={saving}>
+                    Crear uno nuevo igualmente
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setDuplicateOfName(null)}>
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button type="button" onClick={() => void add()} disabled={!newName.trim() || saving} style={{ marginTop: 4 }}>
+                Añadir
+              </button>
+            )}
           </div>
         </div>
       </div>

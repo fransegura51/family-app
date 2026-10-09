@@ -34,7 +34,7 @@ describe('bloque G: integración ligera, sin sobrecargar Preparativos', () => {
 describe('bloque F: crear, asociar, desasociar — sin obligar a agrupar', () => {
   it('"+ Nuevo encargo" crea un encargo (addEventTaskGroup) desde "🗂️ Encargos"', () => {
     const addFn = window_(GROUPS_MODAL, 'async function add(', '\n  }')
-    expect(addFn).toContain('await addEventTaskGroup(eventId, newName)')
+    expect(addFn).toContain('await addEventTaskGroup(eventId, name)')
   })
   it('renombrar un encargo (saveEditing) actualiza el nombre', () => {
     const editFn = window_(GROUPS_MODAL, 'async function saveEditing(', '\n  }')

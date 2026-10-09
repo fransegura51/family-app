@@ -13,13 +13,46 @@ const NONE: DesiredPairGeneration = { taskTitle: null, budgetCategory: null, pro
 export const FOTOS_RECUERDOS_BLOCK_KEY = 'fotos_recuerdos'
 
 // ---------------------------------------------------------------------
-// "¿Cómo vais a organizar las fotos del día de la boda?" — opciones mutuamente excluyentes (una
-// estrategia, no un catálogo acumulable).
+// "¿Cómo vais a organizar las fotos del día de la boda?" — Fase 11 (prompt maestro, Parte G4):
+// catálogo COMBINABLE (profesional + familiares/amigos + nuestra cuenta pueden darse a la vez — p. ej.
+// "fotógrafo profesional durante la ceremonia Y además que los invitados hagan fotos sueltas" es una
+// combinación real, no una sola estrategia) + "Sin cobertura organizada"/"Todavía no lo sabemos" como
+// estados terminales MUTUAMENTE EXCLUSIVOS entre sí y con el catálogo — mismo patrón ya usado en
+// MusicaCatalogQuestion (eventMusicaFiesta.ts).
 // ---------------------------------------------------------------------
 export const COBERTURA_FOTOS_QUESTION_KEY = 'fotos_recuerdos.cobertura'
-export type CoberturaFotosChoice = 'profesional' | 'familiares_amigos' | 'nuestra_cuenta' | 'todavia_no_lo_sabemos' | 'sin_cobertura'
+
+export type CoberturaFotosKey = 'profesional' | 'familiares_amigos' | 'nuestra_cuenta'
+export interface CoberturaFotosCatalogItem {
+  key: CoberturaFotosKey
+  label: string
+}
+export const COBERTURA_FOTOS_CATALOG: CoberturaFotosCatalogItem[] = [
+  { key: 'profesional', label: '📸 Fotógrafo/a profesional' },
+  { key: 'familiares_amigos', label: '👨‍👩‍👧 Familiares o amigos' },
+  { key: 'nuestra_cuenta', label: '🙋 Por nuestra cuenta' },
+]
+
+export type CoberturaFotosChoice = 'seleccionar' | 'todavia_no_lo_sabemos' | 'sin_cobertura'
 export interface CoberturaFotosAnswer {
   choice: CoberturaFotosChoice
+  selected: CoberturaFotosKey[]
+}
+
+// Migración de FORMA en memoria, nunca en la base de datos: una respuesta guardada antes de la Fase 11
+// (un único valor — 'profesional' | 'familiares_amigos' | 'nuestra_cuenta' | 'sin_cobertura' |
+// 'todavia_no_lo_sabemos', sin `selected`) se sigue leyendo tal cual, como si ya fuera la nueva forma
+// multi-selección — nunca se pierde ni se reescribe sola; solo adopta la forma nueva de verdad si la
+// familia vuelve a tocar esta pregunta.
+export function normalizeCoberturaFotosAnswer(raw: unknown): CoberturaFotosAnswer | undefined {
+  const a = raw as { choice?: unknown; selected?: unknown } | null | undefined
+  if (!a || typeof a.choice !== 'string') return undefined
+  if (a.choice === 'sin_cobertura' || a.choice === 'todavia_no_lo_sabemos') return { choice: a.choice, selected: [] }
+  if (a.choice === 'seleccionar') return { choice: 'seleccionar', selected: Array.isArray(a.selected) ? (a.selected as CoberturaFotosKey[]) : [] }
+  if (a.choice === 'profesional' || a.choice === 'familiares_amigos' || a.choice === 'nuestra_cuenta') {
+    return { choice: 'seleccionar', selected: [a.choice] }
+  }
+  return undefined
 }
 
 // ---------------------------------------------------------------------
@@ -72,10 +105,11 @@ export function listFotosRecuerdosBlockQuestions(decisions: EventDecision[]): Fo
   ]
 }
 
-// Solo "profesional" implica contratar a alguien de fuera — familiares/amigos y "por nuestra cuenta" son
-// autogestionados, nunca generan presupuesto ni proveedor (igual criterio que Música).
+// Solo si "profesional" está entre lo seleccionado implica contratar a alguien de fuera (aunque se
+// combine con familiares/amigos o nuestra cuenta) — esos dos solos son autogestionados, nunca generan
+// presupuesto ni proveedor por sí mismos (igual criterio que Música).
 export function desiredForCoberturaFotos(answer: CoberturaFotosAnswer | undefined): DesiredPairGeneration {
-  if (!answer || answer.choice !== 'profesional') return NONE
+  if (!answer || answer.choice !== 'seleccionar' || !answer.selected.includes('profesional')) return NONE
   return { taskTitle: 'Contratar fotógrafo/a para el día de la boda', budgetCategory: 'Fotografía', providerCategory: 'Fotografía', resolved: false, groupKind: null, groupDefaultName: null }
 }
 

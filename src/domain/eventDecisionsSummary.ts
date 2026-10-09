@@ -30,8 +30,10 @@ import {
 import {
   listFotosRecuerdosBlockQuestions,
   COBERTURA_FOTOS_QUESTION_KEY,
+  COBERTURA_FOTOS_CATALOG,
   SESION_FOTOS_QUESTION_KEY,
   VIDEO_QUESTION_KEY,
+  normalizeCoberturaFotosAnswer,
   type SesionFotosAnswer,
 } from '@/domain/eventFotosRecuerdos'
 import {
@@ -322,9 +324,6 @@ export function buildMusicaFiestaDecisionSummary(decisions: EventDecision[], ven
 // "📷 Fotos y recuerdos" (octavo bloque, tanda del configurador de boda)
 // ---------------------------------------------------------------------
 const COBERTURA_FOTOS_SHORT: Record<string, string> = {
-  profesional: 'Fotógrafo/a profesional',
-  familiares_amigos: 'Familiares o amigos',
-  nuestra_cuenta: 'Por nuestra cuenta',
   sin_cobertura: 'Sin cobertura organizada',
 }
 const SESION_FOTOS_SHORT: Record<string, string> = { preboda: 'Preboda', postboda: 'Postboda', ambas: 'Preboda y postboda', no: 'No' }
@@ -341,7 +340,10 @@ export function buildFotosRecuerdosDecisionSummary(decisions: EventDecision[]): 
       continue
     }
     if (q.questionKey === COBERTURA_FOTOS_QUESTION_KEY) {
-      taken.push({ key: q.questionKey, text: 'Fotos del día', statusLabel: (choice && COBERTURA_FOTOS_SHORT[choice]) || 'Decidido' })
+      const answer = normalizeCoberturaFotosAnswer(decisions.find((d) => d.questionKey === q.questionKey)?.answer)
+      const statusLabel =
+        (choice && COBERTURA_FOTOS_SHORT[choice]) || (answer?.choice === 'seleccionar' ? labelsForSummary(COBERTURA_FOTOS_CATALOG, answer.selected, []) || 'Decidido' : 'Decidido')
+      taken.push({ key: q.questionKey, text: 'Fotos del día', statusLabel })
     } else if (q.questionKey === SESION_FOTOS_QUESTION_KEY) {
       const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as SesionFotosAnswer | undefined
       taken.push({ key: q.questionKey, text: 'Sesión aparte', statusLabel: (choice && SESION_FOTOS_SHORT[choice]) || (answer ? 'Sí' : 'Decidido') })

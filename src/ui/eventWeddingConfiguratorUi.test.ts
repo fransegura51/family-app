@@ -98,8 +98,8 @@ describe('Primer baile → canción: amplía la decisión existente, nunca un se
 describe('Fotos y recuerdos — ProviderLinker reutilizado tal cual, nunca un segundo mecanismo de vinculación', () => {
   const block = slice(UI, 'function FotosRecuerdosBlock({', '\nfunction OtrosDecoracionBlock(')
 
-  it('cobertura "profesional" y vídeo "profesional" muestran <ProviderLinker>', () => {
-    expect(block).toContain("cobertura?.choice === 'profesional' && coberturaDecision && <ProviderLinker event={event} decision={coberturaDecision} />")
+  it('cobertura "profesional" (dentro de la selección combinable, Fase 11 Parte G4) y vídeo "profesional" muestran <ProviderLinker>', () => {
+    expect(block).toContain("cobertura?.choice === 'seleccionar' && cobertura.selected.includes('profesional') && coberturaDecision && <ProviderLinker event={event} decision={coberturaDecision} />")
     expect(block).toContain("video?.choice === 'profesional' && videoDecision && <ProviderLinker event={event} decision={videoDecision} />")
   })
 
@@ -113,10 +113,10 @@ describe('Fotos y recuerdos — ProviderLinker reutilizado tal cual, nunca un se
     expect(block).toContain("sesion?.quien === 'otro' && sesionDecision && <ProviderLinker event={event} decision={sesionDecision} />")
   })
 
-  it('cobertura familiares/amigos y por nuestra cuenta NUNCA generan presupuesto ni proveedor (autogestionado)', () => {
+  it('cobertura familiares/amigos y por nuestra cuenta NUNCA generan presupuesto ni proveedor por sí solos (autogestionado) — solo si "profesional" está entre lo combinado, aunque se combine con los otros', () => {
     const domain = (import.meta.glob('/src/domain/eventFotosRecuerdos.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/domain/eventFotosRecuerdos.ts']
     const fn = slice(domain, 'export function desiredForCoberturaFotos(', '\n}')
-    expect(fn).toContain("if (!answer || answer.choice !== 'profesional') return NONE")
+    expect(fn).toContain("if (!answer || answer.choice !== 'seleccionar' || !answer.selected.includes('profesional')) return NONE")
   })
 })
 

@@ -478,12 +478,14 @@ import {
   desiredForCoberturaFotos,
   desiredForSesionFotos,
   desiredForVideo,
+  normalizeCoberturaFotosAnswer,
   FOTOS_RECUERDOS_BLOCK_KEY,
   COBERTURA_FOTOS_QUESTION_KEY,
+  COBERTURA_FOTOS_CATALOG,
   SESION_FOTOS_QUESTION_KEY,
   VIDEO_QUESTION_KEY,
   type CoberturaFotosAnswer,
-  type CoberturaFotosChoice,
+  type CoberturaFotosKey,
   type SesionFotosAnswer,
   type SesionFotosChoice,
   type SesionFotosQuien,
@@ -9874,15 +9876,48 @@ function AnimacionCatalogPicker({ answer, saving, onChange }: { answer: Animacio
 // ---------------------------------------------------------------------
 // "📷 Fotos y recuerdos" — octavo bloque del configurador. Tres decisiones independientes (cobertura del
 // día, sesión aparte, vídeo); "profesional"/"otro fotógrafo" reutilizan ProviderLinker TAL CUAL (vincular
-// un proveedor ya existente, nunca un segundo mecanismo de vinculación).
+// un proveedor ya existente, nunca un segundo mecanismo de vinculación). Fase 11 (Parte G4) — la cobertura
+// del día es un catálogo COMBINABLE (profesional + familiares/amigos + nuestra cuenta a la vez, mismo
+// patrón que MusicaCatalogQuestion), con "Sin cobertura"/"Todavía no lo sabemos" como estados terminales
+// mutuamente excluyentes entre sí y con el catálogo.
 // ---------------------------------------------------------------------
-const COBERTURA_FOTOS_OPTIONS: { value: CoberturaFotosChoice; label: string }[] = [
-  { value: 'profesional', label: 'Fotógrafo/a profesional' },
-  { value: 'familiares_amigos', label: 'Familiares o amigos' },
-  { value: 'nuestra_cuenta', label: 'Por nuestra cuenta' },
-  { value: 'todavia_no_lo_sabemos', label: 'Todavía no lo sabemos' },
-  { value: 'sin_cobertura', label: 'Sin cobertura organizada' },
-]
+function CoberturaFotosQuestion({ existing, saving, onSave }: { existing: CoberturaFotosAnswer | undefined; saving: boolean; onSave: (answer: CoberturaFotosAnswer) => void }) {
+  const [draft, setDraft] = useState<CoberturaFotosAnswer | null>(null)
+  const current = draft ?? existing
+  const isTerminal = current?.choice === 'sin_cobertura' || current?.choice === 'todavia_no_lo_sabemos'
+
+  function toggleSelected(key: CoberturaFotosKey) {
+    const selected = current?.choice === 'seleccionar' ? current.selected : []
+    const next: CoberturaFotosAnswer = { choice: 'seleccionar', selected: selected.includes(key) ? selected.filter((x) => x !== key) : [...selected, key] }
+    setDraft(next)
+    onSave(next)
+  }
+  function selectTerminal(choice: 'sin_cobertura' | 'todavia_no_lo_sabemos') {
+    const next: CoberturaFotosAnswer = { choice, selected: [] }
+    setDraft(next)
+    onSave(next)
+  }
+
+  return (
+    <div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {COBERTURA_FOTOS_CATALOG.map((item) => (
+          <button key={item.key} type="button" className={'chip' + (!isTerminal && current?.choice === 'seleccionar' && current.selected.includes(item.key) ? ' chip-active' : '')} disabled={saving} onClick={() => toggleSelected(item.key)}>
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        <button type="button" className={'chip' + (current?.choice === 'todavia_no_lo_sabemos' ? ' chip-active' : '')} disabled={saving} onClick={() => selectTerminal('todavia_no_lo_sabemos')}>
+          Todavía no lo sabemos
+        </button>
+        <button type="button" className={'chip' + (current?.choice === 'sin_cobertura' ? ' chip-active' : '')} disabled={saving} onClick={() => selectTerminal('sin_cobertura')}>
+          Sin cobertura organizada
+        </button>
+      </div>
+    </div>
+  )
+}
 const SESION_FOTOS_OPTIONS: { value: SesionFotosChoice; label: string }[] = [
   { value: 'preboda', label: 'Preboda' },
   { value: 'postboda', label: 'Postboda' },
@@ -9986,7 +10021,7 @@ function FotosRecuerdosBlock({
 
   if (loading) return null
   const coberturaDecision = findDecision(COBERTURA_FOTOS_QUESTION_KEY)
-  const cobertura = coberturaDecision?.answer as unknown as CoberturaFotosAnswer | undefined
+  const cobertura = normalizeCoberturaFotosAnswer(coberturaDecision?.answer)
   const sesionDecision = findDecision(SESION_FOTOS_QUESTION_KEY)
   const sesion = sesionDecision?.answer as unknown as SesionFotosAnswer | undefined
   const videoDecision = findDecision(VIDEO_QUESTION_KEY)
@@ -10009,8 +10044,8 @@ function FotosRecuerdosBlock({
           <div className="muted" style={{ fontSize: 13 }}>
             ¿Cómo vais a organizar las fotos del día de la boda?
           </div>
-          <ChoiceRow options={COBERTURA_FOTOS_OPTIONS} value={cobertura?.choice} disabled={savingKey === COBERTURA_FOTOS_QUESTION_KEY} onSelect={(choice) => saveCobertura({ choice })} />
-          {cobertura?.choice === 'profesional' && coberturaDecision && <ProviderLinker event={event} decision={coberturaDecision} />}
+          <CoberturaFotosQuestion existing={cobertura} saving={savingKey === COBERTURA_FOTOS_QUESTION_KEY} onSave={saveCobertura} />
+          {cobertura?.choice === 'seleccionar' && cobertura.selected.includes('profesional') && coberturaDecision && <ProviderLinker event={event} decision={coberturaDecision} />}
         </div>
       )}
       {questionIsVisible(localFocus, SESION_FOTOS_QUESTION_KEY) && (

@@ -10815,6 +10815,14 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
 function BudgetSection({ event }: { event: FamilyEvent }) {
   const [items, setItems] = useState<EventBudgetItem[]>([])
   const [spent, setSpent] = useState<number | null>(null)
+  // Fase 3 (bug real: un encargo resuelto con proveedor y 100€ no aparecía en Presupuesto aunque sí
+  // estaba en Pagos y fianzas) — resolveEventTaskGroup crea el event_payment pero NUNCA toca
+  // event_budget_items (ver cabecera de resolveEventTaskGroup): son cosas distintas a propósito. En vez
+  // de fusionarlas, se enseña "Comprometido vía encargos" aparte — la suma de total_amount de TODOS los
+  // pagos del evento, se hayan pagado ya o no — para que ese compromiso deje de estar invisible sin
+  // mezclarse con lo "Planeado" (una intención de presupuesto) ni lo "Gastado en Economía" (dinero que de
+  // verdad salió de una cuenta).
+  const [committed, setCommitted] = useState<number | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Bloque 11 (cola nocturna) — un concepto propuesto por PEPA llega sin importe (plannedAmount:null);
@@ -10825,6 +10833,9 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
     listEventBudgetItems(event.id)
       .then(setItems)
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el presupuesto')))
+    listEventPayments(event.id)
+      .then((payments) => setCommitted(payments.reduce((sum, p) => sum + p.totalAmount, 0)))
+      .catch(() => setCommitted(null))
     if (event.tagId) {
       // Petición real: "no sé en qué circunstancias se podría dar que
       // se haga un traspaso entre cuentas por un cumpleaños pero más
@@ -10861,6 +10872,16 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       {spent !== null && (
         <p className="muted" style={{ fontSize: 12 }}>
           Se suma solo lo etiquetado "{event.title}" en Economía — pon esa etiqueta a los gastos del evento para que cuenten aquí, sin duplicar nada.
+        </p>
+      )}
+      {committed !== null && committed > 0 && (
+        <p className="muted" style={{ margin: '4px 0' }}>
+          Comprometido vía encargos: <strong>{committed.toFixed(2)} €</strong>
+        </p>
+      )}
+      {committed !== null && committed > 0 && (
+        <p className="muted" style={{ fontSize: 12 }}>
+          Suma del total de cada pago en "🧾 Pagos y fianzas" (resuelto o no), se haya pagado ya o no — aparte de lo Planeado y de lo Gastado en Economía, nunca sumado con ellos.
         </p>
       )}
       {error && <p className="error">{error}</p>}

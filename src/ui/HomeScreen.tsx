@@ -43,7 +43,7 @@ const HOME_CARD_BODY: Record<string, string> = {
   familia: 'Miembros, peso y medidas',
   calendario: 'Eventos de hoy',
   eventos: 'Cumpleaños, comuniones y más',
-  puntos: 'Recompensas de la familia',
+  puntos: 'Aprender, jugar y soñar',
   compras: 'Lista actual',
   alimentacion: 'Menú y recetas',
   dinero: 'Resumen del mes',

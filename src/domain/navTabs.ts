@@ -16,7 +16,10 @@ export const NAV_TABS: NavTab[] = [
   { to: '/familia', label: 'Familia', icon: '👨‍👩‍👧‍👦' },
   { to: '/calendario', label: 'Calendario', icon: '📅' },
   { to: '/eventos', label: 'Eventos', icon: '🎉' },
-  { to: '/puntos', label: 'Puntos', icon: '⭐' },
+  // «Pequeños Grandes» (prompt maestro) — misma ruta/id de sección 'puntos' de siempre a propósito:
+  // cambiarla rompería los permisos de menor/invitado ya guardados (profiles.allowed_sections) y el
+  // orden de tarjetas de Inicio guardado por dispositivo. Solo cambian el nombre y lo que hay detrás.
+  { to: '/puntos', label: 'Pequeños Grandes', icon: '⭐' },
   { to: '/compras', label: 'Compras', icon: '🛒' },
   { to: '/alimentacion', label: 'La cocina de Pepa', icon: '🍎' },
   { to: '/dinero', label: 'Economía', icon: '💶' },

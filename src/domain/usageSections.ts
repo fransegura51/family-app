@@ -8,7 +8,7 @@ export const USAGE_SECTIONS: Record<string, string> = {
   inicio: 'Inicio',
   calendario: 'Calendario',
   eventos: 'Eventos',
-  puntos: 'Puntos',
+  puntos: 'Pequeños Grandes',
   compras: 'Compras',
   familia: 'Familia',
   alimentacion: 'Alimentación',

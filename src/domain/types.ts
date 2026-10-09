@@ -59,19 +59,53 @@ export interface FamilyMember {
   joinedAt: string
 }
 
+// Pequeños Grandes (prompt maestro) — Fase 4 (Parte 4.2): catálogo ampliado con emoji/descripción/activo.
+// "active" distingue desactivada (ya no se puede solicitar, pero su historial de canjes sigue intacto)
+// de borrada de verdad — desactivar es la acción normal, nunca hace falta borrar para "retirar" un premio.
 export interface Reward {
   id: string
   familyId: string
   title: string
   pointsCost: number
+  emoji: string | null
+  description: string | null
+  active: boolean
 }
 
+export type RewardRedemptionStatus = 'pendiente' | 'aprobada' | 'rechazada' | 'disfrutada'
+
+// Fase 4 (Parte 4.3): un canje ya no es instantáneo — pasa por pendiente → aprobada/rechazada →
+// (si aprobada) disfrutada. rewardTitle/rewardEmoji son el snapshot del premio en el momento del canje
+// (sobrevive a que se edite, desactive o incluso borre después) — nunca se leen de `rewards` para
+// mostrar el historial.
 export interface RewardRedemption {
   id: string
-  rewardId: string
+  rewardId: string | null
   memberId: string
+  familyId: string
   pointsSpent: number
+  rewardTitle: string
+  rewardEmoji: string | null
+  status: RewardRedemptionStatus
+  requestedBy: string | null
+  decidedBy: string | null
+  decidedAt: string | null
+  enjoyedAt: string | null
   redeemedAt: string
+}
+
+// Fase 4 (Parte 4.4) — "Dar puntos" manualmente: ledger aparte, nunca una columna de saldo mutable.
+// Una corrección es una fila NUEVA con amount negativo que referencia la original (reversesGrantId) —
+// nunca se edita ni se borra un movimiento ya dado.
+export interface PointGrant {
+  id: string
+  familyId: string
+  memberId: string
+  amount: number
+  reason: string | null
+  grantedBy: string | null
+  reversesGrantId: string | null
+  createdAt: string
 }
 
 export type ShoppingItemStatus = 'pendiente' | 'comprado' | 'omitido' | 'trasladado'

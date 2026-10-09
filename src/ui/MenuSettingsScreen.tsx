@@ -1195,7 +1195,9 @@ function CalendarPreferencesSection() {
 // CalendarScreen.tsx) — nunca un componente nuevo de overlay.
 const CALENDAR_CATEGORY_EMOJI_SUGGESTIONS = ['🏥', '🩺', '🏫', '🎒', '⚽', '🎂', '💼', '🏠', '🚗', '✈️', '🎵', '💇', '🐶', '❤️']
 
-function CalendarCategoryEmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+// Exportado para reutilizarlo en otras pantallas (Pequeños Grandes / Puntos y recompensas, prompt
+// maestro Fase 4/9) — "reutiliza el selector de emojis de PEPA", nunca un segundo selector distinto.
+export function CalendarCategoryEmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState('')
 

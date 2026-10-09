@@ -20,7 +20,7 @@ const RsvpScreen = lazy(() => import('@/ui/RsvpScreen').then((m) => ({ default: 
 const FamilyScreen = lazy(() => import('@/ui/FamilyScreen').then((m) => ({ default: m.FamilyScreen })))
 const CalendarScreen = lazy(() => import('@/ui/CalendarScreen').then((m) => ({ default: m.CalendarScreen })))
 const EventosScreen = lazy(() => import('@/ui/EventosScreen').then((m) => ({ default: m.EventosScreen })))
-const RewardsScreen = lazy(() => import('@/ui/RewardsScreen').then((m) => ({ default: m.RewardsScreen })))
+const PequenosGrandesScreen = lazy(() => import('@/ui/PequenosGrandesScreen').then((m) => ({ default: m.PequenosGrandesScreen })))
 const ShoppingScreen = lazy(() => import('@/ui/ShoppingScreen').then((m) => ({ default: m.ShoppingScreen })))
 const AlimentacionScreen = lazy(() => import('@/ui/AlimentacionScreen').then((m) => ({ default: m.AlimentacionScreen })))
 const FinanceScreen = lazy(() => import('@/ui/FinanceScreen').then((m) => ({ default: m.FinanceScreen })))
@@ -130,7 +130,7 @@ function AuthedApp() {
             <Route path="/" element={<HomeOrBankReturn profile={profile} />} />
             <Route path="/calendario" element={<CalendarScreen profile={profile} />} />
             <Route path="/eventos" element={<EventosScreen />} />
-            <Route path="/puntos" element={<RewardsScreen />} />
+            <Route path="/puntos" element={<PequenosGrandesScreen profile={profile} />} />
             <Route path="/compras" element={<ShoppingScreen />} />
             <Route path="/familia" element={<FamilyScreen profile={profile} />} />
             <Route path="/alimentacion" element={<AlimentacionScreen />} />

@@ -12123,6 +12123,10 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   // mezclarse con lo "Planeado" (una intención de presupuesto) ni lo "Gastado en Economía" (dinero que de
   // verdad salió de una cuenta).
   const [committed, setCommitted] = useState<number | null>(null)
+  // Fase 9 (Parte D, prompt maestro) — "Pagado" distinto de "Comprometido": cuánto de ese compromiso se
+  // ha pagado de verdad ya (suma de depositPaid de los mismos pagos), nunca inventado ni igualado al
+  // total — un encargo comprometido a 500€ con 200€ pagados no es "pagado 500€".
+  const [paidOfCommitted, setPaidOfCommitted] = useState<number | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Bloque 11 (cola nocturna) — un concepto propuesto por PEPA llega sin importe (plannedAmount:null);
@@ -12134,8 +12138,14 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       .then(setItems)
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el presupuesto')))
     listEventPayments(event.id)
-      .then((payments) => setCommitted(payments.reduce((sum, p) => sum + p.totalAmount, 0)))
-      .catch(() => setCommitted(null))
+      .then((payments) => {
+        setCommitted(payments.reduce((sum, p) => sum + p.totalAmount, 0))
+        setPaidOfCommitted(payments.reduce((sum, p) => sum + p.depositPaid, 0))
+      })
+      .catch(() => {
+        setCommitted(null)
+        setPaidOfCommitted(null)
+      })
     if (event.tagId) {
       // Petición real: "no sé en qué circunstancias se podría dar que
       // se haga un traspaso entre cuentas por un cumpleaños pero más
@@ -12182,6 +12192,11 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       {committed !== null && committed > 0 && (
         <p className="muted" style={{ fontSize: 12 }}>
           Suma del total de cada pago en "🧾 Pagos y fianzas" (resuelto o no), se haya pagado ya o no — aparte de lo Planeado y de lo Gastado en Economía, nunca sumado con ellos.
+        </p>
+      )}
+      {committed !== null && committed > 0 && paidOfCommitted !== null && (
+        <p className="muted" style={{ margin: '4px 0' }}>
+          Pagado de lo comprometido: <strong>{paidOfCommitted.toFixed(2)} €</strong> de {committed.toFixed(2)} €
         </p>
       )}
       {error && <p className="error">{error}</p>}
@@ -13057,6 +13072,12 @@ function paymentStatusForAmounts(totalAmount: number, depositPaid: number): Even
   return depositPaid <= 0 ? 'pendiente' : depositPaid >= totalAmount ? 'pagado' : 'parcial'
 }
 
+const PAYMENT_STATUS_LABELS: Record<EventPaymentStatus, string> = {
+  pendiente: '⏳ Pendiente',
+  parcial: '◐ Parcial',
+  pagado: '✓ Pagado',
+}
+
 function PaymentsSection({ event }: { event: FamilyEvent }) {
   const eventId = event.id
   const [payments, setPayments] = useState<EventPayment[]>([])
@@ -13068,6 +13089,20 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
   // pago entero.
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
+  // Fase 9 (Parte E, prompt maestro) — tarjetas compactas plegables (mismo patrón ▸/▾ ya usado en
+  // Ofertas/Servicios) + un filtro simple por estado, para no tener que desplazarse entre todos los pagos
+  // solo para ver los pendientes. Nunca genera movimientos bancarios — eso no cambia aquí.
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  const [filter, setFilter] = useState<'todos' | 'pendientes' | 'pagados'>('todos')
+
+  function toggleOpen(id: string) {
+    setOpenIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   function reload() {
     listEventPayments(eventId)
@@ -13104,78 +13139,108 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
     }
   }
 
+  const pendingCount = payments.filter((p) => p.status !== 'pagado').length
+  const visiblePayments = payments.filter((p) => (filter === 'todos' ? true : filter === 'pagados' ? p.status === 'pagado' : p.status !== 'pagado'))
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>🧾 Pagos y fianzas</strong>
       {error && <p className="error">{error}</p>}
+      {payments.length > 0 && (
+        <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+          <button type="button" className={'chip' + (filter === 'todos' ? ' chip-active' : '')} onClick={() => setFilter('todos')}>
+            Todos
+          </button>
+          <button type="button" className={'chip' + (filter === 'pendientes' ? ' chip-active' : '')} onClick={() => setFilter('pendientes')}>
+            Pendientes{pendingCount > 0 ? ` (${pendingCount})` : ''}
+          </button>
+          <button type="button" className={'chip' + (filter === 'pagados' ? ' chip-active' : '')} onClick={() => setFilter('pagados')}>
+            Pagados del todo
+          </button>
+        </div>
+      )}
       <div className="event-list" style={{ marginTop: 8 }}>
-        {payments.map((p) => {
+        {visiblePayments.map((p) => {
           const remaining = p.totalAmount - p.depositPaid
+          const open = openIds.has(p.id)
           return (
             <div key={p.id} className="card task-card">
-              <div className="task-card-main" style={{ width: '100%' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <div>
-                    <strong>{p.concept}</strong>
-                    {p.providerName && <div className="muted" style={{ fontSize: 12 }}>{p.providerName}</div>}
-                  </div>
-                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
-                </div>
-                {editingId === p.id ? (
-                  <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
-                    <span className="muted">{p.totalAmount.toFixed(2)} € · pagado</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={editingValue}
-                      onChange={(e) => setEditingValue(e.target.value)}
-                      style={{ width: 90 }}
-                      autoFocus
-                    />
-                    <button type="button" className="link-button" onClick={() => saveEditingDeposit(p)}>
-                      Guardar
-                    </button>
-                    <button type="button" className="link-button" onClick={() => setEditingId(null)}>
-                      Cancelar
-                    </button>
-                  </div>
-                ) : (
-                  <p className="muted" style={{ margin: '2px 0' }}>
-                    {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
-                    {p.dueDate ? ` · vence ${p.dueDate}` : ''}
-                    {' · '}
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ display: 'inline', padding: 0 }}
-                      onClick={() => {
-                        setEditingId(p.id)
-                        setEditingValue(String(p.depositPaid))
-                      }}
-                    >
-                      ✏️ Corregir lo pagado
-                    </button>
-                  </p>
-                )}
-                {remaining > 0 && (
-                  <ConfirmButton
-                    label="Marcar como pagado del todo"
-                    confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}
-                    onConfirm={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
-                  />
-                )}
-                {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
-                  <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>
-                    {linkingReminderId === p.id ? 'Poniendo…' : '🔔 Recordarme'}
-                  </button>
-                )}
-                {p.reminderCalendarEventId && <span className="muted" style={{ fontSize: 12 }}>🔔 Recordatorio puesto</span>}
+              <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer', width: '100%' }} onClick={() => toggleOpen(p.id)}>
+                <span style={{ flex: 1 }}>
+                  {open ? '▾' : '▸'} <strong>{p.concept}</strong>
+                  {p.providerName && <span className="muted" style={{ fontSize: 12 }}> · {p.providerName}</span>}
+                </span>
+                <span className="muted" style={{ fontSize: 12 }}>
+                  {p.totalAmount.toFixed(2)} € · {PAYMENT_STATUS_LABELS[p.status]}
+                </span>
               </div>
+              {open && (
+                <div className="task-card-main" style={{ width: '100%', marginTop: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                    <span onClick={(e) => e.stopPropagation()}>
+                      <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
+                    </span>
+                  </div>
+                  {editingId === p.id ? (
+                    <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
+                      <span className="muted">{p.totalAmount.toFixed(2)} € · pagado</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        style={{ width: 90 }}
+                        autoFocus
+                      />
+                      <button type="button" className="link-button" onClick={() => saveEditingDeposit(p)}>
+                        Guardar
+                      </button>
+                      <button type="button" className="link-button" onClick={() => setEditingId(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="muted" style={{ margin: '2px 0' }}>
+                      {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
+                      {p.dueDate ? ` · vence ${p.dueDate}` : ''}
+                      {' · '}
+                      <button
+                        type="button"
+                        className="link-button"
+                        style={{ display: 'inline', padding: 0 }}
+                        onClick={() => {
+                          setEditingId(p.id)
+                          setEditingValue(String(p.depositPaid))
+                        }}
+                      >
+                        ✏️ Corregir lo pagado
+                      </button>
+                    </p>
+                  )}
+                  {remaining > 0 && (
+                    <ConfirmButton
+                      label="Marcar como pagado del todo"
+                      confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}
+                      onConfirm={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
+                    />
+                  )}
+                  {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
+                    <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>
+                      {linkingReminderId === p.id ? 'Poniendo…' : '🔔 Recordarme'}
+                    </button>
+                  )}
+                  {p.reminderCalendarEventId && <span className="muted" style={{ fontSize: 12 }}>🔔 Recordatorio puesto</span>}
+                </div>
+              )}
             </div>
           )
         })}
-        {payments.length === 0 && <p className="muted">Todavía no hay pagos apuntados.</p>}
+        {visiblePayments.length === 0 && (
+          <p className="muted">
+            {filter === 'todos' ? 'Todavía no hay pagos apuntados.' : filter === 'pendientes' ? 'No hay pagos pendientes.' : 'Todavía no hay ningún pago marcado como pagado del todo.'}
+          </p>
+        )}
       </div>
       <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
         + Añadir pago

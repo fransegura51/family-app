@@ -18,9 +18,11 @@ const PAYMENTS_SECTION = window_(UI, 'function PaymentsSection(', '\nfunction Ad
 const ADD_PAYMENT_MODAL = window_(UI, 'function AddPaymentModal(', '\n// ---------------------------------------------------------------------\n// Invitaciones')
 const RESOLVE_MODAL = window_(UI, 'function ResolveGroupModal(', '\nfunction NextStepPromptModal(')
 
-describe('PaymentsSection — el proveedor se ve siempre en gris secundario bajo el concepto', () => {
-  it('cada tarjeta de pago muestra p.providerName cuando existe, nunca lo oculta', () => {
-    expect(PAYMENTS_SECTION).toContain('{p.providerName && <div className="muted" style={{ fontSize: 12 }}>{p.providerName}</div>}')
+// Fase 9 (Parte E, prompt maestro) — tarjetas compactas plegables: el proveedor se mueve a la propia
+// línea de cabecera (siempre visible, plegada o no), en vez de una línea aparte dentro del detalle.
+describe('PaymentsSection — el proveedor se ve siempre junto al concepto, nunca lo oculta', () => {
+  it('cada tarjeta de pago muestra p.providerName cuando existe, en la línea de cabecera (visible aunque esté plegada)', () => {
+    expect(PAYMENTS_SECTION).toContain("{p.providerName && <span className=\"muted\" style={{ fontSize: 12 }}> · {p.providerName}</span>}")
   })
 })
 

@@ -1045,6 +1045,16 @@ export interface EventProvider {
   createdAt: string
   // Fase 1 del motor de decisiones — ver EventTask.decisionId.
   decisionId: string | null
+  // Ficha más completa (Parte B, Fase 5) — todos opcionales, el flujo rápido (solo nombre + tipo) sigue
+  // funcionando igual que antes.
+  contactPerson: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  address: string | null
+  // Retirar de las listas de "elegir proveedor" sin borrarlo ni perder el histórico de pagos/encargos que
+  // ya lo referencian (ON DELETE SET NULL perdería esa referencia; archivar no).
+  archived: boolean
 }
 
 export type EventPaymentStatus = 'pendiente' | 'parcial' | 'pagado'

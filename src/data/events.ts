@@ -1439,7 +1439,8 @@ export async function saveEventMenuSections(eventId: string, sections: StoredSec
 // Proveedores — registro ligero, sin marketplace externo.
 // ---------------------------------------------------------------------
 
-const PROVIDER_SELECT = 'id, event_id, family_id, name, type, contact_note, notes, created_at, decision_id'
+const PROVIDER_SELECT =
+  'id, event_id, family_id, name, type, contact_note, notes, created_at, decision_id, contact_person, phone, email, website, address, archived'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProvider(r: any): EventProvider {
@@ -1453,6 +1454,12 @@ function mapProvider(r: any): EventProvider {
     notes: r.notes,
     createdAt: r.created_at,
     decisionId: r.decision_id,
+    contactPerson: r.contact_person,
+    phone: r.phone,
+    email: r.email,
+    website: r.website,
+    address: r.address,
+    archived: r.archived,
   }
 }
 
@@ -1462,10 +1469,20 @@ export async function listEventProviders(eventId: string): Promise<EventProvider
   return data.map(mapProvider)
 }
 
-export async function addEventProvider(
-  eventId: string,
-  input: { name: string; type?: string | null; contactNote?: string | null; notes?: string | null; decisionId?: string | null },
-): Promise<string> {
+export interface EventProviderInput {
+  name: string
+  type?: string | null
+  contactNote?: string | null
+  notes?: string | null
+  decisionId?: string | null
+  contactPerson?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+  address?: string | null
+}
+
+export async function addEventProvider(eventId: string, input: EventProviderInput): Promise<string> {
   const familyId = await currentFamilyId()
   const { data, error } = await supabase
     .from('event_providers')
@@ -1477,11 +1494,48 @@ export async function addEventProvider(
       contact_note: input.contactNote ?? null,
       notes: input.notes ?? null,
       decision_id: input.decisionId ?? null,
+      contact_person: input.contactPerson ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+      website: input.website ?? null,
+      address: input.address ?? null,
     })
     .select('id')
     .single()
   if (error) throw error
   return data.id as string
+}
+
+export async function updateEventProvider(id: string, patch: Partial<EventProviderInput> & { archived?: boolean }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.type !== undefined) update.type = patch.type
+  if (patch.contactNote !== undefined) update.contact_note = patch.contactNote
+  if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.contactPerson !== undefined) update.contact_person = patch.contactPerson
+  if (patch.phone !== undefined) update.phone = patch.phone
+  if (patch.email !== undefined) update.email = patch.email
+  if (patch.website !== undefined) update.website = patch.website
+  if (patch.address !== undefined) update.address = patch.address
+  if (patch.archived !== undefined) update.archived = patch.archived
+  const { error } = await supabase.from('event_providers').update(update).eq('id', id)
+  if (error) throw error
+}
+
+// Antes de ofrecer el borrado definitivo (Fase 5: "archivar en vez de borrar cuando está enlazado a
+// contratos/pagos") — ON DELETE SET NULL en event_payments/event_task_groups/event_task_group_resolutions
+// no fallaría, pero perdería la referencia de un histórico real. event_decision_providers es ON DELETE
+// CASCADE (solo un enlace, no un dato en sí) y no cuenta como motivo para bloquear el borrado.
+export async function isEventProviderLinked(id: string): Promise<boolean> {
+  const [payments, groups, resolutions] = await Promise.all([
+    supabase.from('event_payments').select('id', { count: 'exact', head: true }).eq('provider_id', id),
+    supabase.from('event_task_groups').select('id', { count: 'exact', head: true }).eq('provider_id', id),
+    supabase.from('event_task_group_resolutions').select('id', { count: 'exact', head: true }).eq('provider_id', id),
+  ])
+  if (payments.error) throw payments.error
+  if (groups.error) throw groups.error
+  if (resolutions.error) throw resolutions.error
+  return (payments.count ?? 0) > 0 || (groups.count ?? 0) > 0 || (resolutions.count ?? 0) > 0
 }
 
 export async function deleteEventProvider(id: string): Promise<void> {

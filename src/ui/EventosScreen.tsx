@@ -137,6 +137,8 @@ import {
   updateEventBudgetItem,
   updateEventMoment,
   updateEventPayment,
+  updateEventProvider,
+  isEventProviderLinked,
   updateEventSpecialDetail,
   updateEventTask,
   reconcileFoodForVenueChange,
@@ -3587,7 +3589,7 @@ function ResolveGroupModal({
   useEffect(() => {
     if (method !== 'empresa') return
     listEventProviders(event.id)
-      .then(setProviders)
+      .then((all) => setProviders(all.filter((p) => !p.archived)))
       .catch(() => {})
   }, [method, event.id])
 
@@ -5186,7 +5188,7 @@ function ProviderLinker({ event, decision }: { event: FamilyEvent; decision: Eve
   }
 
   const linkedIds = new Set(linked.map((l) => l.providerId))
-  const available = providers.filter((p) => !linkedIds.has(p.id))
+  const available = providers.filter((p) => !linkedIds.has(p.id) && !p.archived)
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -11070,6 +11072,10 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   const [providers, setProviders] = useState<EventProvider[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  // Fase 5 (ficha completa de Proveedores) — los archivados quedan fuera de la vista normal (y de los
+  // selectores de "elegir proveedor" en Pagos/Resolver encargo), pero nunca desaparecen ni se borran.
+  const [showArchived, setShowArchived] = useState(false)
 
   function reload() {
     listEventProviders(eventId)
@@ -11078,26 +11084,71 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   }
   useEffect(reload, [eventId])
 
+  async function handleDelete(p: EventProvider) {
+    setError(null)
+    try {
+      if (await isEventProviderLinked(p.id)) {
+        setError(`«${p.name}» tiene pagos o encargos en su historial — archívalo en vez de borrarlo, para no perder esa referencia.`)
+        return
+      }
+      await deleteEventProvider(p.id)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo borrar el proveedor'))
+    }
+  }
+
+  const active = providers.filter((p) => !p.archived)
+  const archived = providers.filter((p) => p.archived)
+  const visible = showArchived ? archived : active
+
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>📇 Proveedores</strong>
       {error && <p className="error">{error}</p>}
       <div className="event-list" style={{ marginTop: 8 }}>
-        {providers.map((p) => (
-          <div key={p.id} className="inline-fields" style={{ alignItems: 'center' }}>
-            <span style={{ flex: 1 }}>
-              {p.name}
-              {p.type ? ` · ${p.type}` : ''}
-              {p.contactNote ? ` · ${p.contactNote}` : ''}
-            </span>
-            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar proveedor" onConfirm={() => deleteEventProvider(p.id).then(reload)} />
-          </div>
-        ))}
-        {providers.length === 0 && <p className="muted">Todavía no hay proveedores.</p>}
+        {visible.map((p) =>
+          editingId === p.id ? (
+            <EditProviderForm key={p.id} provider={p} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+          ) : (
+            <div key={p.id} className="card" style={{ padding: 8 }}>
+              <div className="inline-fields" style={{ alignItems: 'center' }}>
+                <span style={{ flex: 1 }}>
+                  {p.name}
+                  {p.type ? ` · ${p.type}` : ''}
+                </span>
+                <button type="button" className="link-button" onClick={() => setEditingId(p.id)}>
+                  ✏️ Editar
+                </button>
+              </div>
+              {(p.contactPerson || p.phone || p.email || p.website || p.address || p.contactNote) && (
+                <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                  {[p.contactPerson, p.phone, p.email, p.website, p.address, p.contactNote].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              <div className="filter-row" style={{ marginTop: 4 }}>
+                <ConfirmButton
+                  label={p.archived ? '♻️ Reactivar' : '📦 Archivar'}
+                  confirmMessage={p.archived ? `¿Reactivar «${p.name}»? Volverá a aparecer en los selectores de proveedor.` : `¿Archivar «${p.name}»? Deja de aparecer en los selectores, pero no se borra nada de su historial.`}
+                  onConfirm={() => updateEventProvider(p.id, { archived: !p.archived }).then(reload)}
+                />
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar proveedor" onConfirm={() => handleDelete(p)} />
+              </div>
+            </div>
+          ),
+        )}
+        {visible.length === 0 && <p className="muted">{showArchived ? 'No hay proveedores archivados.' : 'Todavía no hay proveedores.'}</p>}
       </div>
-      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
-        + Añadir proveedor
-      </button>
+      <div className="filter-row">
+        <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+          + Añadir proveedor
+        </button>
+        {archived.length > 0 && (
+          <button type="button" className="link-button" onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? '← Ver activos' : `Ver archivados (${archived.length})`}
+          </button>
+        )}
+      </div>
       {showAdd && (
         <AddProviderModal
           eventId={eventId}
@@ -11112,10 +11163,77 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   )
 }
 
+// Campos ampliados (Fase 5): plegados detrás de "+ Más datos" salvo que el proveedor ya tenga alguno
+// rellenado — mismo criterio de "low-effort path por defecto" que el resto de la app (petición real:
+// app para usuarios perezosos, no un formulario de empresa).
+function ProviderExtraFields({
+  contactPerson,
+  setContactPerson,
+  phone,
+  setPhone,
+  email,
+  setEmail,
+  website,
+  setWebsite,
+  address,
+  setAddress,
+  forceOpen,
+}: {
+  contactPerson: string
+  setContactPerson: (v: string) => void
+  phone: string
+  setPhone: (v: string) => void
+  email: string
+  setEmail: (v: string) => void
+  website: string
+  setWebsite: (v: string) => void
+  address: string
+  setAddress: (v: string) => void
+  forceOpen: boolean
+}) {
+  const [open, setOpen] = useState(forceOpen)
+  if (!open) {
+    return (
+      <button type="button" className="link-button" onClick={() => setOpen(true)}>
+        + Más datos (persona de contacto, teléfono, email, web, dirección)
+      </button>
+    )
+  }
+  return (
+    <>
+      <label>
+        Persona de contacto (opcional)
+        <input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
+      </label>
+      <label>
+        Teléfono / WhatsApp (opcional)
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <label>
+        Email (opcional)
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </label>
+      <label>
+        Web (opcional)
+        <input type="text" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..." />
+      </label>
+      <label>
+        Dirección (opcional)
+        <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} />
+      </label>
+    </>
+  )
+}
+
 function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('')
   const [contactNote, setContactNote] = useState('')
+  const [contactPerson, setContactPerson] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [website, setWebsite] = useState('')
+  const [address, setAddress] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -11128,7 +11246,16 @@ function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onCl
     setSaving(true)
     setError(null)
     try {
-      await addEventProvider(eventId, { name, type: type || null, contactNote: contactNote || null })
+      await addEventProvider(eventId, {
+        name,
+        type: type || null,
+        contactNote: contactNote || null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        email: email || null,
+        website: website || null,
+        address: address || null,
+      })
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -11162,10 +11289,108 @@ function AddProviderModal({ eventId, onClose, onAdded }: { eventId: string; onCl
             Contacto (opcional)
             <input type="text" value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Teléfono, email..." />
           </label>
+          <ProviderExtraFields
+            contactPerson={contactPerson}
+            setContactPerson={setContactPerson}
+            phone={phone}
+            setPhone={setPhone}
+            email={email}
+            setEmail={setEmail}
+            website={website}
+            setWebsite={setWebsite}
+            address={address}
+            setAddress={setAddress}
+            forceOpen={false}
+          />
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
         </form>
+      </div>
+    </div>
+  )
+}
+
+function EditProviderForm({ provider, onDone, onSaved }: { provider: EventProvider; onDone: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(provider.name)
+  const [type, setType] = useState(provider.type ?? '')
+  const [contactNote, setContactNote] = useState(provider.contactNote ?? '')
+  const [contactPerson, setContactPerson] = useState(provider.contactPerson ?? '')
+  const [phone, setPhone] = useState(provider.phone ?? '')
+  const [email, setEmail] = useState(provider.email ?? '')
+  const [website, setWebsite] = useState(provider.website ?? '')
+  const [address, setAddress] = useState(provider.address ?? '')
+  const [notes, setNotes] = useState(provider.notes ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const hadExtraData = Boolean(provider.contactPerson || provider.phone || provider.email || provider.website || provider.address)
+
+  async function save() {
+    if (!name.trim()) {
+      setError('Ponle un nombre.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateEventProvider(provider.id, {
+        name,
+        type: type || null,
+        contactNote: contactNote || null,
+        contactPerson: contactPerson || null,
+        phone: phone || null,
+        email: email || null,
+        website: website || null,
+        address: address || null,
+        notes: notes || null,
+      })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card member-form" style={{ padding: 8 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </label>
+      <label>
+        Tipo (opcional)
+        <input type="text" value={type} onChange={(e) => setType(e.target.value)} placeholder="Catering, fotógrafo..." />
+      </label>
+      <label>
+        Contacto (opcional)
+        <input type="text" value={contactNote} onChange={(e) => setContactNote(e.target.value)} placeholder="Teléfono, email..." />
+      </label>
+      <ProviderExtraFields
+        contactPerson={contactPerson}
+        setContactPerson={setContactPerson}
+        phone={phone}
+        setPhone={setPhone}
+        email={email}
+        setEmail={setEmail}
+        website={website}
+        setWebsite={setWebsite}
+        address={address}
+        setAddress={setAddress}
+        forceOpen={hadExtraData}
+      />
+      <label>
+        Notas (opcional)
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
+      </label>
+      <div className="filter-row" style={{ marginTop: 4 }}>
+        <button type="button" onClick={() => void save()} disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
       </div>
     </div>
   )
@@ -11330,7 +11555,7 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listEventProviders(eventId).then(setProviders).catch(() => {})
+    listEventProviders(eventId).then((all) => setProviders(all.filter((p) => !p.archived))).catch(() => {})
   }, [eventId])
 
   async function handleSubmit(ev: FormEvent) {

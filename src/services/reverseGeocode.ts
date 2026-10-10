@@ -13,7 +13,8 @@ import { callGoogleMaps } from '@/services/googleMapsProxy'
 export async function reverseGeocodePlaceName(latitude: number, longitude: number): Promise<string | null> {
   if (!allowGoogleMapsUse('search')) return null
   try {
-    const data = await callGoogleMaps({ action: 'nearby', latitude, longitude })
+    // native: se llama desde el reconocimiento de paradas, que corre con el móvil bloqueado.
+    const data = await callGoogleMaps({ action: 'nearby', latitude, longitude }, { native: true })
     return (data.name as string | null) ?? null
   } catch {
     return null

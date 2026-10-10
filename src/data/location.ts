@@ -1,4 +1,4 @@
-import { postHistoryPointNative, postLiveLocationNative } from '@/data/liveLocationNative'
+import { postHistoryPointNative, postLiveLocationNative, restNative } from '@/data/liveLocationNative'
 import { supabase } from '@/data/supabaseClient'
 import { isNativeApp } from '@/services/nativeApp'
 import type {
@@ -23,6 +23,20 @@ async function nativeWriteContext(): Promise<{ accessToken: string; familyId: st
   return { accessToken: session.access_token, familyId: nativeFamilyCache.familyId }
 }
 
+// Petición REST por la capa nativa con el token de la sesión (ver data/liveLocationNative.ts: restNative).
+async function nativeRest<T>(method: 'GET' | 'POST' | 'PATCH', path: string, body?: unknown, prefer?: string): Promise<T> {
+  const ctx = await nativeWriteContext()
+  return restNative<T>({
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
+    anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    accessToken: ctx.accessToken,
+    method,
+    path,
+    body,
+    prefer,
+  })
+}
+
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')
@@ -39,11 +53,27 @@ async function currentFamilyId(): Promise<string> {
 // Lugares frecuentes (Skill 23)
 // ---------------------------------------------------------------------
 
+interface PlaceRow {
+  id: string
+  family_id: string
+  name: string
+  category: string | null
+  latitude: number
+  longitude: number
+  radius_m: number
+  notify_arrivals: boolean
+}
+
 export async function listPlaces(): Promise<LocationPlace[]> {
-  const { data, error } = await supabase
-    .from('location_places')
-    .select('id, family_id, name, category, latitude, longitude, radius_m, notify_arrivals')
-  if (error) throw error
+  let data: PlaceRow[]
+  if (isNativeApp()) {
+    // Lo llama el reconocimiento de paradas, que corre con el móvil bloqueado: por la capa nativa (la web se congela en segundo plano).
+    data = await nativeRest<PlaceRow[]>('GET', 'location_places?select=id,family_id,name,category,latitude,longitude,radius_m,notify_arrivals')
+  } else {
+    const res = await supabase.from('location_places').select('id, family_id, name, category, latitude, longitude, radius_m, notify_arrivals')
+    if (res.error) throw res.error
+    data = res.data as PlaceRow[]
+  }
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,
@@ -284,6 +314,25 @@ export async function recordPlaceVisit(input: {
   longitude: number
   arrivedAt: string
 }): Promise<string> {
+  if (isNativeApp()) {
+    // Se llama cuando termina una parada, con el móvil normalmente bloqueado: por la capa nativa.
+    const ctx = await nativeWriteContext()
+    const rows = await nativeRest<{ id: string }[]>(
+      'POST',
+      'member_place_visits?select=id',
+      {
+        family_id: ctx.familyId,
+        member_id: input.memberId,
+        place_name: input.placeName,
+        latitude: input.latitude,
+        longitude: input.longitude,
+        arrived_at: input.arrivedAt,
+      },
+      'return=representation',
+    )
+    if (!rows[0]?.id) throw new Error('No se pudo guardar la visita')
+    return rows[0].id
+  }
   const familyId = await currentFamilyId()
   const { data, error } = await supabase
     .from('member_place_visits')
@@ -302,6 +351,10 @@ export async function recordPlaceVisit(input: {
 }
 
 export async function closePlaceVisit(id: string, leftAt: string): Promise<void> {
+  if (isNativeApp()) {
+    await nativeRest('PATCH', `member_place_visits?id=eq.${encodeURIComponent(id)}`, { left_at: leftAt }, 'return=minimal')
+    return
+  }
   const { error } = await supabase.from('member_place_visits').update({ left_at: leftAt }).eq('id', id)
   if (error) throw error
 }

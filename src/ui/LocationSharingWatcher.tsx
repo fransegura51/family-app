@@ -24,18 +24,20 @@ export function LocationSharingWatcher({ profileId }: { profileId: string }) {
   useEffect(() => {
     let cancelled = false
 
-    resumeFromStorage()
-
     async function autoStartForOwnProfile() {
       try {
         const [members, consents] = await Promise.all([listFamilyMembers(), listConsents()])
         if (cancelled) return
+        // Con la lista de la familia se descarta a la persona guardada si es de otra cuenta (ver resumeFromStorage). Es la misma consulta que ya
+        // se hacía aquí para autoStartForOwnProfile: no suma llamadas.
+        resumeFromStorage(members.map((m) => m.id))
         const myMember = members.find((m) => m.linkedProfileId === profileId)
         if (!myMember) return
         const consent = consents.find((c) => c.memberId === myMember.id)
         if (consent?.enabled) startSharing(myMember.id)
       } catch {
-        // Un fallo puntual aquí no debe romper el resto de la app.
+        // Un fallo puntual aquí no debe romper el resto de la app. Sin poder comprobar la familia (sin conexión), se retoma lo guardado como antes.
+        if (!cancelled) resumeFromStorage()
       }
     }
     autoStartForOwnProfile()

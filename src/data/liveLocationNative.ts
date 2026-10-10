@@ -41,6 +41,38 @@ export async function postLiveLocationNative(a: LiveLocationArgs): Promise<void>
   if (res.status < 200 || res.status >= 300) throw new Error(`No se pudo guardar la ubicación (${res.status})`)
 }
 
+// Llamada REST genérica por la capa nativa, para lo que ocurre en segundo plano además de la posición: guardar y cerrar las paradas («has estado
+// en...») y leer los lugares de la familia. Misma API que usaría supabase-js (PostgREST) y mismo token de la sesión.
+export interface NativeRestArgs {
+  supabaseUrl: string
+  anonKey: string
+  accessToken: string
+  method: 'GET' | 'POST' | 'PATCH'
+  path: string
+  body?: unknown
+  prefer?: string
+}
+
+export function buildRestRequest(a: NativeRestArgs) {
+  return {
+    url: `${a.supabaseUrl}/rest/v1/${a.path}`,
+    method: a.method,
+    headers: {
+      apikey: a.anonKey,
+      Authorization: `Bearer ${a.accessToken}`,
+      'Content-Type': 'application/json',
+      ...(a.prefer ? { Prefer: a.prefer } : {}),
+    },
+    ...(a.body === undefined ? {} : { data: a.body }),
+  }
+}
+
+export async function restNative<T>(a: NativeRestArgs): Promise<T> {
+  const res = await CapacitorHttp.request(buildRestRequest(a))
+  if (res.status < 200 || res.status >= 300) throw new Error(`No se pudo completar la petición (${res.status})`)
+  return res.data as T
+}
+
 // Punto del rastro de las últimas 24h (member_location_history). Mismo motivo que arriba: guardado desde la web se queda congelado en segundo
 // plano, y la ruta del día salía vacía aunque la posición en vivo sí se actualizara (prueba real del 2026-10-10).
 export function buildHistoryPointRequest(a: LiveLocationArgs) {

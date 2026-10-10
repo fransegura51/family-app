@@ -612,6 +612,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
             l.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
           )
           setHistories(Object.fromEntries(historyEntries))
+          lastHistoryFetchRef.current = Date.now()
         }
 
         const withPhoto = m.filter((mem) => mem.photoPath && l.some((loc) => loc.memberId === mem.id))
@@ -663,14 +664,32 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // nunca llegaría a dispararse).
   const locationsRef = useRef(locations)
   locationsRef.current = locations
+  //
+  // También al volver a la app tras un rato en segundo plano (prueba real con la app nativa: se hizo un trayecto de 45 minutos con la pantalla de
+  // Ubicación abierta de antes y la ruta no aparecía, porque el temporizador de 5 minutos no corre con el móvil bloqueado y el rastro solo se
+  // pedía al entrar en la pantalla). Como mucho una vez por minuto — es la misma consulta de siempre, no una más frecuente.
+  const lastHistoryFetchRef = useRef(Date.now())
   useEffect(() => {
-    const interval = setInterval(async () => {
-      const historyEntries = await Promise.all(
-        locationsRef.current.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
-      )
-      setHistories(Object.fromEntries(historyEntries))
-    }, 5 * 60_000)
-    return () => clearInterval(interval)
+    async function refreshHistories() {
+      lastHistoryFetchRef.current = Date.now()
+      try {
+        const historyEntries = await Promise.all(
+          locationsRef.current.map(async (loc) => [loc.memberId, await listMemberLocationHistory(loc.memberId)] as const),
+        )
+        setHistories(Object.fromEntries(historyEntries))
+      } catch {
+        // Un fallo puntual de red aquí no debe romper la pantalla; se reintenta en el siguiente refresco.
+      }
+    }
+    const interval = setInterval(refreshHistories, 5 * 60_000)
+    function onVisible() {
+      if (document.visibilityState === 'visible' && Date.now() - lastHistoryFetchRef.current > 60_000) void refreshHistories()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   async function handleToggleConsent(memberId: string, enabled: boolean) {

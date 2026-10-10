@@ -6,7 +6,7 @@ const plugin = vi.hoisted(() => ({
   removeWatcher: vi.fn(),
   openSettings: vi.fn(),
 }))
-const http = vi.hoisted(() => ({ post: vi.fn() }))
+const http = vi.hoisted(() => ({ post: vi.fn(), request: vi.fn() }))
 const native = vi.hoisted(() => ({ value: true }))
 
 vi.mock('@capacitor/core', () => ({
@@ -16,7 +16,11 @@ vi.mock('@capacitor/core', () => ({
 }))
 vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: { requestPermissions: vi.fn().mockResolvedValue({ display: 'granted' }) } }))
 
-import { buildHistoryPointRequest, buildLiveLocationRequest, postHistoryPointNative, postLiveLocationNative } from '@/data/liveLocationNative'
+import { buildHistoryPointRequest, buildLiveLocationRequest, buildRestRequest, postHistoryPointNative, postLiveLocationNative, restNative } from '@/data/liveLocationNative'
+import googleMapsProxySrc from '@/services/googleMapsProxy.ts?raw'
+import reverseGeocodeSrc from '@/services/reverseGeocode.ts?raw'
+import watcherSrc from '@/ui/LocationSharingWatcher.tsx?raw'
+import locationScreenSrc from '@/ui/LocationScreen.tsx?raw'
 import { watchPosition } from '@/services/geolocation'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import deployWorkflow from '../../.github/workflows/deploy.yml?raw'
@@ -140,6 +144,44 @@ describe('envío nativo de la posición en vivo', () => {
     expect(src).toContain('if (isNativeApp()) {')
     expect(src).toContain('await postLiveLocationNative({')
     expect(src).toContain('nativeFamilyCache')
+  })
+})
+
+describe('paradas («has estado en...») con el móvil bloqueado: todo por la capa nativa', () => {
+  const base = { supabaseUrl: 'https://x.supabase.co', anonKey: 'anon', accessToken: 'jwt' }
+  it('la petición REST lleva el token de la sesión, el método y el cuerpo; sin cuerpo en las lecturas', () => {
+    const post = buildRestRequest({ ...base, method: 'POST', path: 'member_place_visits?select=id', body: { a: 1 }, prefer: 'return=representation' })
+    expect(post).toMatchObject({ url: 'https://x.supabase.co/rest/v1/member_place_visits?select=id', method: 'POST', data: { a: 1 } })
+    expect(post.headers).toMatchObject({ apikey: 'anon', Authorization: 'Bearer jwt', Prefer: 'return=representation' })
+    const get = buildRestRequest({ ...base, method: 'GET', path: 'location_places?select=id' })
+    expect('data' in get).toBe(false)
+    expect('Prefer' in get.headers).toBe(false)
+  })
+  it('devuelve los datos y un fallo del servidor se nota', async () => {
+    http.request.mockResolvedValueOnce({ status: 201, data: [{ id: 'v1' }] })
+    await expect(restNative({ ...base, method: 'POST', path: 'p' })).resolves.toEqual([{ id: 'v1' }])
+    http.request.mockResolvedValueOnce({ status: 403, data: {} })
+    await expect(restNative({ ...base, method: 'GET', path: 'p' })).rejects.toThrow('403')
+  })
+  it('guardar, cerrar y leer lugares usan el camino nativo dentro de la app nativa', () => {
+    const src = FILES['/src/data/location.ts']
+    expect(src).toContain("'member_place_visits?select=id'")
+    expect(src).toContain('`member_place_visits?id=eq.${encodeURIComponent(id)}`')
+    expect(src).toContain("'GET', 'location_places?select=")
+  })
+  it('reconocer el sitio por Google Maps también sale por la capa nativa, y solo desde las paradas', () => {
+    expect(reverseGeocodeSrc).toContain('{ native: true }')
+    expect(googleMapsProxySrc).toContain('if (opts.native && isNativeApp())')
+    expect(googleMapsProxySrc).toContain('CapacitorHttp.post({')
+  })
+  it('la pantalla de Ubicación vuelve a pedir la ruta al volver a la app (como mucho una vez por minuto), no solo al entrar o cada 5 minutos', () => {
+    expect(locationScreenSrc).toContain("document.addEventListener('visibilitychange', onVisible)")
+    expect(locationScreenSrc).toContain('Date.now() - lastHistoryFetchRef.current > 60_000')
+    expect(locationScreenSrc).toContain("document.removeEventListener('visibilitychange', onVisible)")
+  })
+  it('al abrir se descarta a la persona guardada si no es de la familia, reutilizando la consulta de miembros que ya se hacía', () => {
+    expect(watcherSrc).toContain('resumeFromStorage(members.map((m) => m.id))')
+    expect(watcherSrc.match(/listFamilyMembers\(\)/g)?.length).toBe(1)
   })
 })
 

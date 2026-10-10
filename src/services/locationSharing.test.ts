@@ -261,6 +261,29 @@ describe('rastro de 24h en el mapa (bug real: "ha llevado a Erik al colegio y no
   })
 })
 
+describe('retomar al abrir: persona guardada de otra cuenta (caso real: PC con la cuenta de pruebas, 403 sin parar)', () => {
+  it('si la persona guardada no es de la familia de esta sesión, se olvida y NO se empieza a compartir', async () => {
+    const { mod } = await freshModule()
+    localStorage.setItem('familyapp:location-sharing-member-id', 'persona-de-otra-familia')
+    mod.resumeFromStorage(['m1', 'm2'])
+    expect(capturedOnUpdate).toBeNull()
+    expect(localStorage.getItem('familyapp:location-sharing-member-id')).toBeNull()
+  })
+  it('si es de la familia, se retoma como siempre', async () => {
+    const { mod } = await freshModule()
+    localStorage.setItem('familyapp:location-sharing-member-id', 'm1')
+    mod.resumeFromStorage(['m1', 'm2'])
+    expect(capturedOnUpdate).not.toBeNull()
+    expect(mod.getSharingMemberId()).toBe('m1')
+  })
+  it('sin la lista de la familia (sin conexión) se retoma lo guardado, como antes', async () => {
+    const { mod } = await freshModule()
+    localStorage.setItem('familyapp:location-sharing-member-id', 'm1')
+    mod.resumeFromStorage()
+    expect(mod.getSharingMemberId()).toBe('m1')
+  })
+})
+
 describe('historial de sitios: dejar de compartir', () => {
   it('cierra la parada abierta y no deja nada guardado para retomar después', async () => {
     const { mod, data } = await freshModule()

@@ -397,10 +397,20 @@ if (typeof document !== 'undefined') {
 // LocationSharingWatcher) — el propio watchPosition no sobrevive a
 // recargar la página o volver a abrir la PWA, así que hace falta
 // retomarlo explícitamente a partir de la última elección guardada.
-export function resumeFromStorage() {
+//
+// `familyMemberIds`: los miembros de la familia de la sesión actual (si se conocen). Si la persona guardada no está entre ellos, es un resto de
+// otra cuenta que entró antes en este mismo navegador (caso real: un PC con la cuenta de pruebas seguía intentando compartir como una persona de
+// OTRA familia, y el servidor rechazaba cada intento con un 403): se olvida en vez de compartir. Sin la lista (sin conexión) se retoma como siempre.
+export function resumeFromStorage(familyMemberIds?: string[]) {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) startSharing(saved)
+    if (!saved) return
+    if (familyMemberIds && !familyMemberIds.includes(saved)) {
+      persist(null)
+      persistCandidate(null)
+      return
+    }
+    startSharing(saved)
   } catch {
     // ignorar — sin localStorage no se puede retomar solo
   }

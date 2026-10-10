@@ -31,6 +31,10 @@ export interface OfferBudgetDocumentOutput {
   // para identificar nada internamente (dos presupuestos de proveedores distintos pueden compartir número).
   quoteNumber: string | null
   amount: number | null
+  // Orden de recuperación de requisitos (Parte B2+B3) — importes informativos, tal como aparecen
+  // impresos, nunca calculados ni combinados con "amount" aquí.
+  discountAmount: number | null
+  taxAmount: number | null
   offerDate: string | null
   validUntil: string | null
   // Qué NO incluye el presupuesto, cuando el documento lo deja explícito (exclusiones) — antes no se leía.
@@ -52,6 +56,10 @@ const OFFER_BUDGET_DOCUMENT_PROMPT =
   '"Ref. PRE-118"), tal como aparece impreso, o null si no hay ninguno.\n' +
   '- "amount": el importe TOTAL final del presupuesto (el que de verdad habría que pagar), tal como aparece ' +
   'impreso — nunca la suma de las líneas calculada por ti, aunque creas que coinciden.\n' +
+  '- "discountAmount": el importe del descuento, SOLO si aparece impreso como una cantidad concreta en € ' +
+  '(nunca calcules tú un porcentaje a partir de dos totales), o null.\n' +
+  '- "taxAmount": el importe de impuestos (IVA u otro), SOLO si aparece impreso como una cantidad concreta ' +
+  'en € (nunca calcules tú un porcentaje), o null.\n' +
   '- "offerDate": la fecha del propio presupuesto (cuándo se emitió), formato YYYY-MM-DD, o null.\n' +
   '- "validUntil": la fecha de validez de la oferta si aparece, formato YYYY-MM-DD, o null.\n' +
   '- "scopeExcluded": qué queda explícitamente FUERA del presupuesto, solo si el documento lo dice con ' +
@@ -71,6 +79,7 @@ const OFFER_BUDGET_DOCUMENT_PROMPT =
   'quantity/unit/unitPrice en null y solo rellena subtotal. false en cualquier otro caso.\n' +
   'Responde ÚNICAMENTE un objeto JSON con esta forma exacta, sin texto adicional ni markdown:\n' +
   '{"providerName": "texto o null", "quoteNumber": "texto o null", "amount": numero_o_null, ' +
+  '"discountAmount": numero_o_null, "taxAmount": numero_o_null, ' +
   '"offerDate": "YYYY-MM-DD o null", "validUntil": "YYYY-MM-DD o null", "scopeExcluded": "texto o null", ' +
   '"conditions": "texto o null", "notes": "texto o null", ' +
   '"items": [{"name": "texto", "description": "texto o null", "quantity": numero_o_null, "unit": "texto o null", ' +
@@ -89,6 +98,8 @@ export function parseOfferBudgetDocumentOutput(rawText: string): OfferBudgetDocu
     providerName: null,
     quoteNumber: null,
     amount: null,
+    discountAmount: null,
+    taxAmount: null,
     offerDate: null,
     validUntil: null,
     scopeExcluded: null,
@@ -117,6 +128,8 @@ export function parseOfferBudgetDocumentOutput(rawText: string): OfferBudgetDocu
     providerName: asCleanString(parsed.providerName, 160),
     quoteNumber: asCleanString(parsed.quoteNumber, 80),
     amount: asPositiveNumber(parsed.amount),
+    discountAmount: asPositiveNumber(parsed.discountAmount),
+    taxAmount: asPositiveNumber(parsed.taxAmount),
     offerDate: asIsoDate(parsed.offerDate),
     validUntil: asIsoDate(parsed.validUntil),
     scopeExcluded: asCleanString(parsed.scopeExcluded, 2000),

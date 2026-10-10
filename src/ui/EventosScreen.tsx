@@ -3795,6 +3795,10 @@ function OfferFormFields({
   setItems,
   scopeExcluded,
   setScopeExcluded,
+  discountAmount,
+  setDiscountAmount,
+  taxAmount,
+  setTaxAmount,
   offerDate,
   setOfferDate,
   validUntil,
@@ -3820,6 +3824,10 @@ function OfferFormFields({
   setItems: (fn: (prev: DraftOfferItem[]) => DraftOfferItem[]) => void
   scopeExcluded: string
   setScopeExcluded: (v: string) => void
+  discountAmount: string
+  setDiscountAmount: (v: string) => void
+  taxAmount: string
+  setTaxAmount: (v: string) => void
   offerDate: string
   setOfferDate: (v: string) => void
   validUntil: string
@@ -3833,7 +3841,9 @@ function OfferFormFields({
   hasExistingAttachment: boolean
   onImported: (result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) => void
 }) {
-  const [showMoreDetails, setShowMoreDetails] = useState(Boolean(scopeExcluded || offerDate || validUntil || conditions || notes || hasExistingAttachment))
+  const [showMoreDetails, setShowMoreDetails] = useState(
+    Boolean(scopeExcluded || discountAmount || taxAmount || offerDate || validUntil || conditions || notes || hasExistingAttachment),
+  )
   const [showItemForm, setShowItemForm] = useState(false)
   const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
 
@@ -3942,6 +3952,18 @@ function OfferFormFields({
             Qué NO incluye (opcional)
             <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
           </label>
+          {/* Orden de recuperación de requisitos (Parte B2+B3) — informativos, nunca se restan/suman solos
+              al importe total: la familia decide si ya está incluido o si hay que sumarlo a mano. */}
+          <div className="inline-fields" style={{ marginTop: 6 }}>
+            <label style={{ flex: 1 }}>
+              Descuento (€, opcional)
+              <input type="number" min={0} step="0.01" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} />
+            </label>
+            <label style={{ flex: 1 }}>
+              Impuestos (€, opcional)
+              <input type="number" min={0} step="0.01" value={taxAmount} onChange={(e) => setTaxAmount(e.target.value)} />
+            </label>
+          </div>
           <div className="inline-fields" style={{ marginTop: 6 }}>
             <label style={{ flex: 1 }}>
               Fecha de la oferta (opcional)
@@ -4167,6 +4189,13 @@ function OffersComparison({
                 {o.scopeExcluded && <>No incluye: {o.scopeExcluded}</>}
               </p>
             )}
+            {(o.discountAmount !== null || o.taxAmount !== null) && (
+              <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                {o.discountAmount !== null && <>Descuento: {o.discountAmount.toFixed(2)} €</>}
+                {o.discountAmount !== null && o.taxAmount !== null ? ' · ' : ''}
+                {o.taxAmount !== null && <>Impuestos: {o.taxAmount.toFixed(2)} €</>}
+              </p>
+            )}
             {(o.offerDate || o.validUntil) && (
               <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
                 {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
@@ -4355,6 +4384,8 @@ function AddOfferForm({
   const [scopeIncluded, setScopeIncluded] = useState('')
   const [items, setItems] = useState<DraftOfferItem[]>([])
   const [scopeExcluded, setScopeExcluded] = useState('')
+  const [discountAmount, setDiscountAmount] = useState('')
+  const [taxAmount, setTaxAmount] = useState('')
   const [offerDate, setOfferDate] = useState('')
   const [validUntil, setValidUntil] = useState('')
   const [conditions, setConditions] = useState('')
@@ -4374,6 +4405,8 @@ function AddOfferForm({
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
     if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
+    if (!discountAmount && result.discountAmount !== null) setDiscountAmount(String(result.discountAmount))
+    if (!taxAmount && result.taxAmount !== null) setTaxAmount(String(result.taxAmount))
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4419,6 +4452,8 @@ function AddOfferForm({
         providerName,
         name: name.trim() || null,
         amount: amountNum,
+        discountAmount: discountAmount.trim() ? Number(discountAmount) : null,
+        taxAmount: taxAmount.trim() ? Number(taxAmount) : null,
         scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
@@ -4504,6 +4539,10 @@ function AddOfferForm({
         setItems={setItems}
         scopeExcluded={scopeExcluded}
         setScopeExcluded={setScopeExcluded}
+        discountAmount={discountAmount}
+        setDiscountAmount={setDiscountAmount}
+        taxAmount={taxAmount}
+        setTaxAmount={setTaxAmount}
         offerDate={offerDate}
         setOfferDate={setOfferDate}
         validUntil={validUntil}
@@ -4554,6 +4593,8 @@ function EditOfferForm({
   // nada en silencio).
   const [originalItemIds, setOriginalItemIds] = useState<string[]>([])
   const [scopeExcluded, setScopeExcluded] = useState(offer.scopeExcluded ?? '')
+  const [discountAmount, setDiscountAmount] = useState(offer.discountAmount != null ? String(offer.discountAmount) : '')
+  const [taxAmount, setTaxAmount] = useState(offer.taxAmount != null ? String(offer.taxAmount) : '')
   const [offerDate, setOfferDate] = useState(offer.offerDate ?? '')
   const [validUntil, setValidUntil] = useState(offer.validUntil ?? '')
   const [conditions, setConditions] = useState(offer.conditions ?? '')
@@ -4580,6 +4621,8 @@ function EditOfferForm({
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
     if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
+    if (!discountAmount && result.discountAmount !== null) setDiscountAmount(String(result.discountAmount))
+    if (!taxAmount && result.taxAmount !== null) setTaxAmount(String(result.taxAmount))
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4601,6 +4644,8 @@ function EditOfferForm({
         providerName,
         name: name.trim() || null,
         amount: amountNum,
+        discountAmount: discountAmount.trim() ? Number(discountAmount) : null,
+        taxAmount: taxAmount.trim() ? Number(taxAmount) : null,
         scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
@@ -4655,6 +4700,10 @@ function EditOfferForm({
         setItems={setItems}
         scopeExcluded={scopeExcluded}
         setScopeExcluded={setScopeExcluded}
+        discountAmount={discountAmount}
+        setDiscountAmount={setDiscountAmount}
+        taxAmount={taxAmount}
+        setTaxAmount={setTaxAmount}
         offerDate={offerDate}
         setOfferDate={setOfferDate}
         validUntil={validUntil}
@@ -4795,6 +4844,13 @@ function ProviderOffersPanel({
                     {o.scopeExcluded && <>No incluye: {o.scopeExcluded}</>}
                   </p>
                 )}
+                {(o.discountAmount !== null || o.taxAmount !== null) && (
+                  <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+                    {o.discountAmount !== null && <>Descuento: {o.discountAmount.toFixed(2)} €</>}
+                    {o.discountAmount !== null && o.taxAmount !== null ? ' · ' : ''}
+                    {o.taxAmount !== null && <>Impuestos: {o.taxAmount.toFixed(2)} €</>}
+                  </p>
+                )}
                 {(o.offerDate || o.validUntil) && (
                   <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
                     {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
@@ -4928,6 +4984,8 @@ function AddLooseOfferForm({
   const [scopeIncluded, setScopeIncluded] = useState(initial?.scopeIncluded ?? '')
   const [items, setItems] = useState<DraftOfferItem[]>([])
   const [scopeExcluded, setScopeExcluded] = useState('')
+  const [discountAmount, setDiscountAmount] = useState('')
+  const [taxAmount, setTaxAmount] = useState('')
   const [offerDate, setOfferDate] = useState('')
   const [validUntil, setValidUntil] = useState('')
   const [conditions, setConditions] = useState('')
@@ -4945,6 +5003,8 @@ function AddLooseOfferForm({
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
     if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
+    if (!discountAmount && result.discountAmount !== null) setDiscountAmount(String(result.discountAmount))
+    if (!taxAmount && result.taxAmount !== null) setTaxAmount(String(result.taxAmount))
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4969,6 +5029,8 @@ function AddLooseOfferForm({
         providerName,
         name: name.trim() || null,
         amount: amountNum,
+        discountAmount: discountAmount.trim() ? Number(discountAmount) : null,
+        taxAmount: taxAmount.trim() ? Number(taxAmount) : null,
         scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
@@ -5020,6 +5082,10 @@ function AddLooseOfferForm({
         setItems={setItems}
         scopeExcluded={scopeExcluded}
         setScopeExcluded={setScopeExcluded}
+        discountAmount={discountAmount}
+        setDiscountAmount={setDiscountAmount}
+        taxAmount={taxAmount}
+        setTaxAmount={setTaxAmount}
         offerDate={offerDate}
         setOfferDate={setOfferDate}
         validUntil={validUntil}

@@ -52,7 +52,7 @@ describe('OfferFormFields — un único "¿Qué incluye la oferta?" con Texto li
   })
   it('"Más detalles" empieza plegado salvo que ya hubiera algo relevante rellenado (edición)', () => {
     expect(OFFER_FORM_FIELDS).toContain(
-      'useState(Boolean(scopeExcluded || offerDate || validUntil || conditions || notes || hasExistingAttachment))',
+      'Boolean(scopeExcluded || discountAmount || taxAmount || offerDate || validUntil || conditions || notes || hasExistingAttachment)',
     )
   })
   it('el aviso de descuadre compara la suma de servicios con el importe TOTAL, sin recalcularlo nunca', () => {

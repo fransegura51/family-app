@@ -196,7 +196,7 @@ export async function listEventTaskGroupResolutions(groupId: string): Promise<Ev
 // ---------------------------------------------------------------------
 
 const OFFER_SELECT =
-  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, supersedes_offer_id, created_at'
+  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, name, amount, discount_amount, tax_amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, supersedes_offer_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapOffer(r: any): EventTaskGroupOffer {
@@ -210,6 +210,8 @@ function mapOffer(r: any): EventTaskGroupOffer {
     providerName: r.provider_name,
     name: r.name,
     amount: Number(r.amount),
+    discountAmount: r.discount_amount === null ? null : Number(r.discount_amount),
+    taxAmount: r.tax_amount === null ? null : Number(r.tax_amount),
     scopeIncluded: r.scope_included,
     scopeExcluded: r.scope_excluded,
     offerDate: r.offer_date,
@@ -241,6 +243,8 @@ export interface EventTaskGroupOfferInput {
   providerName: string
   name?: string | null
   amount: number
+  discountAmount?: number | null
+  taxAmount?: number | null
   scopeIncluded?: string | null
   scopeExcluded?: string | null
   offerDate?: string | null
@@ -267,6 +271,8 @@ export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGr
       provider_name: input.providerName.trim(),
       name: input.name?.trim() || null,
       amount: input.amount,
+      discount_amount: input.discountAmount ?? null,
+      tax_amount: input.taxAmount ?? null,
       scope_included: input.scopeIncluded ?? null,
       scope_excluded: input.scopeExcluded ?? null,
       offer_date: input.offerDate ?? null,
@@ -288,6 +294,8 @@ export async function updateEventTaskGroupOffer(id: string, patch: Partial<Event
   if (patch.providerName !== undefined) update.provider_name = patch.providerName.trim()
   if (patch.name !== undefined) update.name = patch.name?.trim() || null
   if (patch.amount !== undefined) update.amount = patch.amount
+  if (patch.discountAmount !== undefined) update.discount_amount = patch.discountAmount
+  if (patch.taxAmount !== undefined) update.tax_amount = patch.taxAmount
   if (patch.scopeIncluded !== undefined) update.scope_included = patch.scopeIncluded
   if (patch.scopeExcluded !== undefined) update.scope_excluded = patch.scopeExcluded
   if (patch.offerDate !== undefined) update.offer_date = patch.offerDate
@@ -404,6 +412,8 @@ export async function addLooseTaskGroupOffer(input: LooseEventTaskGroupOfferInpu
       provider_name: input.providerName.trim(),
       name: input.name?.trim() || null,
       amount: input.amount,
+      discount_amount: input.discountAmount ?? null,
+      tax_amount: input.taxAmount ?? null,
       scope_included: input.scopeIncluded ?? null,
       scope_excluded: input.scopeExcluded ?? null,
       offer_date: input.offerDate ?? null,

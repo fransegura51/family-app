@@ -20,6 +20,8 @@ export interface OfferBudgetScanResult {
   // proponer un nombre descriptivo de la oferta y del adjunto; nunca se usa como identificador interno.
   quoteNumber: string | null
   amount: number | null
+  discountAmount: number | null
+  taxAmount: number | null
   offerDate: string | null
   validUntil: string | null
   scopeExcluded: string | null
@@ -78,6 +80,8 @@ export async function analyzeOfferBudgetDocument(file: File): Promise<OfferBudge
     providerName: asString(json.providerName),
     quoteNumber: asString(json.quoteNumber),
     amount: asNumber(json.amount),
+    discountAmount: asNumber(json.discountAmount),
+    taxAmount: asNumber(json.taxAmount),
     offerDate: asString(json.offerDate),
     validUntil: asString(json.validUntil),
     scopeExcluded: asString(json.scopeExcluded),

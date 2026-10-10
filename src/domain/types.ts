@@ -905,6 +905,10 @@ export interface EventTaskGroupOffer {
   // varias ofertas del mismo proveedor de un vistazo. Null en toda oferta creada antes de esta fase.
   name: string | null
   amount: number
+  // Orden de recuperación de requisitos (Parte B2+B3, migración 0234) — informativos, nunca combinados
+  // en "amount" en automático: igual que el desglose de servicios, la familia decide si los suma a mano.
+  discountAmount: number | null
+  taxAmount: number | null
   scopeIncluded: string | null
   scopeExcluded: string | null
   offerDate: string | null

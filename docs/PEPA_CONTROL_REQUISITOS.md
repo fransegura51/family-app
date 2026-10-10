@@ -148,7 +148,7 @@ Implementado en las migraciones revisadas (RLS explícito por familia, sin fusi�
 | PG-F9 | Conceptos con emojis (niños que no leen) | Pendiente | — | Sin selector de conceptos visuales en el formulario |
 | PG-F10 | Objetivos de ahorro completos | Parcial | `FinanceScreen.tsx:11282-11299` | Barra de progreso y porcentaje sí; emoji/foto por objetivo no |
 | PG-F11 | Fondo común de impuestos (aportaciones, historial, gastos) | Pendiente | — | Solo existe una frase explicativa, sin vista agregada |
-| PG-F12-16 | Lista de deseos completa (listas, regalos, invitados, reservas, sorpresa) | Pendiente | `PequenosGrandesScreen.tsx` tiene un "coming soon" honesto (`ListaDeseosComingSoon`) | Módulo nuevo completo sin construir — requiere tablas nuevas, enlaces públicos, RLS por enlace, protección de secreto |
+| PG-F12-16 | Lista de deseos completa (listas, regalos, invitados, reservas, sorpresa) | **Implementado 2026-10-10** (`5d46c48`) | Migración 0239 (wishlists/wishlist_items/wishlist_item_reservations), edge function `wishlist-guest`, `WishlistScreen.tsx`/`WishlistGuestScreen.tsx`. Reservas secretas por RLS (excluye destinatario y role 'child'), protección de reservas simultáneas por índice único parcial, regalos conjuntos, deshacer sin borrar, enlaces públicos sin acceso a datos privados. Probado: `src/domain/wishlist.test.ts`, `src/data/wishlist.test.ts`, `src/ui/wishlistScreensUi.test.ts` | — |
 | PG-F17 | Auditoría dedicada de seguridad y privacidad | Pendiente | — | No se hizo como fase propia |
 | PG-F18 | Integración, Ayuda y pruebas (checklist de 24 + informe de 10 puntos) | Parcial | Ayuda actualizada en cada fase entregada | Checklist específico de 24 puntos no ejecutado como tal |
 

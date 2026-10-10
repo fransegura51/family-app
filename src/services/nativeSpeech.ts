@@ -5,15 +5,18 @@
 // Mismo contrato que speakAsync del navegador (services/voice.ts): se resuelve cuando Pepa termina de hablar (hace falta saberlo para no volver a
 // escuchar mientras habla, que se oiría a sí misma) y NUNCA se queda colgada ni falla: si no hay voz, se da por terminada y listo.
 import { QueueStrategy, TextToSpeech } from '@capacitor-community/text-to-speech'
-import { reportClientError } from '@/data/errorReports'
 
 // El español de España primero; algunos móviles solo traen «es» a secas o el latinoamericano.
 const LANGUAGES = ['es-ES', 'es-US', 'es']
 
 // Si la voz falla (o «termina» al instante sin haber sonado), se deja constancia en el servidor (client_errors) con el motivo: en un móvil concreto
 // es la única forma de saber por qué Pepa no habla sin tener el móvil delante. Nunca lanza; reportClientError ya limita cuántos manda por sesión.
+// Import dinámico a propósito: voz.ts carga este módulo siempre, y errorReports arrastra el cliente del servidor (que exige las claves del entorno):
+// cargarlo aquí al arrancar rompía cualquier prueba que solo importe la voz.
 function reportVoice(detail: string): void {
-  void reportClientError(new Error(`[voz nativa] ${detail}`))
+  void import('@/data/errorReports')
+    .then(({ reportClientError }) => reportClientError(new Error(`[voz nativa] ${detail}`)))
+    .catch(() => undefined)
 }
 
 export async function speakNative(text: string): Promise<void> {

@@ -66,6 +66,7 @@ describe('Pepa habla en la app nativa', () => {
   it('si la voz falla, deja el motivo en el servidor (para poder diagnosticarlo sin tener el móvil delante)', async () => {
     tts.speak.mockRejectedValue(new Error('"TextToSpeech" plugin is not implemented on android'))
     await speakAsync('hola')
+    await vi.advanceTimersByTimeAsync(0)
     expect(report).toHaveBeenCalledTimes(1)
     expect((report.mock.calls[0][0] as Error).message).toContain('[voz nativa] no se pudo hablar')
     expect((report.mock.calls[0][0] as Error).message).toContain('not implemented')
@@ -73,6 +74,7 @@ describe('Pepa habla en la app nativa', () => {
 
   it('si «termina» al instante una frase larga (no sonó: volumen, motor de voz...), también lo anota', async () => {
     await speakAsync('He añadido Mercadona Patatas a la lista de la compra')
+    await vi.advanceTimersByTimeAsync(0)
     expect(report).toHaveBeenCalledTimes(1)
     expect((report.mock.calls[0][0] as Error).message).toContain('probablemente no sonó')
   })

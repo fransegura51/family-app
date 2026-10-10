@@ -235,6 +235,9 @@ export async function listEventTaskGroupOffers(groupId: string): Promise<EventTa
 
 export interface EventTaskGroupOfferInput {
   providerId?: string | null
+  // Parte A5 (prompt maestro) — ficha del registro global reutilizada o creada como provisional al
+  // registrar esta oferta desde un encargo. Puente aditivo, igual que globalProviderId en EventProvider.
+  globalProviderId?: string | null
   providerName: string
   name?: string | null
   amount: number
@@ -260,6 +263,7 @@ export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGr
       event_id: group.event_id,
       family_id: group.family_id,
       provider_id: input.providerId ?? null,
+      global_provider_id: input.globalProviderId ?? null,
       provider_name: input.providerName.trim(),
       name: input.name?.trim() || null,
       amount: input.amount,
@@ -280,6 +284,7 @@ export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGr
 export async function updateEventTaskGroupOffer(id: string, patch: Partial<EventTaskGroupOfferInput>): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.providerId !== undefined) update.provider_id = patch.providerId
+  if (patch.globalProviderId !== undefined) update.global_provider_id = patch.globalProviderId
   if (patch.providerName !== undefined) update.provider_name = patch.providerName.trim()
   if (patch.name !== undefined) update.name = patch.name?.trim() || null
   if (patch.amount !== undefined) update.amount = patch.amount
@@ -320,6 +325,31 @@ export async function deleteEventTaskGroupOffer(offer: EventTaskGroupOffer): Pro
   if (offer.attachmentStoragePath) {
     await supabase.storage.from('event_task_group_offers').remove([offer.attachmentStoragePath])
   }
+}
+
+// Prompt maestro Eventos, Partes A2+B5 — "consultar precios históricos" / "las ofertas de eventos
+// anteriores estarán disponibles en el registro global, mostrando siempre evento original, fecha,
+// proveedor, servicios y precio histórico". A diferencia de listLooseOffersForProvider (solo ofertas SIN
+// encargo, para el flujo de vincular una ya escrita), esta trae TODAS las ofertas del proveedor sin
+// importar su evento o encargo — es de solo consulta, nunca se usa para vincular ni se traslada sola a
+// otro evento (B5: "no trasladar automáticamente... permitir usarla como referencia").
+export interface ProviderOfferHistoryEntry extends EventTaskGroupOffer {
+  eventTitle: string | null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapOfferHistoryEntry(r: any): ProviderOfferHistoryEntry {
+  return { ...mapOffer(r), eventTitle: r.events?.title ?? null }
+}
+
+export async function listOfferHistoryForProvider(globalProviderId: string): Promise<ProviderOfferHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from('event_task_group_offers')
+    .select(`${OFFER_SELECT}, events(title)`)
+    .eq('global_provider_id', globalProviderId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map(mapOfferHistoryEntry)
 }
 
 // ---------------------------------------------------------------------

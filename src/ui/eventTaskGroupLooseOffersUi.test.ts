@@ -49,7 +49,14 @@ describe('AddLooseOfferForm — registra la oferta sin encargo (group_id queda n
 
 describe('ProvidersGlobalScreen — cada proveedor puede tener ofertas sueltas sin ningún evento (eventId null)', () => {
   it('monta ProviderOffersPanel con eventId null', () => {
-    expect(PROVIDERS_GLOBAL_SCREEN).toContain('<ProviderOffersPanel eventId={null} globalProviderId={p.id} providerName={p.name} />')
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('<ProviderOffersPanel\n')
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('eventId={null}')
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('globalProviderId={p.id}')
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('providerName={p.name}')
+  })
+  it('conecta el historial de ofertas (Parte A2+B5, "usar como referencia") con esta misma tarjeta de proveedor', () => {
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('<ProviderOfferHistoryPanel')
+    expect(PROVIDERS_GLOBAL_SCREEN).toContain('reference={referenceEntry?.providerId === p.id ? referenceEntry.entry : null}')
   })
 })
 

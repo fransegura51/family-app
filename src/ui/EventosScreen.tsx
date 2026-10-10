@@ -185,6 +185,7 @@ import {
   listEventTaskGroups,
   listLooseOffersForEvent,
   listLooseOffersForProvider,
+  listOfferHistoryForProvider,
   renameEventTaskGroup,
   resolveEventTaskGroup,
   saveEventTaskGroupOfferAttachment,
@@ -195,6 +196,7 @@ import {
   updateEventTaskGroupOffer,
   updateEventTaskGroupOfferItem,
 } from '@/data/eventTaskGroups'
+import type { ProviderOfferHistoryEntry } from '@/data/eventTaskGroups'
 import { buildTaskGroupRenderItems } from '@/domain/eventTaskGroupDisplay'
 import { suggestNextStepsForGroup, suggestNextStepsForTask, type NextStepSuggestion } from '@/domain/eventNextSteps'
 import type { EventTaskGroupOffer, EventTaskGroupOfferItem, EventTaskGroupOfferStatus, EventTaskGroupResolutionMethod } from '@/domain/types'
@@ -218,6 +220,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import {
   addProviderGlobal,
   countProviderGlobalEventLinks,
+  findProviderGlobalMatch,
   linkProviderGlobalToEvent,
   listEventProviderLinks,
   listProvidersGlobal,
@@ -4288,6 +4291,12 @@ function AddOfferForm({
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [newProviderName, setNewProviderName] = useState('')
   const [supersedesOfferId, setSupersedesOfferId] = useState('')
+  // Parte A5 (prompt maestro) — sugerir proveedores ya registrados al escribir uno nuevo, y reutilizar su
+  // ficha global en vez de duplicarla; solo se carga una vez, es de solo lectura para sugerir/detectar.
+  const [globalProviders, setGlobalProviders] = useState<ProviderGlobal[]>([])
+  useEffect(() => {
+    listProvidersGlobal().then(setGlobalProviders).catch(() => {})
+  }, [])
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [mode, setMode] = useState<'texto' | 'desglosado'>('texto')
@@ -4332,8 +4341,25 @@ function AddOfferForm({
     setSaving(true)
     setError(null)
     try {
+      let globalProviderId: string | null = null
+      if (providerMode === 'existing') {
+        globalProviderId = providers.find((p) => p.id === selectedProviderId)?.globalProviderId ?? null
+      } else {
+        const { exact, similar } = findProviderGlobalMatch(globalProviders, providerName)
+        if (exact) {
+          globalProviderId = exact.id
+        } else if (similar) {
+          const sameProvider = window.confirm(
+            `Ya existe un proveedor con un nombre parecido: «${similar.name}». ¿Es el mismo proveedor? Aceptar para reutilizar su ficha; Cancelar para crear «${providerName}» como uno nuevo.`,
+          )
+          globalProviderId = sameProvider ? similar.id : (await addProviderGlobal({ name: providerName })).id
+        } else {
+          globalProviderId = (await addProviderGlobal({ name: providerName })).id
+        }
+      }
       const offer = await addEventTaskGroupOffer(groupId, {
         providerId: providerMode === 'existing' ? selectedProviderId || null : null,
+        globalProviderId,
         providerName,
         name: name.trim() || null,
         amount: amountNum,
@@ -4401,7 +4427,12 @@ function AddOfferForm({
       ) : (
         <label style={{ marginTop: 6 }}>
           Nombre del proveedor
-          <input type="text" value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Floristería..." />
+          <input type="text" value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Floristería..." list="add-offer-global-providers" />
+          <datalist id="add-offer-global-providers">
+            {globalProviders.map((p) => (
+              <option key={p.id} value={p.name} />
+            ))}
+          </datalist>
         </label>
       )}
       <OfferFormFields
@@ -4599,10 +4630,16 @@ function ProviderOffersPanel({
   eventId,
   globalProviderId,
   providerName,
+  reference,
+  onReferenceConsumed,
 }: {
   eventId: string | null
   globalProviderId: string
   providerName: string
+  // Parte B5 — "Usar como referencia" de ProviderOfferHistoryPanel: abre este panel ya en modo alta,
+  // prerrellenado con una oferta histórica, sin trasladarla ni vincularla sola.
+  reference?: ProviderOfferHistoryEntry | null
+  onReferenceConsumed?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [offers, setOffers] = useState<EventTaskGroupOffer[]>([])
@@ -4620,6 +4657,13 @@ function ProviderOffersPanel({
     if (open) reload()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, eventId, globalProviderId])
+
+  useEffect(() => {
+    if (reference) {
+      setOpen(true)
+      setShowAdd(true)
+    }
+  }, [reference])
 
   async function handleToggleDiscard(offer: EventTaskGroupOffer) {
     setError(null)
@@ -4732,8 +4776,9 @@ function ProviderOffersPanel({
               globalProviderId={globalProviderId}
               providerName={providerName}
               existingOffers={offers}
-              onClose={() => setShowAdd(false)}
-              onAdded={() => { setShowAdd(false); reload() }}
+              initial={reference ? { name: reference.name, amount: reference.amount, scopeIncluded: reference.scopeIncluded, supersedesOfferId: null } : null}
+              onClose={() => { setShowAdd(false); onReferenceConsumed?.() }}
+              onAdded={() => { setShowAdd(false); onReferenceConsumed?.(); reload() }}
             />
           ) : (
             <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
@@ -4746,11 +4791,66 @@ function ProviderOffersPanel({
   )
 }
 
+// Prompt maestro Eventos, Partes A2+B5 — "consultar precios históricos" desde el registro global: a
+// diferencia de ProviderOffersPanel (ofertas sueltas, para vincularlas a un encargo), esto es solo
+// consulta — TODAS las ofertas del proveedor, de cualquier evento, encargadas o no. Nunca se usa para
+// vincular nada; "Usar como referencia" abre una oferta nueva prerrellenada, sin tocar la histórica.
+function ProviderOfferHistoryPanel({ globalProviderId, onUseAsReference }: { globalProviderId: string; onUseAsReference: (entry: ProviderOfferHistoryEntry) => void }) {
+  const [open, setOpen] = useState(false)
+  const [entries, setEntries] = useState<ProviderOfferHistoryEntry[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    listOfferHistoryForProvider(globalProviderId)
+      .then(setEntries)
+      .catch((err) => setError(errorMessage(err, 'No se pudo cargar el historial')))
+  }, [open, globalProviderId])
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)} style={{ fontSize: 12 }}>
+        {open ? '▾' : '▸'} 📜 Historial de ofertas{entries.length > 0 ? ` (${entries.length})` : ''}
+      </button>
+      {open && (
+        <div className="card" style={{ padding: 8, marginTop: 4 }}>
+          {error && <p className="error">{error}</p>}
+          {entries.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Todavía no hay ninguna oferta de este proveedor.</p>}
+          {entries.map((e) => (
+            <div key={e.id} className="card" style={{ padding: 8, marginTop: 6, opacity: e.status === 'descartada' ? 0.6 : 1 }}>
+              <div className="inline-fields" style={{ alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <strong>{e.name ? `${e.name} · ` : ''}{e.amount.toFixed(2)} €</strong>
+                  <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
+                    {e.eventTitle ?? 'Sin evento'}
+                    {e.offerDate ? ` · ${e.offerDate}` : ''}
+                  </p>
+                </div>
+                <span className="muted" style={{ fontSize: 11 }}>{OFFER_STATUS_LABELS[e.status]}</span>
+              </div>
+              {e.scopeIncluded && (
+                <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>Incluye: {e.scopeIncluded}</p>
+              )}
+              <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => onUseAsReference(e)}>
+                Usar como referencia para una oferta nueva
+              </button>
+            </div>
+          ))}
+          <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            Solo para consultar — una oferta antigua nunca se traslada sola a un evento nuevo ni se da por vigente.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AddLooseOfferForm({
   eventId,
   globalProviderId,
   providerName,
   existingOffers,
+  initial,
   onClose,
   onAdded,
 }: {
@@ -4758,13 +4858,16 @@ function AddLooseOfferForm({
   globalProviderId: string
   providerName: string
   existingOffers: EventTaskGroupOffer[]
+  // Parte B5 — prerrelleno al "usar como referencia" una oferta histórica de otro evento; nunca marca
+  // supersedesOfferId sola (esa oferta vive en otro evento/encargo, no es una revisión de nada de aquí).
+  initial?: { name: string | null; amount: number; scopeIncluded: string | null; supersedesOfferId: string | null } | null
   onClose: () => void
   onAdded: () => void
 }) {
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
+  const [name, setName] = useState(initial?.name ?? '')
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
   const [mode, setMode] = useState<'texto' | 'desglosado'>('texto')
-  const [scopeIncluded, setScopeIncluded] = useState('')
+  const [scopeIncluded, setScopeIncluded] = useState(initial?.scopeIncluded ?? '')
   const [items, setItems] = useState<DraftOfferItem[]>([])
   const [scopeExcluded, setScopeExcluded] = useState('')
   const [offerDate, setOfferDate] = useState('')
@@ -9832,7 +9935,11 @@ function MusicaFiestaBlock({
   function reload(): Promise<void> {
     return Promise.all([listEventDecisions(event.id), listEventMoments(event.id)])
       .then(([d, mo]) => {
-        setDecisions(d.filter((x) => x.blockKey === MUSICA_FIESTA_BLOCK_KEY))
+        // Bug real (prompt maestro Configurador, petición del usuario con captura): filtrar aquí a solo
+        // 'musica_fiesta' dejaba fuera la decisión 'lugar_servicios' que venueIncludesService necesita
+        // para saber si el lugar ya incluye música — por eso la pregunta larga volvía a salir aunque el
+        // lugar ya la incluyera. Sin filtrar, igual que ya hace ComidaBebidaBlock (que SÍ funciona bien).
+        setDecisions(d)
         setMoments(mo)
       })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
@@ -10350,7 +10457,9 @@ function OtrosDecoracionBlock({
   function reload(): Promise<void> {
     return Promise.all([listEventDecisions(event.id), listEventMoments(event.id)])
       .then(([d, mo]) => {
-        setDecisions(d.filter((x) => x.blockKey === OTROS_DECORACION_BLOCK_KEY))
+        // Mismo bug real que Música y fiesta: filtrar a solo 'otros_decoracion' dejaba fuera la decisión
+        // 'lugar_servicios' que venueIncludesService necesita para "decoracion" — EVT-002.
+        setDecisions(d)
         setMoments(mo)
       })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las decisiones')))
@@ -12680,6 +12789,8 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [showIntro, setShowIntro] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Parte B5 — qué proveedor/oferta histórica se está usando de referencia ahora mismo (solo uno a la vez).
+  const [referenceEntry, setReferenceEntry] = useState<{ providerId: string; entry: ProviderOfferHistoryEntry } | null>(null)
 
   function reload() {
     listProvidersGlobal()
@@ -12777,7 +12888,17 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
                   📝 {p.notes}
                 </p>
               )}
-              <ProviderOffersPanel eventId={null} globalProviderId={p.id} providerName={p.name} />
+              <ProviderOfferHistoryPanel
+                globalProviderId={p.id}
+                onUseAsReference={(entry) => setReferenceEntry({ providerId: p.id, entry })}
+              />
+              <ProviderOffersPanel
+                eventId={null}
+                globalProviderId={p.id}
+                providerName={p.name}
+                reference={referenceEntry?.providerId === p.id ? referenceEntry.entry : null}
+                onReferenceConsumed={() => setReferenceEntry(null)}
+              />
             </div>
           ),
         )}

@@ -185,3 +185,23 @@ export async function unlinkProviderFromEvent(linkId: string): Promise<void> {
   const { error } = await supabase.from('event_provider_links').delete().eq('id', linkId)
   if (error) throw error
 }
+
+function normalizeProviderName(name: string): string {
+  return name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+// Parte A5 (prompt maestro) — "al escribir un nombre... sugerir proveedores ya registrados" y "detectar
+// posibles duplicados, pero nunca fusionarlos automáticamente sin confirmación". Una coincidencia EXACTA
+// (tras normalizar mayúsculas/acentos) se trata como el mismo proveedor sin preguntar; una coincidencia
+// PARCIAL (uno contiene al otro) se ofrece para confirmar, nunca se fusiona sola.
+export function findProviderGlobalMatch(providers: ProviderGlobal[], name: string): { exact: ProviderGlobal | null; similar: ProviderGlobal | null } {
+  const normalized = normalizeProviderName(name)
+  if (!normalized) return { exact: null, similar: null }
+  let similar: ProviderGlobal | null = null
+  for (const p of providers) {
+    const pNorm = normalizeProviderName(p.name)
+    if (pNorm === normalized) return { exact: p, similar: null }
+    if (!similar && pNorm.length >= 4 && normalized.length >= 4 && (pNorm.includes(normalized) || normalized.includes(pNorm))) similar = p
+  }
+  return { exact: null, similar }
+}

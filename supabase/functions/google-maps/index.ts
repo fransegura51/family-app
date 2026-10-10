@@ -184,6 +184,50 @@ Deno.serve(async (req) => {
       })
     }
 
+    // "trace": trazado POR CARRETERA de un tramo del recorrido (petición real: "tiene que marcarme la carretera por la que va"). El móvil manda
+    // un punto cada ~10 s, y unirlos con rectas cortaba curvas y cruzaba campos. Aquí se piden a Routes API los puntos de paso (cada ~700 m,
+    // como "via": se pasa por ellos sin parar) y se devuelve la línea siguiendo las carreteras. Sin tráfico (más barato): solo hace falta la geometría.
+    // Si Google devuelve un rodeo absurdo (mucho más largo que la suma de las rectas), se descarta y el cliente deja la línea recta.
+    if (action === "trace") {
+      const pts = body.points
+      if (!Array.isArray(pts) || pts.length < 2 || pts.length > 27) return json({ error: "bad points" }, 400)
+      for (const p of pts) {
+        if (!p || !isFiniteNumber(p.latitude) || !isFiniteNumber(p.longitude)) return json({ error: "bad points" }, 400)
+      }
+      const place = (p: { latitude: number; longitude: number }) => ({ location: { latLng: { latitude: p.latitude, longitude: p.longitude } } })
+      const res = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask": "routes.distanceMeters,routes.polyline.encodedPolyline",
+        },
+        body: JSON.stringify({
+          origin: place(pts[0]),
+          destination: place(pts[pts.length - 1]),
+          intermediates: pts.slice(1, -1).map((p: { latitude: number; longitude: number }) => ({ ...place(p), via: true })),
+          travelMode: "DRIVE",
+          routingPreference: "TRAFFIC_UNAWARE",
+          polylineQuality: "HIGH_QUALITY",
+          languageCode: "es",
+        }),
+      })
+      if (!res.ok) return json({ error: "google_error", detail: await res.text() }, 502)
+      const data = await res.json()
+      const route = data.routes?.[0]
+      const encoded: string | null = route?.polyline?.encodedPolyline ?? null
+      if (!encoded) return json({ polyline: null, reason: "no_route" })
+      let straight = 0
+      for (let i = 1; i < pts.length; i++) {
+        const dLat = ((pts[i].latitude - pts[i - 1].latitude) * Math.PI) / 180
+        const dLng = ((pts[i].longitude - pts[i - 1].longitude) * Math.PI) / 180
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos((pts[i - 1].latitude * Math.PI) / 180) * Math.cos((pts[i].latitude * Math.PI) / 180) * Math.sin(dLng / 2) ** 2
+        straight += 6371000 * 2 * Math.asin(Math.sqrt(a))
+      }
+      if (typeof route.distanceMeters === "number" && route.distanceMeters > straight * 1.8 + 300) return json({ polyline: null, reason: "detour" })
+      return json({ polyline: encoded })
+    }
+
     return json({ error: "unknown action" }, 400)
   } catch (err) {
     return json({ error: String(err) }, 500)

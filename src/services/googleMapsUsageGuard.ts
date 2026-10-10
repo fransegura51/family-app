@@ -25,6 +25,7 @@ const LIMITS = {
   map: 400, // cargar el mapa (Ubicación + selector de sitio)
   search: 500, // buscar una dirección o reconocer un sitio nuevo
   eta: 300, // calcular el tiempo de llegada en coche (Routes API)
+  trace: 150, // trazado por carretera de un trozo del recorrido (Routes API): cada trozo se pide una sola vez por móvil y se recuerda
 } as const
 
 export type GuardKind = keyof typeof LIMITS

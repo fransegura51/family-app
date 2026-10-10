@@ -38,7 +38,7 @@ const MAX_PLAUSIBLE_SPEED_MS = 250 / 3.6
 // dos lados) — y unirlos con una recta dibujaba un "trayecto" que cruzaba campos y edificios y que nadie
 // había hecho. Aquí se separa lo que se sabe (línea continua) de lo que no (tramos discontinuos), y se
 // descartan los saltos imposibles del GPS (decenas de km/h de más en segundos), que dibujaban picos.
-export function buildTrackSegments(points: TrackPoint[]): TrackSegments {
+export function buildTrackDetail(points: TrackPoint[]): TrackSegments & { solidPoints: TrackPoint[][] } {
   const sorted = [...points].sort((a, b) => a.at - b.at)
   const kept: TrackPoint[] = []
   // Si el GPS "salta" de verdad (el primer punto era el malo, o se reinició en otro sitio), varias lecturas
@@ -60,25 +60,40 @@ export function buildTrackSegments(points: TrackPoint[]): TrackSegments {
   }
 
   const solid: TrackSegments['solid'] = []
+  const solidPoints: TrackPoint[][] = []
   const gaps: TrackSegments['gaps'] = []
-  let current: { lat: number; lng: number }[] = []
+  let current: TrackPoint[] = []
   for (let i = 0; i < kept.length; i++) {
-    const point = { lat: kept[i].lat, lng: kept[i].lng }
+    const point = kept[i]
     const prev = kept[i - 1]
     if (prev) {
       const dt = kept[i].at - prev.at
       const dist = distanceMeters(prev.lat, prev.lng, point.lat, point.lng)
       if (dt > MAX_CONNECTED_GAP_MS && dist > SAME_PLACE_M) {
-        if (current.length >= 2) solid.push(current)
-        gaps.push([{ lat: prev.lat, lng: prev.lng }, point])
+        if (current.length >= 2) {
+          solid.push(current.map((p) => ({ lat: p.lat, lng: p.lng })))
+          solidPoints.push(current)
+        }
+        gaps.push([{ lat: prev.lat, lng: prev.lng }, { lat: point.lat, lng: point.lng }])
         current = []
       }
     }
     current.push(point)
   }
-  if (current.length >= 2) solid.push(current)
+  if (current.length >= 2) {
+    solid.push(current.map((p) => ({ lat: p.lat, lng: p.lng })))
+    solidPoints.push(current)
+  }
+  return { solid, gaps, solidPoints }
+}
+
+// Lo de siempre (solo las coordenadas); buildTrackDetail añade los puntos con su hora para quien necesite saber a qué velocidad se iba.
+export function buildTrackSegments(points: TrackPoint[]): TrackSegments {
+  const { solid, gaps } = buildTrackDetail(points)
   return { solid, gaps }
 }
+
+
 
 export function formatDistance(meters: number): string {
   if (meters < 1000) return `${Math.round(meters)} m`

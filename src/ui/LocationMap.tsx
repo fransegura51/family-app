@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
-import { buildTrackSegments, decodePolyline } from '@/domain/geo'
+import { buildTrackDetail, decodePolyline, type TrackPoint } from '@/domain/geo'
+import { chunkVehicleRun, splitIntoParts } from '@/domain/roadTrace'
+import { getCachedRoad, joinRoadPaths, requestRoad, type RoadPath } from '@/services/roadTrace'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
 
 function markerIconHtml(member: FamilyMember, photoUrl: string | undefined): string {
@@ -91,6 +93,28 @@ function getPhotoMarkerOverlayClass(g: typeof google) {
 // Mapa interactivo (Google Maps, con el tráfico en vivo activado) con
 // la posición de cada persona y su ruta de las últimas 24h. El
 // marcador es un círculo con la foto de perfil si la tiene, o su
+
+// Camino a dibujar para un tramo continuo: los trozos «en coche» por la carretera (si ya se conoce su trazado), el resto como vienen. Si falta
+// algún trazado, se devuelve el tramo tal cual (línea recta) y se pide en segundo plano; `onLoaded` avisa para volver a pintar.
+function roadAwarePath(points: TrackPoint[], raw: RoadPath, onLoaded: () => void): RoadPath {
+  const parts = splitIntoParts(points)
+  if (!parts.some((part) => part.mode === 'vehicle')) return raw
+  const out: RoadPath = []
+  for (const part of parts) {
+    let piece: RoadPath = part.points.map((p) => ({ lat: p.lat, lng: p.lng }))
+    if (part.mode === 'vehicle') {
+      const chunks = chunkVehicleRun(part.points)
+      const cached = chunks.map((chunk) => getCachedRoad(chunk.key))
+      chunks.forEach((chunk, i) => {
+        if (cached[i] === undefined) void requestRoad(chunk).then((path) => path && onLoaded())
+      })
+      if (chunks.length > 0 && cached.every((path) => path && path.length >= 2)) piece = joinRoadPaths(cached as RoadPath[])
+    }
+    out.push(...(out.length ? piece.slice(1) : piece))
+  }
+  return out
+}
+
 // inicial si no.
 export function LocationMap({
   members,
@@ -110,6 +134,8 @@ export function LocationMap({
   routePolyline?: string | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  // Sube cuando llega de Google el trazado por carretera de algún trozo: obliga a volver a pintar las líneas con la carretera.
+  const [roadTick, setRoadTick] = useState(0)
   const mapRef = useRef<google.maps.Map | null>(null)
   const googleRef = useRef<typeof google | null>(null)
   const markersRef = useRef<Map<string, PhotoMarkerOverlay>>(new Map())
@@ -229,7 +255,11 @@ export function LocationMap({
       // una recta: lo que se sabe va en línea continua y lo que no (el móvil no mandó nada por el medio)
       // en discontinua — ver buildTrackSegments.
       const history = histories[member.id] ?? []
-      const { solid, gaps } = history.length >= 2 ? buildTrackSegments(history.map((p) => ({ lat: p.latitude, lng: p.longitude, at: new Date(p.recordedAt).getTime() }))) : { solid: [], gaps: [] }
+      const detail = history.length >= 2 ? buildTrackDetail(history.map((p) => ({ lat: p.latitude, lng: p.longitude, at: new Date(p.recordedAt).getTime() }))) : { solid: [], gaps: [], solidPoints: [] }
+      const { gaps } = detail
+      // Los trozos «en coche» se dibujan por la CARRETERA (petición real: «tiene que marcarme la carretera por la que va»): si ya se conoce su
+      // trazado se usa; si no, se dibuja la línea recta de siempre y se pide en segundo plano (al llegar, se vuelve a pintar).
+      const solid = detail.solid.map((raw, i) => roadAwarePath(detail.solidPoints[i], raw, () => setRoadTick((t) => t + 1)))
       for (const path of solid) for (const p of path) bounds.extend(p)
       for (const pair of gaps) for (const p of pair) bounds.extend(p)
 
@@ -282,7 +312,7 @@ export function LocationMap({
     pendingRef.current = { locations, histories, photoUrls }
     if (mapRef.current) render(pendingRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [members, locations, histories, photoUrls])
+  }, [members, locations, histories, photoUrls, roadTick])
 
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — una línea aparte de
   // las del rastro de 24h (esas son por persona, de su color; esta es LA ruta planeada hasta un

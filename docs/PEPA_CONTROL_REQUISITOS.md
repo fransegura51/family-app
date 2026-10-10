@@ -21,6 +21,7 @@ la trazabilidad de los commits ya hechos.
 | **CONTROL-REQ** | Encargo de implantar este mismo registro | 2026-10-10 06:45 | EVT-001 a EVT-006 (pendientes dictados directamente, sin corresponder 1:1 a un apartado del CONSOLIDADO) |
 | **RECUPERACIÓN** | «ORDEN DE RECUPERACIÓN INTEGRAL DE REQUISITOS PENDIENTES» | 2026-10-10 (sesión actual) | Ejecución de todo lo pendiente de CONSOLIDADO + PG-MAESTRO |
 | **CORRECCIONES** | «PROMPT CONSOLIDADO DE CORRECCIONES Y MEJORAS PENDIENTES» | 2026-10-10 (sesión actual) | 1-6 (proveedores, configurador, presupuesto, automatización entre secciones, calendario/detalles, ejecución) |
+| **PG-PUNTOS-FINANZAS** | «PEPA — PROMPT COMPLETO PARA CLAUDE CODE — PEQUEÑOS GRANDES: PUNTOS Y RECOMPENSAS + EDUCACIÓN FINANCIERA» | 2026-10-11 (sesión actual) | Parte A (Puntos y recompensas), Parte B (Educación financiera), Parte C (foto automática en Lista de deseos) |
 
 ## Estados
 
@@ -176,6 +177,16 @@ Implementado en las migraciones revisadas (RLS explícito por familia, sin fusi�
 | COR-4 | Automatización entre secciones: una sola introducción de datos, reutilizada en Proveedores/Preparativos/Presupuesto/Pagos/Economía | **Parcial** | Las relaciones concretas que esta sesión encontró rotas ya están resueltas (COR-3.2 encargo↔presupuesto, COR-3.3 proveedor↔presupuesto vía pago). La resolución de un encargo YA reutiliza proveedor/oferta existente (sistema de Proveedores de siempre) y YA registra el pago sin duplicar — esto ya eran invariantes de sesiones anteriores, no de esta tanda | No se ha hecho una auditoría exhaustiva de TODAS las combinaciones posibles de la regla general — lo verificado es lo que el propio prompt señaló como roto |
 | COR-5.1 | Auditoría de Calendario pendiente (colores, integraciones, regresiones), documentada | **Auditado 2026-10-11** | [`docs/QA_CALENDARIO_AUDITORIA.md`](QA_CALENDARIO_AUDITORIA.md) — mecanismo de color central (`eventColors()`) confirmado sano y único en 5 vistas; integración con Eventos confirmada (ofertas nunca tocan Calendario, antiduplicación por diseño); ajustes de overflow/FAB de una corrección anterior siguen intactos sin reversión | 2 hallazgos reales documentados y NO corregidos a propósito (bajo riesgo, nada roto hoy, "no alterar sin razón comprobada"): `eventColors()`/`eventDotColors()` duplican la misma lógica a mano; dos grises "sin color" distintos (`#9ca3af` vs `#6b7280`) fuera del sistema de temas. Contraste real y ausencia de overflow/solape del FAB en dispositivo siguen siendo solo verificables a mano, no por código |
 | COR-5.2 | Detalles y recuerdos: conservar lo implementado, verificar presentación móvil y coherencia de estados | **Auditado** (ver EVT-DET-1/2/3) | Sin hallazgos nuevos — ya auditado en esta misma sesión antes de este encargo | — |
+
+---
+
+## Puntos y recompensas + Educación financiera (PG-PUNTOS-FINANZAS)
+
+No mezclado con las correcciones de Eventos/Proveedores/Presupuesto/Calendario (prompt CORRECCIONES) — estado de revisión propio.
+
+| ID | Descripción | Estado | Commits / evidencia | Pendientes |
+|---|---|---|---|---|
+| PGP-C1 | Lista de deseos: recuperar la foto principal del producto sola al pegar un enlace | **Implementado 2026-10-11** | Función de servidor nueva `extract-wishlist-item-image` (mismo patrón ya en producción que `import-recipe-url`/`fetch-image-url`: JSON-LD `Product.image` → `og:image`/`twitter:image` como respaldo, descarga server-side con protección SSRF, sube al bucket privado `wishlist_items` ya existente). En el formulario, detección automática con debounce de 700ms al cambiar el enlace (nunca un botón aparte); una foto subida a mano siempre tiene prioridad sobre la detectada; se puede quitar la detectada sin perder la posibilidad de guardar sin foto. Verificado EN VIVO de principio a fin (detección, vista previa real desde Supabase Storage, guardado, visible en la fila de la lista) + enlace sin imagen disponible (aviso informativo, formulario sigue funcionando). Probado: `extractWishlistItemImageSpec.test.ts` (11), `wishlistAutoPhotoUi.test.ts` (6), casos nuevos en `wishlist.test.ts` | — |
 
 ---
 

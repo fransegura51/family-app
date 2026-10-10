@@ -188,6 +188,18 @@ export async function saveWishlistItemPhoto(item: WishlistItem, file: File): Pro
   if (previousPath && previousPath !== path) await supabase.storage.from('wishlist_items').remove([previousPath])
 }
 
+// Lista de deseos, Parte C del prompt — la foto detectada automáticamente desde el enlace del producto ya
+// la subió el servidor (extract-wishlist-item-image) a este mismo bucket antes de que el deseo existiera;
+// aquí solo se enlaza la ruta ya subida al deseo recién creado, sin volver a descargarla ni a subirla —
+// mismo bucket y columnas que saveWishlistItemPhoto, pero sin el paso de compresión/subida (ya hecho).
+export async function attachWishlistItemDetectedPhoto(itemId: string, path: string, mimeType: string): Promise<void> {
+  const { error } = await supabase
+    .from('wishlist_items')
+    .update({ photo_storage_path: path, photo_original_name: 'Foto del producto', photo_mime_type: mimeType })
+    .eq('id', itemId)
+  if (error) throw error
+}
+
 export async function getWishlistItemPhotoUrl(storagePath: string): Promise<string> {
   const { data, error } = await supabase.storage.from('wishlist_items').createSignedUrl(storagePath, 3600)
   if (error) throw error

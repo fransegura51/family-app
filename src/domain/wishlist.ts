@@ -29,3 +29,16 @@ export function isOwnWishlist(ownerMemberId: string, viewerMemberId: string | nu
 export function wishlistTitle(occasion: string, year: number): string {
   return `${occasion} ${year}`
 }
+
+// Lista de deseos, Parte C del prompt — "la recuperación debe iniciarse automáticamente, sin obligar a
+// pulsar un botón adicional": antes de disparar la llamada al servidor hace falta saber si lo que hay en
+// el campo "Enlace" ya PARECE una URL de verdad (nunca intentarlo con cada tecla de un texto cualquiera).
+export function looksLikeProductUrl(value: string): boolean {
+  const trimmed = value.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return false
+  try {
+    return Boolean(new URL(trimmed))
+  } catch {
+    return false
+  }
+}

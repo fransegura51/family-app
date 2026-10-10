@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isOwnWishlist, wishlistItemStatus, wishlistTitle } from '@/domain/wishlist'
+import { isOwnWishlist, looksLikeProductUrl, wishlistItemStatus, wishlistTitle } from '@/domain/wishlist'
 import type { WishlistItemReservation } from '@/domain/types'
 
 function makeReservation(overrides: Partial<WishlistItemReservation> = {}): WishlistItemReservation {
@@ -62,5 +62,21 @@ describe('Lista de deseos — es mi propia lista', () => {
 describe('Lista de deseos — título', () => {
   it('combina celebración y año', () => {
     expect(wishlistTitle('Cumpleaños', 2026)).toBe('Cumpleaños 2026')
+  })
+})
+
+describe('looksLikeProductUrl — Punto C1, solo dispara la detección si de verdad parece una URL', () => {
+  it('una URL http(s) completa: sí', () => {
+    expect(looksLikeProductUrl('https://tienda.example.com/producto/123')).toBe(true)
+    expect(looksLikeProductUrl('http://tienda.example.com')).toBe(true)
+  })
+  it('vacío, texto cualquiera o una URL a medio escribir: no — nunca se dispara con cada tecla', () => {
+    expect(looksLikeProductUrl('')).toBe(false)
+    expect(looksLikeProductUrl('Bicicleta roja')).toBe(false)
+    expect(looksLikeProductUrl('tienda.example.com')).toBe(false)
+    expect(looksLikeProductUrl('https://')).toBe(false)
+  })
+  it('espacios alrededor no engañan a la comprobación', () => {
+    expect(looksLikeProductUrl('   https://tienda.example.com/producto/123   ')).toBe(true)
   })
 })

@@ -6,6 +6,7 @@ import { listFamilyMembers } from '@/data/family'
 import {
   addWishlist,
   addWishlistItem,
+  attachWishlistItemDetectedPhoto,
   deleteWishlist,
   deleteWishlistItem,
   getWishlistGuestUrl,
@@ -18,9 +19,10 @@ import {
   saveWishlistItemPhoto,
   undoWishlistReservation,
 } from '@/data/wishlist'
-import { isOwnWishlist, wishlistItemStatus, wishlistTitle, type WishlistItemStatus } from '@/domain/wishlist'
+import { isOwnWishlist, looksLikeProductUrl, wishlistItemStatus, wishlistTitle, type WishlistItemStatus } from '@/domain/wishlist'
 import { errorMessage } from '@/domain/errorMessage'
 import { shareText } from '@/services/share'
+import { detectWishlistItemImage } from '@/services/wishlistItemImage'
 import type { FamilyMember, Profile, Wishlist, WishlistItem, WishlistItemReservation } from '@/domain/types'
 import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'
 
@@ -436,6 +438,38 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Lista de deseos, Parte C del prompt — al pegar un enlace, se intenta recuperar sola la foto principal
+  // del producto, sin pulsar ningún botón aparte. `detectedFor` evita repetir la llamada mientras el
+  // enlace no cambie de verdad (no en cada tecla); una subida manual (photoFile) siempre tiene prioridad,
+  // así que mientras haya una no se intenta detectar nada.
+  const [detecting, setDetecting] = useState(false)
+  const [detectedFor, setDetectedFor] = useState<string | null>(null)
+  const [detectedPath, setDetectedPath] = useState<string | null>(null)
+  const [detectedMimeType, setDetectedMimeType] = useState<string | null>(null)
+  const [detectedPreviewUrl, setDetectedPreviewUrl] = useState<string | null>(null)
+  const [detectFailed, setDetectFailed] = useState(false)
+
+  useEffect(() => {
+    if (photoFile) return
+    const trimmed = link.trim()
+    if (!looksLikeProductUrl(trimmed) || trimmed === detectedFor) return
+    const handle = setTimeout(() => {
+      setDetecting(true)
+      setDetectFailed(false)
+      detectWishlistItemImage(trimmed)
+        .then(({ imagePath, mimeType }) => {
+          setDetectedFor(trimmed)
+          setDetectedPath(imagePath)
+          setDetectedMimeType(mimeType)
+          setDetectFailed(!imagePath)
+          if (imagePath) getWishlistItemPhotoUrl(imagePath).then(setDetectedPreviewUrl).catch(() => setDetectedPreviewUrl(null))
+          else setDetectedPreviewUrl(null)
+        })
+        .finally(() => setDetecting(false))
+      // 700ms — mientras se sigue escribiendo o pegando no se dispara una llamada por cada cambio.
+    }, 700)
+    return () => clearTimeout(handle)
+  }, [link, photoFile, detectedFor])
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -457,6 +491,8 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
         const items = await listWishlistItems(wishlistId)
         const created = items.find((i) => i.id === id)
         if (created) await saveWishlistItemPhoto(created, photoFile)
+      } else if (detectedPath) {
+        await attachWishlistItemDetectedPhoto(id, detectedPath, detectedMimeType ?? 'image/jpeg')
       }
       onAdded()
     } catch (err) {
@@ -491,13 +527,45 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
             Enlace (opcional)
             <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..." />
           </label>
+          {detecting && <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>🔎 Buscando la foto del producto…</p>}
+          {!detecting && detectedPreviewUrl && (
+            <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
+              <img src={detectedPreviewUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />
+              <span className="muted" style={{ fontSize: 12, flex: 1 }}>Foto encontrada automáticamente</span>
+              <button
+                type="button"
+                className="link-button"
+                style={{ fontSize: 12 }}
+                onClick={() => {
+                  setDetectedPath(null)
+                  setDetectedPreviewUrl(null)
+                }}
+              >
+                ✕ Quitar
+              </button>
+            </div>
+          )}
+          {!detecting && detectFailed && !photoFile && (
+            <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>No se encontró ninguna foto en ese enlace — puedes subir una a mano abajo.</p>
+          )}
           <label>
             Precio (opcional)
             <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
           <label>
-            Fotografía (opcional)
-            <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
+            Fotografía {detectedPath ? '(sustituye a la encontrada automáticamente)' : '(opcional)'}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null
+                setPhotoFile(file)
+                if (file) {
+                  setDetectedPath(null)
+                  setDetectedPreviewUrl(null)
+                }
+              }}
+            />
           </label>
           <label className="inline-fields" style={{ alignItems: 'center' }}>
             <input type="checkbox" checked={allowJoint} onChange={(e) => setAllowJoint(e.target.checked)} style={{ width: 'auto' }} />

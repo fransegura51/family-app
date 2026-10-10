@@ -14,7 +14,8 @@ adb shell pm grant "$PKG" android.permission.ACCESS_COARSE_LOCATION || true
 
 adb logcat -c
 echo "== Abriendo la app"
-adb shell am start -W -n "$PKG/.MainActivity"
+# Igual que tocar el icono: por la categoría LAUNCHER (entra por LauncherActivity, que abre MainActivity).
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
 sleep 45
 
 adb logcat -d > smoke-logcat.txt
@@ -26,11 +27,31 @@ else
   CRASHED=1
 fi
 
+echo "== Pantalla en primer plano"
+adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | head -3
+if ! adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | grep -q "MainActivity"; then
+  echo "== PEPA (MainActivity) NO está en primer plano"
+  CRASHED=1
+fi
+
 echo "== Fallos registrados (FATAL EXCEPTION / AndroidRuntime / errores del complemento)"
 grep -nE "FATAL EXCEPTION|AndroidRuntime|Process: $PKG|Caused by|SpeechRecognition|Capacitor.*(Error|Exception)" smoke-logcat.txt | head -80
 
 if [ "$CRASHED" = "1" ]; then
   echo "== Traza completa del fallo"
   grep -n -A 40 "FATAL EXCEPTION" smoke-logcat.txt | head -120
+  exit 1
+fi
+
+# El informe de fallos se enseña de verdad (se fuerza uno de ejemplo con el gancho de prueba y se comprueba que sale en pantalla).
+echo "== Probando el informe de fallos"
+adb shell am force-stop "$PKG"
+adb shell am start -n "$PKG/.LauncherActivity" --ez pepa_demo_crash true
+sleep 6
+adb shell uiautomator dump /sdcard/ui.xml > /dev/null
+if adb shell cat /sdcard/ui.xml | grep -q "Informe del fallo"; then
+  echo "== El informe de fallos SE VE en pantalla"
+else
+  echo "== El informe de fallos NO aparece"
   exit 1
 fi

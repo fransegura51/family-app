@@ -82,9 +82,32 @@ function ensureListeners(onToken: (token: string) => void, onProblem: (message: 
   void LocalNotifications.addListener('localNotificationActionPerformed', (a) => openFromNotification(a.notification.extra as Record<string, unknown> | undefined))
 }
 
+// Canal de notificaciones «Avisos de PEPA» (importancia alta: suena y sale en pantalla, que es lo que se espera de «Paco ha llegado al colegio»).
+// El servidor manda los avisos a este canal (FCM_CHANNEL_ID en supabase/functions/*/fcm.ts); en un móvil que todavía no lo tenga, FCM usa su canal
+// de reserva y el aviso llega igual, sin ventana emergente.
+export const NATIVE_CHANNEL_ID = 'pepa-avisos'
+let channelReady = false
+export async function ensureNativeChannel(): Promise<void> {
+  if (channelReady) return
+  try {
+    await PushNotifications.createChannel({
+      id: NATIVE_CHANNEL_ID,
+      name: 'Avisos de PEPA',
+      description: 'Llegadas y salidas de la familia, recordatorios y avisos',
+      importance: 4,
+      visibility: 1,
+      vibration: true,
+    })
+    channelReady = true
+  } catch {
+    // Sin el complemento (app vieja) o sin permiso todavía: se reintenta al registrar.
+  }
+}
+
 // Registra ESTE móvil en FCM y avisa del token (que llega por el evento «registration», a veces más de una vez: Firebase lo renueva).
 export async function startNativePush(onToken: (token: string) => void, onProblem: (message: string) => void): Promise<void> {
   ensureListeners(onToken, onProblem)
+  await ensureNativeChannel()
   await PushNotifications.register()
 }
 
@@ -104,4 +127,7 @@ export async function showNativeNotification(title: string, body: string): Promi
   await showForeground(title, body, undefined)
 }
 
-if (isNativeApp()) void refreshNativePermission()
+if (isNativeApp()) {
+  void refreshNativePermission()
+  void ensureNativeChannel()
+}

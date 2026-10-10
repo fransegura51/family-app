@@ -117,6 +117,7 @@ Deno.serve(async (req) => {
     const payload = { title: input.title.slice(0, 120), body: input.body.slice(0, 300), url }
     let sent = 0
     let expired = 0
+    let failed = 0
     // TTL corto + urgencia alta: un "Paco ha llegado a casa" de hace una hora ya no sirve, y sin
     // urgencia alta Android/iOS pueden retrasar el aviso mientras el móvil está en reposo.
     const options = { TTL: 3600, urgency: "high" as const }
@@ -131,13 +132,17 @@ Deno.serve(async (req) => {
             await supabaseAdmin.rpc("delete_push_subscription", { p_endpoint: s.endpoint })
             expired++
           } else {
+            failed++
             console.error("push send failed (family)", status, err)
           }
         }
       }),
     )
 
-    return Response.json({ targets: subs?.length ?? 0, sent, expired })
+    // Si había a quién avisar y NO llegó a nadie por un fallo (no por suscripciones caducadas), se responde 502: el buzón de avisos de la base de
+    // datos (migración 0243, location_alert_outbox) lo ve y lo reintenta. Con 200 el aviso se daba por entregado y se perdía.
+    if (failed > 0 && sent === 0) return Response.json({ targets: subs?.length ?? 0, sent, expired, failed }, { status: 502 })
+    return Response.json({ targets: subs?.length ?? 0, sent, expired, failed })
   } catch (err) {
     console.error("[send-family-push] error:", String(err))
     return new Response("internal error", { status: 500 })

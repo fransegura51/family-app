@@ -7,6 +7,7 @@ const push = vi.hoisted(() => ({
   register: vi.fn(),
   unregister: vi.fn(),
   addListener: vi.fn(),
+  createChannel: vi.fn().mockResolvedValue(undefined),
 }))
 const local = vi.hoisted(() => ({ schedule: vi.fn(), addListener: vi.fn(), requestPermissions: vi.fn() }))
 const native = vi.hoisted(() => ({ value: true }))
@@ -165,5 +166,20 @@ describe('sin duplicados y la web intacta', () => {
     expect(getPermissionState()).toBe('denied')
     expect(push.register).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('canal «Avisos de PEPA» (avisos que suenan y salen en pantalla)', () => {
+  it('se crea con importancia alta antes de registrar el móvil, y es el mismo id que manda el servidor', async () => {
+    vi.resetModules()
+    push.createChannel.mockClear()
+    push.register.mockResolvedValue(undefined)
+    push.addListener.mockResolvedValue({ remove: vi.fn() })
+    const { startNativePush, NATIVE_CHANNEL_ID } = await import('@/services/nativePush')
+    await startNativePush(vi.fn(), vi.fn())
+    expect(push.createChannel).toHaveBeenCalledWith(expect.objectContaining({ id: 'pepa-avisos', name: 'Avisos de PEPA', importance: 4 }))
+    expect(NATIVE_CHANNEL_ID).toBe('pepa-avisos')
+    const serverSrc = (await import('../../supabase/functions/send-family-push/fcm.ts?raw')).default
+    expect(serverSrc).toContain('export const FCM_CHANNEL_ID = "pepa-avisos"')
   })
 })

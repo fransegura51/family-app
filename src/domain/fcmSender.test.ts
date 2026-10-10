@@ -80,14 +80,14 @@ describe('mensaje de aviso', () => {
         token: 'TOKEN',
         notification: { title: 'Reunión', body: 'Empieza a las 16:30' },
         data: { url: '/calendario', tag: 'reminder:e1:2026-10-05:start:60' },
-        android: { priority: 'HIGH', ttl: '3600s', notification: { tag: 'reminder:e1:2026-10-05:start:60' } },
+        android: { priority: 'HIGH', ttl: '3600s', notification: { channel_id: 'pepa-avisos', tag: 'reminder:e1:2026-10-05:start:60' } },
       },
     })
   })
   it('sin etiqueta ni destino no lleva esos campos', () => {
     const p = buildFcmPayload('T', { title: 'a', body: 'b' })
     expect(p.message).not.toHaveProperty('data')
-    expect(p.message.android).toEqual({ priority: 'HIGH', ttl: '3600s' })
+    expect(p.message.android).toEqual({ priority: 'HIGH', ttl: '3600s', notification: { channel_id: 'pepa-avisos' } })
   })
 })
 

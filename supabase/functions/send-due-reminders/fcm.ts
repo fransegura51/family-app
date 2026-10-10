@@ -6,6 +6,7 @@
 // suscripciones caducadas (404/410) valga tal cual.
 
 export const FCM_PREFIX = "fcm:"
+export const FCM_CHANNEL_ID = "pepa-avisos"
 
 export interface FcmServiceAccount {
   client_email: string
@@ -90,8 +91,10 @@ export function buildFcmPayload(deviceToken: string, msg: FcmMessage) {
       android: {
         priority: "HIGH",
         ttl: `${msg.ttlSeconds ?? 3600}s`,
+        // channel_id: canal «Avisos de PEPA» (importancia alta: suena y sale en pantalla), creado por la app al arrancar (src/services/nativePush.ts). Si
+        // un móvil no lo tiene aún (app vieja), FCM usa su canal de reserva: el aviso llega igual, solo que sin ventana emergente.
         // Con etiqueta, Android sustituye el aviso anterior de ese mismo recordatorio en vez de acumularlos.
-        ...(msg.tag ? { notification: { tag: msg.tag } } : {}),
+        notification: { channel_id: FCM_CHANNEL_ID, ...(msg.tag ? { tag: msg.tag } : {}) },
       },
     },
   }

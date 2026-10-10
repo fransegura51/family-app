@@ -3,6 +3,7 @@ import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
 import { buildTrackDetail, decodePolyline, distanceMeters, type TrackPoint } from '@/domain/geo'
 import { chunkVehicleRun, splitIntoParts } from '@/domain/roadTrace'
+import { routeColorFor } from '@/domain/routeColor'
 import { getCachedRoad, joinRoadPaths, requestRoad, type RoadPath } from '@/services/roadTrace'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
 
@@ -284,13 +285,16 @@ export function LocationMap({
 
       // Las líneas solo se recrean si el rastro ha cambiado de verdad — con cada refresco de posición
       // (cada 30 s) borrar y volver a pintarlas todas haría parpadear el mapa, como ya pasó con los marcadores.
-      const signature = JSON.stringify([member.color, solid.map((s) => [s.length, s[0], s[s.length - 1]]), gaps.map((g) => [g.length, g[0], g[g.length - 1]])])
+      const signature = JSON.stringify([routeColorFor(member.color, member.id), solid.map((s) => [s.length, s[0], s[s.length - 1]]), gaps.map((g) => [g.length, g[0], g[g.length - 1]])])
       if (lineSignaturesRef.current.get(member.id) === signature && polylinesRef.current.has(member.id)) continue
       clearMemberLines(member.id)
       lineSignaturesRef.current.set(member.id, signature)
       const lines: google.maps.Polyline[] = []
+      const routeColor = routeColorFor(member.color, member.id)
       for (const path of solid) {
-        lines.push(new g.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map }))
+        // Borde blanco (más ancho, por debajo) + línea del color de la persona encima.
+        lines.push(new g.maps.Polyline({ path, strokeColor: '#ffffff', strokeWeight: 8, strokeOpacity: 0.9, zIndex: 1, map }))
+        lines.push(new g.maps.Polyline({ path, strokeColor: routeColor, strokeWeight: 5, strokeOpacity: 1, zIndex: 2, map }))
       }
       for (const gapPath of gaps) {
         // strokeOpacity 0 + un icono repetido = línea de rayas (la forma que trae Google Maps).
@@ -298,7 +302,7 @@ export function LocationMap({
           new g.maps.Polyline({
             path: gapPath,
             strokeOpacity: 0,
-            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.55, strokeColor: member.color, scale: 2.5 }, offset: '0', repeat: '14px' }],
+            icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.85, strokeColor: routeColor, scale: 3 }, offset: '0', repeat: '14px' }],
             map,
           }),
         )

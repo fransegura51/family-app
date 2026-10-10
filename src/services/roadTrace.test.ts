@@ -111,6 +111,8 @@ describe('trazado por carretera de un trozo del recorrido', () => {
 describe('conexión con el mapa y el servidor', () => {
   it('el mapa dibuja los trozos en coche por la carretera y vuelve a pintar cuando llega el trazado', () => {
     expect(locationMapSrc).toContain('roadAwarePath(')
+    expect(locationMapSrc).toContain("routeColorFor(member.color, member.id)")
+    expect(locationMapSrc).toContain("strokeColor: '#ffffff', strokeWeight: 8")
     expect(locationMapSrc).toContain('setRoadTick((t) => t + 1)')
     expect(locationMapSrc).toContain('[members, locations, histories, photoUrls, roadTick]')
   })

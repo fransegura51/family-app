@@ -35,22 +35,36 @@ describe('OffersComparison — seleccionar una oferta nunca paga ni resuelve nad
 })
 
 describe('ResolveGroupModal — "Usar esta oferta al resolver" solo rellena el formulario, nunca lo envía', () => {
-  it('onUseOffer rellena método/proveedor/precio pero no llama a handleSubmit ni resuelve nada', () => {
-    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
-    expect(onUseOfferProp).toContain("setMethod('empresa')")
-    expect(onUseOfferProp).toContain('setPrice(String(offer.amount))')
-    expect(onUseOfferProp).not.toContain('handleSubmit')
-    expect(onUseOfferProp).not.toContain('resolveEventTaskGroup')
+  const applyFn = window_(RESOLVE_MODAL, 'function applyOfferToResolveForm(offer: EventTaskGroupOffer) {', '\n  }')
+
+  it('applyOfferToResolveForm rellena método/proveedor/precio pero no llama a handleSubmit ni resuelve nada', () => {
+    expect(applyFn).toContain("setMethod('empresa')")
+    expect(applyFn).not.toContain('handleSubmit')
+    expect(applyFn).not.toContain('resolveEventTaskGroup')
   })
   it('si la oferta tiene provider_id (proveedor ya dado de alta), usa ese; si no, precarga el nombre como proveedor nuevo — nunca inventa un id', () => {
-    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
-    expect(onUseOfferProp).toContain("setProviderMode('existing')")
-    expect(onUseOfferProp).toContain('setSelectedProviderId(offer.providerId)')
-    expect(onUseOfferProp).toContain("setProviderMode('new')")
-    expect(onUseOfferProp).toContain('setNewProviderName(offer.providerName)')
+    expect(applyFn).toContain("setProviderMode('existing')")
+    expect(applyFn).toContain('setSelectedProviderId(offer.providerId)')
+    expect(applyFn).toContain("setProviderMode('new')")
+    expect(applyFn).toContain('setNewProviderName(offer.providerName)')
+  })
+  it('es la MISMA función tanto si se pulsa "Usar esta oferta al resolver" aquí dentro como si se llega ya con una oferta elegida desde el comparador independiente (Parte C1)', () => {
+    expect(RESOLVE_MODAL).toContain('<OffersComparison group={group} providers={providers} onUseOffer={applyOfferToResolveForm} />')
+    expect(RESOLVE_MODAL).toContain('if (initialOffer) applyOfferToResolveForm(initialOffer)')
   })
   it('los proveedores se cargan desde el principio del modal (ya no solo al elegir "Empresa/proveedor"), porque OffersComparison los necesita siempre', () => {
     const loadFn = window_(RESOLVE_MODAL, 'useEffect(() => {', '}, [event.id])')
     expect(loadFn).not.toContain("method !== 'empresa'")
+  })
+})
+
+describe('OffersComparisonModal — Parte C1, "Consultar ofertas disponibles" sin obligar a resolver', () => {
+  const COMPARISON_MODAL = window_(UI, 'function OffersComparisonModal(', '\nfunction ResolveGroupModal(')
+
+  it('reutiliza OffersComparison tal cual — nunca una segunda forma de comparar', () => {
+    expect(COMPARISON_MODAL).toContain('<OffersComparison group={group} providers={providers} onUseOffer={onResolveWithOffer} />')
+  })
+  it('deja claro que consultar aquí no resuelve nada ni crea ningún pago', () => {
+    expect(COMPARISON_MODAL).toContain('no resuelve el encargo ni crea ningún pago')
   })
 })

@@ -193,6 +193,7 @@ import {
   setEventTaskGroup,
   setEventTaskGroupOfferItemSelected,
   setEventTaskGroupOfferStatus,
+  unlinkTaskGroupOfferFromGroup,
   updateEventTaskGroupOffer,
   updateEventTaskGroupOfferItem,
 } from '@/data/eventTaskGroups'
@@ -1154,6 +1155,11 @@ function EventDetail({
   useEffect(() => void reloadEventTaskGroups().catch(() => {}), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
   // Tanda Encargos v2: qué encargo se está resolviendo ahora mismo ("Marcar encargo como resuelto").
   const [resolvingGroup, setResolvingGroup] = useState<EventTaskGroup | null>(null)
+  // Orden de recuperación de requisitos (Parte C1) — "Consultar ofertas disponibles" sin obligar a
+  // resolver: comparador independiente, reutilizando OffersComparison. Si desde ahí se elige "usar esta
+  // oferta al resolver", pasa el testigo a ResolveGroupModal con la oferta ya elegida.
+  const [comparingOffersGroup, setComparingOffersGroup] = useState<EventTaskGroup | null>(null)
+  const [resolveWithOffer, setResolveWithOffer] = useState<EventTaskGroupOffer | null>(null)
   // "Siguiente preparativo" — prompt efímero (solo en memoria, nunca persistido: ver el informe de la
   // tanda) mostrado una vez justo tras resolver un encargo o completar una tarea suelta. sourceLabel es
   // el texto de lo que se acaba de resolver/completar; createdKeys evita poder crear la misma sugerencia
@@ -1699,9 +1705,14 @@ function EventDetail({
                           conserva como referencia histórica (nunca se borra ni se sobrescribe aquí — ver
                           resolveEventTaskGroup, que ahora además guarda cada resolución en
                           event_task_group_resolutions). */}
-                      <button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>
-                        Resolver encargo
-                      </button>
+                      <span>
+                        <button type="button" className="link-button" onClick={() => setComparingOffersGroup(item.group)}>
+                          📋 Consultar ofertas
+                        </button>
+                        <button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>
+                          Resolver encargo
+                        </button>
+                      </span>
                     </div>
                     {item.group.resolvedAt && (
                       <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
@@ -1818,15 +1829,33 @@ function EventDetail({
                 }}
               />
             )}
+            {comparingOffersGroup && (
+              <OffersComparisonModal
+                event={event}
+                group={comparingOffersGroup}
+                onClose={() => setComparingOffersGroup(null)}
+                onResolveWithOffer={(offer) => {
+                  const group = comparingOffersGroup
+                  setComparingOffersGroup(null)
+                  setResolveWithOffer(offer)
+                  setResolvingGroup(group)
+                }}
+              />
+            )}
             {resolvingGroup && (
               <ResolveGroupModal
                 event={event}
                 group={resolvingGroup}
                 tasks={tasks.filter((t) => t.groupId === resolvingGroup.id && !t.done)}
-                onClose={() => setResolvingGroup(null)}
+                initialOffer={resolveWithOffer}
+                onClose={() => {
+                  setResolvingGroup(null)
+                  setResolveWithOffer(null)
+                }}
                 onResolved={async () => {
                   const group = resolvingGroup
                   setResolvingGroup(null)
+                  setResolveWithOffer(null)
                   await reloadTasks()
                   await reloadEventTaskGroups()
                   const suggestions = suggestNextStepsForGroup(group)
@@ -3960,6 +3989,7 @@ function OfferCardMenu({
   onEdit,
   discarded,
   onToggleDiscard,
+  onUnlink,
   onDelete,
 }: {
   open: boolean
@@ -3967,6 +3997,10 @@ function OfferCardMenu({
   onEdit: () => void
   discarded: boolean
   onToggleDiscard: () => void
+  // Orden de recuperación de requisitos (Parte B4) — "diferenciar claramente descartar, desvincular y
+  // eliminar". Solo tiene sentido para una oferta YA vinculada a un encargo (OffersComparison); una
+  // oferta suelta (ProviderOffersPanel) no recibe esta prop.
+  onUnlink?: () => void
   onDelete: () => void
 }) {
   return (
@@ -3982,6 +4016,9 @@ function OfferCardMenu({
           <button type="button" className="link-button" onClick={onToggleDiscard}>
             {discarded ? '↩️ Recuperar oferta' : '🗑 Descartar oferta'}
           </button>
+          {onUnlink && (
+            <ConfirmButton label="Desvincular" confirmMessage="¿Desvincular esta oferta del encargo? Sigue disponible como oferta suelta de este evento, sin encargo." onConfirm={onUnlink} />
+          )}
           <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Eliminar oferta" onConfirm={onDelete} />
         </div>
       )}
@@ -4111,6 +4148,7 @@ function OffersComparison({
                 onEdit={() => setEditingId(o.id)}
                 discarded={o.status === 'descartada'}
                 onToggleDiscard={() => void handleToggleDiscard(o)}
+                onUnlink={() => unlinkTaskGroupOfferFromGroup(o.id).then(reload)}
                 onDelete={() => deleteEventTaskGroupOffer(o).then(reload)}
               />
             </div>
@@ -5122,6 +5160,52 @@ const RESOLUTION_METHOD_OPTIONS: { value: EventTaskGroupResolutionMethod; label:
   { value: 'otro', label: 'Otra opción' },
 ]
 
+// Orden de recuperación de requisitos (Parte C1) — "Consultar ofertas disponibles... no obligar a
+// resolver el encargo para comparar presupuestos". Reutiliza OffersComparison tal cual (nunca una segunda
+// forma de comparar): aquí solo se consulta/compara/marca "✓ Seleccionada" — igual que antes, nada de
+// esto crea pagos ni completa tareas. Si la familia decide usar una oferta concreta, el testigo pasa a
+// ResolveGroupModal ya con esa oferta elegida.
+function OffersComparisonModal({
+  event,
+  group,
+  onClose,
+  onResolveWithOffer,
+}: {
+  event: FamilyEvent
+  group: EventTaskGroup
+  onClose: () => void
+  onResolveWithOffer: (offer: EventTaskGroupOffer) => void
+}) {
+  const [providers, setProviders] = useState<EventProvider[]>([])
+
+  useEffect(() => {
+    listEventProviders(event.id)
+      .then((all) => setProviders(all.filter((p) => !p.archived)))
+      .catch(() => {})
+  }, [event.id])
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Ofertas de «{group.name}»
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="card member-form">
+          <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+            Compara presupuestos antes de decidir — consultar aquí no resuelve el encargo ni crea ningún pago.
+          </p>
+          <OffersComparison group={group} providers={providers} onUseOffer={onResolveWithOffer} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // "Marcar encargo como resuelto" (Tanda Encargos v2) — completa EXCLUSIVAMENTE las tareas pendientes
 // ACTUALES de este encargo (las que llegan en `tasks`, ya filtradas por el padre) — nunca una tarea
 // posterior y distinta aunque su título se parezca (p. ej. "Recoger las flores" nunca se completa aquí).
@@ -5132,12 +5216,17 @@ function ResolveGroupModal({
   event,
   group,
   tasks,
+  // Orden de recuperación de requisitos (Parte C1) — llega ya elegida desde el comparador independiente
+  // (OffersComparisonModal, "Consultar ofertas" sin tener que entrar aquí primero); se aplica una sola
+  // vez al abrir, exactamente igual que si se hubiera pulsado "Usar esta oferta al resolver" aquí dentro.
+  initialOffer,
   onClose,
   onResolved,
 }: {
   event: FamilyEvent
   group: EventTaskGroup
   tasks: EventTask[]
+  initialOffer?: EventTaskGroupOffer | null
   onClose: () => void
   onResolved: () => Promise<void>
 }) {
@@ -5161,6 +5250,33 @@ function ResolveGroupModal({
       .then((all) => setProviders(all.filter((p) => !p.archived)))
       .catch(() => {})
   }, [event.id])
+
+  // Parte C4 — si la oferta tiene servicios desglosados con importe, el precio se propone POR SERVICIOS
+  // (la suma de los seleccionados); si no, el total simple de la oferta tal cual. Siempre editable después
+  // — nunca se fija ni se sustituye sin que la familia lo confirme. Misma función tanto al pulsar "Usar
+  // esta oferta al resolver" aquí dentro como al llegar ya con una oferta elegida desde fuera.
+  function applyOfferToResolveForm(offer: EventTaskGroupOffer) {
+    setMethod('empresa')
+    if (offer.providerId) {
+      setProviderMode('existing')
+      setSelectedProviderId(offer.providerId)
+    } else {
+      setProviderMode('new')
+      setNewProviderName(offer.providerName)
+    }
+    setUsedOfferId(offer.id)
+    listEventTaskGroupOfferItems(offer.id)
+      .then((items) => {
+        const selectedSum = items.filter((i) => i.selected && i.subtotal !== null).reduce((s, i) => s + (i.subtotal ?? 0), 0)
+        setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))
+      })
+      .catch(() => setPrice(String(offer.amount)))
+  }
+
+  useEffect(() => {
+    if (initialOffer) applyOfferToResolveForm(initialOffer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleSubmit() {
     if (!method) {
@@ -5225,30 +5341,7 @@ function ResolveGroupModal({
               : 'Este encargo no tiene ninguna tarea pendiente — se marcará resuelto igualmente.'}
           </p>
           {error && <p className="error">{error}</p>}
-          <OffersComparison
-            group={group}
-            providers={providers}
-            onUseOffer={(offer) => {
-              setMethod('empresa')
-              if (offer.providerId) {
-                setProviderMode('existing')
-                setSelectedProviderId(offer.providerId)
-              } else {
-                setProviderMode('new')
-                setNewProviderName(offer.providerName)
-              }
-              setUsedOfferId(offer.id)
-              // Parte C4 — si la oferta tiene servicios desglosados con importe, el precio se propone POR
-              // SERVICIOS (la suma de los seleccionados); si no, el total simple de la oferta tal cual.
-              // Siempre editable después — nunca se fija ni se sustituye sin que la familia lo confirme.
-              listEventTaskGroupOfferItems(offer.id)
-                .then((items) => {
-                  const selectedSum = items.filter((i) => i.selected && i.subtotal !== null).reduce((s, i) => s + (i.subtotal ?? 0), 0)
-                  setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))
-                })
-                .catch(() => setPrice(String(offer.amount)))
-            }}
-          />
+          <OffersComparison group={group} providers={providers} onUseOffer={applyOfferToResolveForm} />
           <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>
             ¿Cómo se ha resuelto?
           </div>

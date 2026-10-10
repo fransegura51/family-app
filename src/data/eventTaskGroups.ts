@@ -431,6 +431,15 @@ export async function linkLooseTaskGroupOfferToGroup(offer: EventTaskGroupOffer,
   if (error) throw error
 }
 
+// Orden de recuperación de requisitos (Parte B4) — "diferenciar claramente descartar, desvincular y
+// eliminar": lo inverso de linkLooseTaskGroupOfferToGroup. Vuelve a ser una oferta suelta de este mismo
+// evento (nunca se borra, nunca pierde su proveedor/importe/servicios) — distinto de Descartar (cambia de
+// estado, sigue en el encargo) y de Eliminar (la borra de verdad).
+export async function unlinkTaskGroupOfferFromGroup(offerId: string): Promise<void> {
+  const { error } = await supabase.from('event_task_group_offers').update({ group_id: null }).eq('id', offerId)
+  if (error) throw error
+}
+
 // Documento adjunto opcional (presupuesto en PDF/foto de un proveedor) — se sube y se enlaza a una oferta
 // YA creada, nunca al crearla (igual que saveEventFoodDocument: nunca se sube un archivo que la familia
 // pueda acabar descartando sin llegar a guardar la oferta). Un único adjunto por oferta; subir uno nuevo

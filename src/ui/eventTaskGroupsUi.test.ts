@@ -207,15 +207,15 @@ describe('ResolveGroupModal — "contratar" nunca completa tareas (Fase 7, Parte
 // poder consultarlo después) y propone el precio POR SERVICIOS seleccionados cuando la oferta los tiene
 // desglosados, en vez del total simple siempre — pero el campo sigue siendo editable, nunca se fija solo.
 describe('ResolveGroupModal — trazabilidad oferta→encargo y precio por servicios (Fase 7, Parte C2/C4)', () => {
-  it('onUseOffer guarda usedOfferId (la oferta usada) además de proveedor/precio', () => {
-    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
-    expect(onUseOfferProp).toContain('setUsedOfferId(offer.id)')
+  const applyFn = window_(RESOLVE_MODAL, 'function applyOfferToResolveForm(offer: EventTaskGroupOffer) {', '\n  }')
+
+  it('applyOfferToResolveForm guarda usedOfferId (la oferta usada) además de proveedor/precio', () => {
+    expect(applyFn).toContain('setUsedOfferId(offer.id)')
   })
   it('el precio se calcula a partir de listEventTaskGroupOfferItems — la suma de las líneas seleccionadas si hay alguna con importe, el total simple si no', () => {
-    const onUseOfferProp = window_(RESOLVE_MODAL, 'onUseOffer={(offer) => {', '}}\n          />')
-    expect(onUseOfferProp).toContain('listEventTaskGroupOfferItems(offer.id)')
-    expect(onUseOfferProp).toContain('i.selected && i.subtotal !== null')
-    expect(onUseOfferProp).toContain('setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))')
+    expect(applyFn).toContain('listEventTaskGroupOfferItems(offer.id)')
+    expect(applyFn).toContain('i.selected && i.subtotal !== null')
+    expect(applyFn).toContain('setPrice(String(selectedSum > 0 ? selectedSum : offer.amount))')
   })
 })
 

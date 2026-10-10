@@ -63,11 +63,11 @@ la trazabilidad de los commits ya hechos.
 |---|---|---|---|
 | EVT-C1 | "Consultar ofertas disponibles" sin obligar a resolver el encargo | Implementado (`a1bfb00`, `OffersComparisonModal`, reutiliza `OffersComparison`) | — |
 | EVT-C2a | Seleccionar servicios, precargar, calcular total, confirmar | Implementado | Funciona para un único proveedor por encargo |
-| EVT-C2b | Contratar con varios proveedores en el mismo encargo | Pendiente | Un encargo solo admite una resolución/proveedor hoy |
-| EVT-C2c | Trazabilidad oferta→servicios→encargo→presupuesto→pago | Parcial | Oferta↔resolución sí; resolución/pago↔presupuesto sin FK (requiere Parte D) |
+| EVT-C2b | Contratar con varios proveedores en el mismo encargo | **Implementado 2026-10-10** (`7c5825d`) | Migración 0237 (`event_task_group_resolutions.active`) + `AdditionalProvidersPanel`: "Resolver encargo" sigue dejando un proveedor principal; "+ Añadir otro proveedor a este encargo" añade más sin tocarlo |
+| EVT-C2c | Trazabilidad oferta→servicios→encargo→presupuesto→pago | **Implementado 2026-10-10** (`7c5825d`) | Migración 0236 (`event_payments.budget_item_id`): un pago puede enlazarse a una partida de presupuesto concreta; oferta↔resolución ya existía |
 | EVT-C3a | Distinguir presupuestar/elegir oferta/confirmar/ejecutar/completar tareas | Implementado | — |
 | EVT-C3b | Revisar el texto "¿Cómo se ha resuelto?" | Implementado (`bd28a6b`, "¿Cómo lo vais a resolver?") | — |
-| EVT-C4 | Precio total o desglosado al resolver, no sobrescribir sin confirmación | Parcial | Desglose solo existe hoy en Ofertas; `ResolveGroupModal`/`AddPaymentModal`/`AddBudgetItemModal` siguen con un único campo numérico |
+| EVT-C4 | Precio total o desglosado al resolver, no sobrescribir sin confirmación | **Implementado 2026-10-10** (`7c5825d`) | `AddBudgetItemModal`/`EditBudgetItemInline` siguen con un único importe (desglose de la partida es aparte, ver EVT-D3); `AddPaymentModal` sigue con un único total (desglose es el de la oferta de origen, ya existente) — se considera cerrado con el desglose a nivel de partida/oferta, nunca repetido en los 3 sitios |
 | EVT-C5a | Color por encargo, integrado con Pastel/Vivo/Neutro, sin fusionar | Implementado | — |
 | EVT-C5b | Plegar/desplegar cada encargo individualmente | Implementado (`bd28a6b`, `collapsedGroupIds`) | — |
 
@@ -75,28 +75,28 @@ la trazabilidad de los commits ya hechos.
 
 | ID | Descripción | Estado | Pendientes |
 |---|---|---|---|
-| EVT-D1 | Distinguir Planeado/Comprometido/Pagado/Gastado | Parcial | Existen, pero solo como totales agregados de TODO el evento, nunca por partida |
-| EVT-D2 | Consultar por Concepto/Encargo/Proveedor/Categoría | Pendiente | `event_budget_items` no tiene columnas `provider_id` ni `group_id` — falta en el esquema, no solo en la UI |
-| EVT-D3 | Desgloses si existen, totales simples si no | Pendiente | Las partidas son una línea plana sin conceptos |
+| EVT-D1 | Distinguir Planeado/Comprometido/Pagado/Gastado | **Implementado 2026-10-10** (`7c5825d`) | `budgetItemAmounts` (dominio puro) calcula Comprometido/Pagado POR PARTIDA a partir de los pagos enlazados (`budget_item_id`); Gastado (Economía) sigue siendo agregado del evento, sin cambios — nunca se mezclan |
+| EVT-D2 | Consultar por Concepto/Encargo/Proveedor/Categoría | **Implementado 2026-10-10** (`7c5825d`) | Migración 0235: `provider_id`/`group_id`/`category_id` en `event_budget_items`; agrupar con subtotales plegables en `BudgetSection` |
+| EVT-D3 | Desgloses si existen, totales simples si no | **Implementado 2026-10-10** (`7c5825d`) | Migración 0235, tabla `event_budget_item_concepts`; `BudgetItemConceptsPanel`, opcional, nunca sustituye `plannedAmount` |
 | EVT-D4 | Evitar duplicar importes | Implementado | — |
 | EVT-D5 | Gasto bancario ≠ pago manual en Eventos | Implementado | — |
 | EVT-D6 | Importes desconocidos ≠ cero | Implementado | — |
-| EVT-D7 | Preservar partidas manuales e historial | Parcial | Se preservan los datos; sin historial consultable de cambios |
-| EVT-006 *(alias de EVT-D2+D3)* | Categorías editables con sugerencias automáticas, partidas agrupadas plegables con subtotales | Pendiente | Mismo hueco de esquema que EVT-D2 — necesita migración (categoría/encargo/proveedor en `event_budget_items`) |
+| EVT-D7 | Preservar partidas manuales e historial | **Implementado 2026-10-10** (`7c5825d`) | Migración 0235, tabla `event_budget_item_history` (append-only); `updateEventBudgetItem` escribe una fila por cada campo que de verdad cambia |
+| EVT-006 *(alias de EVT-D2+D3)* | Categorías editables con sugerencias automáticas, partidas agrupadas plegables con subtotales | **Implementado 2026-10-10** (`7c5825d`) | `listDistinctEventBudgetCategorySuggestions` (autocompletar con `<datalist>`, sin depender de `budget_categories` por el problema de categorías duplicadas ya conocido) + agrupación con subtotales |
 
 ## Parte E — Pagos y fianzas (CONSOLIDADO) — también cubre EVT-005
 
 | ID | Descripción | Estado | Pendientes |
 |---|---|---|---|
 | EVT-E1 | Tarjetas compactas desplegables | Implementado | — |
-| EVT-E2 | Vista principal con 8 campos (incl. barra de progreso) | Parcial | Solo 4 de 8 visibles sin desplegar; **la barra de progreso no existe en ningún sitio del archivo** |
-| EVT-E3 | Ordenar por 6 criterios | Pendiente | Sin estado de ordenación |
+| EVT-E2 | Vista principal con 8 campos (incl. barra de progreso) | **Implementado 2026-10-10** (`7c5825d`) | Cabecera: concepto, proveedor, categoría, total, pagado, pendiente, vencimiento, estado + barra de progreso (`paymentProgress`) |
+| EVT-E3 | Ordenar por 6 criterios | **Implementado 2026-10-10** (`7c5825d`) | `sortPayments`/`comparePayments` (dominio puro): vencimiento, importe, pendiente, proveedor, concepto, estado |
 | EVT-E4 | 3 filtros Todos/Pendientes/Pagados | Implementado | — |
-| EVT-E5 | Agrupar por categoría o proveedor | Pendiente | `event_payments` no tiene columna `category` — falta en el esquema |
-| EVT-E6 | Al desplegar: desglose contratado, pagos parciales, fechas, fianzas, documentos, historial | Pendiente | Solo existe corregir un importe acumulado (`deposit_paid`), no una lista de pagos parciales con fecha |
+| EVT-E5 | Agrupar por categoría o proveedor | **Implementado 2026-10-10** (`7c5825d`) | Migración 0236, columna `category`; agrupar con subtotal en `PaymentsSection` |
+| EVT-E6 | Al desplegar: desglose contratado, pagos parciales, fechas, fianzas, documentos, historial | **Implementado 2026-10-10** (`7c5825d`) | Migración 0236: `event_payment_entries` (diario de abonos fechados, complementa "Corregir lo pagado" sin sustituirlo), `bond_amount`/`bond_returned_at` (fianza), documento adjunto (mismo patrón que proveedores/ofertas); "desglose contratado" = partida de presupuesto enlazada (EVT-C2c) |
 | EVT-E7 | Mantener "Corregir lo pagado" | Implementado | — |
 | EVT-E8 | No duplicar importes / sin movimientos bancarios automáticos | Implementado | — |
-| EVT-005 *(alias de EVT-E2+E3+E5+E6)* | "+ Añadir pago" con historial de pagos parciales, fianzas, documentos | Pendiente | Necesita migración (tabla de pagos parciales en vez de un acumulado) |
+| EVT-005 *(alias de EVT-E2+E3+E5+E6)* | "+ Añadir pago" con historial de pagos parciales, fianzas, documentos | **Implementado 2026-10-10** (`7c5825d`) | Ver EVT-E6; backfill del acumulado histórico verificado 1:1 contra `deposit_paid` antes de migrar (sin fecha inventada, etiquetado "saldo anterior") |
 
 ## Parte F — Calendario (CONSOLIDADO)
 

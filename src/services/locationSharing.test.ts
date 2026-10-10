@@ -180,14 +180,28 @@ describe('posición en vivo (bug real: "una llamada a Supabase cada 34 segundos.
     expect(data.updateMemberLocation).toHaveBeenCalledTimes(1)
   })
 
-  it('un movimiento real sí se escribe enseguida, no espera al reloj', async () => {
+  it('un movimiento real sí se escribe sin esperar a los 20 s, pero respetando el suelo de 10 s', async () => {
     const { mod, data } = await freshModule()
     mod.startSharing('m1')
     await ping(HOME)
-    await vi.advanceTimersByTimeAsync(2_000)
+    await vi.advanceTimersByTimeAsync(10_000)
     await ping(NEARBY_MOVED)
 
     expect(data.updateMemberLocation).toHaveBeenCalledTimes(2)
+  })
+
+  it('en coche (cada lectura a más de 15 m de la anterior, una por segundo) no se escribe más de una vez cada 10 s', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    for (let s = 0; s < 60; s++) {
+      await ping({ latitude: 40 + s * 0.0003, longitude: -3 }) // ~33 m por segundo, imposible no superar los 15 m
+      await vi.advanceTimersByTimeAsync(1_000)
+    }
+    // 60 s a una lectura por segundo: el primero + uno cada 10 s = 6 guardados (antes: 60)
+    expect(vi.mocked(data.updateMemberLocation).mock.calls.length).toBeLessThanOrEqual(7)
+    expect(vi.mocked(data.updateMemberLocation).mock.calls.length).toBeGreaterThanOrEqual(5)
+    // y el rastro igual: nunca un punto por segundo
+    expect(vi.mocked(data.appendLocationHistoryPoint).mock.calls.length).toBeLessThanOrEqual(7)
   })
 
   it('aunque siga quieta del todo, no pasan más de MIN_LIVE_INTERVAL_MS sin refrescarse', async () => {

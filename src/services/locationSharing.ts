@@ -55,9 +55,14 @@ const MIN_HISTORY_DISTANCE_M = 30
 const MIN_HISTORY_INTERVAL_MS = 5 * 60 * 1000
 let lastHistoryPoint: { latitude: number; longitude: number; at: number } | null = null
 
+// Mismo suelo que la posición en vivo (ver MIN_WRITE_GAP_MS más abajo): yendo en coche cada lectura está a más de 30 m de la anterior y
+// sin él se insertaba un punto por segundo. Con 10 s sobra para dibujar el trayecto (y no agota el tope de 2000 puntos/24h).
+const MIN_HISTORY_GAP_MS = 10 * 1000
+
 function shouldRecordHistoryPoint(latitude: number, longitude: number, now: number): boolean {
   if (!lastHistoryPoint) return true
   if (now - lastHistoryPoint.at >= MIN_HISTORY_INTERVAL_MS) return true
+  if (now - lastHistoryPoint.at < MIN_HISTORY_GAP_MS) return false
   return distanceMeters(lastHistoryPoint.latitude, lastHistoryPoint.longitude, latitude, longitude) >= MIN_HISTORY_DISTANCE_M
 }
 
@@ -71,13 +76,20 @@ function shouldRecordHistoryPoint(latitude: number, longitude: number, now: numb
 // ve — solo gasta peticiones de más. El propio pin de ESTE teléfono en su
 // pantalla (lastPosition/notify, justo abajo) sigue actualizándose al
 // instante en cada lectura, eso es gratis (solo memoria) y no se toca.
+//
+// Medido en producción (prueba en coche con la app nativa, 2026-10-10): a velocidad de carretera CADA lectura de GPS está a más de 15 m de
+// la anterior, así que la regla de distancia sola disparaba un guardado por segundo (unas 300 llamadas cada 5 minutos). MIN_WRITE_GAP_MS es
+// un suelo duro: pase lo que pase no se escribe más a menudo que eso (unas 360 llamadas/hora yendo en coche, en vez de unas 3.600).
 const MIN_LIVE_DISTANCE_M = 15
 const MIN_LIVE_INTERVAL_MS = 20 * 1000
+const MIN_WRITE_GAP_MS = 10 * 1000
 let lastLiveWrite: { latitude: number; longitude: number; at: number } | null = null
 
 function shouldWriteLivePosition(latitude: number, longitude: number, now: number): boolean {
   if (!lastLiveWrite) return true
-  if (now - lastLiveWrite.at >= MIN_LIVE_INTERVAL_MS) return true
+  const elapsed = now - lastLiveWrite.at
+  if (elapsed < MIN_WRITE_GAP_MS) return false
+  if (elapsed >= MIN_LIVE_INTERVAL_MS) return true
   return distanceMeters(lastLiveWrite.latitude, lastLiveWrite.longitude, latitude, longitude) >= MIN_LIVE_DISTANCE_M
 }
 

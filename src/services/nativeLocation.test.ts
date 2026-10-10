@@ -16,7 +16,7 @@ vi.mock('@capacitor/core', () => ({
 }))
 vi.mock('@capacitor/local-notifications', () => ({ LocalNotifications: { requestPermissions: vi.fn().mockResolvedValue({ display: 'granted' }) } }))
 
-import { buildLiveLocationRequest, postLiveLocationNative } from '@/data/liveLocationNative'
+import { buildHistoryPointRequest, buildLiveLocationRequest, postHistoryPointNative, postLiveLocationNative } from '@/data/liveLocationNative'
 import { watchPosition } from '@/services/geolocation'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import deployWorkflow from '../../.github/workflows/deploy.yml?raw'
@@ -117,6 +117,23 @@ describe('envío nativo de la posición en vivo', () => {
     await expect(postLiveLocationNative(args)).resolves.toBeUndefined()
     http.post.mockResolvedValueOnce({ status: 401 })
     await expect(postLiveLocationNative(args)).rejects.toThrow('401')
+  })
+  it('el rastro de la ruta también sale por la capa nativa (con la web se congelaba en segundo plano): mismo cuerpo que supabase-js, sin pisar nada', () => {
+    const req = buildHistoryPointRequest(args)
+    expect(req.url).toBe('https://x.supabase.co/rest/v1/member_location_history')
+    expect(req.headers).toMatchObject({ apikey: 'anon', Authorization: 'Bearer jwt', Prefer: 'return=minimal' })
+    expect(req.headers.Prefer).not.toContain('merge-duplicates') // cada punto es una fila nueva
+    expect(req.data).toEqual([{ member_id: 'mem', family_id: 'fam', latitude: 38.1, longitude: -0.85, recorded_at: args.recordedAt }])
+  })
+  it('un fallo al guardar un punto del rastro se nota', async () => {
+    http.post.mockResolvedValueOnce({ status: 201 })
+    await expect(postHistoryPointNative(args)).resolves.toBeUndefined()
+    http.post.mockResolvedValueOnce({ status: 403 })
+    await expect(postHistoryPointNative(args)).rejects.toThrow('403')
+  })
+  it('appendLocationHistoryPoint usa el camino nativo solo dentro de la app nativa', () => {
+    const src = FILES['/src/data/location.ts']
+    expect(src).toContain('await postHistoryPointNative({')
   })
   it('updateMemberLocation usa el camino nativo solo dentro de la app nativa y recuerda la familia en memoria', () => {
     const src = FILES['/src/data/location.ts']

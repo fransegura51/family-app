@@ -1,4 +1,4 @@
-import { postLiveLocationNative } from '@/data/liveLocationNative'
+import { postHistoryPointNative, postLiveLocationNative } from '@/data/liveLocationNative'
 import { supabase } from '@/data/supabaseClient'
 import { isNativeApp } from '@/services/nativeApp'
 import type {
@@ -214,6 +214,21 @@ export async function updateMemberLocation(memberId: string, latitude: number, l
 // shouldRecordHistoryPoint: solo cuando de verdad aporta algo nuevo al
 // trazo (se ha movido, o ha pasado un rato quieta en el mismo sitio).
 export async function appendLocationHistoryPoint(memberId: string, latitude: number, longitude: number): Promise<void> {
+  if (isNativeApp()) {
+    // Igual que la posición en vivo: la petición la hace la capa nativa para que funcione con el móvil bloqueado.
+    const ctx = await nativeWriteContext()
+    await postHistoryPointNative({
+      supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string,
+      anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      accessToken: ctx.accessToken,
+      familyId: ctx.familyId,
+      memberId,
+      latitude,
+      longitude,
+      recordedAt: new Date().toISOString(),
+    })
+    return
+  }
   const familyId = await currentFamilyId()
   const { error } = await supabase
     .from('member_location_history')

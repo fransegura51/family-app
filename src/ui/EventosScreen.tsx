@@ -1160,6 +1160,10 @@ function EventDetail({
   // oferta al resolver", pasa el testigo a ResolveGroupModal con la oferta ya elegida.
   const [comparingOffersGroup, setComparingOffersGroup] = useState<EventTaskGroup | null>(null)
   const [resolveWithOffer, setResolveWithOffer] = useState<EventTaskGroupOffer | null>(null)
+  // Orden de recuperación de requisitos (Parte C5) — "permitir plegar y desplegar" cada encargo por
+  // separado, sin afectar a los demás ni a los togglees globales de "Ver todas"/"Completadas" ya
+  // existentes. Empieza vacío (todos desplegados, comportamiento de siempre).
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set())
   // "Siguiente preparativo" — prompt efímero (solo en memoria, nunca persistido: ver el informe de la
   // tanda) mostrado una vez justo tras resolver un encargo o completar una tarea suelta. sourceLabel es
   // el texto de lo que se acaba de resolver/completar; createdKeys evita poder crear la misma sugerencia
@@ -1694,7 +1698,21 @@ function EventDetail({
                   // todos sus controles normales (checkbox, campana, ⋯...).
                   <div key={item.groupId} className="card member-form" style={{ background: groupColors.get(item.groupName) }}>
                     <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                      <strong>📦 {item.groupName.toUpperCase()}</strong>
+                      <button
+                        type="button"
+                        className="link-button"
+                        style={{ fontWeight: 'bold', textAlign: 'left' }}
+                        onClick={() =>
+                          setCollapsedGroupIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(item.groupId)) next.delete(item.groupId)
+                            else next.add(item.groupId)
+                            return next
+                          })
+                        }
+                      >
+                        {collapsedGroupIds.has(item.groupId) ? '▸' : '▾'} 📦 {item.groupName.toUpperCase()}
+                      </button>
                       {/* Bug real corregido (decisión explícita de la usuaria): todo "group" que llega aquí
                           tiene SIEMPRE al menos una tarea pendiente (buildTaskGroupRenderItems solo lo crea
                           a partir de visibleTasks, ya filtrado a !done) — así que un encargo con
@@ -1714,38 +1732,42 @@ function EventDetail({
                         </button>
                       </span>
                     </div>
-                    {item.group.resolvedAt && (
-                      <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-                        Antes resuelto: {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? 'otro']}
-                        {item.group.providerName ? ` · ${item.group.providerName}` : ''} — hay algo nuevo pendiente.
-                      </p>
+                    {!collapsedGroupIds.has(item.groupId) && (
+                      <>
+                        {item.group.resolvedAt && (
+                          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+                            Antes resuelto: {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? 'otro']}
+                            {item.group.providerName ? ` · ${item.group.providerName}` : ''} — hay algo nuevo pendiente.
+                          </p>
+                        )}
+                        <div className="event-list" style={{ marginTop: 6 }}>
+                          {item.tasks.map((t) => (
+                            <TaskCard
+                              key={t.id}
+                              task={t}
+                              decisions={taskDecisions}
+                              responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
+                              responsibleNames={taskResponsibleNames(t, familyMembers)}
+                              reminder={{
+                                reminders: taskReminders[t.id] ?? [],
+                                hint: reminderHintFor(t),
+                                gate: reminderGateFor(t),
+                                saving: savingReminderTaskId === t.id,
+                                onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
+                                onClear: () => void clearTaskReminders(t),
+                                onOpenCustom: () => setEditingTaskId(t.id),
+                                onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
+                                onEnableCalendar: () => enableCalendarForReminder(t),
+                              }}
+                              highlighted={t.id === deepLinkHighlightTaskId}
+                              onToggleDone={() => void completeTaskWithNextStep(t)}
+                              onEdit={() => setEditingTaskId(t.id)}
+                              onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
+                            />
+                          ))}
+                        </div>
+                      </>
                     )}
-                    <div className="event-list" style={{ marginTop: 6 }}>
-                      {item.tasks.map((t) => (
-                        <TaskCard
-                          key={t.id}
-                          task={t}
-                          decisions={taskDecisions}
-                          responsible={familyMembers.find((m) => m.id === t.assignedMemberId) ?? null}
-                          responsibleNames={taskResponsibleNames(t, familyMembers)}
-                          reminder={{
-                            reminders: taskReminders[t.id] ?? [],
-                            hint: reminderHintFor(t),
-                            gate: reminderGateFor(t),
-                            saving: savingReminderTaskId === t.id,
-                            onTogglePreset: (key) => void toggleTaskReminderPreset(t, key),
-                            onClear: () => void clearTaskReminders(t),
-                            onOpenCustom: () => setEditingTaskId(t.id),
-                            onNoDateTap: () => showToast('Añade una fecha a la tarea para poder configurar avisos.'),
-                            onEnableCalendar: () => enableCalendarForReminder(t),
-                          }}
-                          highlighted={t.id === deepLinkHighlightTaskId}
-                          onToggleDone={() => void completeTaskWithNextStep(t)}
-                          onEdit={() => setEditingTaskId(t.id)}
-                          onDelete={() => deleteEventTask(t.id).then(reloadTasks)}
-                        />
-                      ))}
-                    </div>
                   </div>
                 ),
               )}
@@ -5346,7 +5368,7 @@ function ResolveGroupModal({
 
   async function handleSubmit() {
     if (!method) {
-      setError('Elige cómo se ha resuelto.')
+      setError('Elige cómo lo vais a resolver.')
       return
     }
     if (method === 'empresa' && providerMode === 'existing' && !selectedProviderId) {
@@ -5408,8 +5430,11 @@ function ResolveGroupModal({
           </p>
           {error && <p className="error">{error}</p>}
           <OffersComparison group={group} providers={providers} onUseOffer={applyOfferToResolveForm} />
+          {/* Orden de recuperación de requisitos (Parte C3) — "revisar textos como «¿Cómo se ha
+              resuelto?» cuando todavía se está preparando la contratación": en pasado da a entender que
+              ya está hecho, justo cuando la familia está eligiendo. */}
           <div className="muted" style={{ fontSize: 12, fontWeight: 600, marginTop: 6 }}>
-            ¿Cómo se ha resuelto?
+            ¿Cómo lo vais a resolver?
           </div>
           <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
             {RESOLUTION_METHOD_OPTIONS.map((o) => (

@@ -120,7 +120,7 @@ describe('contenedor de Encargo en Preparativos (pendientes): un encabezado comp
     expect(PENDING_LIST).toContain('Resolver encargo')
   })
   it('dentro del contenedor, cada TaskCard no recibe groupName (el encabezado ya lo dice una vez) — mantiene sus controles normales', () => {
-    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    const groupBlock = window_(PENDING_LIST, "📦 {item.groupName.toUpperCase()}", '</div>\n                ),\n              )}')
     expect(groupBlock).not.toContain('groupName=')
     expect(groupBlock).toContain('onToggleDone={() => void completeTaskWithNextStep(t)}')
     expect(groupBlock).toContain('reminder={{')
@@ -138,12 +138,12 @@ describe('contenedor de Encargo en Preparativos (pendientes): un encabezado comp
   // nunca se oculta ni se borra.
   it('el botón "Resolver encargo" sale SIEMPRE que haya algo pendiente, incluso si el encargo ya tuvo una resolución antes', () => {
     expect(PENDING_LIST).not.toContain('item.group.resolvedAt ? (')
-    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    const groupBlock = window_(PENDING_LIST, "📦 {item.groupName.toUpperCase()}", '</div>\n                ),\n              )}')
     expect(groupBlock).toContain('<button type="button" className="link-button" onClick={() => setResolvingGroup(item.group)}>')
     expect(groupBlock).toContain('Resolver encargo')
   })
   it('si ya hubo una resolución antes, se muestra como referencia histórica ("Antes resuelto: …"), sin ocultar que hay algo nuevo pendiente', () => {
-    const groupBlock = window_(PENDING_LIST, "<strong>📦 {item.groupName.toUpperCase()}</strong>", '</div>\n                ),\n              )}')
+    const groupBlock = window_(PENDING_LIST, "📦 {item.groupName.toUpperCase()}", '</div>\n                ),\n              )}')
     expect(groupBlock).toContain('item.group.resolvedAt && (')
     expect(groupBlock).toContain('Antes resuelto: {RESOLUTION_METHOD_LABELS[item.group.resolutionMethod ?? \'otro\']}')
     expect(groupBlock).toContain('hay algo nuevo pendiente')

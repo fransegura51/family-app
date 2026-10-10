@@ -66,10 +66,10 @@ la trazabilidad de los commits ya hechos.
 | EVT-C2b | Contratar con varios proveedores en el mismo encargo | Pendiente | Un encargo solo admite una resolución/proveedor hoy |
 | EVT-C2c | Trazabilidad oferta→servicios→encargo→presupuesto→pago | Parcial | Oferta↔resolución sí; resolución/pago↔presupuesto sin FK (requiere Parte D) |
 | EVT-C3a | Distinguir presupuestar/elegir oferta/confirmar/ejecutar/completar tareas | Implementado | — |
-| EVT-C3b | Revisar el texto "¿Cómo se ha resuelto?" | Pendiente | Texto sin tocar desde el prompt |
+| EVT-C3b | Revisar el texto "¿Cómo se ha resuelto?" | Implementado (`bd28a6b`, "¿Cómo lo vais a resolver?") | — |
 | EVT-C4 | Precio total o desglosado al resolver, no sobrescribir sin confirmación | Parcial | Desglose solo existe hoy en Ofertas; `ResolveGroupModal`/`AddPaymentModal`/`AddBudgetItemModal` siguen con un único campo numérico |
 | EVT-C5a | Color por encargo, integrado con Pastel/Vivo/Neutro, sin fusionar | Implementado | — |
-| EVT-C5b | Plegar/desplegar cada encargo individualmente | Pendiente | Solo hay togglees globales (mostrar todas/completadas), no por encargo |
+| EVT-C5b | Plegar/desplegar cada encargo individualmente | Implementado (`bd28a6b`, `collapsedGroupIds`) | — |
 
 ## Parte D — Presupuesto (CONSOLIDADO) — también cubre EVT-006
 

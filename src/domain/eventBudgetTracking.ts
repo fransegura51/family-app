@@ -38,10 +38,32 @@ export function budgetItemAmounts(item: EventBudgetItem, payments: EventPayment[
 // unidad mínima). null = "sin asignar", siempre su propio grupo al final, nunca mezclado con uno real.
 export type BudgetGroupCriterion = 'categoria' | 'encargo' | 'proveedor'
 
+// Punto 3.1 (prompt de correcciones) — "Por categoría" agrupa por categoryGroup (la categoría REAL,
+// compartida por varias partidas, p. ej. "Flores y decoración"), nunca por `category` (el nombre propio
+// de cada partida, único por construcción — agrupar por ahí daba casi una categoría por partida).
 export function groupKeyForBudgetItem(item: EventBudgetItem, criterion: BudgetGroupCriterion): string | null {
-  if (criterion === 'categoria') return item.category || null
+  if (criterion === 'categoria') return item.categoryGroup || null
   if (criterion === 'encargo') return item.groupId
   return item.providerId
+}
+
+// Punto 3.6 (prompt de correcciones) — un subtotal de grupo nunca debe esconder que algunas partidas
+// todavía no tienen importe: sumarlas como si fueran 0€ haría parecer el grupo más barato de lo que de
+// verdad es. `known` es la suma solo de las que SÍ tienen importe; `unknownCount` cuántas no lo tienen
+// todavía — la UI muestra el subtotal conocido y, si unknownCount > 0, un aviso compacto aparte.
+export interface BudgetGroupSubtotal {
+  known: number
+  unknownCount: number
+}
+
+export function budgetGroupSubtotal(items: EventBudgetItem[]): BudgetGroupSubtotal {
+  let known = 0
+  let unknownCount = 0
+  for (const i of items) {
+    if (i.plannedAmount == null) unknownCount++
+    else known += i.plannedAmount
+  }
+  return { known, unknownCount }
 }
 
 // EVT-E2 — barra de progreso de un pago: fracción pagada sobre el total, SIEMPRE entre 0 y 1 (un pago

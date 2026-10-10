@@ -99,6 +99,7 @@ import {
   listEventBudgetItemHistory,
   listEventPaymentEntries,
   listDistinctEventBudgetCategorySuggestions,
+  listDistinctEventBudgetCategoryGroupSuggestions,
   saveEventPaymentAttachment,
   getEventPaymentAttachmentUrl,
   listEventDayPlan,
@@ -231,6 +232,7 @@ import {
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, unitAndAmountFromMinutes, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
 import {
+  budgetGroupSubtotal,
   budgetItemAmounts,
   groupKeyForBudgetItem,
   groupKeyForPayment,
@@ -240,6 +242,7 @@ import {
   type PaymentGroupCriterion,
   type PaymentSortCriterion,
 } from '@/domain/eventBudgetTracking'
+import { suggestBudgetCategoryGroup } from '@/domain/eventBudgetCategoryGroups'
 import { errorMessage } from '@/domain/errorMessage'
 import {
   addProviderGlobal,
@@ -5418,8 +5421,11 @@ function AdditionalProvidersPanel({ group }: { group: EventTaskGroup }) {
 // ACTUALES de este encargo (las que llegan en `tasks`, ya filtradas por el padre) — nunca una tarea
 // posterior y distinta aunque su título se parezca (p. ej. "Recoger las flores" nunca se completa aquí).
 // Si el método es "Empresa/proveedor", el proveedor (ya existente o nuevo, vía el sistema de Proveedores
-// de siempre) y el precio TOTAL opcional (nunca repetido por tarea) se guardan en el propio encargo —
-// nunca en event_budget_items, para no duplicar ninguna partida de Presupuesto ya existente por decisión.
+// de siempre) y el precio TOTAL opcional (nunca repetido por tarea) se guardan en el propio encargo.
+// Punto 3.3 (prompt de correcciones) — esto NUNCA crea ni reescribe el importe de una partida de
+// Presupuesto; si ya existe una única partida real generada por una decisión para este mismo encargo
+// (mismo group_id, ver executeReconcileActions), el pago se enlaza a ella y se le copia el proveedor si no
+// tenía — aprovechar una relación real, nunca duplicarla ni inventarla.
 function ResolveGroupModal({
   event,
   group,
@@ -5516,8 +5522,19 @@ function ResolveGroupModal({
       let paymentId: string | null = null
       const amount = Number(price)
       if (method === 'empresa' && price.trim() !== '' && !Number.isNaN(amount) && amount > 0) {
+        // Punto 3.3 (prompt de correcciones) — si hay una ÚNICA partida de presupuesto ya vinculada a este
+        // mismo encargo (p. ej. porque la generó una decisión del configurador con el mismo groupKind, ver
+        // executeReconcileActions), se aprovecha esa relación real: el pago nace ya enlazado a ella y, si
+        // todavía no tenía proveedor, se le copia el que se acaba de elegir. Con más de una partida en el
+        // mismo encargo no se adivina a cuál corresponde — nunca se inventa una relación dudosa.
+        const budgetItems = await listEventBudgetItems(event.id)
+        const matchingBudgetItems = budgetItems.filter((b) => b.groupId === group.id)
+        const matchedBudgetItem = matchingBudgetItems.length === 1 ? matchingBudgetItems[0] : null
         // UN único pago por el TOTAL del encargo — nunca uno por tarea ni por decisión (ver cabecera).
-        paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })
+        paymentId = await addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName, budgetItemId: matchedBudgetItem?.id ?? null })
+        if (matchedBudgetItem && matchedBudgetItem.providerId == null && providerId) {
+          await updateEventBudgetItem(matchedBudgetItem.id, { providerId })
+        }
       }
       await resolveEventTaskGroup(group.id, { method, note: note.trim() ? note.trim() : null, providerId, providerName, paymentId, offerId: usedOfferId })
       // Fase 7 (Parte C3, decisión explícita del usuario): "contratar" y "completar tareas" son acciones
@@ -12904,12 +12921,34 @@ const BUDGET_GROUP_OPTIONS: { value: 'ninguno' | BudgetGroupCriterion; label: st
   { value: 'proveedor', label: 'Por proveedor' },
 ]
 
+// Punto 3.5 — un indicador compacto con su explicación detrás de un icono ⓘ (patrón <details>/<summary> ya
+// usado en el resto de la app, p. ej. DecisionSummaryDetails), en vez de un párrafo fijo siempre visible.
+// value === null es "no aplica aquí" (p. ej. Gastado en Economía sin etiqueta todavía) — nunca se confunde
+// con un 0,00 € real.
+function BudgetSummaryTile({ label, value, info }: { label: string; value: number | null; info: string }) {
+  return (
+    <div className="card" style={{ padding: 8, margin: 0 }}>
+      <div className="muted" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+        {label}
+        <details>
+          <summary style={{ display: 'inline', cursor: 'pointer' }} aria-label={`Qué significa ${label}`}>
+            ⓘ
+          </summary>
+          <p style={{ fontSize: 11, margin: '4px 0 0' }}>{info}</p>
+        </details>
+      </div>
+      <strong>{value == null ? '—' : `${value.toFixed(2)} €`}</strong>
+    </div>
+  )
+}
+
 function BudgetSection({ event }: { event: FamilyEvent }) {
   const [items, setItems] = useState<EventBudgetItem[]>([])
   const [payments, setPayments] = useState<EventPayment[]>([])
   const [providers, setProviders] = useState<EventProvider[]>([])
   const [groups, setGroups] = useState<EventTaskGroup[]>([])
   const [categorySuggestions, setCategorySuggestions] = useState<string[]>([])
+  const [categoryGroupSuggestions, setCategoryGroupSuggestions] = useState<string[]>([])
   const [spent, setSpent] = useState<number | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -12930,6 +12969,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
     listEventProviders(event.id).then(setProviders).catch(() => setProviders([]))
     listEventTaskGroups(event.id).then(setGroups).catch(() => setGroups([]))
     listDistinctEventBudgetCategorySuggestions().then(setCategorySuggestions).catch(() => setCategorySuggestions([]))
+    listDistinctEventBudgetCategoryGroupSuggestions().then(setCategoryGroupSuggestions).catch(() => setCategoryGroupSuggestions([]))
     if (event.tagId) {
       // Petición real: "no sé en qué circunstancias se podría dar que
       // se haga un traspaso entre cuentas por un cumpleaños pero más
@@ -12952,9 +12992,11 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
 
   const planned = items.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
   // Fase 3 (bug real: un encargo resuelto con proveedor y 100€ no aparecía en Presupuesto aunque sí
-  // estaba en Pagos y fianzas) — se enseña "Comprometido vía encargos" aparte de lo Planeado y de lo
-  // Gastado en Economía, nunca sumado con ellos. Fase 9 — "Pagado" distinto de "Comprometido": un
-  // encargo comprometido a 500€ con 200€ pagados no es "pagado 500€".
+  // estaba en Pagos y fianzas) — se enseña "Comprometido" aparte de lo Planificado y de lo Gastado en
+  // Economía, nunca sumado con ellos. Fase 9 — "Pagado" distinto de "Comprometido": un pago comprometido
+  // a 500€ con 200€ pagados no es "pagado 500€". Punto 3.4 — el nombre ya no sugiere que venga siempre de
+  // un encargo concreto: un pago puede registrarse directamente en Pagos y fianzas sin pasar por ninguno,
+  // así que la coletilla antigua no reflejaba de dónde sale de verdad esta cifra.
   const committed = payments.length > 0 ? payments.reduce((sum, p) => sum + p.totalAmount, 0) : null
   const paidOfCommitted = payments.length > 0 ? payments.reduce((sum, p) => sum + p.depositPaid, 0) : null
 
@@ -12982,6 +13024,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
           providers={providers}
           groups={groups}
           categorySuggestions={categorySuggestions}
+          categoryGroupSuggestions={categoryGroupSuggestions}
           onDone={() => setEditingItemId(null)}
           onSaved={() => {
             setEditingItemId(null)
@@ -12992,10 +13035,14 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
     }
     const amounts = budgetItemAmounts(i, payments)
     return (
-      // Un <div> con onClick, no un <button> — ConfirmIconButton ya monta su propio <button> dentro
-      // y HTML no permite anidar botones (mismo patrón que MovementRow, FinanceScreen.tsx).
-      <div key={i.id} className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setEditingItemId(i.id)}>
-        <span style={{ flex: 1 }}>
+      // Punto 3.7 (prompt de correcciones) — un nombre largo ("Ramo de novia con peonías importadas de
+      // temporada") en una sola fila flex empujaba el importe y el botón de borrar a una posición rara en
+      // cuanto el nombre envolvía a dos líneas. Ahora son dos filas SIEMPRE: el nombre (y su sub-línea de
+      // Comprometido/Pagado si la hay) ocupa todo el ancho arriba; importe y borrar van abajo, cada uno en
+      // su sitio fijo, sin depender de cuánto envuelva el nombre. Un <div> con onClick, no un <button> —
+      // ConfirmIconButton ya monta su propio <button> dentro y HTML no permite anidar botones.
+      <div key={i.id} style={{ cursor: 'pointer' }} onClick={() => setEditingItemId(i.id)}>
+        <div>
           {i.category}
           {(amounts.committed != null || amounts.paid > 0) && (
             <span className="muted" style={{ fontSize: 11, display: 'block' }}>
@@ -13004,16 +13051,18 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
               {amounts.paid > 0 && `Pagado ${amounts.paid.toFixed(2)} €`}
             </span>
           )}
-        </span>
-        {/* Bloque 11 (cola nocturna) — un concepto propuesto por PEPA (o creado a mano sin importe
-            todavía) tiene plannedAmount:null; nunca se enseña como "0,00 €", que parecería una cifra
-            real puesta a propósito. Tocar la fila la abre para editar (mismo patrón que Movimientos). */}
-        <span className={i.plannedAmount == null ? 'muted' : undefined}>{i.plannedAmount == null ? 'Sin importe todavía' : `${i.plannedAmount.toFixed(2)} €`}</span>
-        {/* La fila entera abre la edición al tocarla — este botón no debe además "colarse" como un
-            toque a la fila (entraría en edición Y armaría el borrado a la vez). */}
-        <span onClick={(e) => e.stopPropagation()}>
-          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
-        </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+          {/* Bloque 11 (cola nocturna) — un concepto propuesto por PEPA (o creado a mano sin importe
+              todavía) tiene plannedAmount:null; nunca se enseña como "0,00 €", que parecería una cifra
+              real puesta a propósito. Tocar la fila la abre para editar (mismo patrón que Movimientos). */}
+          <span className={i.plannedAmount == null ? 'muted' : undefined}>{i.plannedAmount == null ? 'Sin importe todavía' : `${i.plannedAmount.toFixed(2)} €`}</span>
+          {/* La fila entera abre la edición al tocarla — este botón no debe además "colarse" como un
+              toque a la fila (entraría en edición Y armaría el borrado a la vez). */}
+          <span onClick={(e) => e.stopPropagation()}>
+            <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
+          </span>
+        </div>
       </div>
     )
   }
@@ -13036,7 +13085,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       const groupItems = byKey.get(key)!
       const keyLabel = key ?? '\u0000sin-asignar'
       const collapsed = collapsedGroups.has(keyLabel)
-      const subtotalPlanned = groupItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
+      const { known: subtotalPlanned, unknownCount } = budgetGroupSubtotal(groupItems)
       return (
         <div key={keyLabel} style={{ marginBottom: 6 }}>
           <button
@@ -13055,6 +13104,9 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
             {collapsed ? '▸' : '▾'} {labelForGroupKey(key)}{' '}
             <span className="muted" style={{ fontWeight: 400 }}>
               ({groupItems.length}) · {subtotalPlanned.toFixed(2)} €
+              {/* Punto 3.6 — un subtotal nunca esconde que alguna partida del grupo no tiene importe
+                  todavía: el conocido se suma tal cual, y lo que falta se avisa aparte, nunca como 0€. */}
+              {unknownCount > 0 && ` + ${unknownCount} sin importe`}
             </span>
           </button>
           {!collapsed && groupItems.map(renderRow)}
@@ -13066,34 +13118,28 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>💰 Presupuesto</strong>
-      <p className="muted" style={{ margin: '4px 0' }}>
-        Planeado: <strong>{planned.toFixed(2)} €</strong>
-        {spent !== null && (
-          <>
-            {' · '}Gastado en Economía: <strong>{spent.toFixed(2)} €</strong>
-          </>
-        )}
-      </p>
-      {spent !== null && (
-        <p className="muted" style={{ fontSize: 12 }}>
-          Se suma solo lo etiquetado "{event.title}" en Economía — pon esa etiqueta a los gastos del evento para que cuenten aquí, sin duplicar nada.
-        </p>
-      )}
-      {committed !== null && committed > 0 && (
-        <p className="muted" style={{ margin: '4px 0' }}>
-          Comprometido vía encargos: <strong>{committed.toFixed(2)} €</strong>
-        </p>
-      )}
-      {committed !== null && committed > 0 && (
-        <p className="muted" style={{ fontSize: 12 }}>
-          Suma del total de cada pago en "🧾 Pagos y fianzas" (resuelto o no), se haya pagado ya o no — aparte de lo Planeado y de lo Gastado en Economía, nunca sumado con ellos.
-        </p>
-      )}
-      {committed !== null && committed > 0 && paidOfCommitted !== null && (
-        <p className="muted" style={{ margin: '4px 0' }}>
-          Pagado de lo comprometido: <strong>{paidOfCommitted.toFixed(2)} €</strong> de {committed.toFixed(2)} €
-        </p>
-      )}
+      {/* Punto 3.4/3.5 (prompt de correcciones) — 4 indicadores compactos, dos filas, cada uno con su
+          explicación detrás de un icono ⓘ en vez de un párrafo fijo ocupando media pantalla. El nombre de
+          "Comprometido" ya no sugiere que venga de un encargo concreto (un pago puede registrarse sin
+          pasar por ninguno) — su ⓘ dice de dónde sale de verdad: lo registrado en Pagos y fianzas. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, margin: '8px 0' }}>
+        <BudgetSummaryTile
+          label="Planificado"
+          value={planned}
+          info="Importe estimado de cada partida — lo que habéis puesto como presupuesto, sume o no sume todavía ninguna partida importe real."
+        />
+        <BudgetSummaryTile
+          label="Comprometido"
+          value={committed ?? 0}
+          info='Suma de los pagos ya registrados en "🧾 Pagos y fianzas" (resuelto o no, se haya pagado ya o no) — lo que habéis aceptado pagar. Un pago parcial no lo aumenta: solo reduce lo pendiente. Aparte de Planificado y de Gastado en Economía, nunca sumado con ellos.'
+        />
+        <BudgetSummaryTile label="Pagado" value={paidOfCommitted ?? 0} info="Cuánto de ese Comprometido se ha pagado ya de verdad, nunca igualado al total solo porque el pago esté resuelto." />
+        <BudgetSummaryTile
+          label="Gastado en Economía"
+          value={spent}
+          info={`Se suma solo lo etiquetado "${event.title}" en Economía — pon esa etiqueta a los gastos del evento para que cuenten aquí, sin duplicar nada.`}
+        />
+      </div>
       {error && <p className="error">{error}</p>}
       {items.length > 0 && (
         <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
@@ -13117,6 +13163,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
           providers={providers}
           groups={groups}
           categorySuggestions={categorySuggestions}
+          categoryGroupSuggestions={categoryGroupSuggestions}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -13146,6 +13193,7 @@ function AddBudgetItemModal({
   providers,
   groups,
   categorySuggestions,
+  categoryGroupSuggestions,
   onClose,
   onAdded,
 }: {
@@ -13153,6 +13201,7 @@ function AddBudgetItemModal({
   providers: EventProvider[]
   groups: EventTaskGroup[]
   categorySuggestions: string[]
+  categoryGroupSuggestions: string[]
   onClose: () => void
   onAdded: () => void
 }) {
@@ -13162,6 +13211,15 @@ function AddBudgetItemModal({
   const [groupId, setGroupId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Punto 3.1 — PEPA sugiere sola la categoría real a partir del concepto, mientras la familia no la haya
+  // tocado a mano; en cuanto la edita, deja de seguir al concepto (mismo criterio de "no sobrescribir una
+  // vez tocado" que el resto de la app, ver isTaskUntouched/isBudgetItemUntouched).
+  const [categoryGroup, setCategoryGroup] = useState('')
+  const [categoryGroupTouched, setCategoryGroupTouched] = useState(false)
+  useEffect(() => {
+    if (!categoryGroupTouched) setCategoryGroup(category.trim() ? suggestBudgetCategoryGroup(category) : '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category])
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -13177,6 +13235,7 @@ function AddBudgetItemModal({
       await addEventBudgetItem(eventId, category, amount.trim() === '' ? null : Number(amount), null, {
         providerId: providerId || null,
         groupId: groupId || null,
+        categoryGroup: categoryGroup || null,
       })
       onAdded()
     } catch (err) {
@@ -13202,6 +13261,18 @@ function AddBudgetItemModal({
           <label>
             Concepto
             <CategoryInputWithSuggestions id="budget-category-suggestions-add" value={category} onChange={setCategory} suggestions={categorySuggestions} />
+          </label>
+          <label>
+            Categoría
+            <CategoryInputWithSuggestions
+              id="budget-category-group-suggestions-add"
+              value={categoryGroup}
+              onChange={(v) => {
+                setCategoryGroupTouched(true)
+                setCategoryGroup(v)
+              }}
+              suggestions={categoryGroupSuggestions}
+            />
           </label>
           <label>
             Presupuesto (€)
@@ -13254,6 +13325,7 @@ function EditBudgetItemInline({
   providers,
   groups,
   categorySuggestions,
+  categoryGroupSuggestions,
   onDone,
   onSaved,
 }: {
@@ -13262,6 +13334,7 @@ function EditBudgetItemInline({
   providers: EventProvider[]
   groups: EventTaskGroup[]
   categorySuggestions: string[]
+  categoryGroupSuggestions: string[]
   onDone: () => void
   onSaved: () => void
 }) {
@@ -13273,6 +13346,15 @@ function EditBudgetItemInline({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showMore, setShowMore] = useState(false)
+  // Punto 3.1 — una partida que YA tenía categoría (lo normal, PEPA la pone sola al crearla) se trata como
+  // "tocada": retocar el Concepto nunca le cambia la categoría sin avisar. Solo una partida histórica sin
+  // categoría todavía sigue la sugerencia en vivo mientras no se edite a mano.
+  const [categoryGroup, setCategoryGroup] = useState(item.categoryGroup ?? '')
+  const [categoryGroupTouched, setCategoryGroupTouched] = useState(item.categoryGroup != null)
+  useEffect(() => {
+    if (!categoryGroupTouched) setCategoryGroup(category.trim() ? suggestBudgetCategoryGroup(category) : '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category])
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -13288,6 +13370,7 @@ function EditBudgetItemInline({
         plannedAmount: amount.trim() === '' ? null : Number(amount),
         providerId: providerId || null,
         groupId: groupId || null,
+        categoryGroup: categoryGroup || null,
         committedAmount: committedAmount.trim() === '' ? null : Number(committedAmount),
       })
       onSaved()
@@ -13305,6 +13388,20 @@ function EditBudgetItemInline({
       <div className="inline-fields" style={{ alignItems: 'center' }}>
         <CategoryInputWithSuggestions id={`budget-category-suggestions-${item.id}`} value={category} onChange={setCategory} suggestions={categorySuggestions} />
         <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Sin importe" style={{ width: 100 }} />
+      </div>
+      <div className="inline-fields" style={{ marginTop: 4 }}>
+        <label style={{ flex: 1, fontSize: 12 }}>
+          Categoría
+          <CategoryInputWithSuggestions
+            id={`budget-category-group-suggestions-${item.id}`}
+            value={categoryGroup}
+            onChange={(v) => {
+              setCategoryGroupTouched(true)
+              setCategoryGroup(v)
+            }}
+            suggestions={categoryGroupSuggestions}
+          />
+        </label>
       </div>
       {(amounts.committed != null || amounts.paid > 0) && (
         <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>

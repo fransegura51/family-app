@@ -28,7 +28,9 @@ describe('PaymentsSection — el proveedor se ve siempre junto al concepto, nunc
 
 describe('ResolveGroupModal — el pago de un encargo resuelto con proveedor guarda su nombre, no solo el id', () => {
   it('addEventPayment recibe providerName además de providerId, para que sobreviva si el proveedor se edita/borra luego', () => {
-    expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })')
+    expect(RESOLVE_MODAL).toContain(
+      'addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName, budgetItemId: matchedBudgetItem?.id ?? null })',
+    )
   })
 })
 

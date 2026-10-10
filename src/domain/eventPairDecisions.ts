@@ -514,7 +514,10 @@ export type ReconcileAction =
   | { op: 'complete_task'; id: string }
   | { op: 'delete_task'; id: string }
   | { op: 'detach_task'; id: string }
-  | { op: 'create_budget'; category: string }
+  // Punto 3.2 (prompt de correcciones) — mismo groupKind que su tarea hermana cuando desired lo pide (hoy
+  // floral/"Flores"): la partida de presupuesto queda agrupada "Por encargo" en vez de "Sin encargo" sin
+  // obligar a la familia a enlazarla a mano, igual que ya pasa con create_task.
+  | { op: 'create_budget'; category: string; groupKind?: string | null; groupDefaultName?: string | null }
   | { op: 'update_budget'; id: string; category: string }
   | { op: 'delete_budget'; id: string }
   | { op: 'detach_budget'; id: string }
@@ -554,7 +557,13 @@ export function reconcilePairGeneration(desired: DesiredPairGeneration, existing
   }
 
   if (desired.budgetCategory) {
-    if (!existingBudget) actions.push({ op: 'create_budget', category: desired.budgetCategory })
+    if (!existingBudget) {
+      actions.push(
+        desired.groupKind
+          ? { op: 'create_budget', category: desired.budgetCategory, groupKind: desired.groupKind, groupDefaultName: desired.groupDefaultName }
+          : { op: 'create_budget', category: desired.budgetCategory },
+      )
+    }
     else if (existingBudget.category !== desired.budgetCategory && isBudgetItemUntouched(existingBudget)) {
       actions.push({ op: 'update_budget', id: existingBudget.id, category: desired.budgetCategory })
     }

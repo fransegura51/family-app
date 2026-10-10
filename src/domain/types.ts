@@ -1009,6 +1009,10 @@ export interface EventBudgetItem {
   providerId: string | null
   groupId: string | null
   categoryId: string | null
+  // Punto 3.1 (prompt de correcciones) — categoría REAL compartida ("Flores y decoración"), distinta de
+  // `category` (el nombre propio de la partida, p. ej. "Ramo de Jennifer"): PEPA la sugiere sola
+  // (ver suggestBudgetCategoryGroup) y la familia puede corregirla. Es la que agrupa "Por categoría".
+  categoryGroup: string | null
   // "Comprometido" manual: null = se calcula sumando lo que corresponda del encargo enlazado (groupId);
   // nunca 0 como "no lo sé" (mismo criterio que plannedAmount).
   committedAmount: number | null

@@ -99,6 +99,7 @@ export function makeBudget(overrides: Partial<EventBudgetItem> = {}): EventBudge
     providerId: null,
     groupId: null,
     categoryId: null,
+    categoryGroup: null,
     committedAmount: null,
     ...overrides,
   }

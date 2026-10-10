@@ -40,6 +40,19 @@ describe('bloque H: la reconciliación automática nunca toca group_id', () => {
     expect(completeBlock).not.toContain('group_id')
     expect(deleteBlock).not.toContain('group_id')
   })
+  it('Punto 3.2 — create_budget agrupa la partida en el MISMO encargo que su tarea hermana, SI action.groupKind lo pide (misma condición que create_task, nunca incondicional)', () => {
+    const block = window_(body, "case 'create_budget': {", "case 'update_budget': {")
+    expect(block).toContain('action.groupKind ? await findOrCreateEventTaskGroupByKind(eventId, familyId, action.groupKind, action.groupDefaultName ?? action.groupKind) : null')
+    expect(block).toContain('group_id: groupId')
+  })
+  it('update_budget/delete_budget/detach_budget nunca tocan group_id — solo create_budget agrupa, nunca retroactivamente', () => {
+    const updateBlock = window_(body, "case 'update_budget': {", "case 'delete_budget': {")
+    const deleteBlock = window_(body, "case 'delete_budget': {", "case 'detach_budget': {")
+    const detachBlock = window_(body, "case 'detach_budget': {", '\n    }\n  }\n}')
+    expect(updateBlock).not.toContain('group_id')
+    expect(deleteBlock).not.toContain('group_id')
+    expect(detachBlock).not.toContain('group_id')
+  })
 })
 
 describe('isTaskUntouched protege una tarea agrupada igual que una con fecha/responsable/calendario', () => {

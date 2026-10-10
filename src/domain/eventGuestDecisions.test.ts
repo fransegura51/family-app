@@ -65,6 +65,7 @@ function makeBudgetItem(overrides: Partial<EventBudgetItem> = {}): EventBudgetIt
     providerId: null,
     groupId: null,
     categoryId: null,
+    categoryGroup: null,
     committedAmount: null,
     ...overrides,
   }

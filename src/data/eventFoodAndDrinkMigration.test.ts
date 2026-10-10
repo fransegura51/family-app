@@ -83,7 +83,9 @@ describe('Capa de datos — protección de lo real', () => {
     expect(adopt).toContain(".is('planned_amount', null)")
   })
   it('el ejecutor sigue creando los conceptos de presupuesto con importe null', () => {
-    expect(DATA).toContain('planned_amount: null, sort_order: Date.now(), decision_id: decisionId')
+    const createBudgetBlock = slice(DATA, "case 'create_budget': {", "case 'update_budget': {")
+    expect(createBudgetBlock).toContain('planned_amount: null,')
+    expect(createBudgetBlock).toContain('decision_id: decisionId,')
     expect(DATA).not.toMatch(/planned_amount:\s*0\b/)
   })
   it('el Plan del día de comida va sin hora y solo vía el reconciliador puro, por identidad estable', () => {

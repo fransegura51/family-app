@@ -23,8 +23,10 @@ describe('Parte D — "Pagado de lo comprometido" es una CUARTA cifra, nunca igu
     expect((reloadFn.match(/listEventPayments\(/g) ?? []).length).toBe(1)
     expect(BUDGET_SECTION).toContain('const paidOfCommitted = payments.length > 0 ? payments.reduce((sum, p) => sum + p.depositPaid, 0) : null')
   })
-  it('se muestra junto al total comprometido ("X € de Y €"), nunca como una cifra suelta sin ese contexto', () => {
-    expect(BUDGET_SECTION).toContain('Pagado de lo comprometido: <strong>{paidOfCommitted.toFixed(2)} €</strong> de {committed.toFixed(2)} €')
+  it('se muestra en su propio indicador ("Pagado"), calculado aparte de "Comprometido" (nunca la misma cifra)', () => {
+    expect(BUDGET_SECTION).toContain('label="Pagado"')
+    const tile = window_(BUDGET_SECTION, 'label="Pagado"', '/>')
+    expect(tile).toContain('value={paidOfCommitted ?? 0}')
   })
 })
 

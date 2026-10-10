@@ -115,6 +115,7 @@ function makeBudgetItem(overrides: Partial<EventBudgetItem> = {}): EventBudgetIt
     providerId: null,
     groupId: null,
     categoryId: null,
+    categoryGroup: null,
     committedAmount: null,
     ...overrides,
   }
@@ -587,6 +588,25 @@ describe('Reconciliación — nunca "borrar siempre" ni "nunca borrar" (acción 
     const budget = makeBudgetItem({ category: 'Ramo de Laura' })
     const retitled = reconcilePairGeneration(florero, task, budget).actions
     expect(retitled).toEqual([{ op: 'update_task', id: 't1', title: 'Encargar ramo de Laura' }])
+  })
+
+  it('Punto 3.2 (prompt de correcciones) — groupKind viaja TAMBIÉN en create_budget, misma tanda que su tarea hermana: la partida nace ya en "Flores", nunca "Sin encargo"', () => {
+    const florero = { taskTitle: 'Encargar ramo de Laura', budgetCategory: 'Ramo de Laura', providerCategory: 'Floristería', resolved: false, groupKind: 'flores', groupDefaultName: 'Flores' }
+    const { actions } = reconcilePairGeneration(florero, undefined, undefined)
+    expect(actions).toEqual(expect.arrayContaining([{ op: 'create_budget', category: 'Ramo de Laura', groupKind: 'flores', groupDefaultName: 'Flores' }]))
+  })
+
+  it('una partida de presupuesto YA existente nunca se (re)agrupa retroactivamente — update_budget nunca lleva groupKind', () => {
+    const florero = { taskTitle: 'Encargar ramo de Laura', budgetCategory: 'Ramo de Laura María', providerCategory: 'Floristería', resolved: false, groupKind: 'flores', groupDefaultName: 'Flores' }
+    const budget = makeBudgetItem({ category: 'Ramo de Laura' })
+    const actions = reconcilePairGeneration(florero, undefined, budget).actions
+    expect(actions).toEqual(expect.arrayContaining([{ op: 'update_budget', id: 'b1', category: 'Ramo de Laura María' }]))
+  })
+
+  it('una decisión sin groupKind (p. ej. Vestuario) sigue generando create_budget exactamente igual que siempre, sin el campo', () => {
+    const desired = { taskTitle: 'Elegir vestido de Laura', budgetCategory: 'Vestido de Laura', providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null }
+    const { actions } = reconcilePairGeneration(desired, undefined, undefined)
+    expect(actions).toEqual(expect.arrayContaining([{ op: 'create_budget', category: 'Vestido de Laura' }]))
   })
 
   it('ya existe y coincide: no hace nada (responder dos veces lo mismo no duplica)', () => {

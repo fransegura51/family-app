@@ -180,11 +180,22 @@ describe('ResolveGroupModal — "contratar" nunca completa tareas (Fase 7, Parte
   it('el aviso informativo deja claro que resolver no completa las tareas — hay que marcarlas a mano', () => {
     expect(RESOLVE_MODAL).toContain('no las completa: marca cada una a mano cuando esté hecha de verdad')
   })
-  it('el precio TOTAL (si se pone) crea UN único event_payments — nunca uno por tarea, nunca toca event_budget_items', () => {
-    expect(RESOLVE_MODAL).toContain('addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName })')
+  it('el precio TOTAL (si se pone) crea UN único event_payments — nunca uno por tarea, nunca CREA una partida de presupuesto nueva', () => {
+    expect(RESOLVE_MODAL).toContain(
+      'addEventPayment(event.id, { concept: group.name, totalAmount: amount, depositPaid: 0, providerId, providerName, budgetItemId: matchedBudgetItem?.id ?? null })',
+    )
     expect((RESOLVE_MODAL.match(/addEventPayment\(/g) ?? []).length).toBe(1)
-    expect(RESOLVE_MODAL).not.toContain('event_budget_items')
     expect(RESOLVE_MODAL).not.toContain('addEventBudgetItem')
+  })
+  it('Punto 3.3 (prompt de correcciones) — si hay UNA única partida ya vinculada a este encargo, el pago se enlaza a ella y le copia el proveedor (si no tenía); con varias no se adivina ninguna, nunca se inventa la relación', () => {
+    expect(RESOLVE_MODAL).toContain('const matchingBudgetItems = budgetItems.filter((b) => b.groupId === group.id)')
+    expect(RESOLVE_MODAL).toContain('const matchedBudgetItem = matchingBudgetItems.length === 1 ? matchingBudgetItems[0] : null')
+    expect(RESOLVE_MODAL).toContain('if (matchedBudgetItem && matchedBudgetItem.providerId == null && providerId) {')
+    expect(RESOLVE_MODAL).toContain('await updateEventBudgetItem(matchedBudgetItem.id, { providerId })')
+    // Nunca toca el importe planeado/comprometido manual de la partida — solo la relación (budget_item_id
+    // en el pago, provider_id en la partida), los mismos conceptos que EVT-C2c/EVT-D2 ya enlazan.
+    expect(RESOLVE_MODAL).not.toMatch(/updateEventBudgetItem\([^)]*plannedAmount/)
+    expect(RESOLVE_MODAL).not.toMatch(/updateEventBudgetItem\([^)]*committedAmount/)
   })
   it('un proveedor nuevo se da de alta vía el sistema de Proveedores de siempre (addEventProvider), nunca un modelo paralelo', () => {
     expect(RESOLVE_MODAL).toContain('addEventProvider(event.id, { name: newProviderName })')

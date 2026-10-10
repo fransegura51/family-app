@@ -51,14 +51,14 @@ describe('Parte D1 — Comprometido/Pagado calculados POR PARTIDA, no solo agreg
 })
 
 describe('Parte D (migración 0235) — enlaces proveedor/encargo/categoría y Comprometido manual', () => {
-  it('event_budget_items select incluye las 4 columnas nuevas', () => {
+  it('event_budget_items select incluye las columnas nuevas (Punto 3.1 — también category_group, la categoría real)', () => {
     expect(DATA).toContain(
-      "const BUDGET_ITEM_SELECT =\n  'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id, provider_id, group_id, category_id, committed_amount'",
+      "const BUDGET_ITEM_SELECT =\n  'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id, provider_id, group_id, category_id, category_group, committed_amount'",
     )
   })
-  it('addEventBudgetItem acepta providerId/groupId opcionales, sin romper las llamadas antiguas (3 argumentos)', () => {
+  it('addEventBudgetItem acepta providerId/groupId/categoryGroup opcionales, sin romper las llamadas antiguas (3 argumentos)', () => {
     const fn = window_(DATA, 'export async function addEventBudgetItem(', '\n  if (error) throw error\n}')
-    expect(fn).toContain('extra?: { providerId?: string | null; groupId?: string | null; categoryId?: string | null }')
+    expect(fn).toContain('extra?: { providerId?: string | null; groupId?: string | null; categoryId?: string | null; categoryGroup?: string | null }')
   })
 })
 

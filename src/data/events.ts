@@ -16,6 +16,7 @@ import { proposeTaskPriority, type DecisionLookup, type PriorityReason, type Tas
 import { computePrioritySuggestion } from '@/domain/eventTaskPrioritySuggestion'
 import { computeAllEventAlerts, EVENT_TYPE_META, generateAutoTasks, type EventAlertInput, type EventAlertSummary, type FoodNeedsAlertInput } from '@/domain/events'
 import { reconcilePairGeneration, type DesiredPairGeneration, type ReconcileAction, type ReconcileResult } from '@/domain/eventPairDecisions'
+import { suggestBudgetCategoryGroup } from '@/domain/eventBudgetCategoryGroups'
 import {
   buildFoodContext,
   dependentFoodKeys,
@@ -1236,7 +1237,7 @@ export async function deleteEventGuestMember(id: string): Promise<void> {
 // ---------------------------------------------------------------------
 
 const BUDGET_ITEM_SELECT =
-  'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id, provider_id, group_id, category_id, committed_amount'
+  'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id, provider_id, group_id, category_id, category_group, committed_amount'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapBudgetItem(r: any): EventBudgetItem {
@@ -1252,6 +1253,7 @@ function mapBudgetItem(r: any): EventBudgetItem {
     providerId: r.provider_id,
     groupId: r.group_id,
     categoryId: r.category_id,
+    categoryGroup: r.category_group,
     committedAmount: r.committed_amount == null ? null : Number(r.committed_amount),
   }
 }
@@ -1271,19 +1273,23 @@ export async function addEventBudgetItem(
   category: string,
   plannedAmount: number | null,
   decisionId: string | null = null,
-  extra?: { providerId?: string | null; groupId?: string | null; categoryId?: string | null },
+  extra?: { providerId?: string | null; groupId?: string | null; categoryId?: string | null; categoryGroup?: string | null },
 ): Promise<void> {
   const familyId = await currentFamilyId()
+  const trimmedCategory = category.trim()
   const { error } = await supabase.from('event_budget_items').insert({
     event_id: eventId,
     family_id: familyId,
-    category: category.trim(),
+    category: trimmedCategory,
     planned_amount: plannedAmount,
     sort_order: Date.now(),
     decision_id: decisionId,
     provider_id: extra?.providerId ?? null,
     group_id: extra?.groupId ?? null,
     category_id: extra?.categoryId ?? null,
+    // Punto 3.1 — siempre se guarda una categoría real: la que pase quien llama (p. ej. ya corregida a
+    // mano en el formulario) o, si no pasa ninguna, la sugerencia automática de PEPA — nunca en blanco.
+    category_group: extra?.categoryGroup?.trim() || suggestBudgetCategoryGroup(trimmedCategory),
   })
   if (error) throw error
 }
@@ -1294,6 +1300,7 @@ type BudgetItemPatch = {
   providerId?: string | null
   groupId?: string | null
   categoryId?: string | null
+  categoryGroup?: string | null
   committedAmount?: number | null
 }
 
@@ -1307,6 +1314,7 @@ export async function updateEventBudgetItem(id: string, patch: BudgetItemPatch):
     providerId: 'provider_id',
     groupId: 'group_id',
     categoryId: 'category_id',
+    categoryGroup: 'category_group',
     committedAmount: 'committed_amount',
   }
   const changedFields = (Object.keys(patch) as (keyof BudgetItemPatch)[]).filter((k) => patch[k] !== undefined)
@@ -1316,6 +1324,7 @@ export async function updateEventBudgetItem(id: string, patch: BudgetItemPatch):
   if (patch.providerId !== undefined) update.provider_id = patch.providerId
   if (patch.groupId !== undefined) update.group_id = patch.groupId
   if (patch.categoryId !== undefined) update.category_id = patch.categoryId
+  if (patch.categoryGroup !== undefined) update.category_group = patch.categoryGroup?.trim() || null
   if (patch.committedAmount !== undefined) update.committed_amount = patch.committedAmount
 
   let before: Record<string, unknown> | null = null
@@ -1441,6 +1450,21 @@ export async function listDistinctEventBudgetCategorySuggestions(): Promise<stri
   const seen = new Set<string>()
   for (const r of data ?? []) {
     const c = (r as { category: string }).category?.trim()
+    if (c) seen.add(c)
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, 'es'))
+}
+
+// Punto 3.1 — sugerencias para el campo "Categoría" (categoryGroup): las ya usadas por la familia, para
+// que una categoría ya creada ("Flores y decoración") se reutilice tal cual en vez de escribirse distinto
+// cada vez — mismo patrón que listDistinctEventBudgetCategorySuggestions, sobre la columna nueva.
+export async function listDistinctEventBudgetCategoryGroupSuggestions(): Promise<string[]> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase.from('event_budget_items').select('category_group').eq('family_id', familyId)
+  if (error) throw error
+  const seen = new Set<string>()
+  for (const r of data ?? []) {
+    const c = (r as { category_group: string | null }).category_group?.trim()
     if (c) seen.add(c)
   }
   return [...seen].sort((a, b) => a.localeCompare(b, 'es'))
@@ -2836,9 +2860,20 @@ async function executeReconcileActions(eventId: string, familyId: string, decisi
         break
       }
       case 'create_budget': {
-        const { error } = await supabase
-          .from('event_budget_items')
-          .insert({ event_id: eventId, family_id: familyId, category: action.category, planned_amount: null, sort_order: Date.now(), decision_id: decisionId })
+        // Punto 3.2 — mismo encargo que su tarea hermana (ver 'create_task' arriba), nunca uno nuevo: la
+        // misma kind interna encuentra o crea el mismo event_task_group, así que una partida y su tarea de
+        // la misma decisión siempre terminan en el mismo encargo real.
+        const groupId = action.groupKind ? await findOrCreateEventTaskGroupByKind(eventId, familyId, action.groupKind, action.groupDefaultName ?? action.groupKind) : null
+        const { error } = await supabase.from('event_budget_items').insert({
+          event_id: eventId,
+          family_id: familyId,
+          category: action.category,
+          planned_amount: null,
+          sort_order: Date.now(),
+          decision_id: decisionId,
+          group_id: groupId,
+          category_group: suggestBudgetCategoryGroup(action.category),
+        })
         if (error) throw error
         break
       }

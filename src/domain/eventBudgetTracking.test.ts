@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  budgetGroupSubtotal,
   budgetItemAmounts,
   comparePayments,
   committedAmountForBudgetItem,
@@ -24,6 +25,7 @@ function makeBudgetItem(overrides: Partial<EventBudgetItem> = {}): EventBudgetIt
     providerId: null,
     groupId: null,
     categoryId: null,
+    categoryGroup: 'Flores y decoración',
     committedAmount: null,
     ...overrides,
   }
@@ -89,9 +91,36 @@ describe('Parte D (orden de recuperación de requisitos) — Planeado/Comprometi
 
   it('groupKeyForBudgetItem: categoría/encargo/proveedor, null = sin asignar', () => {
     const item = makeBudgetItem({ category: 'Flores', groupId: 'g1', providerId: null })
-    expect(groupKeyForBudgetItem(item, 'categoria')).toBe('Flores')
     expect(groupKeyForBudgetItem(item, 'encargo')).toBe('g1')
     expect(groupKeyForBudgetItem(item, 'proveedor')).toBeNull()
+  })
+
+  it('Punto 3.1 — "categoria" agrupa por categoryGroup (la categoría real), NUNCA por category (el nombre propio de la partida, único por construcción)', () => {
+    const ramo = makeBudgetItem({ category: 'Ramo de Jennifer', categoryGroup: 'Flores y decoración' })
+    const flor = makeBudgetItem({ category: 'Flor de solapa de Paco', categoryGroup: 'Flores y decoración' })
+    expect(groupKeyForBudgetItem(ramo, 'categoria')).toBe('Flores y decoración')
+    expect(groupKeyForBudgetItem(flor, 'categoria')).toBe('Flores y decoración')
+    expect(groupKeyForBudgetItem(ramo, 'categoria')).toBe(groupKeyForBudgetItem(flor, 'categoria'))
+  })
+
+  it('sin categoryGroup todavía (dato histórico): "Sin categoría" (null), nunca cae de vuelta al nombre propio', () => {
+    const item = makeBudgetItem({ category: 'Vestido de Jennifer', categoryGroup: null })
+    expect(groupKeyForBudgetItem(item, 'categoria')).toBeNull()
+  })
+})
+
+describe('budgetGroupSubtotal — Punto 3.6, importe desconocido ≠ cero: nunca se suma como 0€ en el subtotal', () => {
+  it('todas con importe: known es la suma exacta, unknownCount 0', () => {
+    const items = [makeBudgetItem({ plannedAmount: 100 }), makeBudgetItem({ plannedAmount: 50 })]
+    expect(budgetGroupSubtotal(items)).toEqual({ known: 150, unknownCount: 0 })
+  })
+  it('una partida sin importe NUNCA se suma como 0€ al subtotal conocido — se cuenta aparte', () => {
+    const items = [makeBudgetItem({ plannedAmount: 100 }), makeBudgetItem({ plannedAmount: null })]
+    expect(budgetGroupSubtotal(items)).toEqual({ known: 100, unknownCount: 1 })
+  })
+  it('todas sin importe: known 0 de verdad (no hay nada que sumar), unknownCount = el total de partidas', () => {
+    const items = [makeBudgetItem({ plannedAmount: null }), makeBudgetItem({ plannedAmount: null })]
+    expect(budgetGroupSubtotal(items)).toEqual({ known: 0, unknownCount: 2 })
   })
 })
 

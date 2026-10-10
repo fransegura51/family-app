@@ -4,6 +4,8 @@
 // usuaria tenga que tocar nada entre una y otra, se encadenan sesiones
 // de UNA frase cada una (ver listenContinuous) en vez de fiarse del modo
 // "continuo" nativo del navegador, que en móvil corta a media frase.
+import { isNativeApp } from '@/services/nativeApp'
+import { listenContinuousNative } from '@/services/nativeVoice'
 
 interface SpeechRecognitionAlternativeLike {
   transcript: string
@@ -43,6 +45,8 @@ function getRecognitionConstructor(): SpeechRecognitionConstructor | null {
 }
 
 export function isDictationSupported(): boolean {
+  // En la app nativa el dictado va por el reconocedor de Android (services/nativeVoice.ts): el del navegador no funciona dentro de una app.
+  if (isNativeApp()) return true
   return getRecognitionConstructor() !== null
 }
 
@@ -83,6 +87,7 @@ export function listenContinuous(handlers: {
   onTranscript: (text: string) => void
   onError: (message: string) => void
 }): ListenSession {
+  if (isNativeApp()) return listenContinuousNative(handlers)
   const found = getRecognitionConstructor()
   if (!found) {
     handlers.onError('Este navegador no admite dictado por voz.')

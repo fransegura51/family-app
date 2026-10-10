@@ -34,6 +34,30 @@ if ! adb shell dumpsys activity activities | grep -E "topResumedActivity|mResume
   CRASHED=1
 fi
 
+# Vuelta de Google Calendar y del banco: la página puente abre es.pepafamilyapp.app://open/... — con la app ya abierta y con la app cerrada del todo.
+# Si el complemento «App» o el enlace fallan, la app se cierra o no queda en primer plano.
+echo "== Enlace de vuelta con la app abierta (Google Calendar)"
+adb logcat -c
+adb shell "am start -a android.intent.action.VIEW -d 'es.pepafamilyapp.app://open/calendario?google=connected' $PKG"
+sleep 10
+if adb shell pidof "$PKG" > /dev/null && adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | grep -q "MainActivity"; then
+  echo "== OK: la app sigue abierta tras el enlace de Google"
+else
+  echo "== FALLO: la app se cerró o no está en primer plano tras el enlace de Google"
+  CRASHED=1
+fi
+echo "== Enlace de vuelta con la app CERRADA del todo (banco)"
+adb shell am force-stop "$PKG"
+adb shell "am start -a android.intent.action.VIEW -d 'es.pepafamilyapp.app://open/?bank=connected' $PKG"
+sleep 20
+if adb shell pidof "$PKG" > /dev/null && adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | grep -q "MainActivity"; then
+  echo "== OK: la app arranca y se queda abierta con el enlace del banco"
+else
+  echo "== FALLO: la app no arranca bien con el enlace del banco"
+  CRASHED=1
+fi
+adb logcat -d > smoke-logcat.txt
+
 echo "== Fallos registrados (FATAL EXCEPTION / AndroidRuntime / errores del complemento)"
 grep -nE "FATAL EXCEPTION|AndroidRuntime|Process: $PKG|Caused by|SpeechRecognition|Capacitor.*(Error|Exception)" smoke-logcat.txt | head -80
 

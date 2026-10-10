@@ -35,6 +35,16 @@ describe('offerBudgetDocumentSpec — nunca inventa, nunca calcula, revisión ob
   it('las líneas sin nombre se descartan — nunca se guarda un servicio sin nombre', () => {
     expect(SPEC_SRC).toContain("filter((it: OfferBudgetDocumentItem) => it.name.trim())")
   })
+  // Orden de recuperación de requisitos (Parte A5+B3) — "extracción correcta de... número de presupuesto...
+  // y fechas" y "nombre descriptivo de la oferta y del archivo adjunto a partir del número de presupuesto".
+  it('extrae "quoteNumber" (número/referencia del presupuesto), nunca lo usa para identificar nada', () => {
+    expect(SPEC_SRC).toContain('"quoteNumber"')
+    expect(SPEC_SRC).toContain('quoteNumber: asCleanString(parsed.quoteNumber, 80)')
+  })
+  it('extrae "scopeExcluded" (qué NO incluye), solo cuando el documento lo dice con claridad', () => {
+    expect(SPEC_SRC).toContain('"scopeExcluded"')
+    expect(SPEC_SRC).toContain('scopeExcluded: asCleanString(parsed.scopeExcluded, 2000)')
+  })
 })
 
 describe('analyze-offer-budget-document — wrapper mínimo, igual que analyze-provider-contact-document', () => {

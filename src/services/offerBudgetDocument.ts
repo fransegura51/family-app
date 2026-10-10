@@ -16,9 +16,13 @@ export interface OfferBudgetScanItem {
 
 export interface OfferBudgetScanResult {
   providerName: string | null
+  // Orden de recuperación de requisitos (Parte A5+B3) — número/referencia impreso en el presupuesto, para
+  // proponer un nombre descriptivo de la oferta y del adjunto; nunca se usa como identificador interno.
+  quoteNumber: string | null
   amount: number | null
   offerDate: string | null
   validUntil: string | null
+  scopeExcluded: string | null
   conditions: string | null
   notes: string | null
   items: OfferBudgetScanItem[]
@@ -72,9 +76,11 @@ export async function analyzeOfferBudgetDocument(file: File): Promise<OfferBudge
     : []
   return {
     providerName: asString(json.providerName),
+    quoteNumber: asString(json.quoteNumber),
     amount: asNumber(json.amount),
     offerDate: asString(json.offerDate),
     validUntil: asString(json.validUntil),
+    scopeExcluded: asString(json.scopeExcluded),
     conditions: asString(json.conditions),
     notes: asString(json.notes),
     items,

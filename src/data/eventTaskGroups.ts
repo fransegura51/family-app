@@ -435,7 +435,10 @@ export async function linkLooseTaskGroupOfferToGroup(offer: EventTaskGroupOffer,
 // YA creada, nunca al crearla (igual que saveEventFoodDocument: nunca se sube un archivo que la familia
 // pueda acabar descartando sin llegar a guardar la oferta). Un único adjunto por oferta; subir uno nuevo
 // sustituye al anterior y borra el archivo viejo del storage.
-export async function saveEventTaskGroupOfferAttachment(offer: EventTaskGroupOffer, file: File): Promise<EventTaskGroupOffer> {
+// Orden de recuperación de requisitos (Parte A5+B3) — "nombre descriptivo... del archivo adjunto a partir
+// del número de presupuesto": displayName (p. ej. "Presupuesto nº 2024-0458.pdf") sustituye al nombre real
+// del archivo subido (a menudo ilegible, "scan0001.pdf") SOLO para mostrar; nunca cambia el fichero en sí.
+export async function saveEventTaskGroupOfferAttachment(offer: EventTaskGroupOffer, file: File, displayName?: string): Promise<EventTaskGroupOffer> {
   const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
   const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
   // La política de storage solo exige que el primer segmento sea la familia (ver migración 0223); el
@@ -447,7 +450,7 @@ export async function saveEventTaskGroupOfferAttachment(offer: EventTaskGroupOff
     .from('event_task_group_offers')
     .update({
       attachment_storage_path: path,
-      attachment_original_name: file.name.slice(0, 160),
+      attachment_original_name: (displayName ?? file.name).slice(0, 160),
       attachment_mime_type: prepared.type || file.type || null,
     })
     .eq('id', offer.id)

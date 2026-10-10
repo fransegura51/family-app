@@ -3623,6 +3623,16 @@ const OFFER_STATUS_LABELS: Record<EventTaskGroupOfferStatus, string> = {
   descartada: 'Descartada',
 }
 
+// Orden de recuperación de requisitos (Parte A5+B3) — nombre descriptivo del adjunto a partir del nombre
+// ya puesto a la oferta (que a su vez puede venir del número de presupuesto leído); si la oferta no tiene
+// nombre, se queda sin displayName y saveEventTaskGroupOfferAttachment usa el nombre real del archivo.
+function offerAttachmentDisplayName(offerName: string, file: File): string | undefined {
+  const trimmed = offerName.trim()
+  if (!trimmed) return undefined
+  const ext = file.name.includes('.') ? file.name.split('.').pop() : null
+  return ext ? `${trimmed}.${ext}` : trimmed
+}
+
 // PEPA — prompt maestro, Bloque B3/B4: un servicio en edición, antes de guardarse — "id" presente =
 // servicio ya persistido (edición), ausente = servicio nuevo todavía sin guardar (alta, o añadido dentro
 // de una oferta en edición). Mismo shape que OfferBudgetScanItem (lo que ya propone la IA) a propósito:
@@ -4317,9 +4327,13 @@ function AddOfferForm({
   // si trae servicios, pasa a Desglosado sola (revisable igual, nunca se pierden si luego se corrige a mano).
   function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
     if (providerMode === 'new' && !newProviderName && result.providerName) setNewProviderName(result.providerName)
+    // Orden de recuperación de requisitos (Parte A5+B3) — sin nombre propio todavía, proponer uno
+    // descriptivo a partir del número de presupuesto leído ("Presupuesto nº 2024-0458").
+    if (!name && result.quoteNumber) setName(`Presupuesto nº ${result.quoteNumber}`)
     if (!amount && result.amount !== null) setAmount(String(result.amount))
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4373,7 +4387,7 @@ function AddOfferForm({
         notes: notes.trim() || null,
         supersedesOfferId: supersedesOfferId || null,
       })
-      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file, offerAttachmentDisplayName(name, file))
       if (mode === 'desglosado') {
         for (const item of items) {
           await addEventTaskGroupOfferItem(offer, item)
@@ -4522,8 +4536,10 @@ function EditOfferForm({
   // alta y edición) — solo rellena lo vacío; si trae servicios, pasa a Desglosado y los AÑADE a los que ya
   // hubiera, nunca los sustituye.
   function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
+    if (!name && result.quoteNumber) setName(`Presupuesto nº ${result.quoteNumber}`)
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4552,7 +4568,7 @@ function EditOfferForm({
         conditions: conditions.trim() || null,
         notes: notes.trim() || null,
       })
-      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file, offerAttachmentDisplayName(name, file))
       // Los servicios solo se sincronizan si se guarda ESTANDO en modo Desglosado — cambiar de modo y
       // volver, sin llegar a guardar así, nunca toca lo que ya hubiera (regla explícita: no perder
       // información por cambiar de modalidad).
@@ -4884,9 +4900,11 @@ function AddLooseOfferForm({
   // "Importar presupuesto" solo rellena lo que esté VACÍO — el proveedor ya viene fijo del contexto, así
   // que un providerName distinto leído del documento se ignora (nunca sustituye al proveedor elegido).
   function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
+    if (!name && result.quoteNumber) setName(`Presupuesto nº ${result.quoteNumber}`)
     if (!amount && result.amount !== null) setAmount(String(result.amount))
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!scopeExcluded && result.scopeExcluded) setScopeExcluded(result.scopeExcluded)
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
     if (importedItems.length > 0) {
@@ -4919,7 +4937,7 @@ function AddLooseOfferForm({
         notes: notes.trim() || null,
         supersedesOfferId: supersedesOfferId || null,
       })
-      if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      if (file) await saveEventTaskGroupOfferAttachment(offer, file, offerAttachmentDisplayName(name, file))
       if (mode === 'desglosado') {
         for (const item of items) {
           await addEventTaskGroupOfferItem(offer, item)

@@ -26,9 +26,15 @@ export interface OfferBudgetDocumentItem {
 
 export interface OfferBudgetDocumentOutput {
   providerName: string | null
+  // Orden de recuperación de requisitos (Parte B3+A5) — número/referencia del propio presupuesto, cuando
+  // el documento lo imprime: sirve para proponer un nombre descriptivo de la oferta y del adjunto, nunca
+  // para identificar nada internamente (dos presupuestos de proveedores distintos pueden compartir número).
+  quoteNumber: string | null
   amount: number | null
   offerDate: string | null
   validUntil: string | null
+  // Qué NO incluye el presupuesto, cuando el documento lo deja explícito (exclusiones) — antes no se leía.
+  scopeExcluded: string | null
   conditions: string | null
   notes: string | null
   items: OfferBudgetDocumentItem[]
@@ -42,10 +48,14 @@ const OFFER_BUDGET_DOCUMENT_PROMPT =
   '- NUNCA calcules, multipliques ni dividas tú ningún número: cada cantidad/precio es SIEMPRE el que aparece ' +
   'impreso tal cual en el documento.\n' +
   '- "providerName": el nombre comercial del proveedor que emite el presupuesto, si aparece.\n' +
+  '- "quoteNumber": el número o referencia del propio presupuesto (p. ej. "Presupuesto nº 2024-0458", ' +
+  '"Ref. PRE-118"), tal como aparece impreso, o null si no hay ninguno.\n' +
   '- "amount": el importe TOTAL final del presupuesto (el que de verdad habría que pagar), tal como aparece ' +
   'impreso — nunca la suma de las líneas calculada por ti, aunque creas que coinciden.\n' +
   '- "offerDate": la fecha del propio presupuesto (cuándo se emitió), formato YYYY-MM-DD, o null.\n' +
   '- "validUntil": la fecha de validez de la oferta si aparece, formato YYYY-MM-DD, o null.\n' +
+  '- "scopeExcluded": qué queda explícitamente FUERA del presupuesto, solo si el documento lo dice con ' +
+  'claridad (p. ej. "No incluye transporte ni montaje"), o null.\n' +
   '- "conditions": condiciones de pago, señal, cancelación o similar, tal como aparecen resumidas, o null.\n' +
   '- "notes": cualquier otra nota relevante que no encaje en los campos anteriores, o null.\n' +
   '- "items": una línea por cada servicio/producto presupuestado. Para cada línea:\n' +
@@ -60,8 +70,9 @@ const OFFER_BUDGET_DOCUMENT_PROMPT =
   '(p. ej. "Pack básico — 300€" sin que se pueda saber a qué correspondería "una unidad"); en ese caso deja ' +
   'quantity/unit/unitPrice en null y solo rellena subtotal. false en cualquier otro caso.\n' +
   'Responde ÚNICAMENTE un objeto JSON con esta forma exacta, sin texto adicional ni markdown:\n' +
-  '{"providerName": "texto o null", "amount": numero_o_null, "offerDate": "YYYY-MM-DD o null", ' +
-  '"validUntil": "YYYY-MM-DD o null", "conditions": "texto o null", "notes": "texto o null", ' +
+  '{"providerName": "texto o null", "quoteNumber": "texto o null", "amount": numero_o_null, ' +
+  '"offerDate": "YYYY-MM-DD o null", "validUntil": "YYYY-MM-DD o null", "scopeExcluded": "texto o null", ' +
+  '"conditions": "texto o null", "notes": "texto o null", ' +
   '"items": [{"name": "texto", "description": "texto o null", "quantity": numero_o_null, "unit": "texto o null", ' +
   '"unitPrice": numero_o_null, "subtotal": numero_o_null, "isPackage": true_o_false}]}\n' +
   'Si el documento no es un presupuesto ni tiene datos legibles, responde con todos los campos en null e items ' +
@@ -74,7 +85,17 @@ function asPositiveNumber(value: unknown): number | null {
 
 // Nunca lanza: una respuesta ilegible se trata igual que "no se pudo leer nada" (todo null, items vacío).
 export function parseOfferBudgetDocumentOutput(rawText: string): OfferBudgetDocumentOutput {
-  const empty: OfferBudgetDocumentOutput = { providerName: null, amount: null, offerDate: null, validUntil: null, conditions: null, notes: null, items: [] }
+  const empty: OfferBudgetDocumentOutput = {
+    providerName: null,
+    quoteNumber: null,
+    amount: null,
+    offerDate: null,
+    validUntil: null,
+    scopeExcluded: null,
+    conditions: null,
+    notes: null,
+    items: [],
+  }
   const parsed = asRecord(parseJsonLoose(rawText))
   if (!parsed) return empty
   let items: OfferBudgetDocumentItem[] = []
@@ -94,9 +115,11 @@ export function parseOfferBudgetDocumentOutput(rawText: string): OfferBudgetDocu
   }
   return {
     providerName: asCleanString(parsed.providerName, 160),
+    quoteNumber: asCleanString(parsed.quoteNumber, 80),
     amount: asPositiveNumber(parsed.amount),
     offerDate: asIsoDate(parsed.offerDate),
     validUntil: asIsoDate(parsed.validUntil),
+    scopeExcluded: asCleanString(parsed.scopeExcluded, 2000),
     conditions: asCleanString(parsed.conditions, 2000),
     notes: asCleanString(parsed.notes, 2000),
     items,

@@ -16,7 +16,7 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
 
 const PROVIDER_OFFERS_PANEL = window_(UI, 'function ProviderOffersPanel({', '\nfunction AddLooseOfferForm(')
 const ADD_LOOSE_OFFER_FORM = window_(UI, 'function AddLooseOfferForm({', '\nconst RESOLUTION_METHOD_OPTIONS')
-const PROVIDERS_GLOBAL_SCREEN = window_(UI, 'function ProvidersGlobalScreen({', '\nfunction AddProviderGlobalForm(')
+const PROVIDERS_GLOBAL_SCREEN = window_(UI, 'function ProvidersGlobalScreen(', '\nfunction AddProviderGlobalForm(')
 const PROVIDERS_SECTION = window_(UI, 'function ProvidersSection({ eventId }', '\nfunction LinkExistingProviderForm(')
 const OFFERS_COMPARISON = window_(UI, 'function OffersComparison(', '\nfunction AddOfferForm(')
 

@@ -837,8 +837,10 @@ export function EventosScreen() {
           /eventos a secas. */}
       <SectionBreadcrumb
         subsection={
+          // Bug real (orden de recuperación): "Eventos" (el primer nivel, lo pone SectionBreadcrumb solo)
+          // ya vuelve aquí — un "Inicio" intermedio apuntando a la misma ruta era un nivel duplicado.
           showGlobalProviders
-            ? ([{ label: 'Inicio', to: '/eventos' }, { label: 'Proveedores y ofertas' }] satisfies BreadcrumbLevel[])
+            ? 'Proveedores y ofertas'
             : !selected
               ? 'Inicio'
               : !openModuleLabel
@@ -852,7 +854,7 @@ export function EventosScreen() {
       {error && <p className="error">{error}</p>}
 
       {showGlobalProviders ? (
-        <ProvidersGlobalScreen onBack={() => setShowGlobalProviders(false)} />
+        <ProvidersGlobalScreen />
       ) : selected ? (
         <EventDetail
           event={selected}
@@ -12780,7 +12782,7 @@ function ProviderCardMenu({
   )
 }
 
-function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
+function ProvidersGlobalScreen() {
   const [providers, setProviders] = useState<ProviderGlobal[]>([])
   const [query, setQuery] = useState('')
   const [showAdd, setShowAdd] = useState(false)
@@ -12806,9 +12808,6 @@ function ProvidersGlobalScreen({ onBack }: { onBack: () => void }) {
 
   return (
     <div>
-      <button type="button" className="link-button" onClick={onBack}>
-        ← Volver a Eventos
-      </button>
       <h2 className="section-title">📇 Proveedores y ofertas</h2>
       <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => setShowIntro((v) => !v)}>
         {showIntro ? '▾' : '▸'} ℹ️ Qué es esto

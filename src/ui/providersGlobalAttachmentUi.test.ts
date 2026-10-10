@@ -74,7 +74,7 @@ for (const [label, FORM] of [
       expect(FORM).toContain('setImportedFile(file)')
     })
     it('handleSubmit sube el adjunto después de crear la ficha, solo si hay archivo', () => {
-      expect(FORM).toContain('if (importedFile) await saveProviderGlobalAttachment(')
+      expect(FORM).toMatch(/if \(importedFile\) (await|global = await) saveProviderGlobalAttachment\(/)
     })
   })
 }

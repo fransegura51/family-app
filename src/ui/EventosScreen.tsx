@@ -5456,6 +5456,10 @@ function ResolveGroupModal({
   const [usedOfferId, setUsedOfferId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Punto 1.3 (prompt de correcciones) — mismo patrón de detección de duplicados que AddOfferForm/
+  // AddProviderAndLinkForm (EVT-A5): un proveedor "nuevo" dado de alta aquí, al resolver un encargo,
+  // también se comprueba contra el registro global antes de crear uno de verdad.
+  const [globalProviders, setGlobalProviders] = useState<ProviderGlobal[]>([])
 
   // Antes solo se cargaban al elegir "Empresa/proveedor"; ahora hacen falta desde el principio para la
   // comparación de ofertas (OffersComparison), que se ve aunque todavía no se haya elegido el método.
@@ -5463,6 +5467,7 @@ function ResolveGroupModal({
     listEventProviders(event.id)
       .then((all) => setProviders(all.filter((p) => !p.archived)))
       .catch(() => {})
+    listProvidersGlobal().then(setGlobalProviders).catch(() => {})
   }, [event.id])
 
   // Parte C4 — si la oferta tiene servicios desglosados con importe, el precio se propone POR SERVICIOS
@@ -5512,8 +5517,22 @@ function ResolveGroupModal({
       let providerName: string | null = null
       if (method === 'empresa') {
         if (providerMode === 'new') {
-          providerId = await addEventProvider(event.id, { name: newProviderName })
-          providerName = newProviderName.trim()
+          // Punto 1.3 — exacto se reutiliza solo, parecido se confirma, solo si no hay nada parecido se
+          // da de alta un proveedor global nuevo; la ficha del evento siempre queda enlazada a él
+          // (globalProviderId), nunca suelta — así un proveedor nuevo encontrado al resolver un encargo
+          // también aparece en «📇 Proveedores y ofertas» y cuenta para "⭐ Habitual".
+          const trimmedName = newProviderName.trim()
+          const { exact, similar } = findProviderGlobalMatch(globalProviders, trimmedName)
+          let global: ProviderGlobal
+          if (exact) {
+            global = exact
+          } else if (similar && window.confirm(`Ya existe un proveedor con un nombre parecido: «${similar.name}». ¿Es el mismo proveedor? Aceptar para reutilizar su ficha; Cancelar para crear «${trimmedName}» como uno nuevo.`)) {
+            global = similar
+          } else {
+            global = await addProviderGlobal({ name: trimmedName })
+          }
+          providerId = await addEventProvider(event.id, { name: trimmedName, globalProviderId: global.id })
+          providerName = trimmedName
         } else {
           providerId = selectedProviderId
           providerName = providers.find((p) => p.id === selectedProviderId)?.name ?? null
@@ -13607,6 +13626,75 @@ function ProviderAttachmentLink({ provider }: { provider: ProviderGlobal }) {
   )
 }
 
+// Punto 1.1 (prompt de correcciones) — decisión del usuario: los datos de contacto se quedan SIEMPRE
+// visibles (nada plegable); el propio número/correo es el enlace (llama/abre el correo de un toque) y
+// lleva su propio icono de copiar al portapapeles al lado. Mismo componente para el registro global y
+// para la ficha de un proveedor dentro de un evento, para no duplicar esta lógica dos veces.
+function CopyIconButton({ text, label }: { text: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      className="icon-button"
+      aria-label={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          })
+          .catch(() => {})
+      }}
+    >
+      {copied ? '✓' : '📋'}
+    </button>
+  )
+}
+
+// Punto 1.4 (prompt de correcciones) — wa.me solo admite dígitos (con prefijo de país, sin "+" ni
+// espacios/guiones); se limpia aquí, solo para el enlace — el número tal cual escrito se sigue mostrando.
+function waMeHref(whatsapp: string): string {
+  return `https://wa.me/${whatsapp.replace(/\D/g, '')}`
+}
+
+function ProviderContactLine({
+  phone,
+  whatsapp,
+  email,
+}: {
+  phone: string | null | undefined
+  whatsapp?: string | null | undefined
+  email: string | null | undefined
+}) {
+  if (!phone && !whatsapp && !email) return null
+  return (
+    <p className="muted" style={{ fontSize: 12, margin: '2px 0', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+      {phone && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <a href={`tel:${phone}`}>📞 {phone}</a>
+          <CopyIconButton text={phone} label="Copiar teléfono" />
+        </span>
+      )}
+      {whatsapp && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <a href={waMeHref(whatsapp)} target="_blank" rel="noreferrer">
+            💬 {whatsapp}
+          </a>
+          <CopyIconButton text={whatsapp} label="Copiar WhatsApp" />
+        </span>
+      )}
+      {email && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+          <a href={`mailto:${email}`}>✉️ {email}</a>
+          <CopyIconButton text={email} label="Copiar email" />
+        </span>
+      )}
+    </p>
+  )
+}
+
 function ProviderCardMenu({
   provider,
   open,
@@ -13620,7 +13708,6 @@ function ProviderCardMenu({
   onEdit: () => void
   extraActions: ReactNode
 }) {
-  const [copied, setCopied] = useState(false)
   return (
     <>
       <button type="button" className="member-row-more" aria-label={`Acciones de ${provider.name}`} aria-expanded={open} onClick={onToggle}>
@@ -13631,33 +13718,6 @@ function ProviderCardMenu({
           <button type="button" className="link-button" onClick={onEdit}>
             ✏️ Editar
           </button>
-          {provider.phone && (
-            <a className="link-button" href={`tel:${provider.phone}`}>
-              📞 Llamar
-            </a>
-          )}
-          {provider.email && (
-            <>
-              <a className="link-button" href={`mailto:${provider.email}`}>
-                ✉️ Email
-              </a>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => {
-                  navigator.clipboard
-                    .writeText(provider.email!)
-                    .then(() => {
-                      setCopied(true)
-                      setTimeout(() => setCopied(false), 2000)
-                    })
-                    .catch(() => {})
-                }}
-              >
-                {copied ? '✓ Copiado' : '📋 Copiar email'}
-              </button>
-            </>
-          )}
           <button type="button" className="link-button" onClick={() => void saveProviderToContacts(provider)}>
             📱 Guardar en contactos
           </button>
@@ -13677,12 +13737,21 @@ function ProvidersGlobalScreen() {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [showIntro, setShowIntro] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Punto 1.2 (prompt de correcciones) — "habitual" (≥2 eventos, EVT-A2) ya se calculaba y se veía dentro
+  // de un evento; aquí, en el registro global, es donde de verdad hacía falta reconocerlo de un vistazo.
+  // Mismo cálculo, nunca una marca aparte que se pudiera desincronizar.
+  const [habitualCounts, setHabitualCounts] = useState<Map<string, number>>(new Map())
   // Parte B5 — qué proveedor/oferta histórica se está usando de referencia ahora mismo (solo uno a la vez).
   const [referenceEntry, setReferenceEntry] = useState<{ providerId: string; entry: ProviderOfferHistoryEntry } | null>(null)
 
   function reload() {
     listProvidersGlobal()
-      .then(setProviders)
+      .then((ps) => {
+        setProviders(ps)
+        Promise.all(ps.map((p) => countProviderGlobalEventLinks(p.id).then((n) => [p.id, n] as const)))
+          .then((pairs) => setHabitualCounts(new Map(pairs)))
+          .catch(() => {})
+      })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los proveedores')))
   }
   useEffect(reload, [])
@@ -13747,7 +13816,8 @@ function ProvidersGlobalScreen() {
                 <span style={{ flex: 1 }}>
                   <strong>{p.name}</strong>
                   {p.type ? ` · ${p.type}` : ''}
-                  {p.phone ? ` · ${p.phone}` : ''}
+                  {p.rating ? ` · ${'⭐'.repeat(p.rating)}` : ''}
+                  {(habitualCounts.get(p.id) ?? 0) >= 2 ? ' · ⭐ Habitual' : ''}
                 </span>
                 <ProviderCardMenu
                   provider={p}
@@ -13763,9 +13833,10 @@ function ProvidersGlobalScreen() {
                   }
                 />
               </div>
-              {(p.contactPerson || p.email || p.website || p.address) && (
+              <ProviderContactLine phone={p.phone} whatsapp={p.whatsapp} email={p.email} />
+              {(p.contactPerson || p.website || p.address) && (
                 <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                  {[p.contactPerson, p.email, p.website, p.address].filter(Boolean).join(' · ')}
+                  {[p.contactPerson, p.website, p.address].filter(Boolean).join(' · ')}
                 </p>
               )}
               {p.notes && (
@@ -13798,6 +13869,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
   const [type, setType] = useState('')
   const [contactPerson, setContactPerson] = useState('')
   const [phone, setPhone] = useState('')
+  const [whatsapp, setWhatsapp] = useState('')
   const [email, setEmail] = useState('')
   const [website, setWebsite] = useState('')
   const [address, setAddress] = useState('')
@@ -13814,10 +13886,11 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
     if (!type && r.type) setType(r.type)
     if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
     if (!phone && r.phone) setPhone(r.phone)
+    if (!whatsapp && r.whatsapp) setWhatsapp(r.whatsapp)
     if (!email && r.email) setEmail(r.email)
     if (!website && r.website) setWebsite(r.website)
     if (!address && r.address) setAddress(r.address)
-    if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+    if (r.contactPerson || r.phone || r.whatsapp || r.email || r.website || r.address) setImportedExtra(true)
     setImportedFile(file)
   }
 
@@ -13835,6 +13908,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
         type: type || null,
         contactPerson: contactPerson || null,
         phone: phone || null,
+        whatsapp: whatsapp || null,
         email: email || null,
         website: website || null,
         address: address || null,
@@ -13865,6 +13939,8 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
         setContactPerson={setContactPerson}
         phone={phone}
         setPhone={setPhone}
+        whatsapp={whatsapp}
+        setWhatsapp={setWhatsapp}
         email={email}
         setEmail={setEmail}
         website={website}
@@ -13885,18 +13961,41 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
   )
 }
 
+// Punto 1.2 (prompt de correcciones) — valoración privada 1-5, compacta: 5 estrellas pulsables, y pulsar
+// la ya marcada la quita (vuelve a "sin valorar", nunca se queda atascada en un mínimo de 1).
+function StarRatingPicker({ value, onChange }: { value: number | null; onChange: (v: number | null) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className="link-button"
+          style={{ padding: 0, fontSize: 18 }}
+          aria-label={`Valorar con ${n} estrella${n === 1 ? '' : 's'}`}
+          onClick={() => onChange(value === n ? null : n)}
+        >
+          {value != null && n <= value ? '⭐' : '☆'}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: ProviderGlobal; onDone: () => void; onSaved: () => void }) {
   const [name, setName] = useState(provider.name)
   const [type, setType] = useState(provider.type ?? '')
   const [contactPerson, setContactPerson] = useState(provider.contactPerson ?? '')
   const [phone, setPhone] = useState(provider.phone ?? '')
+  const [whatsapp, setWhatsapp] = useState(provider.whatsapp ?? '')
   const [email, setEmail] = useState(provider.email ?? '')
   const [website, setWebsite] = useState(provider.website ?? '')
   const [address, setAddress] = useState(provider.address ?? '')
   const [notes, setNotes] = useState(provider.notes ?? '')
+  const [rating, setRating] = useState<number | null>(provider.rating)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const hadExtraData = Boolean(provider.contactPerson || provider.phone || provider.email || provider.website || provider.address)
+  const hadExtraData = Boolean(provider.contactPerson || provider.phone || provider.whatsapp || provider.email || provider.website || provider.address)
 
   async function save() {
     if (!name.trim()) {
@@ -13911,10 +14010,12 @@ function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: Provi
         type: type || null,
         contactPerson: contactPerson || null,
         phone: phone || null,
+        whatsapp: whatsapp || null,
         email: email || null,
         website: website || null,
         address: address || null,
         notes: notes || null,
+        rating,
       })
       onSaved()
     } catch (err) {
@@ -13940,6 +14041,8 @@ function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: Provi
         setContactPerson={setContactPerson}
         phone={phone}
         setPhone={setPhone}
+        whatsapp={whatsapp}
+        setWhatsapp={setWhatsapp}
         email={email}
         setEmail={setEmail}
         website={website}
@@ -13952,6 +14055,12 @@ function EditProviderGlobalForm({ provider, onDone, onSaved }: { provider: Provi
         Notas (opcional)
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
       </label>
+      <div style={{ marginTop: 6 }}>
+        <span className="muted" style={{ fontSize: 13, display: 'block', marginBottom: 2 }}>
+          Valoración (opcional, solo vuestra)
+        </span>
+        <StarRatingPicker value={rating} onChange={setRating} />
+      </div>
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="button" onClick={() => void save()} disabled={saving}>
           {saving ? 'Guardando…' : 'Guardar'}
@@ -13976,6 +14085,9 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   const [globals, setGlobals] = useState<ProviderGlobal[]>([])
   const [habitualCounts, setHabitualCounts] = useState<Map<string, number>>(new Map())
   const [filter, setFilter] = useState<EventProviderLinkStatus | 'todos'>('interesado')
+  // Punto 1.3 (prompt de correcciones) — buscador DENTRO de un evento (antes solo existía en el registro
+  // global, EVT-A4): filtra lo ya vinculado a este evento, nunca busca fuera de él.
+  const [query, setQuery] = useState('')
   const [editingGlobalId, setEditingGlobalId] = useState<string | null>(null)
   const [showLink, setShowLink] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
@@ -14000,7 +14112,15 @@ function ProvidersSection({ eventId }: { eventId: string }) {
   useEffect(reload, [eventId])
 
   const globalById = new Map(globals.map((g) => [g.id, g]))
-  const visibleLinks = links.filter((l) => (filter === 'todos' ? true : l.status === filter))
+  const q = query.trim().toLowerCase()
+  const visibleLinks = links
+    .filter((l) => (filter === 'todos' ? true : l.status === filter))
+    .filter((l) => {
+      if (!q) return true
+      const g = globalById.get(l.globalProviderId)
+      if (!g) return false
+      return [g.name, g.type, g.phone, g.email, g.contactPerson].some((v) => v?.toLowerCase().includes(q))
+    })
   const descartadosCount = links.filter((l) => l.status === 'descartado').length
   const linkedGlobalIds = new Set(links.map((l) => l.globalProviderId))
   const availableToLink = globals.filter((g) => !g.archived && !linkedGlobalIds.has(g.id))
@@ -14063,6 +14183,13 @@ function ProvidersSection({ eventId }: { eventId: string }) {
           onLink={handleLink}
         />
       )}
+      <input
+        type="text"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Buscar entre los proveedores de este evento…"
+        style={{ marginTop: 8, width: '100%' }}
+      />
       <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 8 }}>
         <button type="button" className={'chip' + (filter === 'interesado' ? ' chip-active' : '')} onClick={() => setFilter('interesado')}>
           De interés
@@ -14077,11 +14204,13 @@ function ProvidersSection({ eventId }: { eventId: string }) {
       <div className="event-list" style={{ marginTop: 8 }}>
         {visibleLinks.length === 0 && (
           <p className="muted">
-            {filter === 'descartado'
-              ? 'No hay proveedores descartados.'
-              : filter === 'interesado'
-                ? 'Todavía no hay proveedores de interés — vincula uno del registro familiar o crea uno nuevo.'
-                : 'Todavía no hay proveedores vinculados a este evento.'}
+            {q
+              ? 'Nada coincide con esa búsqueda.'
+              : filter === 'descartado'
+                ? 'No hay proveedores descartados.'
+                : filter === 'interesado'
+                  ? 'Todavía no hay proveedores de interés — vincula uno del registro familiar o crea uno nuevo.'
+                  : 'Todavía no hay proveedores vinculados a este evento.'}
           </p>
         )}
         {visibleLinks.map((link) => {
@@ -14095,7 +14224,6 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                 <span style={{ flex: 1 }}>
                   <strong>{g.name}</strong>
                   {g.type ? ` · ${g.type}` : ''}
-                  {g.phone ? ` · ${g.phone}` : ''}
                   {(habitualCounts.get(g.id) ?? 0) >= 2 ? ' · ⭐ Habitual' : ''}
                 </span>
                 <ProviderCardMenu
@@ -14117,9 +14245,10 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                   }
                 />
               </div>
-              {(g.contactPerson || g.email || g.website || g.address) && (
+              <ProviderContactLine phone={g.phone} whatsapp={g.whatsapp} email={g.email} />
+              {(g.contactPerson || g.website || g.address) && (
                 <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                  {[g.contactPerson, g.email, g.website, g.address].filter(Boolean).join(' · ')}
+                  {[g.contactPerson, g.website, g.address].filter(Boolean).join(' · ')}
                 </p>
               )}
               <ProviderAttachmentLink provider={g} />
@@ -14164,11 +14293,18 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
   const [type, setType] = useState('')
   const [contactPerson, setContactPerson] = useState('')
   const [phone, setPhone] = useState('')
+  const [whatsapp, setWhatsapp] = useState('')
   const [email, setEmail] = useState('')
   const [website, setWebsite] = useState('')
   const [address, setAddress] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Punto 1.3 (prompt de correcciones) — mismo patrón de detección de duplicados que AddOfferForm
+  // (EVT-A5): cargado aparte para no retrasar el resto del formulario mientras llega.
+  const [globalProviders, setGlobalProviders] = useState<ProviderGlobal[]>([])
+  useEffect(() => {
+    listProvidersGlobal().then(setGlobalProviders).catch(() => {})
+  }, [])
   // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" solo rellena lo que esté VACÍO:
   // nunca sobrescribe algo que la familia ya haya escrito a mano, sin avisar.
   const [importedExtra, setImportedExtra] = useState(false)
@@ -14179,10 +14315,11 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
     if (!type && r.type) setType(r.type)
     if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
     if (!phone && r.phone) setPhone(r.phone)
+    if (!whatsapp && r.whatsapp) setWhatsapp(r.whatsapp)
     if (!email && r.email) setEmail(r.email)
     if (!website && r.website) setWebsite(r.website)
     if (!address && r.address) setAddress(r.address)
-    if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+    if (r.contactPerson || r.phone || r.whatsapp || r.email || r.website || r.address) setImportedExtra(true)
     setImportedFile(file)
   }
 
@@ -14195,16 +14332,27 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
     setSaving(true)
     setError(null)
     try {
-      const global = await addProviderGlobal({
-        name,
-        type: type || null,
-        contactPerson: contactPerson || null,
-        phone: phone || null,
-        email: email || null,
-        website: website || null,
-        address: address || null,
-      })
-      if (importedFile) await saveProviderGlobalAttachment(global, importedFile)
+      // Punto 1.3 — nunca crea un duplicado si ya existe: exacto se reutiliza solo, parecido se confirma
+      // con la familia, y solo si de verdad no hay nada parecido se da de alta uno nuevo.
+      const { exact, similar } = findProviderGlobalMatch(globalProviders, name)
+      let global: ProviderGlobal
+      if (exact) {
+        global = exact
+      } else if (similar && window.confirm(`Ya existe un proveedor con un nombre parecido: «${similar.name}». ¿Es el mismo proveedor? Aceptar para reutilizar su ficha; Cancelar para crear «${name}» como uno nuevo.`)) {
+        global = similar
+      } else {
+        global = await addProviderGlobal({
+          name,
+          type: type || null,
+          contactPerson: contactPerson || null,
+          phone: phone || null,
+          whatsapp: whatsapp || null,
+          email: email || null,
+          website: website || null,
+          address: address || null,
+        })
+        if (importedFile) global = await saveProviderGlobalAttachment(global, importedFile)
+      }
       await linkProviderGlobalToEvent(eventId, global)
       onAdded()
     } catch (err) {
@@ -14231,6 +14379,8 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
         setContactPerson={setContactPerson}
         phone={phone}
         setPhone={setPhone}
+        whatsapp={whatsapp}
+        setWhatsapp={setWhatsapp}
         email={email}
         setEmail={setEmail}
         website={website}
@@ -14353,6 +14503,8 @@ function ProviderExtraFields({
   setContactPerson,
   phone,
   setPhone,
+  whatsapp,
+  setWhatsapp,
   email,
   setEmail,
   website,
@@ -14365,6 +14517,8 @@ function ProviderExtraFields({
   setContactPerson: (v: string) => void
   phone: string
   setPhone: (v: string) => void
+  whatsapp: string
+  setWhatsapp: (v: string) => void
   email: string
   setEmail: (v: string) => void
   website: string
@@ -14383,7 +14537,7 @@ function ProviderExtraFields({
   if (!open) {
     return (
       <button type="button" className="link-button" onClick={() => setOpen(true)}>
-        + Más datos (persona de contacto, teléfono, email, web, dirección)
+        + Más datos (persona de contacto, teléfono, WhatsApp, email, web, dirección)
       </button>
     )
   }
@@ -14394,8 +14548,14 @@ function ProviderExtraFields({
         <input type="text" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
       </label>
       <label>
-        Teléfono / WhatsApp (opcional)
+        Teléfono (opcional)
         <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </label>
+      <label>
+        {/* Punto 1.4 (prompt de correcciones) — distinto del teléfono: solo si de verdad es WhatsApp,
+            nunca se asume que el mismo número lo es. */}
+        WhatsApp (opcional, solo si es distinto o además del teléfono)
+        <input type="tel" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
       </label>
       <label>
         Email (opcional)

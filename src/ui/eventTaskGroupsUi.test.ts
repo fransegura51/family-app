@@ -198,7 +198,11 @@ describe('ResolveGroupModal — "contratar" nunca completa tareas (Fase 7, Parte
     expect(RESOLVE_MODAL).not.toMatch(/updateEventBudgetItem\([^)]*committedAmount/)
   })
   it('un proveedor nuevo se da de alta vía el sistema de Proveedores de siempre (addEventProvider), nunca un modelo paralelo', () => {
-    expect(RESOLVE_MODAL).toContain('addEventProvider(event.id, { name: newProviderName })')
+    expect(RESOLVE_MODAL).toContain('providerId = await addEventProvider(event.id, { name: trimmedName, globalProviderId: global.id })')
+  })
+  it('Punto 1.3 (prompt de correcciones) — un proveedor "nuevo" también se comprueba contra el registro global antes de crear uno de verdad (exacto se reutiliza, parecido se confirma)', () => {
+    expect(RESOLVE_MODAL).toContain('const { exact, similar } = findProviderGlobalMatch(globalProviders, trimmedName)')
+    expect(RESOLVE_MODAL).toContain('global = await addProviderGlobal({ name: trimmedName })')
   })
   it('resolveEventTaskGroup guarda el método/nota/proveedor/pago/oferta en el propio encargo — nunca en las tareas', () => {
     expect(RESOLVE_MODAL).toContain(

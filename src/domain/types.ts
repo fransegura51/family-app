@@ -1255,10 +1255,16 @@ export interface ProviderGlobal {
   type: string | null
   contactPerson: string | null
   phone: string | null
+  // Punto 1.4 (prompt de correcciones) — distinto de `phone`, nunca inferido de él: solo se rellena si la
+  // familia lo escribe o si un documento importado lo indica EXPRESAMENTE como WhatsApp.
+  whatsapp: string | null
   email: string | null
   website: string | null
   address: string | null
   notes: string | null
+  // Punto 1.2 (prompt de correcciones) — valoración privada 1-5, aparte de `notes` (comentario libre).
+  // Nunca visible fuera de la familia — providers_global no tiene ninguna superficie de cara a invitados.
+  rating: number | null
   // Igual que EventProvider.archived: retira de los selectores de "elegir proveedor" sin perder nada de
   // su historial (ofertas, eventos en los que se usó...).
   archived: boolean

@@ -21,7 +21,7 @@ async function currentFamilyId(): Promise<string> {
 }
 
 const PROVIDER_GLOBAL_SELECT =
-  'id, family_id, name, type, contact_person, phone, email, website, address, notes, archived, created_at, attachment_storage_path, attachment_original_name, attachment_mime_type'
+  'id, family_id, name, type, contact_person, phone, whatsapp, email, website, address, notes, rating, archived, created_at, attachment_storage_path, attachment_original_name, attachment_mime_type'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProviderGlobal(r: any): ProviderGlobal {
@@ -32,10 +32,12 @@ function mapProviderGlobal(r: any): ProviderGlobal {
     type: r.type,
     contactPerson: r.contact_person,
     phone: r.phone,
+    whatsapp: r.whatsapp,
     email: r.email,
     website: r.website,
     address: r.address,
     notes: r.notes,
+    rating: r.rating,
     archived: r.archived,
     createdAt: r.created_at,
     attachmentStoragePath: r.attachment_storage_path,
@@ -57,10 +59,12 @@ export interface ProviderGlobalInput {
   type?: string | null
   contactPerson?: string | null
   phone?: string | null
+  whatsapp?: string | null
   email?: string | null
   website?: string | null
   address?: string | null
   notes?: string | null
+  rating?: number | null
 }
 
 export async function addProviderGlobal(input: ProviderGlobalInput): Promise<ProviderGlobal> {
@@ -73,10 +77,12 @@ export async function addProviderGlobal(input: ProviderGlobalInput): Promise<Pro
       type: input.type ?? null,
       contact_person: input.contactPerson ?? null,
       phone: input.phone ?? null,
+      whatsapp: input.whatsapp ?? null,
       email: input.email ?? null,
       website: input.website ?? null,
       address: input.address ?? null,
       notes: input.notes ?? null,
+      rating: input.rating ?? null,
     })
     .select(PROVIDER_GLOBAL_SELECT)
     .single()
@@ -125,10 +131,12 @@ export async function updateProviderGlobal(id: string, patch: Partial<ProviderGl
   if (patch.type !== undefined) update.type = patch.type
   if (patch.contactPerson !== undefined) update.contact_person = patch.contactPerson
   if (patch.phone !== undefined) update.phone = patch.phone
+  if (patch.whatsapp !== undefined) update.whatsapp = patch.whatsapp
   if (patch.email !== undefined) update.email = patch.email
   if (patch.website !== undefined) update.website = patch.website
   if (patch.address !== undefined) update.address = patch.address
   if (patch.notes !== undefined) update.notes = patch.notes
+  if (patch.rating !== undefined) update.rating = patch.rating
   if (patch.archived !== undefined) update.archived = patch.archived
   const { error } = await supabase.from('providers_global').update(update).eq('id', id)
   if (error) throw error

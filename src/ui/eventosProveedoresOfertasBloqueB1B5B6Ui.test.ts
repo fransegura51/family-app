@@ -23,15 +23,17 @@ describe('B1 — ProviderCardMenu: mismo patrón ⋯ que Familia (member-row-mor
     expect(menu).toContain('className="member-row-more"')
     expect(menu).toContain('className="member-row-actions"')
   })
-  it('Editar, llamar (tel:), email (mailto: + copiar) y "Guardar en contactos" son comunes a las 2 pantallas', () => {
-    expect(menu).toContain('href={`tel:${provider.phone}`}')
-    expect(menu).toContain('href={`mailto:${provider.email}`}')
-    expect(menu).toContain('navigator.clipboard')
+  it('Editar y "Guardar en contactos" son comunes a las 2 pantallas', () => {
+    expect(menu).toContain('onEdit')
     expect(menu).toContain('saveProviderToContacts(provider)')
   })
-  it('tel:/mailto: solo se muestran si el proveedor tiene ese dato (nunca un control vacío)', () => {
-    expect(menu).toContain('{provider.phone && (')
-    expect(menu).toContain('{provider.email && (')
+  // Punto 1.1 (prompt de correcciones) — decisión del usuario: llamar/email/copiar ya no viven dentro de
+  // este menú plegado; viven SIEMPRE visibles junto al nombre (ProviderContactLine), para no tener que
+  // desplegar nada para ver o usar un dato de contacto. Ver providerContactClickableUi.test.ts.
+  it('ya no tiene tel:/mailto:/copiar — eso vive siempre visible en ProviderContactLine, no en este menú', () => {
+    expect(menu).not.toContain('href={`tel:${provider.phone}`}')
+    expect(menu).not.toContain('href={`mailto:${provider.email}`}')
+    expect(menu).not.toContain('navigator.clipboard')
   })
 })
 

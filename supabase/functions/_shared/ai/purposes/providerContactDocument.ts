@@ -17,6 +17,10 @@ export interface ProviderContactDocumentOutput {
   type: string | null
   contactPerson: string | null
   phone: string | null
+  // Punto 1.4 (prompt de correcciones) — SOLO si el documento lo indica EXPRESAMENTE (icono de WhatsApp,
+  // la palabra "WhatsApp"/"wasap" junto a un número...). Nunca se copia aquí un teléfono normal: sin esa
+  // indicación explícita, este campo es null aunque haya un único número en el documento.
+  whatsapp: string | null
   email: string | null
   website: string | null
   address: string | null
@@ -38,11 +42,14 @@ const PROVIDER_CONTACT_DOCUMENT_PROMPT =
   '- "contactPerson": una persona de contacto concreta, SOLO si aparece explícitamente (p. ej. "Atiende: Marta", ' +
   'un nombre bajo un cargo). Si solo hay el nombre del negocio, null.\n' +
   '- "phone": un único teléfono, el principal si hay varios, tal como aparece escrito.\n' +
+  '- "whatsapp": un número de WhatsApp, SOLO si el documento lo indica EXPRESAMENTE (un icono de WhatsApp, la ' +
+  'palabra "WhatsApp" o "wasap" junto al número). Nunca copies aquí un teléfono normal: si no hay ninguna marca ' +
+  'explícita de WhatsApp, este campo es null, aunque solo haya un número en todo el documento.\n' +
   '- "email" y "website": tal como aparecen escritos.\n' +
   '- "address": la dirección postal completa tal como aparece, o null si no aparece.\n' +
   'Responde ÚNICAMENTE un objeto JSON con esta forma exacta, sin texto adicional ni markdown:\n' +
   '{"name": "texto o null", "type": "texto o null", "contactPerson": "texto o null", "phone": "texto o null", ' +
-  '"email": "texto o null", "website": "texto o null", "address": "texto o null"}\n' +
+  '"whatsapp": "texto o null", "email": "texto o null", "website": "texto o null", "address": "texto o null"}\n' +
   'Si la imagen no es una tarjeta de contacto ni tiene datos de un negocio, o no se puede leer casi nada, responde ' +
   'con todos los campos en null.'
 
@@ -63,7 +70,7 @@ export const providerContactDocumentSpec: AiPurposeSpec<ProviderContactDocumentI
   // Nunca lanza: una respuesta ilegible se trata igual que "no se pudo leer nada" (todo null), nunca rompe
   // la importación.
   parseOutput(rawText) {
-    const empty: ProviderContactDocumentOutput = { name: null, type: null, contactPerson: null, phone: null, email: null, website: null, address: null }
+    const empty: ProviderContactDocumentOutput = { name: null, type: null, contactPerson: null, phone: null, whatsapp: null, email: null, website: null, address: null }
     const parsed = asRecord(parseJsonLoose(rawText))
     if (!parsed) return empty
     return {
@@ -71,6 +78,7 @@ export const providerContactDocumentSpec: AiPurposeSpec<ProviderContactDocumentI
       type: asCleanString(parsed.type, 80),
       contactPerson: asCleanString(parsed.contactPerson, 160),
       phone: asCleanString(parsed.phone, 60),
+      whatsapp: asCleanString(parsed.whatsapp, 60),
       email: asCleanString(parsed.email, 160),
       website: asCleanString(parsed.website, 200),
       address: asCleanString(parsed.address, 300),

@@ -9,6 +9,7 @@ export interface ProviderContactScanResult {
   type: string | null
   contactPerson: string | null
   phone: string | null
+  whatsapp: string | null
   email: string | null
   website: string | null
   address: string | null
@@ -53,6 +54,7 @@ export async function analyzeProviderContactDocument(file: File): Promise<Provid
     type: asString(json.type),
     contactPerson: asString(json.contactPerson),
     phone: asString(json.phone),
+    whatsapp: asString(json.whatsapp),
     email: asString(json.email),
     website: asString(json.website),
     address: asString(json.address),

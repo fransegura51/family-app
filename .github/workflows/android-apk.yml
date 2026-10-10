@@ -7,6 +7,11 @@ name: Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      exclude_plugins:
+        description: 'Complementos nativos a dejar fuera, separados por comas (para averiguar cuál cierra la app en un móvil). Vacío = todos.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -47,6 +52,8 @@ jobs:
             echo "Sin Firebase: esta app no recibirá avisos nativos"
           fi
       - name: Sincronizar el proyecto de Android
+        env:
+          PEPA_EXCLUDE_PLUGINS: ${{ inputs.exclude_plugins }}
         run: npx cap sync android
       - name: Preparar la llave de firma
         env:

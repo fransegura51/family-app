@@ -24,6 +24,40 @@ beforeEach(() => {
 })
 afterEach(() => vi.useRealTimers())
 
+describe('en el navegador (la web) la voz de Pepa es exactamente la de siempre', () => {
+  it('no toca el complemento nativo: usa la síntesis de voz del navegador', async () => {
+    native.value = false
+    const spoken: string[] = []
+    const synth = {
+      speaking: false,
+      pending: false,
+      paused: false,
+      cancel: vi.fn(),
+      resume: vi.fn(),
+      speak: vi.fn((u: { text: string; onend: () => void }) => {
+        spoken.push(u.text)
+        u.onend()
+      }),
+    }
+    vi.stubGlobal('window', { speechSynthesis: synth })
+    vi.stubGlobal('SpeechSynthesisUtterance', class { text: string; lang = ''; onend: () => void = () => undefined; onerror: () => void = () => undefined; constructor(t: string) { this.text = t } })
+    expect(isSpeechSupported()).toBe(true)
+    await speakAsync('He añadido Mercadona patata')
+    expect(spoken).toEqual(['He añadido Mercadona patata'])
+    expect(tts.speak).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('sin síntesis de voz en el navegador, sigue sin hablar y sin romper nada', async () => {
+    native.value = false
+    vi.stubGlobal('window', {})
+    expect(isSpeechSupported()).toBe(false)
+    await expect(speakAsync('hola')).resolves.toBeUndefined()
+    expect(tts.speak).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+})
+
 describe('Pepa habla en la app nativa', () => {
   it('dentro de la app se da por soportado y no depende de la voz del navegador', () => {
     expect(isSpeechSupported()).toBe(true)

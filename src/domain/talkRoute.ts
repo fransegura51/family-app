@@ -6,6 +6,7 @@
 // entonces se prueba la IA (solo para entender preguntas) o se pide otra forma
 // de decirlo. Las cosas de Cocina se resuelven ANTES de llegar aquí.
 import { extractSpokenDate } from '@/domain/spokenDate'
+import { mentionsChain } from '@/domain/supermarketChains'
 import { findKnownStore, isUnsupportedDelete, looksLikeSaveInstruction, normalize } from '@/domain/voiceQuery'
 
 export type TalkRoute = 'delete' | 'ask_shopping' | 'ask_calendar' | 'add_shopping' | 'add_calendar' | 'unknown'
@@ -51,6 +52,9 @@ export function routeTalk(text: string, knownStores: string[], today: Date): Tal
   if (strongShopping) return 'add_shopping'
   if (DATE_WORDS.test(n) || TIME_WORDS.test(n) || extractSpokenDate(n, today) || /\bcalendario\b/.test(n)) return 'add_calendar'
   if (shopping) return 'add_shopping'
+  // Una cadena de supermercado conocida («Mercadona patatas») aunque esa cuenta no la tenga dada de alta: sin esto caía en la IA, que la tomaba por una
+  // pregunta y leía la lista en vez de apuntar. Va DESPUÉS de fecha/hora: «recoger el pedido en Mercadona mañana a las cinco» sigue siendo calendario.
+  if (mentionsChain(text)) return 'add_shopping'
   if (SHOPPING_VERBS.test(n)) return 'add_shopping'
   return 'unknown'
 }

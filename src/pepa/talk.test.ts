@@ -117,6 +117,23 @@ describe('runTalk: escribir siempre con tarjeta', () => {
     expect(addShoppingItem).not.toHaveBeenCalled()
   })
 
+  it('«Mercadona patata» sin decir «añade» y SIN la tienda dada de alta se apunta (antes la IA lo tomaba por una pregunta y leía la lista)', async () => {
+    const deps = makeDeps({ storeNames: vi.fn().mockResolvedValue([]) })
+    const outcome = await runTalk('Mercadona patata', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.text).toContain('de Mercadona: patata')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).lines).toEqual(['Tienda: Mercadona'])
+    expect(deps.classifyWithAi).not.toHaveBeenCalled()
+    expect(deps.answerShopping).not.toHaveBeenCalled()
+  })
+
+  it('lo mismo con varios productos y la tienda al principio', async () => {
+    const deps = makeDeps({ storeNames: vi.fn().mockResolvedValue([]) })
+    const outcome = await runTalk('Mercadona pañuelos y huevos', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.text).toContain('de Mercadona: pañuelos, huevos')
+  })
+
   it('productos habituales pegados se separan SIN IA', async () => {
     const deps = makeDeps()
     const outcome = await runTalk('apunta patata lechuga lentejas en la lista de la compra', deps)

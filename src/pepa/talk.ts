@@ -17,6 +17,7 @@ import { expandEntries, shouldAskAi } from '@/domain/productSplit'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
 import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
+import { extractChain } from '@/domain/supermarketChains'
 import type { ScheduleEvent } from '@/domain/calendar'
 import type { KitchenOutcome } from '@/pepa/kitchen'
 import { proposeAction } from '@/pepa/actions/registry'
@@ -93,6 +94,14 @@ async function shoppingProposal(text: string, storeNames: string[], deps: TalkDe
     const trailing = extractTrailingStore(rest, memberNames)
     store = trailing.store
     rest = trailing.text
+  }
+  // Una cadena de supermercado conocida, dicha al principio o en medio («Mercadona patatas»), aunque no esté dada de alta.
+  if (!store) {
+    const chain = extractChain(rest)
+    if (chain) {
+      store = chain.store
+      rest = chain.text
+    }
   }
   // Primero reglas: comas, " y " y, si la transcripción ha pegado productos
   // ("leche huevo"), el reconocimiento de productos habituales.

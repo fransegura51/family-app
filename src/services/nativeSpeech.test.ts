@@ -7,6 +7,8 @@ const native = vi.hoisted(() => ({ value: true }))
 vi.mock('@capacitor-community/text-to-speech', () => ({ TextToSpeech: tts, QueueStrategy: { Flush: 0, Add: 1 } }))
 vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value }))
 vi.mock('@capacitor-community/speech-recognition', () => ({ SpeechRecognition: {} }))
+const report = vi.hoisted(() => vi.fn())
+vi.mock('@/data/errorReports', () => ({ reportClientError: report }))
 
 import { isSpeechSupported, primeSpeech, speakAsync } from '@/services/voice'
 import capacitorConfig from '../../capacitor.config.ts?raw'
@@ -59,6 +61,25 @@ describe('Pepa habla en la app nativa', () => {
     expect(done).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(2_000) // 6 s + 4 letras
     expect(done).toHaveBeenCalled()
+  })
+
+  it('si la voz falla, deja el motivo en el servidor (para poder diagnosticarlo sin tener el móvil delante)', async () => {
+    tts.speak.mockRejectedValue(new Error('"TextToSpeech" plugin is not implemented on android'))
+    await speakAsync('hola')
+    expect(report).toHaveBeenCalledTimes(1)
+    expect((report.mock.calls[0][0] as Error).message).toContain('[voz nativa] no se pudo hablar')
+    expect((report.mock.calls[0][0] as Error).message).toContain('not implemented')
+  })
+
+  it('si «termina» al instante una frase larga (no sonó: volumen, motor de voz...), también lo anota', async () => {
+    await speakAsync('He añadido Mercadona Patatas a la lista de la compra')
+    expect(report).toHaveBeenCalledTimes(1)
+    expect((report.mock.calls[0][0] as Error).message).toContain('probablemente no sonó')
+  })
+
+  it('una frase corta que termina rápido es normal y no se anota', async () => {
+    await speakAsync('ok')
+    expect(report).not.toHaveBeenCalled()
   })
 
   it('«preparar» la voz (truco de Safari/iOS) no hace nada en la app', () => {

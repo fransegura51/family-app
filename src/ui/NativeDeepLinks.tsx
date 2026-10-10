@@ -19,13 +19,17 @@ export function NativeDeepLinks() {
       void Browser.close().catch(() => undefined)
       navigate(path, { replace: true })
     }
-    const listener = CapApp.addListener('appUrlOpen', (event) => handle(event.url))
+    // Todo con catch: una app instalada sin el complemento «App» (versiones de prueba) rechazaba estas llamadas y cada apertura dejaba errores
+    // inútiles en el registro de fallos.
+    const listener = CapApp.addListener('appUrlOpen', (event) => handle(event.url)).catch(() => undefined)
     // Si la app estaba cerrada del todo y Android la abrió con el enlace, el evento ya pasó: se pregunta cuál fue.
-    void CapApp.getLaunchUrl().then((launch) => {
-      if (launch?.url) handle(launch.url)
-    })
+    void CapApp.getLaunchUrl()
+      .then((launch) => {
+        if (launch?.url) handle(launch.url)
+      })
+      .catch(() => undefined)
     return () => {
-      void listener.then((l) => l.remove())
+      void listener.then((l) => l?.remove())
     }
   }, [navigate])
 

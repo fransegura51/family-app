@@ -26,10 +26,28 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 // y funcionando (ver HomeOrBankReturn en App.tsx).
 const APP_RETURN_URL = "https://fransegura51.github.io/family-app/"
 
-function redirectTo(status: "connected" | "error", detail?: string): Response {
+// Conexión iniciada desde la APP NATIVA (el cliente manda native y viaja en el state): al terminar se vuelve por la página puente de PEPA
+// (public/volver-app.html), que abre la app con es.pepafamilyapp.app://open/…; desde el navegador se vuelve a la web como siempre.
+const APP_BRIDGE_URL = "https://fransegura51.github.io/family-app/volver-app.html"
+
+function readAppFlag(stateRaw: string | null): boolean {
+  if (!stateRaw) return false
+  try {
+    return JSON.parse(atob(stateRaw)).app === true
+  } catch {
+    return false
+  }
+}
+
+function redirectTo(status: "connected" | "error", detail?: string, fromApp = false): Response {
   const url = new URL(APP_RETURN_URL)
   url.searchParams.set("bank", status)
   if (detail) url.searchParams.set("detail", detail)
+  if (fromApp) {
+    const bridge = new URL(APP_BRIDGE_URL)
+    bridge.searchParams.set("to", `/${url.search}`)
+    return new Response(null, { status: 302, headers: { Location: bridge.toString() } })
+  }
   return new Response(null, { status: 302, headers: { Location: url.toString() } })
 }
 
@@ -114,13 +132,17 @@ async function createRenewalReminders(
 }
 
 Deno.serve(async (req) => {
+  // Se decide al leer el state, pero se declara fuera del try para que también valga en el catch de errores inesperados.
+  let fromApp = false
+  const back = (status: "connected" | "error", detail?: string) => redirectTo(status, detail, fromApp)
   try {
     const url = new URL(req.url)
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const authError = url.searchParams.get("error")
-    if (authError) return redirectTo("error", authError)
-    if (!code || !stateRaw) return redirectTo("error", "missing_code")
+    fromApp = readAppFlag(stateRaw)
+    if (authError) return back("error", authError)
+    if (!code || !stateRaw) return back("error", "missing_code")
 
     let familyId: string
     let profileId: string | null = null
@@ -130,7 +152,7 @@ Deno.serve(async (req) => {
       profileId = typeof state.profileId === "string" ? state.profileId : null
       if (!familyId) throw new Error("bad state")
     } catch {
-      return redirectTo("error", "bad_state")
+      return back("error", "bad_state")
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -156,7 +178,7 @@ Deno.serve(async (req) => {
       admin.rpc("get_app_secret", { p_name: "enablebanking_application_id" }),
       admin.rpc("get_app_secret", { p_name: "enablebanking_private_key" }),
     ])
-    if (!applicationId || !privateKey) return redirectTo("error", "not_configured")
+    if (!applicationId || !privateKey) return back("error", "not_configured")
 
     const jwt = await signEnableBankingJWT(applicationId, privateKey)
     const sessionRes = await fetch("https://api.enablebanking.com/sessions", {
@@ -164,7 +186,7 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
     })
-    if (!sessionRes.ok) return redirectTo("error", "session_exchange_failed")
+    if (!sessionRes.ok) return back("error", "session_exchange_failed")
     const sessionJson = await sessionRes.json()
 
     const { data: connection, error: connectionError } = await admin
@@ -178,7 +200,7 @@ Deno.serve(async (req) => {
       })
       .select("id")
       .single()
-    if (connectionError) return redirectTo("error", "save_failed")
+    if (connectionError) return back("error", "save_failed")
 
     const accounts = Array.isArray(sessionJson.accounts) ? sessionJson.accounts : []
     for (const acc of accounts) {
@@ -195,9 +217,9 @@ Deno.serve(async (req) => {
 
     await createRenewalReminders(admin, familyId, connection.id, sessionJson.aspsp?.name ?? "tu banco", sessionJson.access?.valid_until ?? null)
 
-    return redirectTo("connected")
+    return back("connected")
   } catch (err) {
     console.error(err)
-    return redirectTo("error", "internal")
+    return back("error", "internal")
   }
 })

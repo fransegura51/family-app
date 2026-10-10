@@ -60,7 +60,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    const state = btoa(JSON.stringify({ familyId: profile.family_id, memberId: member.id, profileId: userData.user.id }))
+    // native=1: conexión iniciada desde la app nativa (ver google-calendar-oauth-callback).
+    const fromApp = new URL(req.url).searchParams.get("native") === "1"
+    const state = btoa(JSON.stringify({ familyId: profile.family_id, memberId: member.id, profileId: userData.user.id, ...(fromApp ? { app: true } : {}) }))
     const redirectUri = `${SUPABASE_URL}/functions/v1/google-calendar-oauth-callback`
 
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")

@@ -17,21 +17,43 @@ const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 // GitHub Pages, con el basename del router (ver App.tsx).
 const APP_RETURN_URL = "https://fransegura51.github.io/family-app/calendario"
 
-function redirectTo(status: "connected" | "error", detail?: string): Response {
+// Conexión iniciada desde la APP NATIVA (el cliente manda native y viaja en el state): al terminar se vuelve por la página puente de PEPA
+// (public/volver-app.html), que abre la app con es.pepafamilyapp.app://open/…; desde el navegador se vuelve a la web como siempre.
+const APP_BRIDGE_URL = "https://fransegura51.github.io/family-app/volver-app.html"
+
+function readAppFlag(stateRaw: string | null): boolean {
+  if (!stateRaw) return false
+  try {
+    return JSON.parse(atob(stateRaw)).app === true
+  } catch {
+    return false
+  }
+}
+
+function redirectTo(status: "connected" | "error", detail?: string, fromApp = false): Response {
   const url = new URL(APP_RETURN_URL)
   url.searchParams.set("google", status)
   if (detail) url.searchParams.set("detail", detail)
+  if (fromApp) {
+    const bridge = new URL(APP_BRIDGE_URL)
+    bridge.searchParams.set("to", `/calendario${url.search}`)
+    return new Response(null, { status: 302, headers: { Location: bridge.toString() } })
+  }
   return new Response(null, { status: 302, headers: { Location: url.toString() } })
 }
 
 Deno.serve(async (req) => {
+  // Se decide al leer el state, pero se declara fuera del try para que también valga en el catch de errores inesperados.
+  let fromApp = false
+  const back = (status: "connected" | "error", detail?: string) => redirectTo(status, detail, fromApp)
   try {
     const url = new URL(req.url)
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const oauthError = url.searchParams.get("error")
-    if (oauthError) return redirectTo("error", oauthError)
-    if (!code || !stateRaw) return redirectTo("error", "missing_code")
+    fromApp = readAppFlag(stateRaw)
+    if (oauthError) return back("error", oauthError)
+    if (!code || !stateRaw) return back("error", "missing_code")
 
     let familyId: string
     let memberId: string
@@ -43,13 +65,13 @@ Deno.serve(async (req) => {
       profileId = state.profileId
       if (!familyId || !memberId || !profileId) throw new Error("bad state")
     } catch {
-      return redirectTo("error", "bad_state")
+      return back("error", "bad_state")
     }
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
     const { data: clientId } = await admin.rpc("get_app_secret", { p_name: "google_oauth_client_id" })
     const { data: clientSecret } = await admin.rpc("get_app_secret", { p_name: "google_oauth_client_secret" })
-    if (!clientId || !clientSecret) return redirectTo("error", "not_configured")
+    if (!clientId || !clientSecret) return back("error", "not_configured")
 
     const redirectUri = `${SUPABASE_URL}/functions/v1/google-calendar-oauth-callback`
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -63,11 +85,11 @@ Deno.serve(async (req) => {
         grant_type: "authorization_code",
       }),
     })
-    if (!tokenRes.ok) return redirectTo("error", "token_exchange_failed")
+    if (!tokenRes.ok) return back("error", "token_exchange_failed")
     const tokenJson = await tokenRes.json()
     const accessToken = tokenJson.access_token as string
     const refreshToken = tokenJson.refresh_token as string | undefined
-    if (!refreshToken) return redirectTo("error", "no_refresh_token")
+    if (!refreshToken) return back("error", "no_refresh_token")
 
     // Busca un calendario secundario "Family App" ya creado en una
     // conexión anterior; si no hay, lo crea. Así una reconexión no deja
@@ -87,7 +109,7 @@ Deno.serve(async (req) => {
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ summary: "Family App", description: "Calendario de la app familiar" }),
       })
-      if (!createRes.ok) return redirectTo("error", "calendar_create_failed")
+      if (!createRes.ok) return back("error", "calendar_create_failed")
       const createJson = await createRes.json()
       googleCalendarId = createJson.id
     }
@@ -101,11 +123,11 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
       last_sync_error: null,
     })
-    if (upsertError) return redirectTo("error", "save_failed")
+    if (upsertError) return back("error", "save_failed")
 
-    return redirectTo("connected")
+    return back("connected")
   } catch (err) {
     console.error(err)
-    return redirectTo("error", "internal")
+    return back("error", "internal")
   }
 })

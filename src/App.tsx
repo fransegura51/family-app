@@ -26,6 +26,7 @@ const AlimentacionScreen = lazy(() => import('@/ui/AlimentacionScreen').then((m)
 const FinanceScreen = lazy(() => import('@/ui/FinanceScreen').then((m) => ({ default: m.FinanceScreen })))
 const LocationScreen = lazy(() => import('@/ui/LocationScreen').then((m) => ({ default: m.LocationScreen })))
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
+import { NativeDeepLinks } from '@/ui/NativeDeepLinks'
 import { UsageTracker } from '@/ui/UsageTracker'
 import { PushSubscriptionKeeper } from '@/ui/PushSubscriptionKeeper'
 import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
@@ -122,6 +123,7 @@ function AuthedApp() {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <ReminderWatcher />
         <UsageTracker />
+        <NativeDeepLinks />
         <PushSubscriptionKeeper />
         <LocationSharingWatcher profileId={profile.id} />
         <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>

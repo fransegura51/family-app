@@ -1,3 +1,5 @@
+import { isNativeApp } from '@/services/nativeApp'
+import { openAuthUrl } from '@/services/nativeOAuth'
 // Módulo Banco (Enable Banking) — mismo patrón que google-calendar
 // (startGoogleConnect): esta pestaña redirige al banco, la vuelta
 // ocurre en enable-banking-auth-callback, que trae de vuelta a
@@ -37,14 +39,14 @@ export async function listAspsps(country: string): Promise<Aspsp[]> {
 export async function startBankConnection(aspspName: string, aspspCountry: string, iban?: string): Promise<void> {
   const res = await authedFetch('enable-banking-auth-start', {
     method: 'POST',
-    body: JSON.stringify({ aspspName, aspspCountry, iban: iban?.trim() || undefined }),
+    body: JSON.stringify({ aspspName, aspspCountry, iban: iban?.trim() || undefined, native: isNativeApp() || undefined }),
   })
   const json = await res.json()
   if (!res.ok || !json.url) {
     if (json.error === 'iban_invalid') throw new Error('El IBAN no parece correcto — revísalo (empieza por ES y tiene 24 caracteres).')
     throw new Error(json.error ?? 'No se pudo iniciar la conexión con el banco')
   }
-  window.location.href = json.url
+  await openAuthUrl(json.url)
 }
 
 export interface SyncResult {

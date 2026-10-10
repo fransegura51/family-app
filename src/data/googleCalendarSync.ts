@@ -1,3 +1,5 @@
+import { isNativeApp } from '@/services/nativeApp'
+import { openAuthUrl } from '@/services/nativeOAuth'
 // Sincronización de verdad, cada hora, del calendario de la app HACIA
 // Google Calendar — sentido contrario a los calendarios enlazados
 // (Google -> app) y más fiable que la exportación por URL (app -> app
@@ -37,10 +39,12 @@ export async function startGoogleConnect(): Promise<void> {
   if (!token) throw new Error('No autenticado')
 
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-  const res = await fetch(`${supabaseUrl}/functions/v1/google-calendar-oauth-start`, {
+  // native=1: la conexión empieza desde la app nativa, así que al terminar el servidor devuelve a la APP (página puente) y no a la web.
+  const nativeFlag = isNativeApp() ? '?native=1' : ''
+  const res = await fetch(`${supabaseUrl}/functions/v1/google-calendar-oauth-start${nativeFlag}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   const json = await res.json()
   if (!res.ok || !json.url) throw new Error(json.error ?? 'No se pudo iniciar la conexión con Google')
-  window.location.href = json.url
+  await openAuthUrl(json.url)
 }

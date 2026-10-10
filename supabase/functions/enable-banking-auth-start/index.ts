@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     const { data: userData, error: userError } = await userClient.auth.getUser()
     if (userError || !userData.user) return json({ error: "unauthorized" }, 401)
 
-    const { aspspName, aspspCountry, iban: rawIban } = await req.json()
+    const { aspspName, aspspCountry, iban: rawIban, native } = await req.json()
     if (!aspspName || !aspspCountry) return json({ error: "missing aspspName/aspspCountry" }, 400)
     // IBAN opcional. Caso real (Caja Rural Central / hub Ruralvía): con el
     // consentimiento "global" (sin cuentas) el banco autoriza la sesión
@@ -96,7 +96,8 @@ Deno.serve(async (req) => {
     if (!applicationId || !privateKey) return json({ error: "not_configured" }, 500)
 
     const jwt = await signEnableBankingJWT(applicationId, privateKey)
-    const state = btoa(JSON.stringify({ familyId: profile.family_id, profileId: userData.user.id }))
+    // native: conexión iniciada desde la app nativa (ver enable-banking-auth-callback).
+    const state = btoa(JSON.stringify({ familyId: profile.family_id, profileId: userData.user.id, ...(native === true ? { app: true } : {}) }))
     const redirectUrl = `${SUPABASE_URL}/functions/v1/enable-banking-auth-callback`
     const validUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
 

@@ -6625,7 +6625,7 @@ function CelebracionBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
   const [loading, setLoading] = useState(true)
@@ -6699,7 +6699,7 @@ function CelebracionBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
 
       {!structured && event.type === 'cumpleanos' && questionIsVisible(localFocus, 'edad') && <EventAgeField event={event} onChanged={onChanged} />}
@@ -6744,6 +6744,7 @@ function CelebracionBlock({
             questionKey={LUGAR_CONTEXTO_QUESTION_KEY}
             decision={contextoDecision}
             savingKey={savingKey}
+            onToggleFocus={() => toggleLocalFocus(LUGAR_CONTEXTO_QUESTION_KEY)}
             onSave={(answer) => saveDecision('lugar_contexto', LUGAR_CONTEXTO_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', true)}
           />
           {!contexto && event.venueType && (
@@ -7171,6 +7172,7 @@ function CustomAwareQuestion<C extends string>({
   decision,
   savingKey,
   onSave,
+  onToggleFocus,
 }: {
   event: FamilyEvent
   questionLabel: string
@@ -7179,6 +7181,10 @@ function CustomAwareQuestion<C extends string>({
   decision: EventDecision | undefined
   savingKey: string | null
   onSave: (answer: { choice: C; custom?: CustomResolution }) => void
+  // Punto 2.1 (prompt de correcciones) — pulsar el propio enunciado también pliega la pregunta abierta (y
+  // la vuelve a abrir si se pulsa con todo visible); opcional para no romper ningún otro sitio que todavía
+  // no pase este callback.
+  onToggleFocus?: () => void
 }) {
   const saving = savingKey === questionKey
   const existing = decision?.answer as unknown as { choice: C; custom?: CustomResolution } | undefined
@@ -7205,9 +7211,15 @@ function CustomAwareQuestion<C extends string>({
 
   return (
     <div style={{ marginTop: 6 }}>
-      <div className="muted" style={{ fontSize: 13 }}>
-        {questionLabel}
-      </div>
+      {onToggleFocus ? (
+        <button type="button" className="link-button muted" style={{ fontSize: 13, display: 'block', textAlign: 'left', padding: 0 }} onClick={onToggleFocus}>
+          {questionLabel}
+        </button>
+      ) : (
+        <div className="muted" style={{ fontSize: 13 }}>
+          {questionLabel}
+        </div>
+      )}
       <ChoiceRow options={options} value={current?.choice} disabled={saving} onSelect={selectChoice} />
       {current?.choice === ('otro' as C) && current.custom && (
         <>
@@ -7702,7 +7714,7 @@ function PairBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -7993,7 +8005,7 @@ function PairBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {PARTNER_SLOTS.map((slot) => {
         const name = partnerName(event, slot)
@@ -8094,6 +8106,7 @@ function PairBlock({
               onSave={(answer) =>
                 saveQuestion(ALIANZAS_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForAlianzas(answer as AlianzasAnswer))
               }
+              onToggleFocus={() => toggleLocalFocus(ALIANZAS_QUESTION_KEY)}
             />
           )}
           {matches(DETALLE_ESPECIAL_QUESTION_KEY, DETALLE_ESPECIAL_RESOLUCION_QUESTION_KEY) && (
@@ -8320,7 +8333,7 @@ function GuestsDecisionsBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
@@ -8498,7 +8511,7 @@ function GuestsDecisionsBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {questionIsVisible(localFocus, GUESTS_LISTA_QUESTION_KEY) && (
         <CustomAwareQuestion
@@ -8508,6 +8521,7 @@ function GuestsDecisionsBlock({
           questionKey={GUESTS_LISTA_QUESTION_KEY}
           decision={findDecision(GUESTS_LISTA_QUESTION_KEY)}
           savingKey={savingKey}
+          onToggleFocus={() => toggleLocalFocus(GUESTS_LISTA_QUESTION_KEY)}
           onSave={(answer) => saveQuestion(GUESTS_LISTA_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForListaInvitados(answer as ListaInvitadosAnswer))}
         />
       )}
@@ -8530,6 +8544,7 @@ function GuestsDecisionsBlock({
           questionKey={GUESTS_MOMENTOS_QUESTION_KEY}
           decision={findDecision(GUESTS_MOMENTOS_QUESTION_KEY)}
           savingKey={savingKey}
+          onToggleFocus={() => toggleLocalFocus(GUESTS_MOMENTOS_QUESTION_KEY)}
           onSave={(answer) => saveMomentos(answer as MomentosAnswer)}
         />
       )}
@@ -8541,6 +8556,7 @@ function GuestsDecisionsBlock({
           questionKey={GUESTS_NINOS_QUESTION_KEY}
           decision={ninosDecision}
           savingKey={savingKey}
+          onToggleFocus={() => toggleLocalFocus(GUESTS_NINOS_QUESTION_KEY)}
           onSave={(answer) => saveNinos(answer as NinosAnswer)}
         />
       )}
@@ -8555,6 +8571,7 @@ function GuestsDecisionsBlock({
           questionKey={GUESTS_INVITACION_QUESTION_KEY}
           decision={findDecision(GUESTS_INVITACION_QUESTION_KEY)}
           savingKey={savingKey}
+          onToggleFocus={() => toggleLocalFocus(GUESTS_INVITACION_QUESTION_KEY)}
           onSave={(answer) => saveQuestion(GUESTS_INVITACION_QUESTION_KEY, answer as unknown as Record<string, unknown>, answer.choice === 'otro', desiredForInvitacion(answer as InvitacionAnswer))}
         />
       )}
@@ -8840,7 +8857,7 @@ function MomentosEspecialesBlock({
   // Fase 1.1/1.2 (plan de pendientes) — ver useConfiguratorQuestionFocus.ts.
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -8959,7 +8976,7 @@ function MomentosEspecialesBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {questionIsVisible(localFocus, MOMENTOS_ESPECIALES_QUESTION_KEY) && (
         <MomentosEspecialesQuestion catalog={catalog} existing={seleccion} saving={savingKey === MOMENTOS_ESPECIALES_QUESTION_KEY} onSave={saveSeleccion} />
@@ -9834,7 +9851,7 @@ function PersonasEspecialesBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [people, setPeople] = useState<EventRolePerson[]>([])
   const [guestMembers, setGuestMembers] = useState<EventGuestMember[]>([])
@@ -9974,7 +9991,7 @@ function PersonasEspecialesBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {questionIsVisible(localFocus, ESPECIAL_HAY_QUESTION_KEY) && (
         <div>
@@ -10143,7 +10160,7 @@ function PersonasEspecialesBlock({
 }
 
 function FamiliaresBlock({ event, onDerivedDataChanged, focusRequest }: { event: FamilyEvent; onDerivedDataChanged: () => void; focusRequest?: ConfiguratorFocusRequest | null }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [people, setPeople] = useState<EventRolePerson[]>([])
   const [loading, setLoading] = useState(true)
@@ -10203,7 +10220,7 @@ function FamiliaresBlock({ event, onDerivedDataChanged, focusRequest }: { event:
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       <RolePeopleList people={people} onEdit={setEditingPerson} onDelete={(p) => void deletePerson(p)} />
       {(addingPerson || editingPerson) && (
@@ -10307,7 +10324,7 @@ function MusicaFiestaBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
   const [loading, setLoading] = useState(true)
@@ -10442,7 +10459,7 @@ function MusicaFiestaBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {venueHasMusic ? (
         <>
@@ -10695,7 +10712,7 @@ function FotosRecuerdosBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -10785,7 +10802,7 @@ function FotosRecuerdosBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {questionIsVisible(localFocus, COBERTURA_FOTOS_QUESTION_KEY) && (
         <div style={{ marginTop: 6 }}>
@@ -10877,7 +10894,7 @@ function OtrosDecoracionBlock({
   onDerivedDataChanged: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [moments, setMoments] = useState<EventMoment[]>([])
   const [loading, setLoading] = useState(true)
@@ -11042,7 +11059,7 @@ function OtrosDecoracionBlock({
           {summary}
         </p>
       )}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
       {venueHasDecoracion
         ? questionIsVisible(localFocus, DECORACION_EXTRA_CONFIRM_QUESTION_KEY) && (
@@ -11177,7 +11194,7 @@ function ComidaBebidaBlock({
   onOpenMenu: () => void
   focusRequest?: ConfiguratorFocusRequest | null
 }) {
-  const { localFocus, setLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
+  const { localFocus, setLocalFocus, toggleLocalFocus, ref: focusRef } = useConfiguratorQuestionFocus(focusRequest)
   const [decisions, setDecisions] = useState<EventDecision[]>([])
   const [menuItems, setMenuItems] = useState<EventMenuItem[]>([])
   const [guests, setGuests] = useState<EventGuest[]>([])
@@ -11301,7 +11318,7 @@ function ComidaBebidaBlock({
         </p>
       )}
       {infantilPending && <p style={{ fontSize: 13, margin: '0 0 6px' }}>⏳ Falta decidir el menú infantil</p>}
-      <DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />
+      <DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />
       {error && <p className="error">{error}</p>}
 
       {/* A) Lo que ya sabemos del lugar — se decide en el primer bloque («Ceremonia y celebración» / «Celebración»);
@@ -11398,6 +11415,7 @@ function ComidaBebidaBlock({
             questionKey={FOOD_MENU_INFANTIL_KEY}
             decision={find(FOOD_MENU_INFANTIL_KEY)}
             savingKey={savingKey}
+            onToggleFocus={() => toggleLocalFocus(FOOD_MENU_INFANTIL_KEY)}
             onSave={(a) => saveFood(FOOD_MENU_INFANTIL_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
           />
           {infantil?.choice === 'incluido' && (
@@ -11431,6 +11449,7 @@ function ComidaBebidaBlock({
             decision={tartaDecision}
             savingKey={savingKey}
             onSave={(a) => saveFood(FOOD_TARTA_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
+            onToggleFocus={() => toggleLocalFocus(FOOD_TARTA_KEY)}
           />
           {answerOf<TartaAnswer>(FOOD_TARTA_KEY)?.choice === 'encargar' && tartaDecision && <ProviderLinker event={event} decision={tartaDecision} />}
           {tartaWarning && <p style={{ fontSize: 13, margin: '4px 0 0' }}>⚠️ {tartaWarning}</p>}
@@ -11448,6 +11467,7 @@ function ComidaBebidaBlock({
             decision={bebidasDecision}
             savingKey={savingKey}
             onSave={(a) => saveFood(FOOD_BEBIDAS_KEY, a as unknown as Record<string, unknown>, a.choice === 'otro')}
+            onToggleFocus={() => toggleLocalFocus(FOOD_BEBIDAS_KEY)}
           />
           {answerOf<BebidasAnswer>(FOOD_BEBIDAS_KEY)?.choice === 'aparte' && bebidasDecision && <ProviderLinker event={event} decision={bebidasDecision} />}
         </div>

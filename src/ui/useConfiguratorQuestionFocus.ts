@@ -25,6 +25,13 @@ export function stepConfiguratorFocus(
   return { localFocus: request.questionKey, lastProcessedToken: request.token, shouldScroll: true }
 }
 
+// Punto 2.1 (prompt de correcciones) — pulsar la MISMA línea del resumen, o el propio enunciado de la
+// pregunta ya abierta, una segunda vez la cierra otra vez (vuelve a verse todo) — nunca se queda siempre
+// abierta. Puro: decide el siguiente localFocus a partir del actual y la clave pulsada, sin tocar React.
+export function toggleQuestionFocus(current: string | null, key: string): string | null {
+  return current === key ? null : key
+}
+
 export function useConfiguratorQuestionFocus(focusRequest: ConfiguratorFocusRequest | null | undefined) {
   const [localFocus, setLocalFocus] = useState<string | null>(focusRequest?.questionKey ?? null)
   const lastToken = useRef<number | null>(focusRequest?.token ?? null)
@@ -39,7 +46,14 @@ export function useConfiguratorQuestionFocus(focusRequest: ConfiguratorFocusRequ
     if (step.shouldScroll) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }, [focusRequest])
 
-  return { localFocus, setLocalFocus, ref }
+  // Punto 2.1 — la misma función sirve para "pulsar la línea del resumen" (abre/cierra) y para "pulsar el
+  // enunciado de la pregunta ya abierta" (la cierra) y "pulsar el enunciado con todo visible" (la abre,
+  // aislándola) — un único toggle, reutilizado en todos los sitios en vez de un mecanismo paralelo.
+  function toggleLocalFocus(key: string) {
+    setLocalFocus((cur) => toggleQuestionFocus(cur, key))
+  }
+
+  return { localFocus, setLocalFocus, toggleLocalFocus, ref }
 }
 
 // null/vacío = sin foco, se ve todo (comportamiento de siempre, cero cambio visual por defecto). Con foco

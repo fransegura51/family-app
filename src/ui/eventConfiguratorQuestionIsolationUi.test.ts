@@ -32,14 +32,18 @@ describe.each([
     expect(block).toContain('useConfiguratorQuestionFocus(focusRequest)')
     expect(block).toContain('ref={focusRef}')
   })
-  it('su "Resumen de decisiones" recibe onSelect={setLocalFocus} — cada entrada ya es un enlace a su pregunta', () => {
+  // Punto 2.1 (prompt de correcciones) — pulsar la MISMA línea del resumen una segunda vez cierra la
+  // pregunta otra vez, en vez de dejarla siempre abierta: onSelect ahora es el toggle, no el setter crudo.
+  it('su "Resumen de decisiones" recibe onSelect={toggleLocalFocus} — abre Y cierra la misma línea', () => {
     const block = getBlock()
-    expect(block).toContain('onSelect={setLocalFocus}')
+    expect(block).toContain('onSelect={toggleLocalFocus}')
+    expect(block).not.toContain('onSelect={setLocalFocus}')
   })
-  it('"Ver todas las preguntas" solo se ofrece cuando hay un foco activo', () => {
+  it('"Ver todas las preguntas" solo se ofrece cuando hay un foco activo, y sigue siendo setLocalFocus(null) directo (no un toggle)', () => {
     const block = getBlock()
     expect(block).toContain('{localFocus && (')
     expect(block).toContain('Ver todas las preguntas')
+    expect(block).toContain('onClick={() => setLocalFocus(null)}')
   })
 })
 

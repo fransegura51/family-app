@@ -35,13 +35,15 @@ describe('Configurador de boda — los 3 bloques nuevos se añaden DESPUÉS de l
     expect(otros).toMatch(/applyPairDecisionGeneration\(event\.id,/)
   })
 
+  // Punto 2.1 (prompt de correcciones) — onSelect ahora es el toggle (abre Y cierra la misma línea),
+  // nunca el setter crudo que solo abría.
   it('los tres bloques usan DecisionSummaryDetails (resumen compacto), igual que el resto del configurador', () => {
     const musica = slice(UI, 'function MusicaFiestaBlock({', '\nfunction MusicaCatalogQuestion(')
     const fotos = slice(UI, 'function FotosRecuerdosBlock({', '\nfunction OtrosDecoracionBlock(')
     const otros = slice(UI, 'function OtrosDecoracionBlock({', '\nfunction ComidaBebidaBlock(')
-    expect(musica).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />')
-    expect(fotos).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />')
-    expect(otros).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={setLocalFocus} />')
+    expect(musica).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />')
+    expect(fotos).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />')
+    expect(otros).toContain('<DecisionSummaryDetails summary={decisionSummary} onSelect={toggleLocalFocus} />')
   })
 })
 

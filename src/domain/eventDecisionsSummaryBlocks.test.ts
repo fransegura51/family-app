@@ -17,11 +17,13 @@ const UI = (import.meta.glob('/src/ui/EventosScreen.tsx', { query: '?raw', impor
 
 describe('interfaz: un único componente de resumen reutilizado, nunca una segunda fuente de verdad', () => {
   it('los diez bloques (Comida, Celebración, Pareja, Invitados, Momentos especiales, Personas especiales, Familiares, Música y fiesta, Fotos y recuerdos, Otros y decoración) usan el mismo <DecisionSummaryDetails>', () => {
-    // Fase 1.2: cada bloque le pasa además onSelect={setLocalFocus} — cada entrada del resumen ya es un
-    // enlace a su propia pregunta (ver useConfiguratorQuestionFocus.ts) — mismo componente, nunca uno nuevo.
+    // Fase 1.2: cada bloque le pasa además onSelect — cada entrada del resumen ya es un enlace a su propia
+    // pregunta (ver useConfiguratorQuestionFocus.ts) — mismo componente, nunca uno nuevo.
     // Fase 2: Personas especiales y Familiares (eventSpecialPeople.ts) se suman a los cinco de la Fase 1.
     // Tanda "completar configurador de boda": Música y fiesta, Fotos y recuerdos, Otros y decoración.
-    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} onSelect=\{setLocalFocus\} \/>/g) ?? []).length).toBe(10)
+    // Punto 2.1 (prompt de correcciones): onSelect ahora es toggleLocalFocus (abre Y cierra la misma
+    // línea), no el setter crudo que solo abría.
+    expect((UI.match(/<DecisionSummaryDetails summary=\{decisionSummary\} onSelect=\{toggleLocalFocus\} \/>/g) ?? []).length).toBe(10)
   })
   it('cada bloque calcula su propio decisionSummary con su propio builder (no se comparte estado entre bloques)', () => {
     expect(UI).toContain('const decisionSummary = buildFoodDecisionSummary(ctx)')

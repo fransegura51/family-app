@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { questionIsVisible, stepConfiguratorFocus } from './useConfiguratorQuestionFocus'
+import { questionIsVisible, stepConfiguratorFocus, toggleQuestionFocus } from './useConfiguratorQuestionFocus'
 
 describe('questionIsVisible — sin foco se ve todo, con foco solo la pregunta coincidente', () => {
   it('localFocus null: cualquier pregunta es visible', () => {
@@ -27,5 +27,17 @@ describe('stepConfiguratorFocus — nunca reacciona dos veces al mismo clic, per
   it('token distinto con otra questionKey: aplica la nueva', () => {
     const step = stepConfiguratorFocus(1, { questionKey: 'b', token: 2 })
     expect(step?.localFocus).toBe('b')
+  })
+})
+
+describe('toggleQuestionFocus — Punto 2.1 (prompt de correcciones): pulsar lo mismo otra vez cierra, nunca se queda abierto para siempre', () => {
+  it('sin foco activo, pulsar una pregunta la abre (la aísla)', () => {
+    expect(toggleQuestionFocus(null, 'invitados.invitacion')).toBe('invitados.invitacion')
+  })
+  it('pulsar la MISMA pregunta que ya está abierta la cierra (vuelve a null, se ve todo)', () => {
+    expect(toggleQuestionFocus('invitados.invitacion', 'invitados.invitacion')).toBeNull()
+  })
+  it('pulsar una pregunta DISTINTA a la que estaba abierta cambia el foco a la nueva (nunca las combina)', () => {
+    expect(toggleQuestionFocus('invitados.lista', 'invitados.invitacion')).toBe('invitados.invitacion')
   })
 })

@@ -6,6 +6,7 @@
 // "continuo" nativo del navegador, que en móvil corta a media frase.
 import { isNativeApp } from '@/services/nativeApp'
 import { listenContinuousNative } from '@/services/nativeVoice'
+import { speakNative } from '@/services/nativeSpeech'
 
 interface SpeechRecognitionAlternativeLike {
   transcript: string
@@ -51,6 +52,8 @@ export function isDictationSupported(): boolean {
 }
 
 export function isSpeechSupported(): boolean {
+  // En la app nativa Pepa habla con la voz de Android (services/nativeSpeech.ts): la del navegador no suena dentro de una app.
+  if (isNativeApp()) return true
   return typeof window !== 'undefined' && 'speechSynthesis' in window
 }
 
@@ -182,7 +185,7 @@ export function listenContinuous(handlers: {
 // enunciado vacío y mudo, lanzado dentro del toque (abrir Pepa, tocar el micrófono, enviar), la
 // desbloquea; después se puede hablar sin toque, que es lo que pasa al contestar a lo dictado.
 export function primeSpeech(): void {
-  if (!isSpeechSupported()) return
+  if (isNativeApp() || !isSpeechSupported()) return
   try {
     const synth = window.speechSynthesis
     if (synth.speaking || synth.pending) return
@@ -202,6 +205,7 @@ export function primeSpeech(): void {
 // navegador no avisa del final, se da por terminada al pasar un tiempo
 // razonable para el texto.
 export function speakAsync(text: string): Promise<void> {
+  if (isNativeApp()) return speakNative(text)
   if (!isSpeechSupported()) return Promise.resolve()
   return new Promise((resolve) => {
     const synth = window.speechSynthesis

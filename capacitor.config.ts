@@ -8,6 +8,7 @@ import type { CapacitorConfig } from '@capacitor/cli'
 const ALL_NATIVE_PLUGINS = [
   '@capacitor-community/background-geolocation',
   '@capacitor-community/speech-recognition',
+  '@capacitor-community/text-to-speech',
   '@capacitor/app',
   '@capacitor/browser',
   '@capacitor/local-notifications',

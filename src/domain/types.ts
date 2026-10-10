@@ -1190,6 +1190,11 @@ export interface ProviderGlobal {
   // su historial (ofertas, eventos en los que se usó...).
   archived: boolean
   createdAt: string
+  // Orden de recuperación de requisitos (Parte A6) — documento original (tarjeta de visita, captura de
+  // Google Maps...) conservado tras la importación con IA, nunca descartado. Migración 0233.
+  attachmentStoragePath: string | null
+  attachmentOriginalName: string | null
+  attachmentMimeType: string | null
 }
 
 // Vínculo entre un proveedor global y UN evento concreto — "interesado"/"descartado" es un estado LOCAL a

@@ -221,9 +221,11 @@ import {
   addProviderGlobal,
   countProviderGlobalEventLinks,
   findProviderGlobalMatch,
+  getProviderGlobalAttachmentUrl,
   linkProviderGlobalToEvent,
   listEventProviderLinks,
   listProvidersGlobal,
+  saveProviderGlobalAttachment,
   setEventProviderLinkStatus,
   unlinkProviderFromEvent,
   updateProviderGlobal,
@@ -12739,6 +12741,32 @@ async function saveProviderToContacts(provider: { name: string; type?: string | 
 // uno nuevo. Editar, llamar/email/copiar y "Guardar en contactos" son comunes a las 2 pantallas de
 // proveedores (registro global y por evento); "extraActions" son las propias de cada una (Desvincular
 // aquí, Archivar/Reactivar allá).
+// Orden de recuperación de requisitos (Parte A6) — enlace al documento original conservado (tarjeta de
+// visita, captura de Maps...), reutilizado en el registro global y en Proveedores de un evento.
+function ProviderAttachmentLink({ provider }: { provider: ProviderGlobal }) {
+  const [error, setError] = useState<string | null>(null)
+  if (!provider.attachmentStoragePath) return null
+  async function handleView() {
+    setError(null)
+    try {
+      const url = await getProviderGlobalAttachmentUrl(provider.attachmentStoragePath!)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo abrir el documento'))
+    }
+  }
+  return (
+    <>
+      <button type="button" className="link-button" style={{ fontSize: 12, maxWidth: '100%', overflow: 'hidden' }} onClick={() => void handleView()}>
+        <span style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom' }}>
+          📎 {provider.attachmentOriginalName ?? 'Ver documento original'}
+        </span>
+      </button>
+      {error && <p className="error" style={{ fontSize: 11 }}>{error}</p>}
+    </>
+  )
+}
+
 function ProviderCardMenu({
   provider,
   open,
@@ -12905,6 +12933,7 @@ function ProvidersGlobalScreen() {
                   📝 {p.notes}
                 </p>
               )}
+              <ProviderAttachmentLink provider={p} />
               <ProviderOfferHistoryPanel
                 globalProviderId={p.id}
                 onUseAsReference={(entry) => setReferenceEntry({ providerId: p.id, entry })}
@@ -12937,7 +12966,10 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
   // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" solo rellena lo que esté VACÍO:
   // nunca sobrescribe algo que la familia ya haya escrito a mano, sin avisar.
   const [importedExtra, setImportedExtra] = useState(false)
-  function applyImported(r: ProviderContactScanResult) {
+  // Orden de recuperación de requisitos (Parte A6) — "conservar la imagen o documento original": se
+  // guarda el archivo confirmado para subirlo junto con la ficha al guardar, nunca antes.
+  const [importedFile, setImportedFile] = useState<File | null>(null)
+  function applyImported(r: ProviderContactScanResult, file: File) {
     if (!name && r.name) setName(r.name)
     if (!type && r.type) setType(r.type)
     if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
@@ -12946,6 +12978,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
     if (!website && r.website) setWebsite(r.website)
     if (!address && r.address) setAddress(r.address)
     if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+    setImportedFile(file)
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -12957,7 +12990,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
     setSaving(true)
     setError(null)
     try {
-      await addProviderGlobal({
+      const created = await addProviderGlobal({
         name,
         type: type || null,
         contactPerson: contactPerson || null,
@@ -12966,6 +12999,7 @@ function AddProviderGlobalForm({ onClose, onAdded }: { onClose: () => void; onAd
         website: website || null,
         address: address || null,
       })
+      if (importedFile) await saveProviderGlobalAttachment(created, importedFile)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -13248,6 +13282,7 @@ function ProvidersSection({ eventId }: { eventId: string }) {
                   {[g.contactPerson, g.email, g.website, g.address].filter(Boolean).join(' · ')}
                 </p>
               )}
+              <ProviderAttachmentLink provider={g} />
               <ProviderOffersPanel eventId={eventId} globalProviderId={g.id} providerName={g.name} />
             </div>
           )
@@ -13297,7 +13332,9 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
   // PEPA Eventos, prompt maestro Parte A6 — "Importar datos con foto" solo rellena lo que esté VACÍO:
   // nunca sobrescribe algo que la familia ya haya escrito a mano, sin avisar.
   const [importedExtra, setImportedExtra] = useState(false)
-  function applyImported(r: ProviderContactScanResult) {
+  // Orden de recuperación de requisitos (Parte A6) — "conservar la imagen o documento original".
+  const [importedFile, setImportedFile] = useState<File | null>(null)
+  function applyImported(r: ProviderContactScanResult, file: File) {
     if (!name && r.name) setName(r.name)
     if (!type && r.type) setType(r.type)
     if (!contactPerson && r.contactPerson) setContactPerson(r.contactPerson)
@@ -13306,6 +13343,7 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
     if (!website && r.website) setWebsite(r.website)
     if (!address && r.address) setAddress(r.address)
     if (r.contactPerson || r.phone || r.email || r.website || r.address) setImportedExtra(true)
+    setImportedFile(file)
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -13326,6 +13364,7 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
         website: website || null,
         address: address || null,
       })
+      if (importedFile) await saveProviderGlobalAttachment(global, importedFile)
       await linkProviderGlobalToEvent(eventId, global)
       onAdded()
     } catch (err) {
@@ -13380,21 +13419,26 @@ function AddProviderAndLinkForm({ eventId, onClose, onAdded }: { eventId: string
 // REVISIÓN EDITABLE → solo al pulsar "Usar estos datos" se aplican al formulario (onImported). Nunca se
 // aplica solo: ver el merge en cada formulario (solo rellena campos que el usuario tenga vacíos, nunca
 // sobrescribe algo ya escrito sin avisar).
-function ImportProviderPhotoButton({ onImported }: { onImported: (result: ProviderContactScanResult) => void }) {
+function ImportProviderPhotoButton({ onImported }: { onImported: (result: ProviderContactScanResult, file: File) => void }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ProviderContactScanResult | null>(null)
+  // Orden de recuperación de requisitos (Parte A6) — el archivo original se conserva junto a la propuesta,
+  // para poder subirlo de verdad si la familia confirma los datos leídos.
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   async function handleFile(file: File) {
     setLoading(true)
     setError(null)
     setResult(null)
+    setPendingFile(null)
     try {
       const scanned = await analyzeProviderContactDocument(file)
       if (!scanned.name && !scanned.phone && !scanned.email && !scanned.address && !scanned.website && !scanned.contactPerson) {
         setError('No se ha podido leer ningún dato en esta imagen — prueba con otra foto, o rellena los datos a mano.')
       } else {
         setResult(scanned)
+        setPendingFile(file)
       }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo leer el documento'))
@@ -13437,13 +13481,21 @@ function ImportProviderPhotoButton({ onImported }: { onImported: (result: Provid
               type="button"
               className="link-button"
               onClick={() => {
-                onImported(result)
+                if (pendingFile) onImported(result, pendingFile)
                 setResult(null)
+                setPendingFile(null)
               }}
             >
               Usar estos datos
             </button>
-            <button type="button" className="link-button" onClick={() => setResult(null)}>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                setResult(null)
+                setPendingFile(null)
+              }}
+            >
               Descartar
             </button>
           </div>

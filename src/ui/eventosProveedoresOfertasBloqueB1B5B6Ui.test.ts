@@ -109,9 +109,9 @@ describe('B5 — FIX REAL: el nombre de archivo del picker ya no se sale de la p
 })
 
 describe('B5 — adjuntos de una oferta (📎 nombre) también con ellipsis, nunca cortados sin aviso', () => {
-  it('las 2 tarjetas de oferta (ProviderOffersPanel y OffersComparison) llevan el mismo arreglo', () => {
+  it('las 2 tarjetas de oferta (ProviderOffersPanel y OffersComparison) llevan el mismo arreglo, reutilizado también por el adjunto de un proveedor (Parte A6)', () => {
     const matches = UI.match(/textOverflow: 'ellipsis', whiteSpace: 'nowrap', verticalAlign: 'bottom'/g) ?? []
-    expect(matches.length).toBe(2)
+    expect(matches.length).toBe(3)
   })
 })
 

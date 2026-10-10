@@ -9,6 +9,7 @@
 // referencia nueva (global_provider_id, ver data/events.ts) a la ficha de aquí.
 import { supabase } from '@/data/supabaseClient'
 import { addEventProvider, listEventProviders } from '@/data/events'
+import { compressImageFile } from '@/domain/imageCompression'
 import type { EventProvider, EventProviderLink, EventProviderLinkStatus, ProviderGlobal } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
@@ -19,7 +20,8 @@ async function currentFamilyId(): Promise<string> {
   return profileRow.family_id
 }
 
-const PROVIDER_GLOBAL_SELECT = 'id, family_id, name, type, contact_person, phone, email, website, address, notes, archived, created_at'
+const PROVIDER_GLOBAL_SELECT =
+  'id, family_id, name, type, contact_person, phone, email, website, address, notes, archived, created_at, attachment_storage_path, attachment_original_name, attachment_mime_type'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapProviderGlobal(r: any): ProviderGlobal {
@@ -36,6 +38,9 @@ function mapProviderGlobal(r: any): ProviderGlobal {
     notes: r.notes,
     archived: r.archived,
     createdAt: r.created_at,
+    attachmentStoragePath: r.attachment_storage_path,
+    attachmentOriginalName: r.attachment_original_name,
+    attachmentMimeType: r.attachment_mime_type,
   }
 }
 
@@ -77,6 +82,41 @@ export async function addProviderGlobal(input: ProviderGlobalInput): Promise<Pro
     .single()
   if (error) throw error
   return mapProviderGlobal(data)
+}
+
+// Orden de recuperación de requisitos (Parte A6) — "conservar la imagen o documento original" de la
+// importación con IA. Mismo patrón, ya en producción, que saveEventTaskGroupOfferAttachment (migración
+// 0223): comprime si es imagen, sube a un bucket privado por familia, un único adjunto por proveedor
+// (subir uno nuevo sustituye al anterior y borra el archivo viejo del storage).
+export async function saveProviderGlobalAttachment(provider: ProviderGlobal, file: File): Promise<ProviderGlobal> {
+  const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
+  const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
+  const path = `${provider.familyId}/${provider.id}/${crypto.randomUUID()}.${ext}`
+  const { error: uploadError } = await supabase.storage.from('providers_global').upload(path, prepared)
+  if (uploadError) throw uploadError
+  const previousPath = provider.attachmentStoragePath
+  const { data, error } = await supabase
+    .from('providers_global')
+    .update({
+      attachment_storage_path: path,
+      attachment_original_name: file.name.slice(0, 160),
+      attachment_mime_type: prepared.type || file.type || null,
+    })
+    .eq('id', provider.id)
+    .select(PROVIDER_GLOBAL_SELECT)
+    .single()
+  if (error) {
+    await supabase.storage.from('providers_global').remove([path])
+    throw error
+  }
+  if (previousPath && previousPath !== path) await supabase.storage.from('providers_global').remove([previousPath])
+  return mapProviderGlobal(data)
+}
+
+export async function getProviderGlobalAttachmentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('providers_global').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }
 
 export async function updateProviderGlobal(id: string, patch: Partial<ProviderGlobalInput> & { archived?: boolean }): Promise<void> {

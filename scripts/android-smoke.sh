@@ -44,6 +44,13 @@ if adb shell pidof "$PKG" > /dev/null && adb shell dumpsys activity activities |
   echo "== OK: la app sigue abierta tras el enlace de Google"
 else
   echo "== FALLO: la app se cerró o no está en primer plano tras el enlace de Google"
+  echo "-- proceso vivo: $(adb shell pidof "$PKG" || echo NO)"
+  echo "-- pantalla en primer plano:"
+  adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity|mFocusedApp|ResumedActivity" | head -5
+  echo "-- últimas pantallas de la pila:"
+  adb shell dumpsys activity activities | grep -E "Hist #|realActivity=" | head -8
+  echo "-- registro del sistema alrededor del enlace:"
+  adb logcat -d -t 400 | grep -E "ActivityTaskManager|ActivityManager|Capacitor|es.pepafamilyapp|FATAL|AndroidRuntime" | tail -25
   CRASHED=1
 fi
 echo "== Enlace de vuelta con la app CERRADA del todo (banco)"

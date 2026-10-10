@@ -3618,6 +3618,317 @@ const OFFER_STATUS_LABELS: Record<EventTaskGroupOfferStatus, string> = {
   descartada: 'Descartada',
 }
 
+// PEPA — prompt maestro, Bloque B3/B4: un servicio en edición, antes de guardarse — "id" presente =
+// servicio ya persistido (edición), ausente = servicio nuevo todavía sin guardar (alta, o añadido dentro
+// de una oferta en edición). Mismo shape que OfferBudgetScanItem (lo que ya propone la IA) a propósito:
+// un servicio importado y uno escrito a mano son indistinguibles una vez en la lista.
+type DraftOfferItem = OfferBudgetScanItem & { id?: string }
+
+// Único formulario de un servicio — reutilizado tanto para añadirlo/editarlo SIN guardar todavía (dentro
+// de OfferFormFields, alta o edición de la oferta) como para añadirlo/editarlo YA guardado (dentro de
+// OfferItemsPanel, viendo una oferta ya existente sin entrar a editarla entera) — "onSave" decide qué
+// hacer con el resultado en cada caso, nunca dos formularios de servicio distintos. Solo 2 campos
+// visibles al principio (nombre + importe), el resto detrás de "Más detalles" — petición real: no obligar
+// a rellenar cantidad/unidad/precio/descripción para un servicio sencillo de una sola línea.
+function DraftItemForm({
+  initial,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  initial: DraftOfferItem | null
+  onSave: (item: DraftOfferItem) => void
+  onCancel: () => void
+  saving?: boolean
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [subtotal, setSubtotal] = useState(initial?.subtotal === null || initial?.subtotal === undefined ? '' : String(initial.subtotal))
+  const [showDetails, setShowDetails] = useState(Boolean(initial && (initial.description || initial.quantity !== null || initial.unit || initial.isPackage)))
+  const [description, setDescription] = useState(initial?.description ?? '')
+  const [quantity, setQuantity] = useState(initial?.quantity === null || initial?.quantity === undefined ? '' : String(initial.quantity))
+  const [unit, setUnit] = useState(initial?.unit ?? '')
+  const [unitPrice, setUnitPrice] = useState(initial?.unitPrice === null || initial?.unitPrice === undefined ? '' : String(initial.unitPrice))
+  const [isPackage, setIsPackage] = useState(initial?.isPackage ?? false)
+  const [error, setError] = useState<string | null>(null)
+
+  function handleSave() {
+    if (!name.trim()) {
+      setError('Ponle un nombre al servicio.')
+      return
+    }
+    setError(null)
+    onSave({
+      id: initial?.id,
+      name: name.trim(),
+      description: description.trim() || null,
+      quantity: quantity.trim() === '' ? null : Number(quantity),
+      unit: unit.trim() || null,
+      unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
+      subtotal: subtotal.trim() === '' ? null : Number(subtotal),
+      isPackage,
+    })
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginTop: 6 }}>
+      {error && <p className="error">{error}</p>}
+      <label>
+        Nombre del servicio
+        {/* Ejemplo genérico a propósito (petición real: nunca un ejemplo específico de un sector
+            concreto, como el de una boda, para el servicio de un proveedor de otro tipo cualquiera). */}
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Hora extra, segundo profesional, envío..." />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Importe del servicio (€)
+        <input type="number" min={0} step="0.01" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
+      </label>
+      <button type="button" className="link-button" style={{ fontSize: 12, marginTop: 4 }} onClick={() => setShowDetails((v) => !v)}>
+        {showDetails ? '▾' : '▸'} Más detalles (opcional)
+      </button>
+      {showDetails && (
+        <>
+          <div className="filter-row" style={{ marginTop: 6 }}>
+            <button type="button" className={'chip' + (!isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(false)}>
+              Por cantidad/precio
+            </button>
+            <button type="button" className={'chip' + (isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(true)}>
+              📦 Paquete indivisible
+            </button>
+          </div>
+          {!isPackage && (
+            <div className="inline-fields" style={{ marginTop: 6 }}>
+              <label style={{ flex: 1 }}>
+                Cantidad
+                <input type="number" min={0} step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+              </label>
+              <label style={{ flex: 1 }}>
+                Unidad
+                <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ud, hora..." />
+              </label>
+              <label style={{ flex: 1 }}>
+                Precio unitario
+                <input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
+              </label>
+            </div>
+          )}
+          <label style={{ marginTop: 6 }}>
+            Descripción (opcional)
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+          </label>
+        </>
+      )}
+      <div className="filter-row" style={{ marginTop: 8 }}>
+        <button type="button" onClick={handleSave} disabled={saving}>
+          {saving ? 'Guardando…' : initial ? 'Guardar servicio' : '+ Añadir servicio'}
+        </button>
+        <button type="button" className="link-button" onClick={onCancel}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// PEPA — prompt maestro, Bloque B3/B4: campos de una oferta — la MISMA interfaz para alta y edición
+// (nunca dos formularios distintos). El proveedor queda fuera a propósito: su selección varía según el
+// contexto (nuevo/existente dentro de un encargo, fijo en una oferta suelta, texto libre al editar), así
+// que cada sitio que usa OfferFormFields lo resuelve y lo muestra justo encima. Todo lo demás es idéntico
+// en los tres sitios. "mode"/"setMode" son el interruptor Texto libre | Desglosado pedido explícitamente;
+// "items" son los servicios en borrador (sin guardar todavía en alta; ya persistidos, pero editables
+// localmente, en edición) — nunca obliga a guardar la oferta antes de poder añadir un servicio.
+function OfferFormFields({
+  name,
+  setName,
+  amount,
+  setAmount,
+  mode,
+  setMode,
+  scopeIncluded,
+  setScopeIncluded,
+  items,
+  setItems,
+  scopeExcluded,
+  setScopeExcluded,
+  offerDate,
+  setOfferDate,
+  validUntil,
+  setValidUntil,
+  conditions,
+  setConditions,
+  notes,
+  setNotes,
+  file,
+  setFile,
+  hasExistingAttachment,
+  onImported,
+}: {
+  name: string
+  setName: (v: string) => void
+  amount: string
+  setAmount: (v: string) => void
+  mode: 'texto' | 'desglosado'
+  setMode: (v: 'texto' | 'desglosado') => void
+  scopeIncluded: string
+  setScopeIncluded: (v: string) => void
+  items: DraftOfferItem[]
+  setItems: (fn: (prev: DraftOfferItem[]) => DraftOfferItem[]) => void
+  scopeExcluded: string
+  setScopeExcluded: (v: string) => void
+  offerDate: string
+  setOfferDate: (v: string) => void
+  validUntil: string
+  setValidUntil: (v: string) => void
+  conditions: string
+  setConditions: (v: string) => void
+  notes: string
+  setNotes: (v: string) => void
+  file: File | null
+  setFile: (f: File | null) => void
+  hasExistingAttachment: boolean
+  onImported: (result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) => void
+}) {
+  const [showMoreDetails, setShowMoreDetails] = useState(Boolean(scopeExcluded || offerDate || validUntil || conditions || notes || hasExistingAttachment))
+  const [showItemForm, setShowItemForm] = useState(false)
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null)
+
+  const sumItems = items.reduce((s, i) => s + (i.subtotal ?? 0), 0)
+  const hasAnySubtotal = items.some((i) => i.subtotal !== null)
+  const amountNum = Number(amount)
+  const amountMismatch = hasAnySubtotal && amount.trim() !== '' && !Number.isNaN(amountNum) && Math.abs(sumItems - amountNum) > 0.009
+
+  return (
+    <>
+      <ImportOfferBudgetButton onImported={onImported} />
+      <label>
+        Nombre de la oferta (opcional)
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Paquete básico, con álbum..." />
+      </label>
+      <label style={{ marginTop: 6 }}>
+        Importe total (€)
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
+      </label>
+      <p style={{ marginTop: 10, marginBottom: 4, fontWeight: 600, fontSize: 14 }}>¿Qué incluye la oferta?</p>
+      <div className="filter-row">
+        <button type="button" className={'chip' + (mode === 'texto' ? ' chip-active' : '')} onClick={() => setMode('texto')}>
+          Texto libre
+        </button>
+        <button type="button" className={'chip' + (mode === 'desglosado' ? ' chip-active' : '')} onClick={() => setMode('desglosado')}>
+          Desglosado
+        </button>
+      </div>
+      {mode === 'texto' ? (
+        <label style={{ marginTop: 6 }}>
+          Qué incluye (opcional)
+          <textarea
+            value={scopeIncluded}
+            onChange={(e) => setScopeIncluded(e.target.value)}
+            rows={3}
+            placeholder="Reportaje fotográfico, álbum y vídeo de la celebración…"
+          />
+        </label>
+      ) : (
+        <div style={{ marginTop: 6 }}>
+          <p className="muted" style={{ fontSize: 12 }}>
+            Servicios incluidos
+          </p>
+          {items.length === 0 && !showItemForm && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Todavía no hay ningún servicio — añade el primero cuando quieras, no hace falta guardar la oferta antes.
+            </p>
+          )}
+          <div className="event-list">
+            {items.map((item, i) =>
+              editingItemIndex === i ? (
+                <DraftItemForm
+                  key={item.id ?? `new-${i}`}
+                  initial={item}
+                  onCancel={() => setEditingItemIndex(null)}
+                  onSave={(updated) => {
+                    setItems((prev) => prev.map((it, idx) => (idx === i ? updated : it)))
+                    setEditingItemIndex(null)
+                  }}
+                />
+              ) : (
+                <div key={item.id ?? `new-${i}`} className="inline-fields" style={{ alignItems: 'center', marginTop: 4 }}>
+                  <div style={{ flex: 1 }}>
+                    <strong style={{ fontSize: 13 }}>{item.name}</strong>
+                    {item.isPackage ? <span className="muted" style={{ fontSize: 11 }}> · 📦 paquete</span> : null}
+                  </div>
+                  <span style={{ fontSize: 12 }}>{item.subtotal !== null ? `${item.subtotal.toFixed(2)} €` : 'sin importe'}</span>
+                  <button type="button" className="link-button" onClick={() => setEditingItemIndex(i)}>
+                    ✏️
+                  </button>
+                  <button type="button" className="link-button" onClick={() => setItems((prev) => prev.filter((_, idx) => idx !== i))}>
+                    ✕
+                  </button>
+                </div>
+              ),
+            )}
+          </div>
+          {showItemForm ? (
+            <DraftItemForm
+              initial={null}
+              onCancel={() => setShowItemForm(false)}
+              onSave={(item) => {
+                setItems((prev) => [...prev, item])
+                setShowItemForm(false)
+              }}
+            />
+          ) : (
+            <button type="button" className="link-button" style={{ marginTop: 6 }} onClick={() => setShowItemForm(true)}>
+              + Añadir servicio
+            </button>
+          )}
+          {hasAnySubtotal && (
+            <p className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+              Suma de los servicios: {sumItems.toFixed(2)} €
+              {amountMismatch && <> · El importe total no coincide — puede incluir descuento, impuestos u otro cargo aparte.</>}
+            </p>
+          )}
+        </div>
+      )}
+      <button type="button" className="link-button" style={{ fontSize: 12, marginTop: 10 }} onClick={() => setShowMoreDetails((v) => !v)}>
+        {showMoreDetails ? '▾' : '▸'} Más detalles (opcional)
+      </button>
+      {showMoreDetails && (
+        <>
+          <label style={{ marginTop: 6 }}>
+            Qué NO incluye (opcional)
+            <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
+          </label>
+          <div className="inline-fields" style={{ marginTop: 6 }}>
+            <label style={{ flex: 1 }}>
+              Fecha de la oferta (opcional)
+              <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
+            </label>
+            <label style={{ flex: 1 }}>
+              Válida hasta (opcional)
+              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+            </label>
+          </div>
+          <label style={{ marginTop: 6 }}>
+            Condiciones (opcional)
+            <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} placeholder="Forma de pago, cancelación..." />
+          </label>
+          <label style={{ marginTop: 6 }}>
+            Notas (opcional)
+            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+          <label style={{ marginTop: 6 }}>
+            {hasExistingAttachment ? 'Sustituir adjunto (opcional)' : 'Adjunto (opcional)'}
+            <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+          {file && (
+            <p className="muted" style={{ fontSize: 12 }}>
+              Elegido: {file.name}
+            </p>
+          )}
+        </>
+      )}
+    </>
+  )
+}
+
 // Fase 6 (Parte B) — comparar varias ofertas de proveedores antes de resolver un encargo. SOLO
 // información para comparar: seleccionar una aquí NUNCA crea un pago ni toca el presupuesto — eso sigue
 // pasando exclusivamente al "Marcar encargo como resuelto" de ResolveGroupModal; "Usar esta oferta al
@@ -3974,28 +4285,33 @@ function AddOfferForm({
   const [selectedProviderId, setSelectedProviderId] = useState('')
   const [newProviderName, setNewProviderName] = useState('')
   const [supersedesOfferId, setSupersedesOfferId] = useState('')
+  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
+  const [mode, setMode] = useState<'texto' | 'desglosado'>('texto')
   const [scopeIncluded, setScopeIncluded] = useState('')
+  const [items, setItems] = useState<DraftOfferItem[]>([])
   const [scopeExcluded, setScopeExcluded] = useState('')
   const [offerDate, setOfferDate] = useState('')
   const [validUntil, setValidUntil] = useState('')
   const [conditions, setConditions] = useState('')
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [pendingItems, setPendingItems] = useState<OfferBudgetScanItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // "Importar presupuesto" solo rellena lo que esté VACÍO (igual que el resto de importaciones de PEPA) —
-  // los servicios se guardan aparte, YA revisados por la familia en el propio botón de importar.
-  function applyImported(result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) {
+  // si trae servicios, pasa a Desglosado sola (revisable igual, nunca se pierden si luego se corrige a mano).
+  function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
     if (providerMode === 'new' && !newProviderName && result.providerName) setNewProviderName(result.providerName)
     if (!amount && result.amount !== null) setAmount(String(result.amount))
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
-    setPendingItems(items)
+    if (importedItems.length > 0) {
+      setMode('desglosado')
+      setItems((prev) => [...prev, ...importedItems])
+    }
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -4016,8 +4332,9 @@ function AddOfferForm({
       const offer = await addEventTaskGroupOffer(groupId, {
         providerId: providerMode === 'existing' ? selectedProviderId || null : null,
         providerName,
+        name: name.trim() || null,
         amount: amountNum,
-        scopeIncluded: scopeIncluded.trim() || null,
+        scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
         validUntil: validUntil || null,
@@ -4026,16 +4343,10 @@ function AddOfferForm({
         supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
-      for (const item of pendingItems) {
-        await addEventTaskGroupOfferItem(offer, {
-          name: item.name,
-          description: item.description,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: item.unitPrice,
-          subtotal: item.subtotal,
-          isPackage: item.isPackage,
-        })
+      if (mode === 'desglosado') {
+        for (const item of items) {
+          await addEventTaskGroupOfferItem(offer, item)
+        }
       }
       onAdded()
     } catch (err) {
@@ -4048,12 +4359,6 @@ function AddOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
-      <ImportOfferBudgetButton onImported={applyImported} />
-      {pendingItems.length > 0 && (
-        <p className="muted" style={{ fontSize: 12 }}>
-          Se añadirán {pendingItems.length} {pendingItems.length === 1 ? 'servicio' : 'servicios'} al guardar.
-        </p>
-      )}
       {existingOffers.length > 0 && (
         <label>
           ¿Es una revisión de una oferta anterior? (opcional)
@@ -4096,40 +4401,32 @@ function AddOfferForm({
           <input type="text" value={newProviderName} onChange={(e) => setNewProviderName(e.target.value)} placeholder="Floristería..." />
         </label>
       )}
-      <label style={{ marginTop: 6 }}>
-        Importe (€)
-        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué incluye (opcional)
-        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué NO incluye (opcional)
-        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
-      </label>
-      <div className="inline-fields" style={{ marginTop: 6 }}>
-        <label style={{ flex: 1 }}>
-          Fecha de la oferta (opcional)
-          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
-        </label>
-        <label style={{ flex: 1 }}>
-          Válida hasta (opcional)
-          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
-        </label>
-      </div>
-      <label style={{ marginTop: 6 }}>
-        Condiciones (opcional)
-        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} placeholder="Forma de pago, cancelación..." />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Notas (opcional)
-        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Adjunto (opcional)
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      </label>
+      <OfferFormFields
+        name={name}
+        setName={setName}
+        amount={amount}
+        setAmount={setAmount}
+        mode={mode}
+        setMode={setMode}
+        scopeIncluded={scopeIncluded}
+        setScopeIncluded={setScopeIncluded}
+        items={items}
+        setItems={setItems}
+        scopeExcluded={scopeExcluded}
+        setScopeExcluded={setScopeExcluded}
+        offerDate={offerDate}
+        setOfferDate={setOfferDate}
+        validUntil={validUntil}
+        setValidUntil={setValidUntil}
+        conditions={conditions}
+        setConditions={setConditions}
+        notes={notes}
+        setNotes={setNotes}
+        file={file}
+        setFile={setFile}
+        hasExistingAttachment={false}
+        onImported={applyImported}
+      />
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="submit" disabled={saving}>
           {saving ? 'Guardando…' : 'Añadir oferta'}
@@ -4154,8 +4451,18 @@ function EditOfferForm({
   onSaved: () => void
 }) {
   const [providerName, setProviderName] = useState(offer.providerName)
+  const [name, setName] = useState(offer.name ?? '')
   const [amount, setAmount] = useState(String(offer.amount))
+  // Por defecto Texto libre; en cuanto se sepa si la oferta ya tenía servicios (carga async más abajo)
+  // pasa sola a Desglosado — nunca se pierden servicios ya guardados por no entrar en ese modo.
+  const [mode, setMode] = useState<'texto' | 'desglosado'>('texto')
   const [scopeIncluded, setScopeIncluded] = useState(offer.scopeIncluded ?? '')
+  const [items, setItems] = useState<DraftOfferItem[]>([])
+  // IDs de los servicios tal y como estaban guardados ANTES de abrir el formulario — para saber cuáles
+  // borrar de verdad al guardar (los que ya no están en "items") sin tocar nada si el usuario nunca llega
+  // a guardar en modo Desglosado (petición real: cambiar de Texto libre a Desglosado y volver nunca borra
+  // nada en silencio).
+  const [originalItemIds, setOriginalItemIds] = useState<string[]>([])
   const [scopeExcluded, setScopeExcluded] = useState(offer.scopeExcluded ?? '')
   const [offerDate, setOfferDate] = useState(offer.offerDate ?? '')
   const [validUntil, setValidUntil] = useState(offer.validUntil ?? '')
@@ -4164,6 +4471,30 @@ function EditOfferForm({
   const [file, setFile] = useState<File | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    listEventTaskGroupOfferItems(offer.id)
+      .then((existing) => {
+        setItems(existing.map((it) => ({ id: it.id, name: it.name, description: it.description, quantity: it.quantity, unit: it.unit, unitPrice: it.unitPrice, subtotal: it.subtotal, isPackage: it.isPackage })))
+        setOriginalItemIds(existing.map((it) => it.id))
+        if (existing.length > 0) setMode('desglosado')
+      })
+      .catch(() => {})
+  }, [offer.id])
+
+  // "Importar presupuesto" también disponible al editar (petición real: el mismo formulario sirve para
+  // alta y edición) — solo rellena lo vacío; si trae servicios, pasa a Desglosado y los AÑADE a los que ya
+  // hubiera, nunca los sustituye.
+  function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
+    if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
+    if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
+    if (!conditions && result.conditions) setConditions(result.conditions)
+    if (!notes && result.notes) setNotes(result.notes)
+    if (importedItems.length > 0) {
+      setMode('desglosado')
+      setItems((prev) => [...prev, ...importedItems])
+    }
+  }
 
   async function save() {
     const amountNum = Number(amount)
@@ -4176,8 +4507,9 @@ function EditOfferForm({
     try {
       await updateEventTaskGroupOffer(offer.id, {
         providerName,
+        name: name.trim() || null,
         amount: amountNum,
-        scopeIncluded: scopeIncluded.trim() || null,
+        scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
         validUntil: validUntil || null,
@@ -4185,6 +4517,19 @@ function EditOfferForm({
         notes: notes.trim() || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
+      // Los servicios solo se sincronizan si se guarda ESTANDO en modo Desglosado — cambiar de modo y
+      // volver, sin llegar a guardar así, nunca toca lo que ya hubiera (regla explícita: no perder
+      // información por cambiar de modalidad).
+      if (mode === 'desglosado') {
+        const currentIds = new Set(items.filter((i) => i.id).map((i) => i.id as string))
+        for (const removedId of originalItemIds) {
+          if (!currentIds.has(removedId)) await deleteEventTaskGroupOfferItem(removedId)
+        }
+        for (const item of items) {
+          if (item.id) await updateEventTaskGroupOfferItem(item.id, item)
+          else await addEventTaskGroupOfferItem(offer, item)
+        }
+      }
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -4205,43 +4550,35 @@ function EditOfferForm({
           ))}
         </datalist>
       </label>
-      <label style={{ marginTop: 6 }}>
-        Importe (€)
-        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué incluye (opcional)
-        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué NO incluye (opcional)
-        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
-      </label>
-      <div className="inline-fields" style={{ marginTop: 6 }}>
-        <label style={{ flex: 1 }}>
-          Fecha de la oferta (opcional)
-          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
-        </label>
-        <label style={{ flex: 1 }}>
-          Válida hasta (opcional)
-          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
-        </label>
-      </div>
-      <label style={{ marginTop: 6 }}>
-        Condiciones (opcional)
-        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Notas (opcional)
-        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        {offer.attachmentStoragePath ? 'Sustituir adjunto (opcional)' : 'Adjunto (opcional)'}
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      </label>
+      <OfferFormFields
+        name={name}
+        setName={setName}
+        amount={amount}
+        setAmount={setAmount}
+        mode={mode}
+        setMode={setMode}
+        scopeIncluded={scopeIncluded}
+        setScopeIncluded={setScopeIncluded}
+        items={items}
+        setItems={setItems}
+        scopeExcluded={scopeExcluded}
+        setScopeExcluded={setScopeExcluded}
+        offerDate={offerDate}
+        setOfferDate={setOfferDate}
+        validUntil={validUntil}
+        setValidUntil={setValidUntil}
+        conditions={conditions}
+        setConditions={setConditions}
+        notes={notes}
+        setNotes={setNotes}
+        file={file}
+        setFile={setFile}
+        hasExistingAttachment={Boolean(offer.attachmentStoragePath)}
+        onImported={applyImported}
+      />
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="button" onClick={() => void save()} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
+          {saving ? 'Guardando…' : 'Guardar cambios'}
         </button>
         <button type="button" className="link-button" onClick={onDone}>
           Cancelar
@@ -4418,8 +4755,11 @@ function AddLooseOfferForm({
   onClose: () => void
   onAdded: () => void
 }) {
+  const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
+  const [mode, setMode] = useState<'texto' | 'desglosado'>('texto')
   const [scopeIncluded, setScopeIncluded] = useState('')
+  const [items, setItems] = useState<DraftOfferItem[]>([])
   const [scopeExcluded, setScopeExcluded] = useState('')
   const [offerDate, setOfferDate] = useState('')
   const [validUntil, setValidUntil] = useState('')
@@ -4427,19 +4767,21 @@ function AddLooseOfferForm({
   const [notes, setNotes] = useState('')
   const [supersedesOfferId, setSupersedesOfferId] = useState('')
   const [file, setFile] = useState<File | null>(null)
-  const [pendingItems, setPendingItems] = useState<OfferBudgetScanItem[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // "Importar presupuesto" solo rellena lo que esté VACÍO — el proveedor ya viene fijo del contexto, así
   // que un providerName distinto leído del documento se ignora (nunca sustituye al proveedor elegido).
-  function applyImported(result: OfferBudgetScanResult, items: OfferBudgetScanItem[]) {
+  function applyImported(result: OfferBudgetScanResult, importedItems: OfferBudgetScanItem[]) {
     if (!amount && result.amount !== null) setAmount(String(result.amount))
     if (!offerDate && result.offerDate) setOfferDate(result.offerDate)
     if (!validUntil && result.validUntil) setValidUntil(result.validUntil)
     if (!conditions && result.conditions) setConditions(result.conditions)
     if (!notes && result.notes) setNotes(result.notes)
-    setPendingItems(items)
+    if (importedItems.length > 0) {
+      setMode('desglosado')
+      setItems((prev) => [...prev, ...importedItems])
+    }
   }
 
   async function handleSubmit(ev: FormEvent) {
@@ -4456,8 +4798,9 @@ function AddLooseOfferForm({
         globalProviderId,
         eventId,
         providerName,
+        name: name.trim() || null,
         amount: amountNum,
-        scopeIncluded: scopeIncluded.trim() || null,
+        scopeIncluded: mode === 'texto' ? scopeIncluded.trim() || null : null,
         scopeExcluded: scopeExcluded.trim() || null,
         offerDate: offerDate || null,
         validUntil: validUntil || null,
@@ -4466,16 +4809,10 @@ function AddLooseOfferForm({
         supersedesOfferId: supersedesOfferId || null,
       })
       if (file) await saveEventTaskGroupOfferAttachment(offer, file)
-      for (const item of pendingItems) {
-        await addEventTaskGroupOfferItem(offer, {
-          name: item.name,
-          description: item.description,
-          quantity: item.quantity,
-          unit: item.unit,
-          unitPrice: item.unitPrice,
-          subtotal: item.subtotal,
-          isPackage: item.isPackage,
-        })
+      if (mode === 'desglosado') {
+        for (const item of items) {
+          await addEventTaskGroupOfferItem(offer, item)
+        }
       }
       onAdded()
     } catch (err) {
@@ -4488,12 +4825,6 @@ function AddLooseOfferForm({
   return (
     <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
       {error && <p className="error">{error}</p>}
-      <ImportOfferBudgetButton onImported={applyImported} />
-      {pendingItems.length > 0 && (
-        <p className="muted" style={{ fontSize: 12 }}>
-          Se añadirán {pendingItems.length} {pendingItems.length === 1 ? 'servicio' : 'servicios'} al guardar.
-        </p>
-      )}
       {existingOffers.length > 0 && (
         <label>
           ¿Es una revisión de una oferta anterior? (opcional)
@@ -4507,40 +4838,32 @@ function AddLooseOfferForm({
           </select>
         </label>
       )}
-      <label>
-        Importe (€)
-        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué incluye (opcional)
-        <textarea value={scopeIncluded} onChange={(e) => setScopeIncluded(e.target.value)} rows={2} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Qué NO incluye (opcional)
-        <textarea value={scopeExcluded} onChange={(e) => setScopeExcluded(e.target.value)} rows={2} />
-      </label>
-      <div className="inline-fields" style={{ marginTop: 6 }}>
-        <label style={{ flex: 1 }}>
-          Fecha de la oferta (opcional)
-          <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
-        </label>
-        <label style={{ flex: 1 }}>
-          Válida hasta (opcional)
-          <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
-        </label>
-      </div>
-      <label style={{ marginTop: 6 }}>
-        Condiciones (opcional)
-        <input type="text" value={conditions} onChange={(e) => setConditions(e.target.value)} placeholder="Forma de pago, cancelación..." />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Notas (opcional)
-        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Adjunto (opcional)
-        <input type="file" accept="image/*,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-      </label>
+      <OfferFormFields
+        name={name}
+        setName={setName}
+        amount={amount}
+        setAmount={setAmount}
+        mode={mode}
+        setMode={setMode}
+        scopeIncluded={scopeIncluded}
+        setScopeIncluded={setScopeIncluded}
+        items={items}
+        setItems={setItems}
+        scopeExcluded={scopeExcluded}
+        setScopeExcluded={setScopeExcluded}
+        offerDate={offerDate}
+        setOfferDate={setOfferDate}
+        validUntil={validUntil}
+        setValidUntil={setValidUntil}
+        conditions={conditions}
+        setConditions={setConditions}
+        notes={notes}
+        setNotes={setNotes}
+        file={file}
+        setFile={setFile}
+        hasExistingAttachment={false}
+        onImported={applyImported}
+      />
       <div className="filter-row" style={{ marginTop: 8 }}>
         <button type="submit" disabled={saving}>
           {saving ? 'Guardando…' : 'Añadir oferta'}
@@ -4605,7 +4928,12 @@ function OfferItemsPanel({ offer }: { offer: EventTaskGroupOffer }) {
           )}
           {items.map((item) =>
             editingId === item.id ? (
-              <EditOfferItemForm key={item.id} item={item} onDone={() => setEditingId(null)} onSaved={() => { setEditingId(null); reload() }} />
+              <DraftItemForm
+                key={item.id}
+                initial={item}
+                onCancel={() => setEditingId(null)}
+                onSave={(updated) => void updateEventTaskGroupOfferItem(item.id, updated).then(() => { setEditingId(null); reload() })}
+              />
             ) : (
               <div key={item.id} className="inline-fields" style={{ alignItems: 'center', marginTop: 4, opacity: item.selected ? 1 : 0.55 }}>
                 <input type="checkbox" checked={item.selected} onChange={() => void handleToggleSelected(item)} aria-label="Seleccionada para comparar" />
@@ -4640,7 +4968,11 @@ function OfferItemsPanel({ offer }: { offer: EventTaskGroupOffer }) {
             </p>
           )}
           {showAdd ? (
-            <AddOfferItemForm offer={offer} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); reload() }} />
+            <DraftItemForm
+              initial={null}
+              onCancel={() => setShowAdd(false)}
+              onSave={(item) => void addEventTaskGroupOfferItem(offer, item).then(() => { setShowAdd(false); reload() })}
+            />
           ) : (
             <button type="button" className="link-button" onClick={() => setShowAdd(true)} style={{ marginTop: 6 }}>
               + Añadir servicio
@@ -4648,181 +4980,6 @@ function OfferItemsPanel({ offer }: { offer: EventTaskGroupOffer }) {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-function AddOfferItemForm({ offer, onClose, onAdded }: { offer: EventTaskGroupOffer; onClose: () => void; onAdded: () => void }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [unit, setUnit] = useState('')
-  const [unitPrice, setUnitPrice] = useState('')
-  const [subtotal, setSubtotal] = useState('')
-  const [isPackage, setIsPackage] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(ev: FormEvent) {
-    ev.preventDefault()
-    if (!name.trim()) {
-      setError('Ponle un nombre al servicio.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await addEventTaskGroupOfferItem(offer, {
-        name,
-        description: description.trim() || null,
-        quantity: quantity.trim() === '' ? null : Number(quantity),
-        unit: unit.trim() || null,
-        unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
-        subtotal: subtotal.trim() === '' ? null : Number(subtotal),
-        isPackage,
-      })
-      onAdded()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo añadir el servicio'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <form className="card member-form" style={{ padding: 8, marginTop: 6 }} onSubmit={handleSubmit}>
-      {error && <p className="error">{error}</p>}
-      <label>
-        Nombre del servicio
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Ramo de novia, hora extra de barra libre..." />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Descripción (opcional)
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-      </label>
-      <div className="filter-row" style={{ marginTop: 6 }}>
-        <button type="button" className={'chip' + (!isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(false)}>
-          Por cantidad/precio
-        </button>
-        <button type="button" className={'chip' + (isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(true)}>
-          📦 Paquete indivisible
-        </button>
-      </div>
-      {!isPackage && (
-        <div className="inline-fields" style={{ marginTop: 6 }}>
-          <label style={{ flex: 1 }}>
-            Cantidad (opcional)
-            <input type="number" min={0} step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          </label>
-          <label style={{ flex: 1 }}>
-            Unidad (opcional)
-            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ud, hora, menú..." />
-          </label>
-          <label style={{ flex: 1 }}>
-            Precio unitario (opcional)
-            <input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
-          </label>
-        </div>
-      )}
-      <label style={{ marginTop: 6 }}>
-        Subtotal de esta línea (opcional — el dato que manda, aunque no coincida con cantidad × precio)
-        <input type="number" min={0} step="0.01" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
-      </label>
-      <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="submit" disabled={saving}>
-          {saving ? 'Guardando…' : 'Añadir servicio'}
-        </button>
-        <button type="button" className="link-button" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </form>
-  )
-}
-
-function EditOfferItemForm({ item, onDone, onSaved }: { item: EventTaskGroupOfferItem; onDone: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(item.name)
-  const [description, setDescription] = useState(item.description ?? '')
-  const [quantity, setQuantity] = useState(item.quantity === null ? '' : String(item.quantity))
-  const [unit, setUnit] = useState(item.unit ?? '')
-  const [unitPrice, setUnitPrice] = useState(item.unitPrice === null ? '' : String(item.unitPrice))
-  const [subtotal, setSubtotal] = useState(item.subtotal === null ? '' : String(item.subtotal))
-  const [isPackage, setIsPackage] = useState(item.isPackage)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function save() {
-    if (!name.trim()) {
-      setError('Ponle un nombre al servicio.')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await updateEventTaskGroupOfferItem(item.id, {
-        name,
-        description: description.trim() || null,
-        quantity: quantity.trim() === '' ? null : Number(quantity),
-        unit: unit.trim() || null,
-        unitPrice: unitPrice.trim() === '' ? null : Number(unitPrice),
-        subtotal: subtotal.trim() === '' ? null : Number(subtotal),
-        isPackage,
-      })
-      onSaved()
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo guardar'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="card member-form" style={{ padding: 8, marginTop: 6 }}>
-      {error && <p className="error">{error}</p>}
-      <label>
-        Nombre del servicio
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} />
-      </label>
-      <label style={{ marginTop: 6 }}>
-        Descripción (opcional)
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
-      </label>
-      <div className="filter-row" style={{ marginTop: 6 }}>
-        <button type="button" className={'chip' + (!isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(false)}>
-          Por cantidad/precio
-        </button>
-        <button type="button" className={'chip' + (isPackage ? ' chip-active' : '')} onClick={() => setIsPackage(true)}>
-          📦 Paquete indivisible
-        </button>
-      </div>
-      {!isPackage && (
-        <div className="inline-fields" style={{ marginTop: 6 }}>
-          <label style={{ flex: 1 }}>
-            Cantidad (opcional)
-            <input type="number" min={0} step="0.01" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
-          </label>
-          <label style={{ flex: 1 }}>
-            Unidad (opcional)
-            <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="ud, hora, menú..." />
-          </label>
-          <label style={{ flex: 1 }}>
-            Precio unitario (opcional)
-            <input type="number" min={0} step="0.01" value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)} />
-          </label>
-        </div>
-      )}
-      <label style={{ marginTop: 6 }}>
-        Subtotal de esta línea (opcional — el dato que manda, aunque no coincida con cantidad × precio)
-        <input type="number" min={0} step="0.01" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
-      </label>
-      <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="button" onClick={() => void save()} disabled={saving}>
-          {saving ? 'Guardando…' : 'Guardar'}
-        </button>
-        <button type="button" className="link-button" onClick={onDone}>
-          Cancelar
-        </button>
-      </div>
     </div>
   )
 }

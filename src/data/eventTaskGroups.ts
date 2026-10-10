@@ -196,7 +196,7 @@ export async function listEventTaskGroupResolutions(groupId: string): Promise<Ev
 // ---------------------------------------------------------------------
 
 const OFFER_SELECT =
-  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, supersedes_offer_id, created_at'
+  'id, group_id, event_id, family_id, provider_id, global_provider_id, provider_name, name, amount, scope_included, scope_excluded, offer_date, valid_until, conditions, notes, status, attachment_storage_path, attachment_original_name, attachment_mime_type, supersedes_offer_id, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapOffer(r: any): EventTaskGroupOffer {
@@ -208,6 +208,7 @@ function mapOffer(r: any): EventTaskGroupOffer {
     providerId: r.provider_id,
     globalProviderId: r.global_provider_id,
     providerName: r.provider_name,
+    name: r.name,
     amount: Number(r.amount),
     scopeIncluded: r.scope_included,
     scopeExcluded: r.scope_excluded,
@@ -235,6 +236,7 @@ export async function listEventTaskGroupOffers(groupId: string): Promise<EventTa
 export interface EventTaskGroupOfferInput {
   providerId?: string | null
   providerName: string
+  name?: string | null
   amount: number
   scopeIncluded?: string | null
   scopeExcluded?: string | null
@@ -259,6 +261,7 @@ export async function addEventTaskGroupOffer(groupId: string, input: EventTaskGr
       family_id: group.family_id,
       provider_id: input.providerId ?? null,
       provider_name: input.providerName.trim(),
+      name: input.name?.trim() || null,
       amount: input.amount,
       scope_included: input.scopeIncluded ?? null,
       scope_excluded: input.scopeExcluded ?? null,
@@ -278,6 +281,7 @@ export async function updateEventTaskGroupOffer(id: string, patch: Partial<Event
   const update: Record<string, unknown> = {}
   if (patch.providerId !== undefined) update.provider_id = patch.providerId
   if (patch.providerName !== undefined) update.provider_name = patch.providerName.trim()
+  if (patch.name !== undefined) update.name = patch.name?.trim() || null
   if (patch.amount !== undefined) update.amount = patch.amount
   if (patch.scopeIncluded !== undefined) update.scope_included = patch.scopeIncluded
   if (patch.scopeExcluded !== undefined) update.scope_excluded = patch.scopeExcluded
@@ -368,6 +372,7 @@ export async function addLooseTaskGroupOffer(input: LooseEventTaskGroupOfferInpu
       provider_id: input.providerId ?? null,
       global_provider_id: input.globalProviderId,
       provider_name: input.providerName.trim(),
+      name: input.name?.trim() || null,
       amount: input.amount,
       scope_included: input.scopeIncluded ?? null,
       scope_excluded: input.scopeExcluded ?? null,

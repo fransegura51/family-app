@@ -13,12 +13,12 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-const OFFER_ITEMS_PANEL = window_(UI, 'function OfferItemsPanel({', '\nfunction AddOfferItemForm(')
-const ADD_OFFER_ITEM_FORM = window_(UI, 'function AddOfferItemForm({', '\nfunction EditOfferItemForm(')
+const OFFER_ITEMS_PANEL = window_(UI, 'function OfferItemsPanel({', '\nconst RESOLUTION_METHOD_OPTIONS')
+const DRAFT_ITEM_FORM = window_(UI, 'function DraftItemForm(', '\nfunction OfferFormFields(')
 const OFFERS_COMPARISON = window_(UI, 'function OffersComparison(', '\nfunction AddOfferForm(')
 const PROVIDER_OFFERS_PANEL = window_(UI, 'function ProviderOffersPanel({', '\nfunction AddLooseOfferForm(')
 const ADD_OFFER_FORM = window_(UI, 'function AddOfferForm({', '\nfunction EditOfferForm(')
-const ADD_LOOSE_OFFER_FORM = window_(UI, 'function AddLooseOfferForm({', '\nconst RESOLUTION_METHOD_OPTIONS')
+const ADD_LOOSE_OFFER_FORM = window_(UI, 'function AddLooseOfferForm({', '\nfunction OfferItemsPanel(')
 
 describe('OfferItemsPanel — desglose de servicios, nunca toca la oferta ni crea un pago', () => {
   it('carga con listEventTaskGroupOfferItems, nunca con listEventTaskGroupOffers (eso sería otra oferta)', () => {
@@ -35,15 +35,34 @@ describe('OfferItemsPanel — desglose de servicios, nunca toca la oferta ni cre
   it('sin servicios desglosados, deja claro que el importe de arriba es el total tal cual, sin desglose', () => {
     expect(OFFER_ITEMS_PANEL).toContain('el total tal cual, sin desglose')
   })
+  it('añadir/editar un servicio ya guardado usa DraftItemForm (Bloque B3) — nunca un formulario aparte', () => {
+    expect(OFFER_ITEMS_PANEL).toContain('<DraftItemForm')
+    expect(OFFER_ITEMS_PANEL).toContain('void addEventTaskGroupOfferItem(offer, item)')
+    expect(OFFER_ITEMS_PANEL).toContain('void updateEventTaskGroupOfferItem(item.id, updated)')
+  })
 })
 
-describe('AddOfferItemForm — un paquete indivisible no fuerza cantidad × precio; subtotal manda siempre', () => {
-  it('llama a addEventTaskGroupOfferItem con la oferta completa (para que family_id salga de ahí, nunca inventado)', () => {
-    expect(ADD_OFFER_ITEM_FORM).toContain('await addEventTaskGroupOfferItem(offer, {')
+// PEPA — prompt maestro, Bloque B3: DraftItemForm sustituye a AddOfferItemForm/EditOfferItemForm — un
+// único formulario de servicio, reutilizado tanto para añadir/editar YA guardado (OfferItemsPanel) como
+// para añadir/editar SIN guardar todavía (OfferFormFields, dentro de alta/edición de la oferta entera).
+describe('DraftItemForm — un paquete indivisible no fuerza cantidad × precio; subtotal manda siempre; ejemplo genérico (nunca de un sector concreto)', () => {
+  it('el nombre + el importe son los 2 únicos campos visibles al principio — el resto detrás de "Más detalles"', () => {
+    const before = DRAFT_ITEM_FORM.slice(0, DRAFT_ITEM_FORM.indexOf('Más detalles'))
+    expect(before).toContain('Nombre del servicio')
+    expect(before).toContain('Importe del servicio (€)')
+    expect(before).not.toContain('Cantidad')
+    expect(before).not.toContain('Paquete indivisible')
   })
-  it('"📦 Paquete indivisible" oculta cantidad/unidad/precio unitario — solo queda el subtotal', () => {
-    expect(ADD_OFFER_ITEM_FORM).toContain("{!isPackage && (")
-    expect(ADD_OFFER_ITEM_FORM).toContain('📦 Paquete indivisible')
+  it('el ejemplo del campo nombre es genérico — nunca "Ramo de novia" (un servicio de fotógrafa) ni nada de un sector concreto', () => {
+    expect(DRAFT_ITEM_FORM).not.toContain('Ramo de novia')
+    expect(DRAFT_ITEM_FORM).toContain('placeholder="Hora extra, segundo profesional, envío..."')
+  })
+  it('"📦 Paquete indivisible" oculta cantidad/unidad/precio unitario — solo queda el importe/subtotal', () => {
+    expect(DRAFT_ITEM_FORM).toContain('{!isPackage && (')
+    expect(DRAFT_ITEM_FORM).toContain('📦 Paquete indivisible')
+  })
+  it('onSave entrega el borrador con su id original si lo tenía (para poder actualizar en vez de duplicar)', () => {
+    expect(DRAFT_ITEM_FORM).toContain('id: initial?.id,')
   })
 })
 

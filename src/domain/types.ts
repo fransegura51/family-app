@@ -901,6 +901,9 @@ export interface EventTaskGroupOffer {
   providerId: string | null
   globalProviderId: string | null
   providerName: string
+  // Bloque B3 (prompt maestro) — nombre opcional de la oferta ("Paquete básico"...), para distinguir
+  // varias ofertas del mismo proveedor de un vistazo. Null en toda oferta creada antes de esta fase.
+  name: string | null
   amount: number
   scopeIncluded: string | null
   scopeExcluded: string | null

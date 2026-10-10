@@ -38,13 +38,13 @@ describe('AddOfferForm — importar un presupuesto solo rellena lo que está vac
     expect(applyFn).toContain('if (!amount && result.amount !== null) setAmount(String(result.amount))')
     expect(applyFn).toContain('if (!offerDate && result.offerDate) setOfferDate(result.offerDate)')
   })
-  it('los servicios pendientes se crean DESPUÉS de crear la oferta (nunca antes, nunca sin oferta real)', () => {
+  it('los servicios (en modo Desglosado) se crean DESPUÉS de crear la oferta (nunca antes, nunca sin oferta real)', () => {
     const submitFn = window_(ADD_OFFER_FORM, 'async function handleSubmit(', '\n  }')
     const offerIdx = submitFn.indexOf('const offer = await addEventTaskGroupOffer(')
-    const itemsIdx = submitFn.indexOf('for (const item of pendingItems)')
+    const itemsIdx = submitFn.indexOf('for (const item of items)')
     expect(offerIdx).toBeGreaterThan(-1)
     expect(itemsIdx).toBeGreaterThan(offerIdx)
-    expect(submitFn).toContain('await addEventTaskGroupOfferItem(offer, {')
+    expect(submitFn).toContain('await addEventTaskGroupOfferItem(offer, item)')
   })
 })
 
@@ -53,10 +53,10 @@ describe('AddLooseOfferForm — igual que AddOfferForm, pero el proveedor del do
     const applyFn = window_(ADD_LOOSE_OFFER_FORM, 'function applyImported(', '\n  }')
     expect(applyFn).not.toContain('setProviderName')
   })
-  it('los servicios pendientes se crean DESPUÉS de crear la oferta suelta', () => {
+  it('los servicios (en modo Desglosado) se crean DESPUÉS de crear la oferta suelta', () => {
     const submitFn = window_(ADD_LOOSE_OFFER_FORM, 'async function handleSubmit(', '\n  }')
     const offerIdx = submitFn.indexOf('const offer = await addLooseTaskGroupOffer(')
-    const itemsIdx = submitFn.indexOf('for (const item of pendingItems)')
+    const itemsIdx = submitFn.indexOf('for (const item of items)')
     expect(offerIdx).toBeGreaterThan(-1)
     expect(itemsIdx).toBeGreaterThan(offerIdx)
   })

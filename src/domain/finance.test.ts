@@ -11,10 +11,13 @@ import {
   resolveCategoryClassification,
   resolveExpenseFixed,
   splitKidIncome,
+  taxFundAvailable,
+  taxFundContributed,
+  taxFundSpent,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
-import type { Budget, BudgetCategory, Expense, KidWalletTransaction, Receipt } from '@/domain/types'
+import type { Budget, BudgetCategory, Expense, FamilyTaxFundExpense, KidWalletTransaction, Receipt } from '@/domain/types'
 
 function cat(over: Partial<BudgetCategory> & Pick<BudgetCategory, 'id' | 'name'>): BudgetCategory {
   return { familyId: 'f', icon: '', budgetGroup: 'generales', sortOrder: 0, parentId: null, necessity: null, isFixed: null, catalogKey: null, ...over }
@@ -287,18 +290,72 @@ describe('categoryColors', () => {
   })
 })
 
+function walletTx(overrides: Partial<KidWalletTransaction> = {}): KidWalletTransaction {
+  return {
+    id: '1',
+    familyId: 'f',
+    memberId: 'eric',
+    type: 'ingreso',
+    amount: 10,
+    description: '',
+    createdAt: '',
+    sourceIncomeId: null,
+    status: 'aprobado',
+    requestedBy: null,
+    decidedBy: null,
+    decidedAt: null,
+    ...overrides,
+  }
+}
+
 describe('hucha de los niños', () => {
   const tx: KidWalletTransaction[] = [
-    { id: '1', familyId: 'f', memberId: 'eric', type: 'ingreso', amount: 10, description: '', createdAt: '', sourceIncomeId: null },
-    { id: '2', familyId: 'f', memberId: 'eric', type: 'ahorro', amount: 3, description: '', createdAt: '', sourceIncomeId: '1' },
-    { id: '3', familyId: 'f', memberId: 'eric', type: 'gasto', amount: 2, description: '', createdAt: '', sourceIncomeId: null },
-    { id: '4', familyId: 'f', memberId: 'eric', type: 'impuesto', amount: 1, description: '', createdAt: '', sourceIncomeId: '1' },
-    { id: '5', familyId: 'f', memberId: 'fernando', type: 'ingreso', amount: 50, description: '', createdAt: '', sourceIncomeId: null },
+    walletTx({ id: '1', memberId: 'eric', type: 'ingreso', amount: 10 }),
+    walletTx({ id: '2', memberId: 'eric', type: 'ahorro', amount: 3, sourceIncomeId: '1' }),
+    walletTx({ id: '3', memberId: 'eric', type: 'gasto', amount: 2 }),
+    walletTx({ id: '4', memberId: 'eric', type: 'impuesto', amount: 1, sourceIncomeId: '1' }),
+    walletTx({ id: '5', memberId: 'fernando', type: 'ingreso', amount: 50 }),
   ]
   it('el disponible descuenta ahorro, gasto e impuestos, y no mezcla niños', () => {
     expect(walletBalance('eric', tx)).toBe(4)
     expect(walletBalance('fernando', tx)).toBe(50)
     expect(walletCategoryTotal('eric', 'ahorro', tx)).toBe(3)
+  })
+})
+
+// Pequeños Grandes, Fase 8 (orden de recuperación de requisitos, autorización directa del usuario
+// 2026-10-10) — "autonomía y aprobaciones": solo 'aprobado' cuenta en ningún saldo.
+describe('hucha de los niños — pendiente/rechazado nunca cuentan en ningún saldo (Fase 8)', () => {
+  it('un ingreso pendiente no cuenta como disponible todavía', () => {
+    const tx: KidWalletTransaction[] = [walletTx({ id: '1', type: 'ingreso', amount: 10, status: 'aprobado' }), walletTx({ id: '2', type: 'ingreso', amount: 5, status: 'pendiente' })]
+    expect(walletBalance('eric', tx)).toBe(10)
+  })
+  it('un ingreso rechazado tampoco cuenta nunca, ni siquiera tras decidirse', () => {
+    const tx: KidWalletTransaction[] = [walletTx({ id: '1', type: 'ingreso', amount: 10, status: 'rechazado' })]
+    expect(walletBalance('eric', tx)).toBe(0)
+  })
+  it('un gasto pendiente no descuenta todavía del disponible', () => {
+    const tx: KidWalletTransaction[] = [walletTx({ id: '1', type: 'ingreso', amount: 10 }), walletTx({ id: '2', type: 'gasto', amount: 4, status: 'pendiente' })]
+    expect(walletBalance('eric', tx)).toBe(10)
+  })
+})
+
+// Pequeños Grandes, Fase 11 — "fondo común de impuestos": aportado (todas las filas 'impuesto'
+// aprobadas, de cualquier niño) menos gastado (family_tax_fund_expenses).
+describe('Fondo común de impuestos (Fase 11)', () => {
+  it('aportado suma TODOS los niños, nunca solo uno', () => {
+    const tx: KidWalletTransaction[] = [
+      walletTx({ id: '1', memberId: 'eric', type: 'impuesto', amount: 2 }),
+      walletTx({ id: '2', memberId: 'fernando', type: 'impuesto', amount: 3 }),
+      walletTx({ id: '3', memberId: 'eric', type: 'impuesto', amount: 1, status: 'pendiente' }),
+    ]
+    expect(taxFundContributed(tx)).toBe(5)
+  })
+  it('disponible = aportado - gastado', () => {
+    const tx: KidWalletTransaction[] = [walletTx({ id: '1', type: 'impuesto', amount: 10 })]
+    const expenses: FamilyTaxFundExpense[] = [{ id: 'e1', familyId: 'f', amount: 4, description: 'Material escolar', createdBy: null, createdAt: '' }]
+    expect(taxFundSpent(expenses)).toBe(4)
+    expect(taxFundAvailable(tx, expenses)).toBe(6)
   })
 })
 

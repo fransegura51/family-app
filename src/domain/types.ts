@@ -351,6 +351,12 @@ export interface CustomMenuItem {
   sortOrder: number
 }
 
+// Pequeños Grandes, Fase 8 (migración 0240) — un ingreso/gasto que el propio niño registra sobre sí
+// mismo queda 'pendiente' hasta que un adulto lo decide; uno registrado por un adulto (o un movimiento
+// de reparto automático ahorro/impuesto) nace ya 'aprobado'. walletBalance/walletCategoryTotal solo
+// suman 'aprobado' — ni pendiente ni rechazado cuentan en ningún saldo.
+export type KidWalletTransactionStatus = 'pendiente' | 'aprobado' | 'rechazado'
+
 export interface KidWalletTransaction {
   id: string
   familyId: string
@@ -362,14 +368,36 @@ export interface KidWalletTransaction {
   // Pequeños Grandes, Fase 7: cuando este movimiento es el reparto automático (ahorro/impuesto) generado
   // al registrar un ingreso, apunta a ese ingreso — null en cualquier movimiento manual de siempre.
   sourceIncomeId: string | null
+  status: KidWalletTransactionStatus
+  requestedBy: string | null
+  decidedBy: string | null
+  decidedAt: string | null
 }
 
+// Pequeños Grandes, Fase 10 (migración 0241) — emoji y foto, ambos opcionales, para que un niño que
+// todavía no lee reconozca su objetivo de un vistazo.
 export interface KidGoal {
   id: string
   familyId: string
   memberId: string
   title: string
   targetAmount: number
+  emoji: string | null
+  photoStoragePath: string | null
+  photoOriginalName: string | null
+  photoMimeType: string | null
+}
+
+// Pequeños Grandes, Fase 11 (migración 0241) — gasto del fondo común de impuestos (no es de ningún niño
+// en particular, a diferencia de kid_wallet_transactions). Solo un adulto puede registrarlo/borrarlo;
+// toda la familia (incluidos los niños) puede verlo — transparencia real sobre un fondo que es de todos.
+export interface FamilyTaxFundExpense {
+  id: string
+  familyId: string
+  amount: number
+  description: string
+  createdBy: string | null
+  createdAt: string
 }
 
 // Pequeños Grandes, Fase 7: reparto automático al recibir dinero. Solo ahorro/impuesto se guardan — lo

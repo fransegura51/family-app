@@ -1,6 +1,6 @@
 import { daysBetween } from '@/domain/financePeriod'
 import { isPendingCategory } from '@/domain/pending'
-import type { Budget, BudgetCategory, Expense, KidWalletTransaction, Receipt } from '@/domain/types'
+import type { Budget, BudgetCategory, Expense, FamilyTaxFundExpense, KidWalletTransaction, Receipt } from '@/domain/types'
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -373,14 +373,32 @@ export function walletBalance(memberId: string, transactions: KidWalletTransacti
   return walletCategoryTotal(memberId, 'ingreso', transactions) - walletCategoryTotal(memberId, 'ahorro', transactions) - walletCategoryTotal(memberId, 'gasto', transactions) - walletCategoryTotal(memberId, 'impuesto', transactions)
 }
 
+// Pequeños Grandes, Fase 8 — solo 'aprobado' cuenta en ningún saldo: un ingreso/gasto que el propio niño
+// registró y todavía espera que un adulto lo decida (o que un adulto rechazó) nunca infla ni desinfla lo
+// disponible hasta que de verdad se decide.
 export function walletCategoryTotal(
   memberId: string,
   type: KidWalletTransaction['type'],
   transactions: KidWalletTransaction[],
 ): number {
   return transactions
-    .filter((t) => t.memberId === memberId && t.type === type)
+    .filter((t) => t.memberId === memberId && t.type === type && t.status === 'aprobado')
     .reduce((sum, t) => sum + t.amount, 0)
+}
+
+// Pequeños Grandes, Fase 11 — "fondo común de impuestos": aportado (todas las filas 'impuesto'
+// aprobadas, de CUALQUIER niño) menos gastado (family_tax_fund_expenses, que no es de ningún niño en
+// particular) = disponible. Las aportaciones ya existían; lo nuevo es poder registrar gastos del fondo.
+export function taxFundContributed(transactions: KidWalletTransaction[]): number {
+  return transactions.filter((t) => t.type === 'impuesto' && t.status === 'aprobado').reduce((sum, t) => sum + t.amount, 0)
+}
+
+export function taxFundSpent(expenses: FamilyTaxFundExpense[]): number {
+  return expenses.reduce((sum, e) => sum + e.amount, 0)
+}
+
+export function taxFundAvailable(transactions: KidWalletTransaction[], expenses: FamilyTaxFundExpense[]): number {
+  return taxFundContributed(transactions) - taxFundSpent(expenses)
 }
 
 // Pequeños Grandes, Fase 7 — reparto automático de un ingreso (vista previa en el cliente; el registro

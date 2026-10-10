@@ -532,6 +532,7 @@ import {
   summarizeOtrosDecoracionBlock,
   desiredForDecoracionOrganizacion,
   desiredForDecoracionExtraConfirm,
+  decoracionZonasSinAsignar,
   OTROS_DECORACION_BLOCK_KEY,
   DECORACION_EXTRA_CONFIRM_QUESTION_KEY,
   DECORACION_ORGANIZACION_QUESTION_KEY,
@@ -542,6 +543,7 @@ import {
   type DecoracionExtraConfirmChoice,
   type DecoracionOrganizacionAnswer,
   type DecoracionOrganizacionChoice,
+  type DecoracionZonaAsignacion,
   type DecoracionZonasAnswer,
   type OtraNecesidadItem,
   type OtrasNecesidadesAnswer,
@@ -11043,6 +11045,42 @@ function OtrosDecoracionBlock({
               )
             })}
           </div>
+          {/* Orden de recuperación de requisitos (Parte G5) — "combinación" no es una única respuesta
+              para toda la decoración: cada zona elegida puede ser "la contratamos" o "la hacemos
+              nosotros", por separado. Con cualquier otra organización no tiene sentido preguntarlo —
+              ya hay una única respuesta para todo. */}
+          {organizacion?.choice === 'combinacion' && zonas && zonas.selected.length > 0 && (
+            <div style={{ marginTop: 6 }}>
+              <div className="muted" style={{ fontSize: 12 }}>
+                De las que vais a combinar, ¿cuál se contrata y cuál hacéis vosotros?
+              </div>
+              {zonas.selected.map((key) => {
+                const label = DECORACION_ZONAS_CATALOG.find((c) => c.key === key)?.label ?? key
+                const current = zonas.assignacion?.[key]
+                return (
+                  <div key={key} className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>{label}</span>
+                    {(['contratada', 'nosotros'] as DecoracionZonaAsignacion[]).map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className={'chip' + (current === option ? ' chip-active' : '')}
+                        disabled={savingKey === DECORACION_ZONAS_QUESTION_KEY}
+                        onClick={() => void saveZonas({ ...zonas, assignacion: { ...zonas.assignacion, [key]: option } })}
+                      >
+                        {option === 'contratada' ? 'La contratamos' : 'La hacemos nosotros'}
+                      </button>
+                    ))}
+                  </div>
+                )
+              })}
+              {decoracionZonasSinAsignar(organizacion?.choice, zonas).length > 0 && (
+                <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+                  ⏳ {decoracionZonasSinAsignar(organizacion?.choice, zonas).length} zona(s) todavía sin decidir si se contratan o las hacéis vosotros.
+                </p>
+              )}
+            </div>
+          )}
           {zonas && (zonas.selected.length > 0 || zonas.customItems.length > 0) && (
             <button type="button" className="link-button" disabled={sendingZonas} style={{ marginTop: 4 }} onClick={() => void sendZonasToDecoracion(zonas, zonasDecision?.id ?? null)}>
               {sendingZonas ? 'Enviando…' : '+ Enviar a Decoración'}

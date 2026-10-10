@@ -46,9 +46,24 @@ export const DECORACION_ZONAS_CATALOG: DecoracionZonaCatalogItem[] = [
   { key: 'photocall', label: 'Photocall' },
   { key: 'zona_fiesta', label: 'Zona de fiesta' },
 ]
+// Orden de recuperación de requisitos (Parte G5) — cuando la organización es "combinación" (una parte
+// se contrata, otra la hace la familia), cada zona seleccionada puede llevar su propia asignación.
+// Opcional de verdad: una zona sin asignación todavía no cuenta como "mal" ni bloquea nada, solo queda
+// sin desglosar (ver decoracionZonasSinAsignar); con "contrataremos" o "nosotros" (sin combinación) no
+// tiene sentido preguntarlo — todas las zonas comparten ya una única respuesta.
+export type DecoracionZonaAsignacion = 'contratada' | 'nosotros'
+
 export interface DecoracionZonasAnswer {
   selected: DecoracionZonaKey[]
   customItems: string[]
+  assignacion?: Partial<Record<DecoracionZonaKey, DecoracionZonaAsignacion>>
+}
+
+// Solo tiene sentido en "combinación" — con cualquier otra organización (o sin decidir todavía), la
+// pregunta de qué zona es cuál no aplica, así que nunca hay nada "sin asignar" que mostrar.
+export function decoracionZonasSinAsignar(organizacion: DecoracionOrganizacionChoice | undefined, zonas: DecoracionZonasAnswer | undefined): DecoracionZonaKey[] {
+  if (organizacion !== 'combinacion' || !zonas) return []
+  return zonas.selected.filter((z) => !zonas.assignacion?.[z])
 }
 
 // ---------------------------------------------------------------------

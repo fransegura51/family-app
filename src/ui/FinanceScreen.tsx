@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   addExpense,
+  addTaxFundExpense,
   addWalletTransaction,
   createBudget,
   createBudgetCategoriesBulk,
@@ -10,13 +11,16 @@ import {
   createGoal,
   createTag,
   copyExpenseToShared,
+  decideKidWalletTransaction,
   deleteBudget,
   deleteBudgetCategory,
   deleteExpense,
   deleteGoal,
   deleteTag,
+  deleteTaxFundExpense,
   deleteWalletTransaction,
   getExpenseById,
+  getGoalPhotoUrl,
   listBudgetCategories,
   listBudgets,
   listExpenses,
@@ -24,14 +28,17 @@ import {
   listKidIncomeSplitConfigs,
   listResolvedInternalTransferDestinations,
   listTags,
+  listTaxFundExpenses,
   listWalletTransactions,
   registerKidIncome,
+  saveGoalPhoto,
   setKidIncomeSplitConfig,
   updateBudgetCategory,
   updateExpense,
   updateTag,
   type ResolvedInternalTransferDestination,
 } from '@/data/finance'
+import { conceptsForWalletType, GOAL_EMOJI_OPTIONS } from '@/domain/kidWalletConcepts'
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
 import {
   createForecastPayment,
@@ -201,6 +208,9 @@ import {
   resolveCategoryClassification,
   resolveExpenseFixed,
   splitKidIncome,
+  taxFundAvailable,
+  taxFundContributed,
+  taxFundSpent,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
@@ -232,6 +242,7 @@ import type {
   Expense,
   ExpenseSource,
   FamilyMember,
+  FamilyTaxFundExpense,
   KidGoal,
   KidIncomeSplitConfig,
   KidWalletTransaction,
@@ -11198,8 +11209,10 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
   const [transactions, setTransactions] = useState<KidWalletTransaction[]>([])
   const [goals, setGoals] = useState<KidGoal[]>([])
   const [splitConfigs, setSplitConfigs] = useState<KidIncomeSplitConfig[]>([])
+  const [taxFundExpenses, setTaxFundExpenses] = useState<FamilyTaxFundExpense[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [decidingId, setDecidingId] = useState<string | null>(null)
 
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
@@ -11207,14 +11220,15 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listFamilyMembers(), listWalletTransactions(), listGoals(), listKidIncomeSplitConfigs()])
-      .then(([m, t, g, s]) => {
+    Promise.all([listFamilyMembers(), listWalletTransactions(), listGoals(), listKidIncomeSplitConfigs(), listTaxFundExpenses()])
+      .then(([m, t, g, s, tf]) => {
         const kids = m.filter((x) => x.memberType === 'child' || x.memberType === 'baby')
         setMembers(kids)
         if (kids.length > 0 && !activeMemberId) setActiveMemberId(kids[0].id)
         setTransactions(t)
         setGoals(g)
         setSplitConfigs(s)
+        setTaxFundExpenses(tf)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => {
@@ -11224,6 +11238,24 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
   }
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pequeños Grandes, Fase 8 — "autonomía y aprobaciones": un adulto decide los ingresos/gastos que CADA
+  // niño registró sobre sí mismo, estén pendientes de cualquiera de ellos (no solo del que esté activo
+  // en los chips de arriba) — para no obligar a cambiar de niño en niño buscando qué falta decidir.
+  const pendingTransactions = transactions.filter((t) => t.status === 'pendiente')
+
+  async function decide(id: string, approved: boolean) {
+    setDecidingId(id)
+    setError(null)
+    try {
+      await decideKidWalletTransaction(id, approved)
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo decidir'))
+    } finally {
+      setDecidingId(null)
+    }
+  }
 
   // Las dos únicas cifras que importan de un vistazo (petición real, Fase 6): lo que tiene disponible
   // para gastar AHORA y lo que lleva ahorrado en total — nunca 4 cifras en fila como si fueran 4 saldos
@@ -11257,7 +11289,7 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
   if (openCard) {
     const cardInfo = WALLET_TABS.find((t) => t.key === openCard)!
     const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, openCard, transactions) : 0
-    const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === openCard)
+    const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === openCard && t.status !== 'rechazado')
     return (
       <div>
         {error && <p className="error">{error}</p>}
@@ -11279,27 +11311,17 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
           <>
             <h3>Objetivos de ahorro</h3>
             <div className="event-list">
-              {memberGoals.map((goal, i) => {
-                const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
-                return (
-                  <div key={goal.id} className="card task-card" style={{ background: pastelPalette(memberGoals.length)[i] }}>
-                    <div className="task-card-main">
-                      <strong>{goal.title}</strong>
-                      <p className="muted">
-                        {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
-                      </p>
-                      <div className="progress-bar">
-                        <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
-                      </div>
-                    </div>
-                    <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(reload)} />
-                  </div>
-                )
-              })}
+              {memberGoals.map((goal, i) => (
+                <GoalCard key={goal.id} goal={goal} categoryTotal={categoryTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />
+              ))}
               {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
             </div>
             <AddGoalForm memberId={activeMemberId} onAdded={reload} />
           </>
+        )}
+
+        {openCard === 'impuesto' && (
+          <TaxFundSection isAdult={isAdult} transactions={transactions} expenses={taxFundExpenses} onChanged={reload} />
         )}
 
         <div className="event-list">
@@ -11309,13 +11331,30 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
                 <strong>
                   {t.amount.toFixed(2)} € — {t.description}
                 </strong>
+                {t.status === 'pendiente' && <p className="muted">⏳ Pendiente de que un adulto lo apruebe — todavía no cuenta en el saldo.</p>}
               </div>
-              <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
+              {t.status === 'pendiente' && isAdult ? (
+                <div className="filter-row">
+                  <button type="button" disabled={decidingId === t.id} onClick={() => decide(t.id, true)}>
+                    {decidingId === t.id ? 'Decidiendo…' : '✓ Aprobar'}
+                  </button>
+                  <ConfirmButton label="✕ Rechazar" confirmMessage={`¿Rechazar este ${t.type === 'ingreso' ? 'ingreso' : 'gasto'} de ${t.amount.toFixed(2)} €?`} onConfirm={() => decide(t.id, false)} />
+                </div>
+              ) : (
+                <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
+              )}
             </div>
           ))}
           {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
         </div>
-        <AddTransactionForm memberId={activeMemberId} type={openCard} formLabel={cardInfo.formLabel} splitConfig={openCard === 'ingreso' ? activeSplitConfig : null} onAdded={reload} />
+        <AddTransactionForm
+          memberId={activeMemberId}
+          type={openCard}
+          formLabel={cardInfo.formLabel}
+          splitConfig={openCard === 'ingreso' ? activeSplitConfig : null}
+          needsApproval={!isAdult && (openCard === 'ingreso' || openCard === 'gasto')}
+          onAdded={reload}
+        />
       </div>
     )
   }
@@ -11324,6 +11363,27 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
     <div>
       {error && <p className="error">{error}</p>}
       {memberChips}
+      {isAdult && pendingTransactions.length > 0 && (
+        <div className="card" style={{ marginTop: 8, padding: 10 }}>
+          <p style={{ margin: '0 0 6px', fontSize: 13 }}>
+            ⏳ {pendingTransactions.length} {pendingTransactions.length === 1 ? 'movimiento pendiente de aprobar' : 'movimientos pendientes de aprobar'}
+          </p>
+          {pendingTransactions.map((t) => {
+            const kidName = members.find((m) => m.id === t.memberId)?.name ?? 'Un niño/a'
+            return (
+              <div key={t.id} className="inline-fields" style={{ alignItems: 'center', margin: '4px 0' }}>
+                <span style={{ flex: 1, fontSize: 13 }}>
+                  {kidName} · {t.type === 'ingreso' ? 'Ingreso' : 'Gasto'} de {t.amount.toFixed(2)} € — {t.description}
+                </span>
+                <button type="button" disabled={decidingId === t.id} onClick={() => decide(t.id, true)}>
+                  ✓
+                </button>
+                <ConfirmButton label="✕" confirmMessage={`¿Rechazar este movimiento de ${kidName}?`} onConfirm={() => decide(t.id, false)} />
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <p className="points-badge">Disponible: {balance.toFixed(2)} €</p>
       <p className="muted">Ahorro acumulado: {savedTotal.toFixed(2)} €</p>
@@ -11337,6 +11397,165 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
         ))}
       </div>
     </div>
+  )
+}
+
+// Pequeños Grandes, Fase 10 — emoji y/o foto por objetivo, ambos opcionales (si no hay ninguno, la
+// tarjeta se ve exactamente igual que antes: solo el título).
+function GoalCard({
+  goal,
+  categoryTotal,
+  colorIndex,
+  total,
+  onChanged,
+}: {
+  goal: KidGoal
+  categoryTotal: number
+  colorIndex: number
+  total: number
+  onChanged: () => void
+}) {
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
+
+  useEffect(() => {
+    if (goal.photoStoragePath) getGoalPhotoUrl(goal.photoStoragePath).then(setPhotoUrl).catch(() => setPhotoUrl(null))
+    else setPhotoUrl(null)
+  }, [goal.photoStoragePath])
+
+  return (
+    <div className="card task-card" style={{ background: pastelPalette(total)[colorIndex] }}>
+      <div className="task-card-main inline-fields" style={{ alignItems: 'flex-start' }}>
+        {photoUrl ? (
+          <img src={photoUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }} />
+        ) : goal.emoji ? (
+          <span style={{ fontSize: 28 }}>{goal.emoji}</span>
+        ) : null}
+        <span style={{ flex: 1 }}>
+          <strong>{goal.title}</strong>
+          <p className="muted">
+            {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
+          </p>
+          <div className="progress-bar">
+            <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </span>
+      </div>
+      <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(onChanged)} />
+    </div>
+  )
+}
+
+// Pequeños Grandes, Fase 11 — "fondo común de impuestos": aportado (todas las filas 'impuesto'
+// aprobadas, de cualquier niño) menos gastado (family_tax_fund_expenses, que no es de ningún niño en
+// particular) = disponible. Lectura para toda la familia (transparencia real); gastar del fondo es una
+// decisión de adulto (RLS, migración 0241).
+function TaxFundSection({
+  isAdult,
+  transactions,
+  expenses,
+  onChanged,
+}: {
+  isAdult: boolean
+  transactions: KidWalletTransaction[]
+  expenses: FamilyTaxFundExpense[]
+  onChanged: () => void
+}) {
+  const [showAdd, setShowAdd] = useState(false)
+  const contributed = taxFundContributed(transactions)
+  const spent = taxFundSpent(expenses)
+  const available = taxFundAvailable(transactions, expenses)
+  const contributions = transactions.filter((t) => t.type === 'impuesto' && t.status === 'aprobado')
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      <h3>💰 Fondo común</h3>
+      <p className="muted">
+        Aportado: {contributed.toFixed(2)} € · Gastado: {spent.toFixed(2)} € · Disponible: {available.toFixed(2)} €
+      </p>
+      <div className="event-list">
+        {contributions.map((t) => (
+          <div key={t.id} className="inline-fields" style={{ fontSize: 13 }}>
+            <span className="muted">{new Date(t.createdAt).toLocaleDateString('es-ES')}</span>
+            <span style={{ flex: 1 }}>+ {t.description}</span>
+            <span>{t.amount.toFixed(2)} €</span>
+          </div>
+        ))}
+        {expenses.map((e) => (
+          <div key={e.id} className="inline-fields" style={{ fontSize: 13 }}>
+            <span className="muted">{new Date(e.createdAt).toLocaleDateString('es-ES')}</span>
+            <span style={{ flex: 1 }}>− {e.description}</span>
+            <span>{e.amount.toFixed(2)} €</span>
+            {isAdult && <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar gasto" onConfirm={() => deleteTaxFundExpense(e.id).then(onChanged)} />}
+          </div>
+        ))}
+        {contributions.length === 0 && expenses.length === 0 && <p className="muted">Todavía no hay movimientos en el fondo común.</p>}
+      </div>
+      {isAdult && (
+        <>
+          {showAdd ? (
+            <AddTaxFundExpenseForm
+              onClose={() => setShowAdd(false)}
+              onAdded={() => {
+                setShowAdd(false)
+                onChanged()
+              }}
+            />
+          ) : (
+            <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+              + Gasto del fondo común
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function AddTaxFundExpenseForm({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [amount, setAmount] = useState('')
+  const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!description.trim() || !(Number(amount) > 0)) {
+      setError('Pon un importe y una descripción.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addTaxFundExpense({ amount: Number(amount), description })
+      onAdded()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo registrar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="card member-form">
+      <label>
+        Importe (€)
+        <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+      </label>
+      <label>
+        En qué se ha gastado
+        <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Material escolar..." required />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="filter-row">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Registrar'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -11445,9 +11664,13 @@ function EditIncomeSplitForm({
   )
 }
 
+// Pequeños Grandes, Fase 10 — emoji (catálogo cerrado + "escribe el tuyo") y foto (opcional, se sube
+// DESPUÉS de crear el objetivo porque hace falta su id — mismo criterio que AddWishlistItemModal).
 function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => void }) {
   const [title, setTitle] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
+  const [emoji, setEmoji] = useState('')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -11456,9 +11679,16 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
     setSaving(true)
     setError(null)
     try {
-      await createGoal({ memberId, title, targetAmount: Number(targetAmount) })
+      const id = await createGoal({ memberId, title, targetAmount: Number(targetAmount), emoji: emoji.trim() || null })
+      if (photoFile) {
+        const goals = await listGoals()
+        const created = goals.find((g) => g.id === id)
+        if (created) await saveGoalPhoto(created, photoFile)
+      }
       setTitle('')
       setTargetAmount('')
+      setEmoji('')
+      setPhotoFile(null)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear'))
@@ -11477,6 +11707,21 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
       <label>
         Coste (€)
         <input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} required />
+      </label>
+      <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+        {GOAL_EMOJI_OPTIONS.map((e) => (
+          <button key={e} type="button" className={'chip' + (emoji === e ? ' chip-active' : '')} onClick={() => setEmoji(e)} style={{ fontSize: 18 }}>
+            {e}
+          </button>
+        ))}
+      </div>
+      <label>
+        O escribe tu propio emoji (opcional)
+        <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} style={{ width: 60 }} />
+      </label>
+      <label>
+        Foto (opcional)
+        <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
       </label>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
@@ -11501,21 +11746,31 @@ function AddTransactionForm({
   type,
   formLabel,
   splitConfig,
+  needsApproval,
   onAdded,
 }: {
   memberId: string
   type: WalletTransactionType
   formLabel: string
   splitConfig: { ahorroPct: number; impuestoPct: number } | null
+  // Pequeños Grandes, Fase 8 — true cuando quien registra es el propio niño (ingreso/gasto sobre sí
+  // mismo): solo cambia el mensaje de después de guardar, nunca el propio guardado (el servidor decide
+  // el estado real — ver migración 0240 — esto es solo para no decir "Registrado" cuando en realidad
+  // queda pendiente de un adulto).
+  needsApproval: boolean
   onAdded: () => void
 }) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [sentNotice, setSentNotice] = useState(false)
 
   const parsedAmount = Number(amount)
   const preview = splitConfig && parsedAmount > 0 ? splitKidIncome(parsedAmount, splitConfig) : null
+  // Pequeños Grandes, Fase 9 — conceptos con emoji (niños que no leen): tocar un chip solo RELLENA la
+  // descripción, que sigue siendo editable después — nunca sustituye el texto libre.
+  const concepts = conceptsForWalletType(type)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -11529,6 +11784,7 @@ function AddTransactionForm({
       }
       setAmount('')
       setDescription('')
+      if (needsApproval) setSentNotice(true)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo registrar'))
@@ -11540,6 +11796,15 @@ function AddTransactionForm({
   return (
     <form onSubmit={handleSubmit} className="card member-form">
       <h2>Nuevo {formLabel}</h2>
+      {concepts.length > 0 && (
+        <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+          {concepts.map((c) => (
+            <button key={c.key} type="button" className="chip" onClick={() => setDescription(`${c.emoji} ${c.label}`)}>
+              {c.emoji} {c.label}
+            </button>
+          ))}
+        </div>
+      )}
       <label>
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
@@ -11553,6 +11818,8 @@ function AddTransactionForm({
         Descripción
         <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} required />
       </label>
+      {needsApproval && <p className="muted">Un adulto tendrá que aprobarlo antes de que cuente.</p>}
+      {sentNotice && <p className="muted">⏳ Enviado — espera a que un adulto lo apruebe.</p>}
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving}>
         {saving ? 'Guardando…' : 'Registrar'}

@@ -1,5 +1,6 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
 import type {
   Budget,
   BudgetCategory,
@@ -7,6 +8,7 @@ import type {
   Expense,
   ExpenseKind,
   ExpenseSource,
+  FamilyTaxFundExpense,
   KidGoal,
   KidIncomeSplitConfig,
   KidWalletTransaction,
@@ -493,7 +495,7 @@ export async function reorderTags(orderedIds: string[]): Promise<void> {
 export async function listWalletTransactions(): Promise<KidWalletTransaction[]> {
   const { data, error } = await supabase
     .from('kid_wallet_transactions')
-    .select('id, family_id, member_id, type, amount, description, created_at, source_income_id')
+    .select('id, family_id, member_id, type, amount, description, created_at, source_income_id, status, requested_by, decided_by, decided_at')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
@@ -505,7 +507,19 @@ export async function listWalletTransactions(): Promise<KidWalletTransaction[]> 
     description: r.description,
     createdAt: r.created_at,
     sourceIncomeId: r.source_income_id,
+    status: r.status,
+    requestedBy: r.requested_by,
+    decidedBy: r.decided_by,
+    decidedAt: r.decided_at,
   }))
+}
+
+// Pequeños Grandes, Fase 8 — aprobar/rechazar un ingreso/gasto que un niño registró sobre sí mismo.
+// Nunca un insert/update directo: decide_kid_wallet_transaction (migración 0240) es quien reparte
+// ahorro/impuesto al aprobar un ingreso, en la misma transacción atómica del servidor.
+export async function decideKidWalletTransaction(id: string, approved: boolean): Promise<void> {
+  const { error } = await supabase.rpc('decide_kid_wallet_transaction', { p_transaction_id: id, p_approved: approved })
+  if (error) throw error
 }
 
 export async function addWalletTransaction(input: {
@@ -561,7 +575,7 @@ export async function deleteWalletTransaction(id: string): Promise<void> {
 export async function listGoals(): Promise<KidGoal[]> {
   const { data, error } = await supabase
     .from('kid_goals')
-    .select('id, family_id, member_id, title, target_amount')
+    .select('id, family_id, member_id, title, target_amount, emoji, photo_storage_path, photo_original_name, photo_mime_type')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -569,21 +583,88 @@ export async function listGoals(): Promise<KidGoal[]> {
     memberId: r.member_id,
     title: r.title,
     targetAmount: Number(r.target_amount),
+    emoji: r.emoji,
+    photoStoragePath: r.photo_storage_path,
+    photoOriginalName: r.photo_original_name,
+    photoMimeType: r.photo_mime_type,
   }))
 }
 
-export async function createGoal(input: { memberId: string; title: string; targetAmount: number }): Promise<void> {
+export async function createGoal(input: { memberId: string; title: string; targetAmount: number; emoji?: string | null }): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('kid_goals').insert({
-    family_id: familyId,
-    member_id: input.memberId,
-    title: input.title,
-    target_amount: input.targetAmount,
-  })
+  const { data, error } = await supabase
+    .from('kid_goals')
+    .insert({ family_id: familyId, member_id: input.memberId, title: input.title, target_amount: input.targetAmount, emoji: input.emoji ?? null })
+    .select('id')
+    .single()
   if (error) throw error
+  return data.id as string
 }
 
 export async function deleteGoal(id: string): Promise<void> {
   const { error } = await supabase.from('kid_goals').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Pequeños Grandes, Fase 10 — foto de un objetivo de ahorro, mismo patrón ya en producción que
+// saveProviderGlobalAttachment/saveWishlistItemPhoto: comprime si es imagen, sube a un bucket privado
+// por familia, una sola foto por objetivo (sustituye y borra la anterior).
+export async function saveGoalPhoto(goal: KidGoal, file: File): Promise<void> {
+  const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
+  const ext = prepared.name.split('.').pop() || 'jpg'
+  const path = `${goal.familyId}/${goal.id}/${crypto.randomUUID()}.${ext}`
+  const { error: uploadError } = await supabase.storage.from('kid_goals').upload(path, prepared)
+  if (uploadError) throw uploadError
+  const previousPath = goal.photoStoragePath
+  const { error } = await supabase
+    .from('kid_goals')
+    .update({ photo_storage_path: path, photo_original_name: file.name.slice(0, 160), photo_mime_type: prepared.type || file.type || null })
+    .eq('id', goal.id)
+  if (error) {
+    await supabase.storage.from('kid_goals').remove([path])
+    throw error
+  }
+  if (previousPath && previousPath !== path) await supabase.storage.from('kid_goals').remove([previousPath])
+}
+
+export async function getGoalPhotoUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('kid_goals').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
+}
+
+// ---------------------------------------------------------------------
+// Pequeños Grandes, Fase 11 — fondo común de impuestos: gastos (las aportaciones ya existen como filas
+// 'impuesto' de kid_wallet_transactions, de cualquier niño). Solo un adulto puede registrar/borrar un
+// gasto (RLS, migración 0241); toda la familia puede verlos.
+// ---------------------------------------------------------------------
+
+export async function listTaxFundExpenses(): Promise<FamilyTaxFundExpense[]> {
+  const { data, error } = await supabase
+    .from('family_tax_fund_expenses')
+    .select('id, family_id, amount, description, created_by, created_at')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data.map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    amount: Number(r.amount),
+    description: r.description,
+    createdBy: r.created_by,
+    createdAt: r.created_at,
+  }))
+}
+
+export async function addTaxFundExpense(input: { amount: number; description: string }): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { data: userResult } = await supabase.auth.getUser()
+  const { error } = await supabase
+    .from('family_tax_fund_expenses')
+    .insert({ family_id: familyId, amount: input.amount, description: input.description.trim(), created_by: userResult.user?.id ?? null })
+  if (error) throw error
+}
+
+export async function deleteTaxFundExpense(id: string): Promise<void> {
+  const { error } = await supabase.from('family_tax_fund_expenses').delete().eq('id', id)
   if (error) throw error
 }

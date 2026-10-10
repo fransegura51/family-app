@@ -233,6 +233,10 @@ function WishlistDetailScreen({
       })
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los regalos')))
   }
+  // canSeeReservations se deriva de wishlist.ownerMemberId/viewerMemberId/isChild — ninguno cambia
+  // durante la vida de esta pantalla (se entra siempre con la lista y el viewer ya resueltos), así que
+  // recargar solo por wishlist.id es correcto a propósito.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [wishlist.id])
 
   async function handleShare() {

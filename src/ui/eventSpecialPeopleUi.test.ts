@@ -162,6 +162,25 @@ describe('Detalles — bug real corregido: editar un registro existente sin borr
     expect(addSpecial).toContain("useState(editing?.detail ?? '')")
     expect(addSpecial).toContain("useState(editing?.rolePersonId ?? '')")
   })
+  // QA_EVENTOS_PENDIENTES.md #498 — cambiar solo la idea desde "Editar" conserva el estado
+  // (Pendiente/Comprado/Preparado) tal cual estaba: el modal de edición no tiene ningún control de
+  // status y su patch a updateEventSpecialDetail nunca incluye ese campo, así que el estado ya guardado
+  // sigue intacto sin tener que repetirlo.
+  it('#498 — el modal de edición nunca toca el status: no hay ningún control de estado ni se envía en el patch', () => {
+    expect(addSpecial).not.toContain('status:')
+    expect(addSpecial).not.toMatch(/<select[^>]*value=\{status/i)
+  })
+  // QA_EVENTOS_PENDIENTES.md #501 — borrar (o cambiar de papel a) una persona especial con un regalo ya
+  // comprado/preparado nunca borra ese registro ni su historia: el FK es ON DELETE SET NULL (migración
+  // 0218, probada también en eventRolePersonLinkMigrations.test.ts) — solo desvincula role_person_id,
+  // recipientName/detail/status siguen intactos. Cambiar de papel no toca event_special_details en
+  // absoluto (el vínculo es por id, no por el papel en sí), así que tampoco hay nada que perder ahí.
+  it('#501 — borrar una persona especial solo desvincula (role_person_id a null), nunca borra el detalle/regalo histórico', () => {
+    const migration = (import.meta.glob('/supabase/migrations/0218_event_special_detail_role_person_link.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
+      '/supabase/migrations/0218_event_special_detail_role_person_link.sql'
+    ]
+    expect(migration).toContain('alter table event_special_details add column role_person_id uuid references event_role_people(id) on delete set null')
+  })
 })
 
 describe('Detalles — "Regalos pendientes" alimenta automáticamente desde la decisión de Personas especiales', () => {

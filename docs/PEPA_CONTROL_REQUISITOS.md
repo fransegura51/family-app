@@ -54,14 +54,14 @@ la trazabilidad de los commits ya hechos.
 | EVT-B1 | Ofertas independientes de encargos, 3 puntos de entrada, sin efectos colaterales | Implementado | `b74cfdc`, `eventTaskGroups.ts:303-329` | `eventTaskGroupLooseOffersUi.test.ts` | — | — |
 | EVT-B2 | Servicios estructurados, 3 totales distinguidos, descuentos/impuestos *(alias anterior: parte de EVT-008)* | Parcial | `61d975a`, `OfferItemsPanel` | `eventTaskGroupOfferItemsUi.test.ts` | — | Descuentos/impuestos no son datos propios, solo texto libre en condiciones/notas |
 | EVT-B3 | Importar PDF/foto, extraer datos, descuentos/impuestos, revisión previa *(alias anterior: parte de EVT-008/EVT-009)* | Parcial | `offerBudgetDocument.ts`, `ImportOfferBudgetButton`; número de presupuesto + exclusiones + nombre descriptivo de oferta/adjunto (`1093a45`, función de servidor desplegada — versión 2) | `offerBudgetDocumentSpec.test.ts`, `eventosOfertaNumeroPresupuestoUi.test.ts` (22 tests) | — | Sigue sin descuentos/impuestos como datos propios (mismo hueco que EVT-B2) |
-| EVT-B4 | Comparar ofertas, versiones, recuperar descartadas, diferenciar descartar/desvincular/eliminar *(alias anterior: EVT-010)* | Parcial | `ef0c12c`, `070da58`, `OffersComparison` | `eventosOfertaUnificadaBloqueB3B4Ui.test.ts` (21 tests) | — | Comparación solo dentro de un encargo ya abierto, no como herramienta previa e independiente (pedido explícito en RECUPERACIÓN); falta "Desvincular" para una oferta (hoy solo Descartar/Eliminar) |
+| EVT-B4 | Comparar ofertas, versiones, recuperar descartadas, diferenciar descartar/desvincular/eliminar *(alias anterior: EVT-010)* | Implementado | `ef0c12c`, `070da58`, `OffersComparison`; comparador independiente (EVT-C1) y "Desvincular" (`a1bfb00`, `unlinkTaskGroupOfferFromGroup`) | `eventosOfertaUnificadaBloqueB3B4Ui.test.ts` (21 tests), `eventosComparadorOfertasIndependienteUi.test.ts` (7 tests) | EVT-C1 | — |
 | EVT-B5 | Histórico de ofertas de eventos anteriores visible en el registro global, sin trasladarse sola | Implementado | `c67f6d8`, `listOfferHistoryForProvider` | `eventosProveedorHistorialOfertasUi.test.ts` | EVT-A2 | — |
 
 ## Parte C — Encargos y preparativos (CONSOLIDADO)
 
 | ID | Descripción | Estado | Pendientes |
 |---|---|---|---|
-| EVT-C1 | "Consultar ofertas disponibles" sin obligar a resolver el encargo | Pendiente | Solo accesible hoy vía "Resolver encargo"; falta un acceso propio |
+| EVT-C1 | "Consultar ofertas disponibles" sin obligar a resolver el encargo | Implementado (`a1bfb00`, `OffersComparisonModal`, reutiliza `OffersComparison`) | — |
 | EVT-C2a | Seleccionar servicios, precargar, calcular total, confirmar | Implementado | Funciona para un único proveedor por encargo |
 | EVT-C2b | Contratar con varios proveedores en el mismo encargo | Pendiente | Un encargo solo admite una resolución/proveedor hoy |
 | EVT-C2c | Trazabilidad oferta→servicios→encargo→presupuesto→pago | Parcial | Oferta↔resolución sí; resolución/pago↔presupuesto sin FK (requiere Parte D) |

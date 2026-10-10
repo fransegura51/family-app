@@ -21,6 +21,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # El complemento de dictado cierra la app entera en móviles donde el servicio de voz no se deja enlazar (Xiaomi): se parchea. El script
+      # también corre solo tras «npm ci» (postinstall); aquí se llama a propósito para que el APK nunca se construya sin el parche.
+      - name: Parchear el complemento de dictado por voz
+        run: node scripts/patch-speech-plugin.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

@@ -26,6 +26,10 @@ import { isDictationSupported, listenContinuous } from '@/services/voice'
 import voiceSrc from '@/services/voice.ts?raw'
 import manifestPlugin from '../../node_modules/@capacitor-community/speech-recognition/android/src/main/AndroidManifest.xml?raw'
 import capSettings from '../../android/capacitor.settings.gradle?raw'
+import patchScript from '../../scripts/patch-speech-plugin.mjs?raw'
+import packageJson from '../../package.json?raw'
+import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
+import pluginJava from '../../node_modules/@capacitor-community/speech-recognition/android/src/main/java/com/getcapacitor/community/speechrecognition/SpeechRecognition.java?raw'
 
 const emit = (name: string, data: unknown) => (plugin.listeners.get(name) as Listener)(data)
 async function flush() {
@@ -150,6 +154,27 @@ describe('dictado por voz en la app nativa', () => {
     expect(onError).toHaveBeenCalledWith('Este navegador no admite dictado por voz.')
     expect(plugin.available).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
+  })
+})
+
+describe('parche del complemento (la app se cerraba sola al abrirla en el Xiaomi)', () => {
+  it('el parche protege el arranque (load) y la parada (stopListening) del complemento, y falla en voz alta si el complemento cambia', () => {
+    expect(patchScript).toContain('load()')
+    expect(patchScript).toContain('stopListening()')
+    expect(patchScript).toContain('catch (Throwable t)')
+    expect(patchScript).toContain('process.exit(soft ? 0 : 1)')
+    expect(patchScript).toContain("src.includes(MARK)") // idempotente
+  })
+  it('se aplica tras cada npm install y de forma explícita antes de construir el APK', () => {
+    expect(packageJson).toContain('"postinstall": "node scripts/patch-speech-plugin.mjs --soft"')
+    const step = androidWorkflow.indexOf('node scripts/patch-speech-plugin.mjs')
+    expect(step).toBeGreaterThan(androidWorkflow.indexOf('npm ci'))
+    expect(step).toBeLessThan(androidWorkflow.indexOf('npx cap sync android'))
+    expect(step).toBeLessThan(androidWorkflow.indexOf('assembleRelease'))
+  })
+  it('el complemento instalado ya lleva el parche', () => {
+    expect(pluginJava).toContain('PEPA-PATCH: no cerrar la app')
+    expect(pluginJava).toContain('PEPA-PATCH: no relanzar')
   })
 })
 

@@ -62,6 +62,8 @@ import type {
 import ubicacionHeaderImg from '@/assets/ubicacion/ubicacion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { describePositionAge } from '@/domain/positionFreshness'
+import { googleMapsUrl } from '@/domain/memberWhere'
+import { consumeMemberFocus, onMemberFocus } from '@/services/mapFocus'
 import { pastelPalette } from '@/domain/colors'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
@@ -554,6 +556,18 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // "que al tocar se abra debajo del mapa la información" (captura de
   // referencia de una app de localización familiar).
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  // «Pepa, ¿dónde está Eric?» (services/mapFocus.ts): se selecciona a esa persona y el mapa se centra en ella. Se recoge al montar (Pepa navega aquí
+  // justo después de contestar) y también si la pantalla ya estaba abierta.
+  const [memberFocus, setMemberFocus] = useState<{ memberId: string; latitude: number; longitude: number; nonce: number } | null>(null)
+  useEffect(() => {
+    const apply = (focus: { memberId: string; latitude: number; longitude: number }) => {
+      setSelectedMemberId(focus.memberId)
+      setMemberFocus({ ...focus, nonce: Date.now() })
+    }
+    const pending = consumeMemberFocus()
+    if (pending) apply(pending)
+    return onMemberFocus(apply)
+  }, [])
   // El propio compartir (watchPosition) ya no vive aquí — vive en
   // services/locationSharing.ts, fuera de React, para que no se pare al
   // salir de esta pantalla (ver comentario en ese archivo). Aquí solo se
@@ -740,6 +754,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
     return loc ? describePositionAge(loc.recordedAt, Date.now()) : null
   }
   const selectedFreshness = selectedMember ? freshnessOf(selectedMember.id) : null
+  const selectedLocation = selectedMember ? sharedNow.find((l) => l.memberId === selectedMember.id) ?? null : null
 
   return (
     <div>
@@ -758,6 +773,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           photoUrls={photoUrls}
           onSelectMember={setSelectedMemberId}
           routePolyline={routePolyline}
+          focusMemberId={memberFocus}
         />
         <div className="location-map-chips">
           {members.map((m) => {
@@ -805,6 +821,16 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
                   : 'Compartir activado, esperando posición…'}
             </p>
           </div>
+          {selectedLocation && (
+            <a
+              className="task-toggle"
+              href={googleMapsUrl(selectedLocation.latitude, selectedLocation.longitude)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              📍 Abrir en Google Maps
+            </a>
+          )}
           {selectedCanToggle && (
             <button
               type="button"

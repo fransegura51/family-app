@@ -303,3 +303,92 @@ describe('weatherAnswerForPlace (respaldo de la IA cuando ningún patrón entien
     expect(text).toBe('No he encontrado «un sitio inventado», ni entre tus lugares guardados ni buscándolo en el mapa.')
   })
 })
+
+describe('locationAction: «¿dónde está Eric?» (solo gente de la misma familia)', () => {
+  const NOW = new Date('2026-10-10T18:00:00Z').getTime()
+  const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString()
+  const ERIC = { id: 'm-eric', name: 'Eric' }
+  const FERNANDO = { id: 'm-fer', name: 'Fernando' }
+  const CASA: LocationPlace = { id: 'p-casa', familyId: 'f', name: 'Casa', category: null, latitude: 38.1054, longitude: -0.85, radiusM: 100, notifyArrivals: true }
+  const loc = (memberId: string, minutesAgo: number, latitude = 38.10542, longitude = -0.85007): MemberLocation => ({
+    memberId,
+    familyId: 'f',
+    latitude,
+    longitude,
+    recordedAt: ago(minutesAgo),
+  })
+  const familyDeps = (overrides: Partial<LocationDeps> = {}) =>
+    makeDeps({
+      members: vi.fn().mockResolvedValue([ERIC, FERNANDO]),
+      places: vi.fn().mockResolvedValue([CASA]),
+      memberLocations: vi.fn().mockResolvedValue([loc('m-eric', 1)]),
+      consents: vi.fn().mockResolvedValue([{ memberId: 'm-eric', enabled: true }]),
+      now: () => NOW,
+      ...overrides,
+    })
+
+  it('dice dónde está y devuelve su posición para abrir el mapa y mandar el enlace', async () => {
+    const outcome = await locationAction('Pepa, ¿dónde está Eric?', familyDeps())
+    expect(outcome).toEqual({
+      kind: 'member-location',
+      text: 'Eric está en Casa. Su ubicación se actualizó hace 1 minuto.',
+      memberId: 'm-eric',
+      latitude: 38.10542,
+      longitude: -0.85007,
+      mapsUrl: 'https://www.google.com/maps/search/?api=1&query=38.105420,-0.850070',
+    })
+  })
+
+  it('«mándame la ubicación de Fernando» funciona igual', async () => {
+    const deps = familyDeps({ memberLocations: vi.fn().mockResolvedValue([loc('m-fer', 0)]), consents: vi.fn().mockResolvedValue([]) })
+    const outcome = await locationAction('mándame la ubicación de Fernando', deps)
+    expect(outcome).toMatchObject({ kind: 'member-location', memberId: 'm-fer', text: 'Fernando está en Casa ahora mismo.' })
+  })
+
+  it('fuera de un sitio guardado dice la dirección; si falla, lo dice sin ella', async () => {
+    const far = familyDeps({ memberLocations: vi.fn().mockResolvedValue([loc('m-eric', 2, 38.2, -0.9)]), addressFor: vi.fn().mockResolvedValue('Calle Mayor 3, Almoradí') })
+    expect(await locationAction('¿dónde está Eric?', far)).toMatchObject({ kind: 'member-location', text: expect.stringContaining('Eric está en Calle Mayor 3, Almoradí') })
+    const broken = familyDeps({ memberLocations: vi.fn().mockResolvedValue([loc('m-eric', 2, 38.2, -0.9)]), addressFor: vi.fn().mockRejectedValue(new Error('sin red')) })
+    expect(await locationAction('¿dónde está Eric?', broken)).toMatchObject({ text: expect.stringContaining('en un sitio que no tengo guardado') })
+  })
+
+  it('con la posición vieja avisa de que puede que ya no esté ahí', async () => {
+    const deps = familyDeps({ memberLocations: vi.fn().mockResolvedValue([loc('m-eric', 200)]) })
+    const outcome = await locationAction('¿dónde está Eric?', deps)
+    expect(outcome).toMatchObject({ kind: 'member-location', text: expect.stringContaining('Puede que ya no esté ahí') })
+  })
+
+  it('si no comparte su ubicación (sin posición o permiso apagado) lo dice y no abre el mapa', async () => {
+    const sinPosicion = await locationAction('¿dónde está Fernando?', familyDeps())
+    expect(sinPosicion).toMatchObject({ kind: 'answer', text: expect.stringContaining('Fernando no está compartiendo su ubicación') })
+    const apagado = await locationAction('¿dónde está Eric?', familyDeps({ consents: vi.fn().mockResolvedValue([{ memberId: 'm-eric', enabled: false }]) }))
+    expect(apagado).toMatchObject({ kind: 'answer', text: expect.stringContaining('Eric no está compartiendo su ubicación') })
+  })
+
+  it('una cuenta sin acceso a Ubicación no puede saber dónde está nadie (y no se consulta ninguna posición)', async () => {
+    const memberLocations = vi.fn().mockResolvedValue([loc('m-eric', 1)])
+    const outcome = await locationAction('¿dónde está Eric?', familyDeps({ canSeeLocation: vi.fn().mockResolvedValue(false), memberLocations }))
+    expect(outcome).toMatchObject({ kind: 'answer', text: expect.stringContaining('no tiene acceso a Ubicación') })
+    expect(memberLocations).not.toHaveBeenCalled()
+  })
+
+  it('si no se puede comprobar el acceso (sin red), no se concede a ciegas', async () => {
+    const memberLocations = vi.fn().mockResolvedValue([loc('m-eric', 1)])
+    const outcome = await locationAction('¿dónde está Eric?', familyDeps({ canSeeLocation: vi.fn().mockRejectedValue(new Error('sin red')), memberLocations }))
+    expect(outcome).toMatchObject({ kind: 'answer', text: expect.stringContaining('no he podido comprobar') })
+    expect(memberLocations).not.toHaveBeenCalled()
+  })
+
+  it('alguien que no es de la familia no se localiza: «dónde está Eric» con otra familia no devuelve nada', async () => {
+    const deps = familyDeps({ members: vi.fn().mockResolvedValue([FERNANDO]), memberLocations: vi.fn().mockResolvedValue([]) })
+    const outcome = await locationAction('¿dónde está Eric?', deps)
+    expect(outcome).not.toMatchObject({ kind: 'member-location' })
+  })
+
+  it('«dónde está la farmacia» sigue buscando un sitio, como siempre', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Farmacia Rodríguez, Calle Mayor 3', 40.41, -3.69))
+    const outcome = await locationAction('dónde está la farmacia', familyDeps({ searchFirstPlace }))
+    expect(outcome).toMatchObject({ kind: 'focus-place' })
+    expect(searchFirstPlace).toHaveBeenCalled()
+  })
+})

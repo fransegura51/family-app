@@ -34,6 +34,8 @@ export type TalkOutcome =
   // Un sitio encontrado por voz (Ubicación): lleva a esa pestaña para verlo. Nada se guarda todavía
   // — hace falta decir "guárdalo" después (pepa/location.ts).
   | { kind: 'focus-place'; text: string }
+  // «¿Dónde está Eric?»: la respuesta hablada + abrir el mapa centrado en esa persona (con su botón de Google Maps).
+  | { kind: 'member-location'; text: string; memberId: string; latitude: number; longitude: number; mapsUrl: string }
   // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
   | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
   // Pregunta de tienda al añadir los ingredientes de una receta.

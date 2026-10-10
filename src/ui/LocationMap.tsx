@@ -143,6 +143,7 @@ export function LocationMap({
   photoUrls,
   onSelectMember,
   routePolyline,
+  focusMemberId,
 }: {
   members: FamilyMember[]
   locations: MemberLocation[]
@@ -152,6 +153,8 @@ export function LocationMap({
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — el trazado (formato
   // polyline de Google, sin decodificar) de la última ruta calculada, o null si no hay ninguna.
   routePolyline?: string | null
+  // «Pepa, ¿dónde está Eric?»: el mapa se centra en esa persona (y se acerca) cuando cambia este valor.
+  focusMemberId?: { memberId: string; latitude: number; longitude: number; nonce: number } | null
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   // Sube cuando llega de Google el trazado por carretera de algún trozo: obliga a volver a pintar las líneas con la carretera.
@@ -370,6 +373,16 @@ export function LocationMap({
       fittedRouteRef.current = routePolyline
     }
   }, [routePolyline])
+
+  // Centrar en una persona cuando Pepa lo pide. Si el mapa todavía está cargando, se espera a que esté (se reintenta cuando llegan las posiciones).
+  const lastFocusNonceRef = useRef<number | null>(null)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!focusMemberId || !map || lastFocusNonceRef.current === focusMemberId.nonce) return
+    lastFocusNonceRef.current = focusMemberId.nonce
+    map.panTo({ lat: focusMemberId.latitude, lng: focusMemberId.longitude })
+    map.setZoom(16)
+  }, [focusMemberId, locations, roadTick])
 
   return <div ref={containerRef} className="location-map" />
 }

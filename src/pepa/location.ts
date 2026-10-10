@@ -5,6 +5,7 @@
 // resolviendo Cocina, nunca esto.
 import { distanceMeters, formatDistance, formatDuration, trafficDescription } from '@/domain/geo'
 import { routeLocation } from '@/domain/locationRoute'
+import { buildMemberAnswer, describeMemberSpot, findMemberByName, googleMapsUrl, notSharingAnswer, parseWhereIs } from '@/domain/memberWhere'
 import { normalize } from '@/domain/voiceQuery'
 import { formatWeatherReport, type WeatherReport } from '@/domain/weather'
 import { DEFAULT_PLACE_RADIUS_M } from '@/pepa/actions/locationActions'
@@ -37,6 +38,15 @@ export interface LocationDeps {
   // en concreto y la previsión". Gratis (Open-Meteo, sin clave, ver services/weather.ts) — no pasa
   // por el freno de Google Maps (googleMapsUsageGuard.ts), ese es solo para lo que sí tiene coste.
   weather(latitude: number, longitude: number): Promise<WeatherReport | null>
+  // «¿Dónde está Eric?» — todo opcional para no romper a quien no lo use:
+  // quién ha activado «Compartir ubicación» (si una fila sigue ahí pero el permiso está apagado, no se enseña)…
+  consents?(): Promise<{ memberId: string; enabled: boolean }[]>
+  // …dirección legible de unas coordenadas (null o error = se dice «en un sitio que no tengo guardado»)…
+  addressFor?(latitude: number, longitude: number): Promise<string | null>
+  // …si la cuenta que pregunta puede ver Ubicación (cuentas limitadas; mismo criterio que el menú de la app)…
+  canSeeLocation?(): Promise<boolean>
+  // …y la hora (para las pruebas).
+  now?(): number
 }
 
 function emptyContext(): ActionContext {
@@ -190,8 +200,61 @@ async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<T
   return { kind: 'answer', text: `${nearest.member.name} está más cerca de ${destination.label}, a ${formatDistance(nearest.dist)}.` }
 }
 
+// Petición real: «un padre quiere saber dónde está su hijo y le pregunta a la aplicación: ¿dónde está Eric?, ¿dónde está Fernando?; que Pepa le diga dónde
+// está, por voz y/o mandándole la ubicación. Solo entre los miembros de la MISMA familia». La voz la pone la propia respuesta (Pepa habla lo que contesta);
+// «mandar la ubicación» es abrir el mapa centrado en esa persona (resultado 'member-location', ver ui/VoiceCapture.tsx) con su botón de Google Maps.
+// La separación entre familias no depende de este código: memberLocations() / members() / places() solo devuelven lo de la familia de quien pregunta (RLS).
+async function handleWhere(subject: string, fallbackTerm: string | null, deps: LocationDeps): Promise<TalkOutcome | null> {
+  const members = await deps.members()
+  const member = findMemberByName(subject, members)
+  if (!member) {
+    // No es de la familia: «dónde está la farmacia» sigue siendo buscar un sitio; si no era una búsqueda, esto no es cosa de Ubicación.
+    return fallbackTerm ? handleSearch(fallbackTerm, deps) : null
+  }
+  if (deps.canSeeLocation) {
+    let allowed: boolean
+    try {
+      allowed = await deps.canSeeLocation()
+    } catch {
+      // Sin red o sin sesión no se concede a ciegas: se dice que no se ha podido comprobar.
+      return { kind: 'answer', text: 'Ahora mismo no he podido comprobar si tu cuenta puede ver la ubicación. Inténtalo de nuevo en un momento.' }
+    }
+    if (!allowed) return { kind: 'answer', text: 'Tu cuenta no tiene acceso a Ubicación, así que no puedo decirte dónde está nadie. Pídeselo a quien administra la familia.' }
+  }
+  const [locations, consents, places] = await Promise.all([deps.memberLocations(), deps.consents ? deps.consents() : Promise.resolve(null), deps.places()])
+  const location = locations.find((l) => l.memberId === member.id)
+  const consentOff = consents?.find((c) => c.memberId === member.id)?.enabled === false
+  if (!location || consentOff) return { kind: 'answer', text: notSharingAnswer(member.name) }
+
+  const spot = describeMemberSpot(location.latitude, location.longitude, places)
+  let address: string | null = null
+  if (spot.kind !== 'inside' && deps.addressFor) {
+    try {
+      address = await deps.addressFor(location.latitude, location.longitude)
+    } catch {
+      address = null // sin dirección (freno diario, sin red…): se dice sin ella, no se rompe nada.
+    }
+  }
+  const nowMs = deps.now ? deps.now() : Date.now()
+  return {
+    kind: 'member-location',
+    text: buildMemberAnswer({ name: member.name, recordedAt: location.recordedAt, nowMs, spot, address }),
+    memberId: member.id,
+    latitude: location.latitude,
+    longitude: location.longitude,
+    mapsUrl: googleMapsUrl(location.latitude, location.longitude),
+  }
+}
+
 export async function locationAction(text: string, deps: LocationDeps): Promise<TalkOutcome | null> {
   const intent = routeLocation(text)
+  // «¿Dónde está Eric?» / «mándame la ubicación de Eric»: se mira PRIMERO si es alguien de la familia (antes se tomaba siempre por buscar un SITIO
+  // llamado Eric en Google Maps). Si no lo es, sigue todo como siempre: «dónde está la farmacia» busca la farmacia.
+  const where = parseWhereIs(text)
+  if (where) {
+    const outcome = await handleWhere(where.subject, intent?.type === 'search' ? intent.term : null, deps)
+    if (outcome) return outcome
+  }
   if (!intent) return null
   switch (intent.type) {
     case 'search':

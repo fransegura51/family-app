@@ -4,7 +4,7 @@ import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { addShoppingItem, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
-import { listMemberLocations, listPlaces } from '@/data/location'
+import { listConsents, listMemberLocations, listPlaces } from '@/data/location'
 import { createEvent, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
 import {
   listExternalEventCompletions,
@@ -35,7 +35,9 @@ import { detectCalendarEntryKind, parseCalendarEntry } from '@/domain/calendarVo
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
-import { searchAndResolveFirst } from '@/services/geocoding'
+import { reverseGeocode, searchAndResolveFirst } from '@/services/geocoding'
+import { requestMemberFocus } from '@/services/mapFocus'
+import { canAccessSection } from '@/pepa/sectionAccess'
 import { getDrivingEta } from '@/services/drivingEta'
 import { getWeather } from '@/services/weather'
 import { hasReachedGoogleMapsLimit } from '@/services/googleMapsUsageGuard'
@@ -741,6 +743,11 @@ const locationDeps: LocationDeps = {
   },
   drivingEta: (origin, destination) => getDrivingEta(origin, destination),
   weather: (latitude, longitude) => getWeather(latitude, longitude),
+  // «¿Dónde está Eric?»: quién comparte, la dirección (con el mismo freno diario que el resto de búsquedas del mapa: si ya no quedan, se dice sin dirección)
+  // y si esta cuenta puede ver Ubicación (cuentas limitadas, mismo criterio que el menú).
+  consents: () => listConsents(),
+  addressFor: async (latitude, longitude) => (hasReachedGoogleMapsLimit('search') ? null : reverseGeocode(latitude, longitude)),
+  canSeeLocation: () => canAccessSection('ubicacion'),
 }
 
 // Lo que necesita "Hablar con PEPA" del resto de la app: las mismas
@@ -913,6 +920,10 @@ export function VoiceCapture() {
       navigate(DESTINATION_INFO.compras.path)
       window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
     } else if (outcome.kind === 'focus-place') {
+      navigate('/ubicacion')
+    } else if (outcome.kind === 'member-location') {
+      // «Mandar la ubicación»: se abre el mapa con esa persona seleccionada y centrada (la pantalla recoge el aviso al montarse; ver services/mapFocus.ts).
+      requestMemberFocus({ memberId: outcome.memberId, latitude: outcome.latitude, longitude: outcome.longitude })
       navigate('/ubicacion')
     }
   }

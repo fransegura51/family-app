@@ -20,8 +20,8 @@ const BUDGET_SECTION = window_(UI, 'function BudgetSection(', '\nfunction AddBud
 
 describe('BudgetSection — "Comprometido vía encargos" se calcula y muestra aparte de Planeado/Gastado', () => {
   it('carga event_payments y suma totalAmount de TODOS los pagos (se hayan pagado ya o no)', () => {
-    expect(BUDGET_SECTION).toContain('listEventPayments(event.id)')
-    expect(BUDGET_SECTION).toContain('setCommitted(payments.reduce((sum, p) => sum + p.totalAmount, 0))')
+    expect(BUDGET_SECTION).toContain('listEventPayments(event.id).then(setPayments)')
+    expect(BUDGET_SECTION).toContain('const committed = payments.length > 0 ? payments.reduce((sum, p) => sum + p.totalAmount, 0) : null')
   })
   it('se enseña en su propia línea, nunca sumado al <strong>{planned...}</strong> ni al <strong>{spent...}</strong>', () => {
     expect(BUDGET_SECTION).toContain('Comprometido vía encargos: <strong>{committed.toFixed(2)} €</strong>')

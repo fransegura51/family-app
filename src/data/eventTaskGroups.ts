@@ -150,6 +150,12 @@ export async function resolveEventTaskGroup(
     })
     .eq('id', groupId)
   if (error) throw error
+  // Orden de recuperación de requisitos (Parte C2b, migración 0237) — resolver/sustituir sigue dejando
+  // UNA sola activa: las demás resoluciones de este encargo (si las hubiera, p. ej. de
+  // addAdditionalEventTaskGroupResolution) se desactivan, nunca se borran — siguen consultables en el
+  // histórico de siempre.
+  const { error: deactivateError } = await supabase.from('event_task_group_resolutions').update({ active: false }).eq('group_id', groupId)
+  if (deactivateError) throw deactivateError
   const { error: historyError } = await supabase.from('event_task_group_resolutions').insert({
     group_id: groupId,
     family_id: group.family_id,
@@ -160,11 +166,47 @@ export async function resolveEventTaskGroup(
     payment_id: input.paymentId ?? null,
     offer_id: input.offerId ?? null,
     resolved_at: resolvedAt,
+    active: true,
   })
   if (historyError) throw historyError
 }
 
-const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, offer_id, resolved_at'
+// Orden de recuperación de requisitos (Parte C2b, migración 0237) — "contratar con varios proveedores en
+// el mismo encargo": a diferencia de resolveEventTaskGroup (que sustituye y deja una sola activa), esto
+// AÑADE una resolución activa MÁS sin desactivar las demás ni tocar las columnas-resumen de
+// event_task_groups (que siguen reflejando solo la primera/principal, para no romper nada que ya las
+// lea) — listActiveEventTaskGroupResolutions es la forma correcta de ver TODOS los proveedores vigentes
+// de un encargo, columnas-resumen incluidas o no.
+export async function addAdditionalEventTaskGroupResolution(
+  groupId: string,
+  input: { method: EventTaskGroupResolutionMethod; note?: string | null; providerId?: string | null; providerName?: string | null; paymentId?: string | null; offerId?: string | null },
+): Promise<void> {
+  const { data: group, error: groupError } = await supabase.from('event_task_groups').select('family_id').eq('id', groupId).single()
+  if (groupError) throw groupError
+  const { error } = await supabase.from('event_task_group_resolutions').insert({
+    group_id: groupId,
+    family_id: group.family_id,
+    method: input.method,
+    note: input.note ?? null,
+    provider_id: input.providerId ?? null,
+    provider_name: input.providerName ?? null,
+    payment_id: input.paymentId ?? null,
+    offer_id: input.offerId ?? null,
+    resolved_at: new Date().toISOString(),
+    active: true,
+  })
+  if (error) throw error
+}
+
+// Quita un proveedor ADICIONAL de un encargo (desactiva, nunca borra: sigue en el histórico). Nunca se
+// usa sobre la resolución "principal" (las columnas-resumen de event_task_groups) — para esa, resolver
+// de nuevo con resolveEventTaskGroup es lo que corresponde.
+export async function deactivateEventTaskGroupResolution(resolutionId: string): Promise<void> {
+  const { error } = await supabase.from('event_task_group_resolutions').update({ active: false }).eq('id', resolutionId)
+  if (error) throw error
+}
+
+const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, offer_id, resolved_at, active'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapGroupResolution(r: any): EventTaskGroupResolution {
@@ -178,6 +220,7 @@ function mapGroupResolution(r: any): EventTaskGroupResolution {
     paymentId: r.payment_id,
     offerId: r.offer_id,
     resolvedAt: r.resolved_at,
+    active: r.active,
   }
 }
 
@@ -185,6 +228,18 @@ function mapGroupResolution(r: any): EventTaskGroupResolution {
 // mostrar "antes resuelto: Floristería X · 150 €" aunque el encargo tenga ahora algo nuevo pendiente.
 export async function listEventTaskGroupResolutions(groupId: string): Promise<EventTaskGroupResolution[]> {
   const { data, error } = await supabase.from('event_task_group_resolutions').select(GROUP_RESOLUTION_SELECT).eq('group_id', groupId).order('resolved_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapGroupResolution)
+}
+
+// Proveedores VIGENTES de un encargo (EVT-C2b) — una o varias resoluciones activas a la vez.
+export async function listActiveEventTaskGroupResolutions(groupId: string): Promise<EventTaskGroupResolution[]> {
+  const { data, error } = await supabase
+    .from('event_task_group_resolutions')
+    .select(GROUP_RESOLUTION_SELECT)
+    .eq('group_id', groupId)
+    .eq('active', true)
+    .order('resolved_at', { ascending: true })
   if (error) throw error
   return (data ?? []).map(mapGroupResolution)
 }

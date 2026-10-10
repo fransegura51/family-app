@@ -59,7 +59,7 @@ describe('BudgetSection — una partida sin importe se distingue claramente de u
   })
 
   it('el botón de borrar dentro de la fila no dispara también la edición (stopPropagation)', () => {
-    const rowBlock = slice(fn, 'onClick={() => setEditingItemId(i.id)}', '</div>\n          ),')
+    const rowBlock = slice(fn, 'onClick={() => setEditingItemId(i.id)}', '</div>\n    )\n  }')
     expect(rowBlock).toContain('onClick={(e) => e.stopPropagation()}')
   })
 })
@@ -68,7 +68,9 @@ describe('EditBudgetItemInline — permite poner importe real a un concepto que 
   const fn = slice(SRC, 'function EditBudgetItemInline(', '\n// ---------------------------------------------------------------------\n// Proveedores.')
 
   it('reutiliza updateEventBudgetItem, no crea una partida nueva', () => {
-    expect(fn).toContain('updateEventBudgetItem(item.id, { category, plannedAmount: amount.trim() === \'\' ? null : Number(amount) })')
+    expect(fn).toContain('await updateEventBudgetItem(item.id, {')
+    expect(fn).toContain("plannedAmount: amount.trim() === '' ? null : Number(amount),")
+    expect(fn).not.toContain('addEventBudgetItem(')
   })
 
   it('el formulario no propaga el click a la fila (evita reabrirse a sí mismo)', () => {

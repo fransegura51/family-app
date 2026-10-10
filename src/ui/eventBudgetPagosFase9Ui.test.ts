@@ -19,8 +19,9 @@ const PAYMENTS_SECTION = window_(UI, 'function PaymentsSection(', '\nfunction Ad
 describe('Parte D — "Pagado de lo comprometido" es una CUARTA cifra, nunca igualada ni confundida con "Comprometido"', () => {
   it('se calcula a partir de depositPaid de los mismos pagos que ya se leen para "Comprometido" (una sola llamada, nunca una segunda consulta)', () => {
     const reloadFn = window_(BUDGET_SECTION, 'function reload(', '\n  useEffect(reload')
-    expect(reloadFn).toContain('setPaidOfCommitted(payments.reduce((sum, p) => sum + p.depositPaid, 0))')
+    expect(reloadFn).toContain('listEventPayments(event.id).then(setPayments)')
     expect((reloadFn.match(/listEventPayments\(/g) ?? []).length).toBe(1)
+    expect(BUDGET_SECTION).toContain('const paidOfCommitted = payments.length > 0 ? payments.reduce((sum, p) => sum + p.depositPaid, 0) : null')
   })
   it('se muestra junto al total comprometido ("X € de Y €"), nunca como una cifra suelta sin ese contexto', () => {
     expect(BUDGET_SECTION).toContain('Pagado de lo comprometido: <strong>{paidOfCommitted.toFixed(2)} €</strong> de {committed.toFixed(2)} €')
@@ -46,8 +47,9 @@ describe('Parte E — tarjetas de pago compactas y plegables (mismo patrón ▸/
 describe('Parte E — filtro por estado (Todos/Pendientes/Pagados del todo), sin tocar los datos', () => {
   it('el filtro es puramente de visualización — visiblePayments se deriva de payments, nunca al revés', () => {
     expect(PAYMENTS_SECTION).toContain(
-      "const visiblePayments = payments.filter((p) => (filter === 'todos' ? true : filter === 'pagados' ? p.status === 'pagado' : p.status !== 'pagado'))",
+      "const filtered = payments.filter((p) => (filter === 'todos' ? true : filter === 'pagados' ? p.status === 'pagado' : p.status !== 'pagado'))",
     )
+    expect(PAYMENTS_SECTION).toContain('const visiblePayments = sortPayments(filtered, sortBy)')
   })
   it('"Pendientes" cuenta parcial y pendiente juntos (todo lo que no está pagado del todo)', () => {
     expect(PAYMENTS_SECTION).toContain("const pendingCount = payments.filter((p) => p.status !== 'pagado').length")

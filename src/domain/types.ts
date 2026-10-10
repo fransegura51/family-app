@@ -880,6 +880,10 @@ export interface EventTaskGroupResolution {
   paymentId: string | null
   offerId: string | null
   resolvedAt: string
+  // Orden de recuperación de requisitos (Parte C2b, migración 0237) — "contratar con varios proveedores
+  // en el mismo encargo": resolver (sustituir) sigue dejando una sola activa; añadir un proveedor MÁS
+  // (sin sustituir) deja varias a la vez. Las inactivas siguen siendo histórico consultable de siempre.
+  active: boolean
 }
 
 // Oferta recibida para un encargo (migración 0223, Parte B Fase 6) — SOLO información para comparar,
@@ -971,6 +975,39 @@ export interface EventBudgetItem {
   createdAt: string
   // Fase 1 del motor de decisiones — ver EventTask.decisionId.
   decisionId: string | null
+  // Orden de recuperación de requisitos (Parte D, migración 0235) — enlaces opcionales para poder
+  // consultar por Encargo/Proveedor/Categoría (EVT-D2), nunca obligatorios: toda partida ya creada sigue
+  // funcionando igual con estos tres a null.
+  providerId: string | null
+  groupId: string | null
+  categoryId: string | null
+  // "Comprometido" manual: null = se calcula sumando lo que corresponda del encargo enlazado (groupId);
+  // nunca 0 como "no lo sé" (mismo criterio que plannedAmount).
+  committedAmount: number | null
+}
+
+// Desglose de conceptos de una partida (EVT-D3, migración 0235) — opcional, nunca sustituye
+// plannedAmount: si no hay ninguno, la partida se enseña como un total simple de siempre.
+export interface EventBudgetItemConcept {
+  id: string
+  budgetItemId: string
+  familyId: string
+  name: string
+  amount: number | null
+  sortOrder: number
+  createdAt: string
+}
+
+// Historial de cambios de una partida (EVT-D7, migración 0235) — append-only, nunca se edita ni se borra.
+export interface EventBudgetItemHistoryEntry {
+  id: string
+  budgetItemId: string
+  familyId: string
+  changedAt: string
+  changedBy: string | null
+  field: string
+  oldValue: string | null
+  newValue: string | null
 }
 
 // Menú del evento: platos por sección. A Compras solo llegan los ingredientes de una receta que la familia
@@ -1224,11 +1261,39 @@ export interface EventPayment {
   providerName: string | null
   concept: string
   totalAmount: number
+  // Sigue siendo el total pagado AUTORITATIVO de siempre (EVT-E7 "Corregir lo pagado" sigue escribiendo
+  // aquí tal cual, sin cambios). Desde la migración 0236, "+ Añadir un pago parcial" ADEMÁS apunta un
+  // EventPaymentEntry fechado (ver listEventPaymentEntries) y lo suma aquí — un diario opcional de
+  // abonos, nunca la única fuente de verdad ni algo que sustituya a esta corrección rápida.
   depositPaid: number
   dueDate: string | null
   status: EventPaymentStatus
   notes: string | null
   reminderCalendarEventId: string | null
+  createdAt: string
+  // Migración 0236 — trazabilidad pago↔presupuesto (EVT-C2c) y agrupar por categoría (EVT-E5).
+  budgetItemId: string | null
+  category: string | null
+  // Fianza: dato propio, distinto de "lo pagado" — null = no aplica/no se ha fijado ninguna.
+  bondAmount: number | null
+  // null = retenida (o sin fianza); fecha puesta = devuelta ese día. Nunca una fecha inventada.
+  bondReturnedAt: string | null
+  attachmentStoragePath: string | null
+  attachmentOriginalName: string | null
+  attachmentMimeType: string | null
+}
+
+// Diario opcional de abonos fechados (EVT-E6/EVT-005, migración 0236) — complementa depositPaid (que
+// sigue siendo el total autoritativo), nunca lo sustituye. paidAt nullable a propósito: el backfill de
+// la migración (un abono por pago ya existente, "saldo anterior") nunca inventó una fecha.
+export interface EventPaymentEntry {
+  id: string
+  paymentId: string
+  familyId: string
+  amount: number
+  paidAt: string | null
+  method: string | null
+  notes: string | null
   createdAt: string
 }
 

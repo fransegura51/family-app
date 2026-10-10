@@ -46,6 +46,8 @@ import type { EventReminder } from '@/domain/reminders'
 import type {
   EventActivity,
   EventBudgetItem,
+  EventBudgetItemConcept,
+  EventBudgetItemHistoryEntry,
   EventDayPlanItem,
   EventDecision,
   EventDecisionProvider,
@@ -80,6 +82,7 @@ import type {
   EventModuleKey,
   EventMoment,
   EventPayment,
+  EventPaymentEntry,
   EventPaymentStatus,
   EventProvider,
   EventSpecialDetail,
@@ -1232,7 +1235,8 @@ export async function deleteEventGuestMember(id: string): Promise<void> {
 // events.tagId desde la propia pantalla, sin duplicar nada de Economía).
 // ---------------------------------------------------------------------
 
-const BUDGET_ITEM_SELECT = 'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id'
+const BUDGET_ITEM_SELECT =
+  'id, event_id, family_id, category, planned_amount, sort_order, created_at, decision_id, provider_id, group_id, category_id, committed_amount'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapBudgetItem(r: any): EventBudgetItem {
@@ -1245,6 +1249,10 @@ function mapBudgetItem(r: any): EventBudgetItem {
     sortOrder: r.sort_order,
     createdAt: r.created_at,
     decisionId: r.decision_id,
+    providerId: r.provider_id,
+    groupId: r.group_id,
+    categoryId: r.category_id,
+    committedAmount: r.committed_amount == null ? null : Number(r.committed_amount),
   }
 }
 
@@ -1258,25 +1266,184 @@ export async function listEventBudgetItems(eventId: string): Promise<EventBudget
   return data.map(mapBudgetItem)
 }
 
-export async function addEventBudgetItem(eventId: string, category: string, plannedAmount: number | null, decisionId: string | null = null): Promise<void> {
+export async function addEventBudgetItem(
+  eventId: string,
+  category: string,
+  plannedAmount: number | null,
+  decisionId: string | null = null,
+  extra?: { providerId?: string | null; groupId?: string | null; categoryId?: string | null },
+): Promise<void> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase
-    .from('event_budget_items')
-    .insert({ event_id: eventId, family_id: familyId, category: category.trim(), planned_amount: plannedAmount, sort_order: Date.now(), decision_id: decisionId })
+  const { error } = await supabase.from('event_budget_items').insert({
+    event_id: eventId,
+    family_id: familyId,
+    category: category.trim(),
+    planned_amount: plannedAmount,
+    sort_order: Date.now(),
+    decision_id: decisionId,
+    provider_id: extra?.providerId ?? null,
+    group_id: extra?.groupId ?? null,
+    category_id: extra?.categoryId ?? null,
+  })
   if (error) throw error
 }
 
-export async function updateEventBudgetItem(id: string, patch: { category?: string; plannedAmount?: number | null }): Promise<void> {
+type BudgetItemPatch = {
+  category?: string
+  plannedAmount?: number | null
+  providerId?: string | null
+  groupId?: string | null
+  categoryId?: string | null
+  committedAmount?: number | null
+}
+
+// Orden de recuperación de requisitos (Parte D7, migración 0235) — "preservar... historial de cambios":
+// cada campo que de verdad cambia queda como una fila APARTE en event_budget_item_history, nunca se
+// edita ni se borra una ya escrita. Se lee el valor anterior ANTES de actualizar para poder compararlo.
+export async function updateEventBudgetItem(id: string, patch: BudgetItemPatch): Promise<void> {
+  const fieldColumns: Record<keyof BudgetItemPatch, string> = {
+    category: 'category',
+    plannedAmount: 'planned_amount',
+    providerId: 'provider_id',
+    groupId: 'group_id',
+    categoryId: 'category_id',
+    committedAmount: 'committed_amount',
+  }
+  const changedFields = (Object.keys(patch) as (keyof BudgetItemPatch)[]).filter((k) => patch[k] !== undefined)
   const update: Record<string, unknown> = {}
   if (patch.category !== undefined) update.category = patch.category.trim()
   if (patch.plannedAmount !== undefined) update.planned_amount = patch.plannedAmount
+  if (patch.providerId !== undefined) update.provider_id = patch.providerId
+  if (patch.groupId !== undefined) update.group_id = patch.groupId
+  if (patch.categoryId !== undefined) update.category_id = patch.categoryId
+  if (patch.committedAmount !== undefined) update.committed_amount = patch.committedAmount
+
+  let before: Record<string, unknown> | null = null
+  if (changedFields.length > 0) {
+    const columns = changedFields.map((k) => fieldColumns[k])
+    const { data, error } = await supabase
+      .from('event_budget_items')
+      .select([...new Set(['family_id', ...columns])].join(', '))
+      .eq('id', id)
+      .single()
+    if (error) throw error
+    before = data as unknown as Record<string, unknown>
+  }
+
   const { error } = await supabase.from('event_budget_items').update(update).eq('id', id)
   if (error) throw error
+
+  if (before) {
+    const { data: userResult } = await supabase.auth.getUser()
+    const entries = changedFields
+      .map((k) => ({ field: fieldColumns[k], oldValue: before![fieldColumns[k]], newValue: update[fieldColumns[k]] }))
+      .filter((e) => String(e.oldValue ?? '') !== String(e.newValue ?? ''))
+    if (entries.length > 0) {
+      const { error: historyError } = await supabase.from('event_budget_item_history').insert(
+        entries.map((e) => ({
+          budget_item_id: id,
+          family_id: before!.family_id,
+          changed_by: userResult.user?.id ?? null,
+          field: e.field,
+          old_value: e.oldValue == null ? null : String(e.oldValue),
+          new_value: e.newValue == null ? null : String(e.newValue),
+        })),
+      )
+      if (historyError) throw historyError
+    }
+  }
 }
 
 export async function deleteEventBudgetItem(id: string): Promise<void> {
   const { error } = await supabase.from('event_budget_items').delete().eq('id', id)
   if (error) throw error
+}
+
+export async function listEventBudgetItemHistory(budgetItemId: string): Promise<EventBudgetItemHistoryEntry[]> {
+  const { data, error } = await supabase
+    .from('event_budget_item_history')
+    .select('id, budget_item_id, family_id, changed_at, changed_by, field, old_value, new_value')
+    .eq('budget_item_id', budgetItemId)
+    .order('changed_at', { ascending: false })
+  if (error) throw error
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    budgetItemId: r.budget_item_id,
+    familyId: r.family_id,
+    changedAt: r.changed_at,
+    changedBy: r.changed_by,
+    field: r.field,
+    oldValue: r.old_value,
+    newValue: r.new_value,
+  }))
+}
+
+// ---------------------------------------------------------------------
+// Desglose de conceptos de una partida (EVT-D3, migración 0235) — opcional; si no hay ninguno, la
+// partida sigue siendo un total simple de siempre (plannedAmount).
+// ---------------------------------------------------------------------
+
+const BUDGET_ITEM_CONCEPT_SELECT = 'id, budget_item_id, family_id, name, amount, sort_order, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapBudgetItemConcept(r: any): EventBudgetItemConcept {
+  return {
+    id: r.id,
+    budgetItemId: r.budget_item_id,
+    familyId: r.family_id,
+    name: r.name,
+    amount: r.amount == null ? null : Number(r.amount),
+    sortOrder: r.sort_order,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventBudgetItemConcepts(budgetItemId: string): Promise<EventBudgetItemConcept[]> {
+  const { data, error } = await supabase
+    .from('event_budget_item_concepts')
+    .select(BUDGET_ITEM_CONCEPT_SELECT)
+    .eq('budget_item_id', budgetItemId)
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapBudgetItemConcept)
+}
+
+export async function addEventBudgetItemConcept(budgetItemId: string, name: string, amount: number | null): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_budget_item_concepts')
+    .insert({ budget_item_id: budgetItemId, family_id: familyId, name: name.trim(), amount, sort_order: Date.now() })
+  if (error) throw error
+}
+
+export async function updateEventBudgetItemConcept(id: string, patch: { name?: string; amount?: number | null }): Promise<void> {
+  const update: Record<string, unknown> = {}
+  if (patch.name !== undefined) update.name = patch.name.trim()
+  if (patch.amount !== undefined) update.amount = patch.amount
+  const { error } = await supabase.from('event_budget_item_concepts').update(update).eq('id', id)
+  if (error) throw error
+}
+
+export async function deleteEventBudgetItemConcept(id: string): Promise<void> {
+  const { error } = await supabase.from('event_budget_item_concepts').delete().eq('id', id)
+  if (error) throw error
+}
+
+// Sugerencias automáticas de categoría (EVT-006/EVT-D2) — las categorías de texto libre YA usadas en
+// cualquier partida de cualquier evento de la familia, para autocompletar sin tener que mantener un
+// catálogo aparte ni depender de budget_categories (que hoy tiene nombres duplicados por evento sembrado
+// varias veces — ver memoria "Duplicate category seeding").
+export async function listDistinctEventBudgetCategorySuggestions(): Promise<string[]> {
+  const familyId = await currentFamilyId()
+  const { data, error } = await supabase.from('event_budget_items').select('category').eq('family_id', familyId)
+  if (error) throw error
+  const seen = new Set<string>()
+  for (const r of data ?? []) {
+    const c = (r as { category: string }).category?.trim()
+    if (c) seen.add(c)
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, 'es'))
 }
 
 // ---------------------------------------------------------------------
@@ -1553,7 +1720,8 @@ export async function deleteEventProvider(id: string): Promise<void> {
 // Pagos / fianzas.
 // ---------------------------------------------------------------------
 
-const PAYMENT_SELECT = 'id, event_id, family_id, provider_id, provider_name, concept, total_amount, deposit_paid, due_date, status, notes, reminder_calendar_event_id, created_at'
+const PAYMENT_SELECT =
+  'id, event_id, family_id, provider_id, provider_name, concept, total_amount, deposit_paid, due_date, status, notes, reminder_calendar_event_id, created_at, budget_item_id, category, bond_amount, bond_returned_at, attachment_storage_path, attachment_original_name, attachment_mime_type'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPayment(r: any): EventPayment {
@@ -1571,6 +1739,13 @@ function mapPayment(r: any): EventPayment {
     notes: r.notes,
     reminderCalendarEventId: r.reminder_calendar_event_id,
     createdAt: r.created_at,
+    budgetItemId: r.budget_item_id,
+    category: r.category,
+    bondAmount: r.bond_amount == null ? null : Number(r.bond_amount),
+    bondReturnedAt: r.bond_returned_at,
+    attachmentStoragePath: r.attachment_storage_path,
+    attachmentOriginalName: r.attachment_original_name,
+    attachmentMimeType: r.attachment_mime_type,
   }
 }
 
@@ -1586,7 +1761,18 @@ export async function listEventPayments(eventId: string): Promise<EventPayment[]
 
 export async function addEventPayment(
   eventId: string,
-  input: { concept: string; totalAmount: number; depositPaid: number; dueDate?: string | null; providerId?: string | null; providerName?: string | null; notes?: string | null },
+  input: {
+    concept: string
+    totalAmount: number
+    depositPaid: number
+    dueDate?: string | null
+    providerId?: string | null
+    providerName?: string | null
+    notes?: string | null
+    budgetItemId?: string | null
+    category?: string | null
+    bondAmount?: number | null
+  },
 ): Promise<string> {
   const familyId = await currentFamilyId()
   const status: EventPaymentStatus = input.depositPaid <= 0 ? 'pendiente' : input.depositPaid >= input.totalAmount ? 'pagado' : 'parcial'
@@ -1603,18 +1789,45 @@ export async function addEventPayment(
       due_date: input.dueDate ?? null,
       status,
       notes: input.notes ?? null,
+      budget_item_id: input.budgetItemId ?? null,
+      category: input.category ?? null,
+      bond_amount: input.bondAmount ?? null,
     })
     .select('id')
     .single()
   if (error) throw error
+  // El importe "ya pagado" puesto al crear el pago es, como el saldo anterior del backfill, un abono sin
+  // desglose propio — se apunta igual en el diario (ver EventPaymentEntry) para que la lista de abonos de
+  // un pago nuevo no empiece coja frente a uno migrado, con fecha de HOY porque esto sí se sabe de verdad.
+  if (input.depositPaid > 0) {
+    const { error: entryError } = await supabase
+      .from('event_payment_entries')
+      .insert({ payment_id: data.id, family_id: familyId, amount: input.depositPaid, paid_at: new Date().toISOString().slice(0, 10) })
+    if (entryError) throw entryError
+  }
   return data.id as string
 }
 
-export async function updateEventPayment(id: string, patch: { depositPaid?: number; totalAmount?: number; status?: EventPaymentStatus }): Promise<void> {
+export async function updateEventPayment(
+  id: string,
+  patch: {
+    depositPaid?: number
+    totalAmount?: number
+    status?: EventPaymentStatus
+    budgetItemId?: string | null
+    category?: string | null
+    bondAmount?: number | null
+    bondReturnedAt?: string | null
+  },
+): Promise<void> {
   const update: Record<string, unknown> = {}
   if (patch.totalAmount !== undefined) update.total_amount = patch.totalAmount
   if (patch.depositPaid !== undefined) update.deposit_paid = patch.depositPaid
   if (patch.status !== undefined) update.status = patch.status
+  if (patch.budgetItemId !== undefined) update.budget_item_id = patch.budgetItemId
+  if (patch.category !== undefined) update.category = patch.category
+  if (patch.bondAmount !== undefined) update.bond_amount = patch.bondAmount
+  if (patch.bondReturnedAt !== undefined) update.bond_returned_at = patch.bondReturnedAt
   const { error } = await supabase.from('event_payments').update(update).eq('id', id)
   if (error) throw error
 }
@@ -1622,6 +1835,93 @@ export async function updateEventPayment(id: string, patch: { depositPaid?: numb
 export async function deleteEventPayment(id: string): Promise<void> {
   const { error } = await supabase.from('event_payments').delete().eq('id', id)
   if (error) throw error
+}
+
+// ---------------------------------------------------------------------
+// Diario de abonos fechados de un pago (EVT-E6/EVT-005, migración 0236) — complementa depositPaid
+// (que sigue siendo el total autoritativo, "Corregir lo pagado" lo sigue tocando directamente sin pasar
+// por aquí). Añadir un abono aquí TAMBIÉN incrementa depositPaid del pago, para que ambos no se
+// desincronicen; nunca al revés (una corrección de depositPaid no reescribe el diario).
+// ---------------------------------------------------------------------
+
+const PAYMENT_ENTRY_SELECT = 'id, payment_id, family_id, amount, paid_at, method, notes, created_at'
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapPaymentEntry(r: any): EventPaymentEntry {
+  return {
+    id: r.id,
+    paymentId: r.payment_id,
+    familyId: r.family_id,
+    amount: Number(r.amount),
+    paidAt: r.paid_at,
+    method: r.method,
+    notes: r.notes,
+    createdAt: r.created_at,
+  }
+}
+
+export async function listEventPaymentEntries(paymentId: string): Promise<EventPaymentEntry[]> {
+  const { data, error } = await supabase
+    .from('event_payment_entries')
+    .select(PAYMENT_ENTRY_SELECT)
+    .eq('payment_id', paymentId)
+    .order('paid_at', { ascending: true, nullsFirst: true })
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map(mapPaymentEntry)
+}
+
+export async function addEventPaymentEntry(
+  payment: EventPayment,
+  input: { amount: number; paidAt: string | null; method?: string | null; notes?: string | null },
+): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('event_payment_entries')
+    .insert({ payment_id: payment.id, family_id: familyId, amount: input.amount, paid_at: input.paidAt, method: input.method ?? null, notes: input.notes ?? null })
+  if (error) throw error
+  const newDepositPaid = payment.depositPaid + input.amount
+  await updateEventPayment(payment.id, { depositPaid: newDepositPaid, status: paymentStatusForAmounts(payment.totalAmount, newDepositPaid) })
+}
+
+export async function deleteEventPaymentEntry(entry: EventPaymentEntry, payment: EventPayment): Promise<void> {
+  const { error } = await supabase.from('event_payment_entries').delete().eq('id', entry.id)
+  if (error) throw error
+  const newDepositPaid = Math.max(0, payment.depositPaid - entry.amount)
+  await updateEventPayment(payment.id, { depositPaid: newDepositPaid, status: paymentStatusForAmounts(payment.totalAmount, newDepositPaid) })
+}
+
+// Mismo cálculo que EventosScreen.tsx (paymentStatusForAmounts) — repetido aquí a propósito: esta capa
+// de datos no importa de la UI, igual que el resto de este archivo.
+function paymentStatusForAmounts(totalAmount: number, depositPaid: number): EventPaymentStatus {
+  return depositPaid <= 0 ? 'pendiente' : depositPaid >= totalAmount ? 'pagado' : 'parcial'
+}
+
+// Documento adjunto de un pago (fianza, factura...) — mismo patrón ya en producción que
+// saveProviderGlobalAttachment (providersGlobal.ts) y saveEventTaskGroupOfferAttachment: comprime si es
+// imagen, sube a un bucket privado por familia, un único adjunto por pago (sustituye y borra el viejo).
+export async function saveEventPaymentAttachment(payment: EventPayment, file: File): Promise<void> {
+  const prepared = file.type.startsWith('image/') ? await compressImageFile(file) : file
+  const ext = prepared.name.split('.').pop() || (prepared.type === 'application/pdf' ? 'pdf' : 'jpg')
+  const path = `${payment.familyId}/${payment.id}/${crypto.randomUUID()}.${ext}`
+  const { error: uploadError } = await supabase.storage.from('event_payments').upload(path, prepared)
+  if (uploadError) throw uploadError
+  const previousPath = payment.attachmentStoragePath
+  const { error } = await supabase
+    .from('event_payments')
+    .update({ attachment_storage_path: path, attachment_original_name: file.name.slice(0, 160), attachment_mime_type: prepared.type || file.type || null })
+    .eq('id', payment.id)
+  if (error) {
+    await supabase.storage.from('event_payments').remove([path])
+    throw error
+  }
+  if (previousPath && previousPath !== path) await supabase.storage.from('event_payments').remove([previousPath])
+}
+
+export async function getEventPaymentAttachmentUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage.from('event_payments').createSignedUrl(storagePath, 3600)
+  if (error) throw error
+  return data.signedUrl
 }
 
 // ---------------------------------------------------------------------

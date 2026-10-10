@@ -44,6 +44,6 @@ describe('listEventTaskGroupResolutions / mapGroup / mapGroupResolution — offe
     expect(SRC).toContain(
       "const GROUP_SELECT = 'id, event_id, name, sort_order, kind, resolved_at, resolution_method, resolution_note, provider_id, provider_name, payment_id, offer_id'",
     )
-    expect(SRC).toContain("const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, offer_id, resolved_at'")
+    expect(SRC).toContain("const GROUP_RESOLUTION_SELECT = 'id, group_id, method, note, provider_id, provider_name, payment_id, offer_id, resolved_at, active'")
   })
 })

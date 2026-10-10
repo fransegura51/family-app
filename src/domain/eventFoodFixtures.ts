@@ -87,7 +87,21 @@ export function makeTask(overrides: Partial<EventTask> = {}): EventTask {
 }
 
 export function makeBudget(overrides: Partial<EventBudgetItem> = {}): EventBudgetItem {
-  return { id: 'b1', eventId: 'e1', familyId: 'f1', category: 'Tarta', plannedAmount: null, sortOrder: 0, createdAt: '2026-01-01T00:00:00Z', decisionId: null, ...overrides }
+  return {
+    id: 'b1',
+    eventId: 'e1',
+    familyId: 'f1',
+    category: 'Tarta',
+    plannedAmount: null,
+    sortOrder: 0,
+    createdAt: '2026-01-01T00:00:00Z',
+    decisionId: null,
+    providerId: null,
+    groupId: null,
+    categoryId: null,
+    committedAmount: null,
+    ...overrides,
+  }
 }
 
 export function makeDayPlanItem(overrides: Partial<EventDayPlanItem> = {}): EventDayPlanItem {

@@ -112,6 +112,10 @@ function makeBudgetItem(overrides: Partial<EventBudgetItem> = {}): EventBudgetIt
     sortOrder: 0,
     createdAt: '2026-01-01T00:00:00Z',
     decisionId: 'd1',
+    providerId: null,
+    groupId: null,
+    categoryId: null,
+    committedAmount: null,
     ...overrides,
   }
 }

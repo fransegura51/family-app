@@ -37,9 +37,9 @@ describe('Un proveedor archivado nunca se ofrece para un enlace NUEVO, pero su n
     const resolveModal = window_(UI, 'function ResolveGroupModal(', '\nfunction NextStepPromptModal(')
     expect(resolveModal).toContain('setProviders(all.filter((p) => !p.archived))')
   })
-  it('AddPaymentModal: el selector de proveedor excluye los archivados', () => {
-    const addPaymentModal = window_(UI, 'function AddPaymentModal(', '\n// ---------------------------------------------------------------------\n// Invitaciones')
-    expect(addPaymentModal).toContain('setProviders(all.filter((p) => !p.archived))')
+  it('PaymentsSection: carga los proveedores que ofrece AddPaymentModal ya excluyendo los archivados', () => {
+    const paymentsSection = window_(UI, 'function PaymentsSection(', '\nfunction AddPaymentModal(')
+    expect(paymentsSection).toContain('setProviders(all.filter((p) => !p.archived))')
   })
   it('ProviderLinker: "available" (para relacionar uno nuevo) excluye archivados, pero la lista completa "providers" se sigue usando para mostrar el nombre de los ya relacionados', () => {
     const linker = window_(UI, 'function ProviderLinker(', '\n\nfunction ')

@@ -42,6 +42,8 @@ const NONE_ESPECIAL: DesiredPairGeneration = { taskTitle: null, budgetCategory: 
 import {
   addEventActivity,
   addEventBudgetItem,
+  addEventBudgetItemConcept,
+  addEventPaymentEntry,
   addEventDecorationItem,
   addEventFavorItem,
   addEventGift,
@@ -66,6 +68,8 @@ import {
   deleteEventActivity,
   deleteEventTemplate,
   deleteEventBudgetItem,
+  deleteEventBudgetItemConcept,
+  deleteEventPaymentEntry,
   deleteEventDecision,
   deleteEventDecorationItem,
   deleteEventFavorItem,
@@ -91,6 +95,12 @@ import {
   syncRsvpDeadlineReminder,
   listEventActivities,
   listEventBudgetItems,
+  listEventBudgetItemConcepts,
+  listEventBudgetItemHistory,
+  listEventPaymentEntries,
+  listDistinctEventBudgetCategorySuggestions,
+  saveEventPaymentAttachment,
+  getEventPaymentAttachmentUrl,
   listEventDayPlan,
   listEventDecorationItems,
   listEventFavorItems,
@@ -174,6 +184,9 @@ import {
   addEventTaskGroupOffer,
   addEventTaskGroupOfferItem,
   addLooseTaskGroupOffer,
+  addAdditionalEventTaskGroupResolution,
+  deactivateEventTaskGroupResolution,
+  listActiveEventTaskGroupResolutions,
   countTasksInGroup,
   deleteEventTaskGroup,
   deleteEventTaskGroupOffer,
@@ -200,7 +213,7 @@ import {
 import type { ProviderOfferHistoryEntry } from '@/data/eventTaskGroups'
 import { buildTaskGroupRenderItems } from '@/domain/eventTaskGroupDisplay'
 import { suggestNextStepsForGroup, suggestNextStepsForTask, type NextStepSuggestion } from '@/domain/eventNextSteps'
-import type { EventTaskGroupOffer, EventTaskGroupOfferItem, EventTaskGroupOfferStatus, EventTaskGroupResolutionMethod } from '@/domain/types'
+import type { EventTaskGroupOffer, EventTaskGroupOfferItem, EventTaskGroupOfferStatus, EventTaskGroupResolution, EventTaskGroupResolutionMethod } from '@/domain/types'
 import { PRIORITY_LABELS, taskResponsibleNames } from '@/domain/eventTaskResponsibles'
 import { effectivePriority, recommendTasks, type DecisionLookup } from '@/domain/eventTaskPriority'
 import { explainPrioritySuggestion, PRIORITY_ORDER } from '@/domain/eventTaskPrioritySuggestion'
@@ -217,6 +230,16 @@ import {
 } from '@/domain/eventTaskFilters'
 import { REMINDER_UNIT_OPTIONS, reminderLabel, reminderMinutesFrom, unitAndAmountFromMinutes, type EventReminder, type ReminderUnit } from '@/domain/reminders'
 import { isInternalTransferCategory } from '@/domain/finance'
+import {
+  budgetItemAmounts,
+  groupKeyForBudgetItem,
+  groupKeyForPayment,
+  paymentProgress,
+  sortPayments,
+  type BudgetGroupCriterion,
+  type PaymentGroupCriterion,
+  type PaymentSortCriterion,
+} from '@/domain/eventBudgetTracking'
 import { errorMessage } from '@/domain/errorMessage'
 import {
   addProviderGlobal,
@@ -562,6 +585,9 @@ import { listShoppingItems } from '@/data/shopping'
 import type {
   EventActivity,
   EventBudgetItem,
+  EventBudgetItemConcept,
+  EventBudgetItemHistoryEntry,
+  EventPaymentEntry,
   EventDayPlanItem,
   EventDecision,
   EventDecisionProvider,
@@ -1746,6 +1772,7 @@ function EventDetail({
                             {item.group.providerName ? ` · ${item.group.providerName}` : ''} — hay algo nuevo pendiente.
                           </p>
                         )}
+                        {item.group.resolvedAt && <AdditionalProvidersPanel group={item.group} />}
                         <div className="event-list" style={{ marginTop: 6 }}>
                           {item.tasks.map((t) => (
                             <TaskCard
@@ -5296,6 +5323,91 @@ function OffersComparisonModal({
           <OffersComparison group={group} providers={providers} onUseOffer={onResolveWithOffer} />
         </div>
       </div>
+    </div>
+  )
+}
+
+// Orden de recuperación de requisitos (Parte C2b, autorización directa del usuario 2026-10-10) —
+// "contratar con varios proveedores en el mismo encargo": "Resolver encargo" (arriba) sigue siendo el
+// proveedor PRINCIPAL del encargo (una sola vez, sustituible); esto añade proveedores EXTRA sin tocarlo,
+// cada uno con su propio método/nota — p. ej. "Flores" resuelto con una floristería para el ramo y OTRA
+// para la decoración de mesas. Solo aparece si el encargo ya tiene una resolución principal.
+function AdditionalProvidersPanel({ group }: { group: EventTaskGroup }) {
+  const [resolutions, setResolutions] = useState<EventTaskGroupResolution[]>([])
+  const [showAdd, setShowAdd] = useState(false)
+  const [method, setMethod] = useState<EventTaskGroupResolutionMethod | ''>('')
+  const [providerName, setProviderName] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listActiveEventTaskGroupResolutions(group.id).then(setResolutions).catch(() => setResolutions([]))
+  }
+  useEffect(reload, [group.id])
+
+  // La resolución principal (la que refleja group.providerName/resolutionMethod) ya se muestra arriba
+  // como "Antes resuelto" — aquí solo interesan las ADICIONALES (todas menos esa, por si hay más de una).
+  const extra = resolutions.filter((r) => !(r.providerName === group.providerName && r.method === group.resolutionMethod))
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    if (!method) {
+      setError('Elige cómo se resuelve este proveedor adicional.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await addAdditionalEventTaskGroupResolution(group.id, { method, providerName: providerName.trim() || null, note: note.trim() || null })
+      setShowAdd(false)
+      setMethod('')
+      setProviderName('')
+      setNote('')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      {extra.map((r) => (
+        <p key={r.id} className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+          + {RESOLUTION_METHOD_LABELS[r.method]}
+          {r.providerName ? ` · ${r.providerName}` : ''}
+          {r.note ? ` (${r.note})` : ''}
+          {' · '}
+          <ConfirmButton label="Quitar" onConfirm={() => deactivateEventTaskGroupResolution(r.id).then(reload)} />
+        </p>
+      ))}
+      {error && <p className="error" style={{ fontSize: 12 }}>{error}</p>}
+      {showAdd ? (
+        <form className="inline-fields" style={{ flexWrap: 'wrap', marginTop: 2 }} onSubmit={handleAdd}>
+          <select value={method} onChange={(e) => setMethod(e.target.value as EventTaskGroupResolutionMethod)} style={{ fontSize: 12 }}>
+            <option value="">Cómo...</option>
+            {RESOLUTION_METHOD_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <input type="text" value={providerName} onChange={(e) => setProviderName(e.target.value)} placeholder="Proveedor (opcional)" style={{ fontSize: 12, width: 140 }} />
+          <input type="text" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Nota (opcional)" style={{ fontSize: 12, width: 140 }} />
+          <button type="submit" className="link-button" style={{ fontSize: 12 }} disabled={saving}>
+            {saving ? 'Guardando…' : 'Añadir'}
+          </button>
+          <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => setShowAdd(false)}>
+            Cancelar
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => setShowAdd(true)}>
+          + Añadir otro proveedor a este encargo
+        </button>
+      )}
     </div>
   )
 }
@@ -12742,40 +12854,39 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
 // Presupuesto.
 // ---------------------------------------------------------------------
 
+const BUDGET_GROUP_OPTIONS: { value: 'ninguno' | BudgetGroupCriterion; label: string }[] = [
+  { value: 'ninguno', label: 'Sin agrupar' },
+  { value: 'categoria', label: 'Por categoría' },
+  { value: 'encargo', label: 'Por encargo' },
+  { value: 'proveedor', label: 'Por proveedor' },
+]
+
 function BudgetSection({ event }: { event: FamilyEvent }) {
   const [items, setItems] = useState<EventBudgetItem[]>([])
+  const [payments, setPayments] = useState<EventPayment[]>([])
+  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [groups, setGroups] = useState<EventTaskGroup[]>([])
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([])
   const [spent, setSpent] = useState<number | null>(null)
-  // Fase 3 (bug real: un encargo resuelto con proveedor y 100€ no aparecía en Presupuesto aunque sí
-  // estaba en Pagos y fianzas) — resolveEventTaskGroup crea el event_payment pero NUNCA toca
-  // event_budget_items (ver cabecera de resolveEventTaskGroup): son cosas distintas a propósito. En vez
-  // de fusionarlas, se enseña "Comprometido vía encargos" aparte — la suma de total_amount de TODOS los
-  // pagos del evento, se hayan pagado ya o no — para que ese compromiso deje de estar invisible sin
-  // mezclarse con lo "Planeado" (una intención de presupuesto) ni lo "Gastado en Economía" (dinero que de
-  // verdad salió de una cuenta).
-  const [committed, setCommitted] = useState<number | null>(null)
-  // Fase 9 (Parte D, prompt maestro) — "Pagado" distinto de "Comprometido": cuánto de ese compromiso se
-  // ha pagado de verdad ya (suma de depositPaid de los mismos pagos), nunca inventado ni igualado al
-  // total — un encargo comprometido a 500€ con 200€ pagados no es "pagado 500€".
-  const [paidOfCommitted, setPaidOfCommitted] = useState<number | null>(null)
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Bloque 11 (cola nocturna) — un concepto propuesto por PEPA llega sin importe (plannedAmount:null);
   // sin poder editar una partida ya creada, la única forma de ponerle cifra sería borrarla y rehacerla.
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  // Orden de recuperación de requisitos (Parte D2/EVT-006) — consultar por Concepto/Encargo/Proveedor/
+  // Categoría: "Concepto" es cada partida tal cual (la lista sin agrupar, de siempre); los otros tres
+  // agrupan con subtotales plegables.
+  const [groupBy, setGroupBy] = useState<'ninguno' | BudgetGroupCriterion>('ninguno')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   function reload() {
     listEventBudgetItems(event.id)
       .then(setItems)
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar el presupuesto')))
-    listEventPayments(event.id)
-      .then((payments) => {
-        setCommitted(payments.reduce((sum, p) => sum + p.totalAmount, 0))
-        setPaidOfCommitted(payments.reduce((sum, p) => sum + p.depositPaid, 0))
-      })
-      .catch(() => {
-        setCommitted(null)
-        setPaidOfCommitted(null)
-      })
+    listEventPayments(event.id).then(setPayments).catch(() => setPayments([]))
+    listEventProviders(event.id).then(setProviders).catch(() => setProviders([]))
+    listEventTaskGroups(event.id).then(setGroups).catch(() => setGroups([]))
+    listDistinctEventBudgetCategorySuggestions().then(setCategorySuggestions).catch(() => setCategorySuggestions([]))
     if (event.tagId) {
       // Petición real: "no sé en qué circunstancias se podría dar que
       // se haga un traspaso entre cuentas por un cumpleaños pero más
@@ -12797,6 +12908,117 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   useEffect(reload, [event.id, event.tagId])
 
   const planned = items.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
+  // Fase 3 (bug real: un encargo resuelto con proveedor y 100€ no aparecía en Presupuesto aunque sí
+  // estaba en Pagos y fianzas) — se enseña "Comprometido vía encargos" aparte de lo Planeado y de lo
+  // Gastado en Economía, nunca sumado con ellos. Fase 9 — "Pagado" distinto de "Comprometido": un
+  // encargo comprometido a 500€ con 200€ pagados no es "pagado 500€".
+  const committed = payments.length > 0 ? payments.reduce((sum, p) => sum + p.totalAmount, 0) : null
+  const paidOfCommitted = payments.length > 0 ? payments.reduce((sum, p) => sum + p.depositPaid, 0) : null
+
+  function providerName(id: string | null): string | null {
+    return id ? providers.find((p) => p.id === id)?.name ?? null : null
+  }
+  function groupName(id: string | null): string | null {
+    return id ? groups.find((g) => g.id === id)?.name ?? null : null
+  }
+
+  function labelForGroupKey(key: string | null): string {
+    if (key == null) return groupBy === 'categoria' ? 'Sin categoría' : groupBy === 'encargo' ? 'Sin encargo' : 'Sin proveedor'
+    if (groupBy === 'encargo') return groupName(key) ?? key
+    if (groupBy === 'proveedor') return providerName(key) ?? key
+    return key
+  }
+
+  function renderRow(i: EventBudgetItem) {
+    if (editingItemId === i.id) {
+      return (
+        <EditBudgetItemInline
+          key={i.id}
+          item={i}
+          payments={payments}
+          providers={providers}
+          groups={groups}
+          categorySuggestions={categorySuggestions}
+          onDone={() => setEditingItemId(null)}
+          onSaved={() => {
+            setEditingItemId(null)
+            reload()
+          }}
+        />
+      )
+    }
+    const amounts = budgetItemAmounts(i, payments)
+    return (
+      // Un <div> con onClick, no un <button> — ConfirmIconButton ya monta su propio <button> dentro
+      // y HTML no permite anidar botones (mismo patrón que MovementRow, FinanceScreen.tsx).
+      <div key={i.id} className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setEditingItemId(i.id)}>
+        <span style={{ flex: 1 }}>
+          {i.category}
+          {(amounts.committed != null || amounts.paid > 0) && (
+            <span className="muted" style={{ fontSize: 11, display: 'block' }}>
+              {amounts.committed != null && `Comprometido ${amounts.committed.toFixed(2)} €`}
+              {amounts.committed != null && amounts.paid > 0 && ' · '}
+              {amounts.paid > 0 && `Pagado ${amounts.paid.toFixed(2)} €`}
+            </span>
+          )}
+        </span>
+        {/* Bloque 11 (cola nocturna) — un concepto propuesto por PEPA (o creado a mano sin importe
+            todavía) tiene plannedAmount:null; nunca se enseña como "0,00 €", que parecería una cifra
+            real puesta a propósito. Tocar la fila la abre para editar (mismo patrón que Movimientos). */}
+        <span className={i.plannedAmount == null ? 'muted' : undefined}>{i.plannedAmount == null ? 'Sin importe todavía' : `${i.plannedAmount.toFixed(2)} €`}</span>
+        {/* La fila entera abre la edición al tocarla — este botón no debe además "colarse" como un
+            toque a la fila (entraría en edición Y armaría el borrado a la vez). */}
+        <span onClick={(e) => e.stopPropagation()}>
+          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
+        </span>
+      </div>
+    )
+  }
+
+  let listContent: ReactNode
+  if (groupBy === 'ninguno') {
+    listContent = items.map(renderRow)
+  } else {
+    const order: (string | null)[] = []
+    const byKey = new Map<string | null, EventBudgetItem[]>()
+    for (const i of items) {
+      const key = groupKeyForBudgetItem(i, groupBy)
+      if (!byKey.has(key)) {
+        byKey.set(key, [])
+        order.push(key)
+      }
+      byKey.get(key)!.push(i)
+    }
+    listContent = order.map((key) => {
+      const groupItems = byKey.get(key)!
+      const keyLabel = key ?? '\u0000sin-asignar'
+      const collapsed = collapsedGroups.has(keyLabel)
+      const subtotalPlanned = groupItems.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
+      return (
+        <div key={keyLabel} style={{ marginBottom: 6 }}>
+          <button
+            type="button"
+            className="link-button"
+            style={{ display: 'block', width: '100%', textAlign: 'left', fontWeight: 600 }}
+            onClick={() =>
+              setCollapsedGroups((prev) => {
+                const next = new Set(prev)
+                if (next.has(keyLabel)) next.delete(keyLabel)
+                else next.add(keyLabel)
+                return next
+              })
+            }
+          >
+            {collapsed ? '▸' : '▾'} {labelForGroupKey(key)}{' '}
+            <span className="muted" style={{ fontWeight: 400 }}>
+              ({groupItems.length}) · {subtotalPlanned.toFixed(2)} €
+            </span>
+          </button>
+          {!collapsed && groupItems.map(renderRow)}
+        </div>
+      )
+    })
+  }
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
@@ -12830,27 +13052,17 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      <div className="event-list">
-        {items.map((i) =>
-          editingItemId === i.id ? (
-            <EditBudgetItemInline key={i.id} item={i} onDone={() => setEditingItemId(null)} onSaved={() => { setEditingItemId(null); reload() }} />
-          ) : (
-            // Un <div> con onClick, no un <button> — ConfirmIconButton ya monta su propio <button> dentro
-            // y HTML no permite anidar botones (mismo patrón que MovementRow, FinanceScreen.tsx).
-            <div key={i.id} className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setEditingItemId(i.id)}>
-              <span style={{ flex: 1 }}>{i.category}</span>
-              {/* Bloque 11 (cola nocturna) — un concepto propuesto por PEPA (o creado a mano sin importe
-                  todavía) tiene plannedAmount:null; nunca se enseña como "0,00 €", que parecería una cifra
-                  real puesta a propósito. Tocar la fila la abre para editar (mismo patrón que Movimientos). */}
-              <span className={i.plannedAmount == null ? 'muted' : undefined}>{i.plannedAmount == null ? 'Sin importe todavía' : `${i.plannedAmount.toFixed(2)} €`}</span>
-              {/* La fila entera abre la edición al tocarla — este botón no debe además "colarse" como un
-                  toque a la fila (entraría en edición Y armaría el borrado a la vez). */}
-              <span onClick={(e) => e.stopPropagation()}>
-                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar partida" onConfirm={() => deleteEventBudgetItem(i.id).then(reload)} />
-              </span>
-            </div>
-          ),
-        )}
+      {items.length > 0 && (
+        <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+          {BUDGET_GROUP_OPTIONS.map((o) => (
+            <button key={o.value} type="button" className={'chip' + (groupBy === o.value ? ' chip-active' : '')} onClick={() => setGroupBy(o.value)}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="event-list" style={{ marginTop: 8 }}>
+        {listContent}
         {items.length === 0 && <p className="muted">Todavía no hay partidas de presupuesto.</p>}
       </div>
       <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
@@ -12859,6 +13071,9 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
       {showAdd && (
         <AddBudgetItemModal
           eventId={event.id}
+          providers={providers}
+          groups={groups}
+          categorySuggestions={categorySuggestions}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -12870,9 +13085,38 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
   )
 }
 
-function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+function CategoryInputWithSuggestions({ id, value, onChange, suggestions }: { id: string; value: string; onChange: (v: string) => void; suggestions: string[] }) {
+  return (
+    <>
+      <input type="text" list={id} value={value} onChange={(e) => onChange(e.target.value)} placeholder="Tarta, local, invitaciones..." />
+      <datalist id={id}>
+        {suggestions.map((s) => (
+          <option key={s} value={s} />
+        ))}
+      </datalist>
+    </>
+  )
+}
+
+function AddBudgetItemModal({
+  eventId,
+  providers,
+  groups,
+  categorySuggestions,
+  onClose,
+  onAdded,
+}: {
+  eventId: string
+  providers: EventProvider[]
+  groups: EventTaskGroup[]
+  categorySuggestions: string[]
+  onClose: () => void
+  onAdded: () => void
+}) {
   const [category, setCategory] = useState('')
   const [amount, setAmount] = useState('')
+  const [providerId, setProviderId] = useState('')
+  const [groupId, setGroupId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -12887,7 +13131,10 @@ function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; on
     try {
       // Bloque 11 (cola nocturna) — un importe en blanco es "todavía no lo sé" (plannedAmount:null),
       // nunca "0,00 €": antes Number('') || 0 colaba un cero silencioso como si fuera una cifra real.
-      await addEventBudgetItem(eventId, category, amount.trim() === '' ? null : Number(amount))
+      await addEventBudgetItem(eventId, category, amount.trim() === '' ? null : Number(amount), null, {
+        providerId: providerId || null,
+        groupId: groupId || null,
+      })
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -12911,12 +13158,38 @@ function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; on
           {error && <p className="error">{error}</p>}
           <label>
             Concepto
-            <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Tarta, local, invitaciones..." autoFocus />
+            <CategoryInputWithSuggestions id="budget-category-suggestions-add" value={category} onChange={setCategory} suggestions={categorySuggestions} />
           </label>
           <label>
             Presupuesto (€)
             <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
+          {groups.length > 0 && (
+            <label>
+              Encargo (opcional)
+              <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <option value="">Sin encargo</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {providers.length > 0 && (
+            <label>
+              Proveedor (opcional)
+              <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                <option value="">Sin proveedor</option>
+                {providers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button type="submit" disabled={saving}>
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
@@ -12928,12 +13201,35 @@ function AddBudgetItemModal({ eventId, onClose, onAdded }: { eventId: string; on
 
 // Bloque 11 (cola nocturna) — edita una partida ya creada, EN LA MISMA FILA (sin modal aparte): es lo
 // único que hacía falta para poder ponerle importe real a un concepto que PEPA propuso sin precio (o
-// corregir uno ya puesto), sin tener que borrarla y rehacerla.
-function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem; onDone: () => void; onSaved: () => void }) {
+// corregir uno ya puesto), sin tener que borrarla y rehacerla. Orden de recuperación de requisitos
+// (Parte D) — amplía esta misma fila con proveedor/encargo/categoría, Comprometido/Pagado calculados,
+// desglose de conceptos (EVT-D3) e historial (EVT-D7), todo plegado a propósito (family app = simple por
+// defecto, ver memoria "Simplicity over precision"): nada de esto se ve si no se toca.
+function EditBudgetItemInline({
+  item,
+  payments,
+  providers,
+  groups,
+  categorySuggestions,
+  onDone,
+  onSaved,
+}: {
+  item: EventBudgetItem
+  payments: EventPayment[]
+  providers: EventProvider[]
+  groups: EventTaskGroup[]
+  categorySuggestions: string[]
+  onDone: () => void
+  onSaved: () => void
+}) {
   const [category, setCategory] = useState(item.category)
   const [amount, setAmount] = useState(item.plannedAmount == null ? '' : String(item.plannedAmount))
+  const [providerId, setProviderId] = useState(item.providerId ?? '')
+  const [groupId, setGroupId] = useState(item.groupId ?? '')
+  const [committedAmount, setCommittedAmount] = useState(item.committedAmount == null ? '' : String(item.committedAmount))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showMore, setShowMore] = useState(false)
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -12944,7 +13240,13 @@ function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem
     setSaving(true)
     setError(null)
     try {
-      await updateEventBudgetItem(item.id, { category, plannedAmount: amount.trim() === '' ? null : Number(amount) })
+      await updateEventBudgetItem(item.id, {
+        category,
+        plannedAmount: amount.trim() === '' ? null : Number(amount),
+        providerId: providerId || null,
+        groupId: groupId || null,
+        committedAmount: committedAmount.trim() === '' ? null : Number(committedAmount),
+      })
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -12952,18 +13254,161 @@ function EditBudgetItemInline({ item, onDone, onSaved }: { item: EventBudgetItem
     }
   }
 
+  const amounts = budgetItemAmounts(item, payments)
+
   return (
-    <form className="inline-fields" style={{ alignItems: 'center' }} onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
+    <form className="card task-card" style={{ marginBottom: 4 }} onSubmit={handleSubmit} onClick={(e) => e.stopPropagation()}>
       {error && <p className="error">{error}</p>}
-      <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} style={{ flex: 1 }} autoFocus />
-      <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Sin importe" style={{ width: 100 }} />
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Guardar'}
+      <div className="inline-fields" style={{ alignItems: 'center' }}>
+        <CategoryInputWithSuggestions id={`budget-category-suggestions-${item.id}`} value={category} onChange={setCategory} suggestions={categorySuggestions} />
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Sin importe" style={{ width: 100 }} />
+      </div>
+      {(amounts.committed != null || amounts.paid > 0) && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+          {amounts.committed != null && `Comprometido: ${amounts.committed.toFixed(2)} €`}
+          {amounts.committed != null && ' · '}
+          Pagado: {amounts.paid.toFixed(2)} €
+        </p>
+      )}
+      <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => setShowMore((v) => !v)}>
+        {showMore ? '▾ Menos detalles' : '▸ Proveedor, encargo, desglose e historial'}
       </button>
-      <button type="button" className="link-button" onClick={onDone}>
-        Cancelar
-      </button>
+      {showMore && (
+        <div style={{ marginTop: 6 }}>
+          <div className="inline-fields">
+            {groups.length > 0 && (
+              <label style={{ flex: 1 }}>
+                Encargo
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                  <option value="">Sin encargo</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {providers.length > 0 && (
+              <label style={{ flex: 1 }}>
+                Proveedor
+                <select value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+                  <option value="">Sin proveedor</option>
+                  {providers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+          <label>
+            Comprometido manual (opcional — si no, se calcula solo con los pagos enlazados)
+            <input type="number" min={0} step="0.01" value={committedAmount} onChange={(e) => setCommittedAmount(e.target.value)} placeholder="Se calcula solo" />
+          </label>
+          <BudgetItemConceptsPanel budgetItemId={item.id} />
+          <BudgetItemHistoryPanel budgetItemId={item.id} />
+        </div>
+      )}
+      <div className="inline-fields" style={{ marginTop: 6 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Guardar'}
+        </button>
+        <button type="button" className="link-button" onClick={onDone}>
+          Cancelar
+        </button>
+      </div>
     </form>
+  )
+}
+
+// EVT-D3 — desglose de conceptos dentro de una partida: opcional, nunca sustituye el importe planeado.
+function BudgetItemConceptsPanel({ budgetItemId }: { budgetItemId: string }) {
+  const [concepts, setConcepts] = useState<EventBudgetItemConcept[]>([])
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function reload() {
+    listEventBudgetItemConcepts(budgetItemId).then(setConcepts).catch(() => setConcepts([]))
+  }
+  useEffect(reload, [budgetItemId])
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) return
+    setError(null)
+    try {
+      await addEventBudgetItemConcept(budgetItemId, name, amount.trim() === '' ? null : Number(amount))
+      setName('')
+      setAmount('')
+      reload()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir'))
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+        Desglose de conceptos {concepts.length > 0 && `(${concepts.length})`}
+      </div>
+      {error && <p className="error">{error}</p>}
+      {concepts.map((c) => (
+        <div key={c.id} className="inline-fields" style={{ alignItems: 'center', fontSize: 13 }}>
+          <span style={{ flex: 1 }}>{c.name}</span>
+          <span>{c.amount == null ? '—' : `${c.amount.toFixed(2)} €`}</span>
+          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar concepto" onConfirm={() => deleteEventBudgetItemConcept(c.id).then(reload)} />
+        </div>
+      ))}
+      <form className="inline-fields" style={{ marginTop: 4 }} onSubmit={handleAdd}>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Concepto (p. ej. flores de mesa)" style={{ flex: 1 }} />
+        <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="€" style={{ width: 80 }} />
+        <button type="submit" className="link-button" disabled={!name.trim()}>
+          + Añadir
+        </button>
+      </form>
+    </div>
+  )
+}
+
+// EVT-D7 — historial de cambios de una partida: solo lectura, append-only, nunca se edita ni se borra.
+function BudgetItemHistoryPanel({ budgetItemId }: { budgetItemId: string }) {
+  const [open, setOpen] = useState(false)
+  const [history, setHistory] = useState<EventBudgetItemHistoryEntry[] | null>(null)
+
+  function load() {
+    listEventBudgetItemHistory(budgetItemId)
+      .then(setHistory)
+      .catch(() => setHistory([]))
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        type="button"
+        className="link-button"
+        style={{ fontSize: 12 }}
+        onClick={() => {
+          setOpen((v) => !v)
+          if (!open && history === null) load()
+        }}
+      >
+        {open ? '▾ Ocultar historial' : '▸ Ver historial de cambios'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 4 }}>
+          {history === null && <p className="muted">Cargando…</p>}
+          {history !== null && history.length === 0 && <p className="muted">Todavía no hay cambios registrados.</p>}
+          {history?.map((h) => (
+            <p key={h.id} className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
+              {new Date(h.changedAt).toLocaleString('es-ES')} · {h.field}: {h.oldValue ?? '—'} → {h.newValue ?? '—'}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -13845,9 +14290,27 @@ const PAYMENT_STATUS_LABELS: Record<EventPaymentStatus, string> = {
   pagado: '✓ Pagado',
 }
 
+const PAYMENT_SORT_OPTIONS: { value: PaymentSortCriterion; label: string }[] = [
+  { value: 'vencimiento', label: 'Vencimiento' },
+  { value: 'importe', label: 'Importe' },
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'proveedor', label: 'Proveedor' },
+  { value: 'concepto', label: 'Concepto' },
+  { value: 'estado', label: 'Estado' },
+]
+
+const PAYMENT_GROUP_OPTIONS: { value: 'ninguno' | PaymentGroupCriterion; label: string }[] = [
+  { value: 'ninguno', label: 'Sin agrupar' },
+  { value: 'categoria', label: 'Por categoría' },
+  { value: 'proveedor', label: 'Por proveedor' },
+]
+
 function PaymentsSection({ event }: { event: FamilyEvent }) {
   const eventId = event.id
   const [payments, setPayments] = useState<EventPayment[]>([])
+  const [budgetItems, setBudgetItems] = useState<EventBudgetItem[]>([])
+  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [categorySuggestions, setCategorySuggestions] = useState<string[]>([])
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [linkingReminderId, setLinkingReminderId] = useState<string | null>(null)
@@ -13861,6 +14324,10 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
   // solo para ver los pendientes. Nunca genera movimientos bancarios — eso no cambia aquí.
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<'todos' | 'pendientes' | 'pagados'>('todos')
+  // Orden de recuperación de requisitos (Parte E2/E3/E5) — orden y agrupación, nunca cambian los datos.
+  const [sortBy, setSortBy] = useState<PaymentSortCriterion>('vencimiento')
+  const [groupBy, setGroupBy] = useState<'ninguno' | PaymentGroupCriterion>('ninguno')
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
 
   function toggleOpen(id: string) {
     setOpenIds((prev) => {
@@ -13875,6 +14342,9 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
     listEventPayments(eventId)
       .then(setPayments)
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los pagos')))
+    listEventBudgetItems(eventId).then(setBudgetItems).catch(() => setBudgetItems([]))
+    listEventProviders(eventId).then((all) => setProviders(all.filter((p) => !p.archived))).catch(() => setProviders([]))
+    listDistinctEventBudgetCategorySuggestions().then(setCategorySuggestions).catch(() => setCategorySuggestions([]))
   }
   useEffect(reload, [eventId])
 
@@ -13907,102 +14377,181 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
   }
 
   const pendingCount = payments.filter((p) => p.status !== 'pagado').length
-  const visiblePayments = payments.filter((p) => (filter === 'todos' ? true : filter === 'pagados' ? p.status === 'pagado' : p.status !== 'pagado'))
+  const filtered = payments.filter((p) => (filter === 'todos' ? true : filter === 'pagados' ? p.status === 'pagado' : p.status !== 'pagado'))
+  const visiblePayments = sortPayments(filtered, sortBy)
+
+  function budgetItemLabel(id: string | null): string | null {
+    return id ? budgetItems.find((b) => b.id === id)?.category ?? null : null
+  }
+
+  function renderCard(p: EventPayment) {
+    const remaining = p.totalAmount - p.depositPaid
+    const open = openIds.has(p.id)
+    const progress = paymentProgress(p)
+    return (
+      <div key={p.id} className="card task-card">
+        {/* EVT-E2 — 8 campos visibles sin desplegar: concepto, proveedor, categoría, total, pagado,
+            pendiente, vencimiento, estado; más la barra de progreso. */}
+        <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer', width: '100%' }} onClick={() => toggleOpen(p.id)}>
+          <span style={{ flex: 1 }}>
+            {open ? '▾' : '▸'} <strong>{p.concept}</strong>
+            {p.providerName && <span className="muted" style={{ fontSize: 12 }}> · {p.providerName}</span>}
+            {p.category && <span className="muted" style={{ fontSize: 12 }}> · {p.category}</span>}
+          </span>
+          <span className="muted" style={{ fontSize: 12, textAlign: 'right' }}>
+            {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
+            <br />
+            {p.dueDate ? `vence ${p.dueDate} · ` : ''}
+            {PAYMENT_STATUS_LABELS[p.status]}
+          </span>
+        </div>
+        <div style={{ width: '100%', height: 4, background: '#e5e7eb', borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
+          <div style={{ width: `${Math.round(progress * 100)}%`, height: '100%', background: p.status === 'pagado' ? 'var(--tone-done)' : 'var(--primary)' }} />
+        </div>
+        {open && (
+          <div className="task-card-main" style={{ width: '100%', marginTop: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <span onClick={(e) => e.stopPropagation()}>
+                <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
+              </span>
+            </div>
+            {budgetItemLabel(p.budgetItemId) && <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>📁 Partida de presupuesto: {budgetItemLabel(p.budgetItemId)}</p>}
+            {editingId === p.id ? (
+              <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
+                <span className="muted">{p.totalAmount.toFixed(2)} € · pagado</span>
+                <input type="number" min={0} step="0.01" value={editingValue} onChange={(e) => setEditingValue(e.target.value)} style={{ width: 90 }} autoFocus />
+                <button type="button" className="link-button" onClick={() => saveEditingDeposit(p)}>
+                  Guardar
+                </button>
+                <button type="button" className="link-button" onClick={() => setEditingId(null)}>
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <p className="muted" style={{ margin: '2px 0' }}>
+                <button
+                  type="button"
+                  className="link-button"
+                  style={{ display: 'inline', padding: 0 }}
+                  onClick={() => {
+                    setEditingId(p.id)
+                    setEditingValue(String(p.depositPaid))
+                  }}
+                >
+                  ✏️ Corregir lo pagado
+                </button>
+              </p>
+            )}
+            {remaining > 0 && (
+              <ConfirmButton
+                label="Marcar como pagado del todo"
+                confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}
+                onConfirm={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
+              />
+            )}
+            {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
+              <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>
+                {linkingReminderId === p.id ? 'Poniendo…' : '🔔 Recordarme'}
+              </button>
+            )}
+            {p.reminderCalendarEventId && <span className="muted" style={{ fontSize: 12 }}>🔔 Recordatorio puesto</span>}
+            <PaymentEntriesPanel payment={p} onChanged={reload} />
+            <PaymentBondPanel payment={p} onChanged={reload} />
+            <PaymentAttachmentPanel payment={p} onChanged={reload} />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  let listContent: ReactNode
+  if (groupBy === 'ninguno') {
+    listContent = visiblePayments.map(renderCard)
+  } else {
+    const order: (string | null)[] = []
+    const byKey = new Map<string | null, EventPayment[]>()
+    for (const p of visiblePayments) {
+      const key = groupKeyForPayment(p, groupBy)
+      if (!byKey.has(key)) {
+        byKey.set(key, [])
+        order.push(key)
+      }
+      byKey.get(key)!.push(p)
+    }
+    listContent = order.map((key) => {
+      const groupPayments = byKey.get(key)!
+      const keyLabel = key ?? '\u0000sin-asignar'
+      const collapsed = collapsedGroups.has(keyLabel)
+      const subtotal = groupPayments.reduce((sum, p) => sum + p.totalAmount, 0)
+      return (
+        <div key={keyLabel} style={{ marginBottom: 6 }}>
+          <button
+            type="button"
+            className="link-button"
+            style={{ display: 'block', width: '100%', textAlign: 'left', fontWeight: 600 }}
+            onClick={() =>
+              setCollapsedGroups((prev) => {
+                const next = new Set(prev)
+                if (next.has(keyLabel)) next.delete(keyLabel)
+                else next.add(keyLabel)
+                return next
+              })
+            }
+          >
+            {collapsed ? '▸' : '▾'} {key ?? (groupBy === 'categoria' ? 'Sin categoría' : 'Sin proveedor')}{' '}
+            <span className="muted" style={{ fontWeight: 400 }}>
+              ({groupPayments.length}) · {subtotal.toFixed(2)} €
+            </span>
+          </button>
+          {!collapsed && groupPayments.map(renderCard)}
+        </div>
+      )
+    })
+  }
 
   return (
     <div className="card event-card" style={{ marginTop: 8 }}>
       <strong>🧾 Pagos y fianzas</strong>
       {error && <p className="error">{error}</p>}
       {payments.length > 0 && (
-        <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
-          <button type="button" className={'chip' + (filter === 'todos' ? ' chip-active' : '')} onClick={() => setFilter('todos')}>
-            Todos
-          </button>
-          <button type="button" className={'chip' + (filter === 'pendientes' ? ' chip-active' : '')} onClick={() => setFilter('pendientes')}>
-            Pendientes{pendingCount > 0 ? ` (${pendingCount})` : ''}
-          </button>
-          <button type="button" className={'chip' + (filter === 'pagados' ? ' chip-active' : '')} onClick={() => setFilter('pagados')}>
-            Pagados del todo
-          </button>
-        </div>
+        <>
+          <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+            <button type="button" className={'chip' + (filter === 'todos' ? ' chip-active' : '')} onClick={() => setFilter('todos')}>
+              Todos
+            </button>
+            <button type="button" className={'chip' + (filter === 'pendientes' ? ' chip-active' : '')} onClick={() => setFilter('pendientes')}>
+              Pendientes{pendingCount > 0 ? ` (${pendingCount})` : ''}
+            </button>
+            <button type="button" className={'chip' + (filter === 'pagados' ? ' chip-active' : '')} onClick={() => setFilter('pagados')}>
+              Pagados del todo
+            </button>
+          </div>
+          <div className="inline-fields" style={{ marginTop: 6, flexWrap: 'wrap' }}>
+            <label style={{ fontSize: 12 }}>
+              Ordenar por{' '}
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as PaymentSortCriterion)}>
+                {PAYMENT_SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 12 }}>
+              Agrupar{' '}
+              <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as 'ninguno' | PaymentGroupCriterion)}>
+                {PAYMENT_GROUP_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </>
       )}
       <div className="event-list" style={{ marginTop: 8 }}>
-        {visiblePayments.map((p) => {
-          const remaining = p.totalAmount - p.depositPaid
-          const open = openIds.has(p.id)
-          return (
-            <div key={p.id} className="card task-card">
-              <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer', width: '100%' }} onClick={() => toggleOpen(p.id)}>
-                <span style={{ flex: 1 }}>
-                  {open ? '▾' : '▸'} <strong>{p.concept}</strong>
-                  {p.providerName && <span className="muted" style={{ fontSize: 12 }}> · {p.providerName}</span>}
-                </span>
-                <span className="muted" style={{ fontSize: 12 }}>
-                  {p.totalAmount.toFixed(2)} € · {PAYMENT_STATUS_LABELS[p.status]}
-                </span>
-              </div>
-              {open && (
-                <div className="task-card-main" style={{ width: '100%', marginTop: 4 }}>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <span onClick={(e) => e.stopPropagation()}>
-                      <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar pago" onConfirm={() => deleteEventPayment(p.id).then(reload)} />
-                    </span>
-                  </div>
-                  {editingId === p.id ? (
-                    <div className="inline-fields" style={{ alignItems: 'center', margin: '2px 0' }}>
-                      <span className="muted">{p.totalAmount.toFixed(2)} € · pagado</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={editingValue}
-                        onChange={(e) => setEditingValue(e.target.value)}
-                        style={{ width: 90 }}
-                        autoFocus
-                      />
-                      <button type="button" className="link-button" onClick={() => saveEditingDeposit(p)}>
-                        Guardar
-                      </button>
-                      <button type="button" className="link-button" onClick={() => setEditingId(null)}>
-                        Cancelar
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="muted" style={{ margin: '2px 0' }}>
-                      {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
-                      {p.dueDate ? ` · vence ${p.dueDate}` : ''}
-                      {' · '}
-                      <button
-                        type="button"
-                        className="link-button"
-                        style={{ display: 'inline', padding: 0 }}
-                        onClick={() => {
-                          setEditingId(p.id)
-                          setEditingValue(String(p.depositPaid))
-                        }}
-                      >
-                        ✏️ Corregir lo pagado
-                      </button>
-                    </p>
-                  )}
-                  {remaining > 0 && (
-                    <ConfirmButton
-                      label="Marcar como pagado del todo"
-                      confirmMessage={`¿Marcar los ${remaining.toFixed(2)} € que quedan como pagados (total ${p.totalAmount.toFixed(2)} €)?`}
-                      onConfirm={() => updateEventPayment(p.id, { depositPaid: p.totalAmount, status: 'pagado' }).then(reload)}
-                    />
-                  )}
-                  {p.dueDate && remaining > 0 && !p.reminderCalendarEventId && (
-                    <button type="button" className="link-button" onClick={() => handleRemindPayment(p)} disabled={linkingReminderId === p.id}>
-                      {linkingReminderId === p.id ? 'Poniendo…' : '🔔 Recordarme'}
-                    </button>
-                  )}
-                  {p.reminderCalendarEventId && <span className="muted" style={{ fontSize: 12 }}>🔔 Recordatorio puesto</span>}
-                </div>
-              )}
-            </div>
-          )
-        })}
+        {listContent}
         {visiblePayments.length === 0 && (
           <p className="muted">
             {filter === 'todos' ? 'Todavía no hay pagos apuntados.' : filter === 'pendientes' ? 'No hay pagos pendientes.' : 'Todavía no hay ningún pago marcado como pagado del todo.'}
@@ -14015,6 +14564,9 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
       {showAdd && (
         <AddPaymentModal
           eventId={eventId}
+          budgetItems={budgetItems}
+          providers={providers}
+          categorySuggestions={categorySuggestions}
           onClose={() => setShowAdd(false)}
           onAdded={() => {
             setShowAdd(false)
@@ -14026,19 +14578,228 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
   )
 }
 
-function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClose: () => void; onAdded: () => void }) {
+// EVT-E6 — diario de abonos fechados: complementa "Corregir lo pagado" (que sigue existiendo tal cual
+// para una corrección rápida), nunca lo sustituye. Añadir aquí SUMA a depositPaid; nunca al revés.
+function PaymentEntriesPanel({ payment, onChanged }: { payment: EventPayment; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [entries, setEntries] = useState<EventPaymentEntry[] | null>(null)
+  const [amount, setAmount] = useState('')
+  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 10))
+  const [error, setError] = useState<string | null>(null)
+
+  function load() {
+    listEventPaymentEntries(payment.id)
+      .then(setEntries)
+      .catch(() => setEntries([]))
+  }
+
+  async function handleAdd(ev: FormEvent) {
+    ev.preventDefault()
+    const value = Number(amount)
+    if (!amount.trim() || Number.isNaN(value) || value <= 0) {
+      setError('Pon un importe válido.')
+      return
+    }
+    setError(null)
+    try {
+      await addEventPaymentEntry(payment, { amount: value, paidAt: paidAt || null })
+      setAmount('')
+      load()
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo añadir el abono'))
+    }
+  }
+
+  async function handleDelete(entry: EventPaymentEntry) {
+    await deleteEventPaymentEntry(entry, payment)
+    load()
+    onChanged()
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button
+        type="button"
+        className="link-button"
+        style={{ fontSize: 12 }}
+        onClick={() => {
+          setOpen((v) => !v)
+          if (!open && entries === null) load()
+        }}
+      >
+        {open ? '▾ Ocultar abonos' : '▸ Ver abonos (pagos parciales con fecha)'}
+      </button>
+      {open && (
+        <div style={{ marginTop: 4 }}>
+          {entries === null && <p className="muted">Cargando…</p>}
+          {entries?.map((e) => (
+            <div key={e.id} className="inline-fields" style={{ alignItems: 'center', fontSize: 13 }}>
+              <span style={{ flex: 1 }}>{e.paidAt ?? 'Sin fecha'}</span>
+              <span>{e.amount.toFixed(2)} €</span>
+              {e.notes && <span className="muted" style={{ fontSize: 11 }}>{e.notes}</span>}
+              <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar abono" onConfirm={() => handleDelete(e)} />
+            </div>
+          ))}
+          {error && <p className="error">{error}</p>}
+          <form className="inline-fields" style={{ marginTop: 4 }} onSubmit={handleAdd}>
+            <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+            <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="€" style={{ width: 80 }} />
+            <button type="submit" className="link-button">
+              + Añadir abono
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Fianza: dato propio, distinto de "lo pagado" — importe retenido + si ya se ha devuelto.
+function PaymentBondPanel({ payment, onChanged }: { payment: EventPayment; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState(payment.bondAmount == null ? '' : String(payment.bondAmount))
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setError(null)
+    try {
+      await updateEventPayment(payment.id, { bondAmount: amount.trim() === '' ? null : Number(amount) })
+      setEditing(false)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la fianza'))
+    }
+  }
+
+  async function markReturned() {
+    await updateEventPayment(payment.id, { bondReturnedAt: new Date().toISOString().slice(0, 10) })
+    onChanged()
+  }
+
+  if (payment.bondAmount == null && !editing) {
+    return (
+      <button type="button" className="link-button" style={{ fontSize: 12, marginTop: 6 }} onClick={() => setEditing(true)}>
+        + Añadir fianza
+      </button>
+    )
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
+        Fianza
+      </div>
+      {error && <p className="error">{error}</p>}
+      {editing ? (
+        <div className="inline-fields" style={{ alignItems: 'center' }}>
+          <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="€" style={{ width: 90 }} autoFocus />
+          <button type="button" className="link-button" onClick={handleSave}>
+            Guardar
+          </button>
+          <button type="button" className="link-button" onClick={() => setEditing(false)}>
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
+          {payment.bondAmount!.toFixed(2)} € · {payment.bondReturnedAt ? `devuelta el ${payment.bondReturnedAt}` : 'retenida'}
+          {' · '}
+          <button type="button" className="link-button" style={{ display: 'inline', padding: 0 }} onClick={() => setEditing(true)}>
+            editar
+          </button>
+          {!payment.bondReturnedAt && (
+            <>
+              {' · '}
+              <ConfirmButton label="Marcar como devuelta" onConfirm={markReturned} />
+            </>
+          )}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Documento adjunto (factura, resguardo de fianza...) — mismo patrón ya en producción que
+// ProviderAttachmentLink/saveProviderGlobalAttachment.
+function PaymentAttachmentPanel({ payment, onChanged }: { payment: EventPayment; onChanged: () => void }) {
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleView() {
+    if (!payment.attachmentStoragePath) return
+    setError(null)
+    try {
+      const url = await getEventPaymentAttachmentUrl(payment.attachmentStoragePath)
+      window.open(url, '_blank', 'noopener')
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo abrir el documento'))
+    }
+  }
+
+  async function handleUpload(file: File) {
+    setUploading(true)
+    setError(null)
+    try {
+      await saveEventPaymentAttachment(payment, file)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo subir el documento'))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      {error && <p className="error" style={{ fontSize: 11 }}>{error}</p>}
+      {payment.attachmentStoragePath ? (
+        <button type="button" className="link-button" style={{ fontSize: 12 }} onClick={() => void handleView()}>
+          📎 {payment.attachmentOriginalName ?? 'Ver documento'}
+        </button>
+      ) : (
+        <label className="link-button" style={{ fontSize: 12, cursor: 'pointer' }}>
+          {uploading ? 'Subiendo…' : '📎 Adjuntar documento'}
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            style={{ display: 'none' }}
+            disabled={uploading}
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) void handleUpload(file)
+            }}
+          />
+        </label>
+      )}
+    </div>
+  )
+}
+
+function AddPaymentModal({
+  eventId,
+  budgetItems,
+  providers,
+  categorySuggestions,
+  onClose,
+  onAdded,
+}: {
+  eventId: string
+  budgetItems: EventBudgetItem[]
+  providers: EventProvider[]
+  categorySuggestions: string[]
+  onClose: () => void
+  onAdded: () => void
+}) {
   const [concept, setConcept] = useState('')
   const [totalAmount, setTotalAmount] = useState('')
   const [depositPaid, setDepositPaid] = useState('0')
   const [dueDate, setDueDate] = useState('')
   const [providerId, setProviderId] = useState('')
-  const [providers, setProviders] = useState<EventProvider[]>([])
+  const [category, setCategory] = useState('')
+  const [budgetItemId, setBudgetItemId] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    listEventProviders(eventId).then((all) => setProviders(all.filter((p) => !p.archived))).catch(() => {})
-  }, [eventId])
 
   async function handleSubmit(ev: FormEvent) {
     ev.preventDefault()
@@ -14057,6 +14818,8 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
         dueDate: dueDate || null,
         providerId: provider?.id ?? null,
         providerName: provider?.name ?? null,
+        category: category.trim() || null,
+        budgetItemId: budgetItemId || null,
       })
       onAdded()
     } catch (err) {
@@ -14097,6 +14860,23 @@ function AddPaymentModal({ eventId, onClose, onAdded }: { eventId: string; onClo
             Vence (opcional)
             <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
           </label>
+          <label>
+            Categoría (opcional)
+            <CategoryInputWithSuggestions id="payment-category-suggestions-add" value={category} onChange={setCategory} suggestions={categorySuggestions} />
+          </label>
+          {budgetItems.length > 0 && (
+            <label>
+              Partida de presupuesto (opcional)
+              <select value={budgetItemId} onChange={(e) => setBudgetItemId(e.target.value)}>
+                <option value="">Sin enlazar</option>
+                {budgetItems.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.category}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {providers.length > 0 && (
             <label>
               Proveedor (opcional)

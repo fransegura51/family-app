@@ -33,8 +33,8 @@ describe('ResolveGroupModal — el pago de un encargo resuelto con proveedor gua
 })
 
 describe('AddPaymentModal — "+ Añadir pago" manual también puede enlazar un proveedor existente', () => {
-  it('carga los proveedores del evento y ofrece un selector opcional, nunca obligatorio', () => {
-    expect(ADD_PAYMENT_MODAL).toContain('listEventProviders(eventId).then((all) => setProviders(all.filter((p) => !p.archived)))')
+  it('PaymentsSection carga los proveedores del evento (filtrados, no archivados) y se los pasa como prop; ofrece un selector opcional, nunca obligatorio', () => {
+    expect(PAYMENTS_SECTION).toContain('listEventProviders(eventId).then((all) => setProviders(all.filter((p) => !p.archived)))')
     expect(ADD_PAYMENT_MODAL).toContain('{providers.length > 0 && (')
     expect(ADD_PAYMENT_MODAL).toContain('<option value="">Sin proveedor</option>')
   })

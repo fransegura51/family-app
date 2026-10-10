@@ -76,6 +76,31 @@ export const MOMENTOS_ESPECIALES_CATALOG: Record<EventType, MomentoEspecialCatal
   personalizado: GENERICO_CATALOG,
 }
 
+// Mismo texto en todos los catálogos donde aparece la misma clave — una sola fuente para la etiqueta.
+export const MOMENTO_ESPECIAL_LABELS: Record<MomentoEspecialKey, string> = {
+  primer_baile: 'Primer baile',
+  corte_tarta: 'Corte de la tarta',
+  discursos: 'Discursos o brindis',
+  ramo: 'Ramo',
+  salida_especial: 'Salida especial',
+  sorpresa: 'Sorpresa',
+  proyeccion: 'Proyección de fotos o vídeo',
+  velas_tarta: 'Velas / tarta',
+  apertura_regalos: 'Apertura de regalos',
+  tarta: 'Tarta',
+  brindis: 'Brindis o discurso',
+}
+
+// Orden de recuperación de requisitos (Parte G3) — "asignar canciones a momentos que puedan llevar
+// música" (Entrada, Salida, Primer baile, Tarta, Entrega de ramo, Presentación de fotografías...).
+// "Entrada" y "Otros momentos" (texto libre) no tienen clave propia en el catálogo fijo — quedan fuera
+// a propósito, sin inventar un tipo de momento nuevo que nadie ha pedido.
+export const MOMENTOS_CON_CANCION: readonly MomentoEspecialKey[] = ['primer_baile', 'corte_tarta', 'tarta', 'ramo', 'salida_especial', 'proyeccion']
+
+export function cancionQuestionKey(momento: MomentoEspecialKey): string {
+  return `momentos_especiales.${momento}.cancion`
+}
+
 export type MomentosEspecialesChoice = 'seleccionar' | 'ninguno' | 'todavia_no_lo_sabemos'
 export interface MomentosEspecialesAnswer {
   choice: MomentosEspecialesChoice
@@ -116,12 +141,20 @@ export function listMomentosEspecialesBlockQuestions(decisions: EventDecision[])
       label: '¿Necesitáis clases de baile?',
       status: decisionStatus(decisions.find((d) => d.questionKey === CLASES_BAILE_QUESTION_KEY)),
     })
-    result.push({
-      questionKey: CANCION_PRIMER_BAILE_QUESTION_KEY,
-      blockKey: 'momentos_especiales',
-      label: '¿Tenéis clara la canción del primer baile?',
-      status: decisionStatus(decisions.find((d) => d.questionKey === CANCION_PRIMER_BAILE_QUESTION_KEY)),
-    })
+  }
+  // Orden de recuperación de requisitos (Parte G3) — "asignar canciones a momentos que puedan llevar
+  // música": antes solo Primer baile; ahora cualquier momento de MOMENTOS_CON_CANCION que esté
+  // seleccionado. Mismo patrón ya probado (revelado progresivo, nunca se borra al desmarcar).
+  for (const momento of MOMENTOS_CON_CANCION) {
+    if (answer?.selected?.includes(momento)) {
+      const key = cancionQuestionKey(momento)
+      result.push({
+        questionKey: key,
+        blockKey: 'momentos_especiales',
+        label: `¿Tenéis clara la canción de "${MOMENTO_ESPECIAL_LABELS[momento]}"?`,
+        status: decisionStatus(decisions.find((d) => d.questionKey === key)),
+      })
+    }
   }
   return result
 }
@@ -145,28 +178,30 @@ export function desiredForClasesBaile(answer: ClasesBaileAnswer | undefined): De
 }
 
 // ---------------------------------------------------------------------
-// "Primer baile" → "¿Tenéis clara la canción del primer baile?" (A2, tanda del configurador de boda) —
-// AMPLÍA la decisión YA EXISTENTE de "Primer baile", nunca un segundo momento ni una tarea duplicada.
-// Puramente informativa: nunca genera Preparativo ni presupuesto (desiredForCancionPrimerBaile es
+// "¿Tenéis clara la canción de [momento]?" — nació como "Primer baile" (A2, tanda del configurador de
+// boda); Parte G3 (orden de recuperación de requisitos) lo generaliza a MOMENTOS_CON_CANCION, mismo
+// patrón para todos: AMPLÍA la decisión YA EXISTENTE del momento, nunca un segundo momento ni tarea
+// duplicada. Puramente informativa: nunca genera Preparativo ni presupuesto (desiredForCancionMomento es
 // siempre NONE), se llama a applyPairDecisionGeneration igual que el resto solo por coherencia con el
 // motor (un NONE contra "sin tarea existente" es un no-op real).
-// Si "Primer baile" se desmarca, listMomentosEspecialesBlockQuestions (arriba) deja de mostrar esta
+// Si el momento se desmarca, listMomentosEspecialesBlockQuestions (arriba) deja de mostrar esta
 // pregunta — pero a diferencia de "clases de baile", AQUÍ NUNCA se borra la fila de event_decisions: la
-// petición explícita es conservar el título/artista para una posible reactivación (ver saveSeleccion en
-// EventosScreen.tsx, que solo limpia CLASES_BAILE_QUESTION_KEY, nunca esta).
+// petición explícita (de Primer baile, conservada al generalizar) es conservar el título/artista para una
+// posible reactivación (ver saveSeleccion en EventosScreen.tsx, que solo limpia CLASES_BAILE_QUESTION_KEY,
+// nunca las de canción).
 // ---------------------------------------------------------------------
-export const CANCION_PRIMER_BAILE_QUESTION_KEY = 'momentos_especiales.primer_baile.cancion'
+export const CANCION_PRIMER_BAILE_QUESTION_KEY = cancionQuestionKey('primer_baile')
 
 // 'todavia_no_lo_sabemos' reutiliza el MISMO centinela que decisionStatus() ya reconoce como «por
 // decidir» — así "Todavía no" queda pendiente sin tener que tocar esa función genérica.
-export type CancionPrimerBaileChoice = 'si' | 'todavia_no_lo_sabemos' | 'sin_cancion_concreta'
-export interface CancionPrimerBaileAnswer {
-  choice: CancionPrimerBaileChoice
+export type CancionMomentoChoice = 'si' | 'todavia_no_lo_sabemos' | 'sin_cancion_concreta'
+export interface CancionMomentoAnswer {
+  choice: CancionMomentoChoice
   titulo?: string | null
   artista?: string | null
 }
 
-export function desiredForCancionPrimerBaile(_answer: CancionPrimerBaileAnswer | undefined): DesiredPairGeneration {
+export function desiredForCancionMomento(_answer: CancionMomentoAnswer | undefined): DesiredPairGeneration {
   return NONE
 }
 

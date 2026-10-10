@@ -43,6 +43,31 @@ export interface MusicaAnswer {
   customItems: string[]
 }
 
+// Aclaración del usuario tras revisar el conflicto con "muy breve a propósito" (Parte G2, orden de
+// recuperación de requisitos): SIN horarios ni plan de actuación del DJ — pero sí, de forma opcional y
+// compacta, en qué partes del evento habrá DJ o música en directo. Nunca obligatoria, nunca genera tarea
+// ni presupuesto (igual que la canción de un momento): es solo información para quien la quiera dejar.
+export const MUSICA_PARTES_QUESTION_KEY = 'musica_fiesta.musica_partes'
+export type MusicaParteKey = 'ceremonia' | 'coctel' | 'comida' | 'baile' | 'fiesta'
+export interface MusicaPartesCatalogItem {
+  key: MusicaParteKey
+  label: string
+}
+export const MUSICA_PARTES_CATALOG: MusicaPartesCatalogItem[] = [
+  { key: 'ceremonia', label: 'Ceremonia' },
+  { key: 'coctel', label: 'Cóctel' },
+  { key: 'comida', label: 'Comida' },
+  { key: 'baile', label: 'Baile' },
+  { key: 'fiesta', label: 'Fiesta' },
+]
+export interface MusicaPartesAnswer {
+  selected: MusicaParteKey[]
+}
+
+export function desiredForMusicaPartes(_answer: MusicaPartesAnswer | undefined): DesiredPairGeneration {
+  return NONE
+}
+
 // Cuando el lugar YA incluye música: en vez de la pregunta principal, esta confirmación aparte. "Sí"
 // revela el mismo catálogo (MusicaAnswer, MUSICA_QUESTION_KEY) para lo ADICIONAL — nunca una segunda
 // forma de respuesta paralela.
@@ -110,6 +135,15 @@ export function listMusicaFiestaBlockQuestions(decisions: EventDecision[], venue
     }
   } else {
     result.push({ questionKey: MUSICA_QUESTION_KEY, blockKey: 'musica_fiesta', label: '¿Cómo vais a organizar la música?', status: decisionStatus(decisions.find((d) => d.questionKey === MUSICA_QUESTION_KEY)) })
+  }
+  const musicaAnswer = decisions.find((d) => d.questionKey === MUSICA_QUESTION_KEY)?.answer as unknown as MusicaAnswer | undefined
+  if (musicaAnswer?.selected?.includes('dj') || musicaAnswer?.selected?.includes('directo')) {
+    result.push({
+      questionKey: MUSICA_PARTES_QUESTION_KEY,
+      blockKey: 'musica_fiesta',
+      label: '¿En qué partes del evento habrá DJ o música en directo?',
+      status: decisionStatus(decisions.find((d) => d.questionKey === MUSICA_PARTES_QUESTION_KEY)),
+    })
   }
   result.push({ questionKey: ANIMACION_QUESTION_KEY, blockKey: 'musica_fiesta', label: '¿Habrá animación o entretenimiento adicional?', status: decisionStatus(decisions.find((d) => d.questionKey === ANIMACION_QUESTION_KEY)) })
   return result

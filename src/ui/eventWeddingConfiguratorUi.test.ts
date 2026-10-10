@@ -72,22 +72,23 @@ describe('REGLA TRANSVERSAL "no preguntar dos veces" — música y decoración d
   })
 })
 
-describe('Primer baile → canción: amplía la decisión existente, nunca un segundo momento ni tarea duplicada', () => {
+describe('Primer baile → canción: amplía la decisión existente, nunca un segundo momento ni tarea duplicada (generalizada a MOMENTOS_CON_CANCION por la Parte G3 — ver eventosMusicaPartesYCancionMomentosUi.test.ts para el detalle de esa generalización)', () => {
   const momentos = slice(UI, 'function MomentosEspecialesBlock({', '\nfunction FoodInheritedLine(')
 
-  it('desiredForCancionPrimerBaile es puramente informativo (NONE siempre) — nunca genera Preparativo', () => {
+  it('desiredForCancionMomento es puramente informativo (NONE siempre) — nunca genera Preparativo', () => {
     const domain = (UI_FILES['/src/domain/eventSpecialMoments.ts'] ?? (import.meta.glob('/src/domain/eventSpecialMoments.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/domain/eventSpecialMoments.ts'])
-    expect(domain).toContain('export function desiredForCancionPrimerBaile(_answer: CancionPrimerBaileAnswer | undefined): DesiredPairGeneration {\n  return NONE\n}')
+    expect(domain).toContain('export function desiredForCancionMomento(_answer: CancionMomentoAnswer | undefined): DesiredPairGeneration {\n  return NONE\n}')
   })
 
   it('a diferencia de "clases de baile", la canción NUNCA se borra al desmarcar Primer baile — solo se oculta (listMomentosEspecialesBlockQuestions deja de incluirla)', () => {
     const saveSeleccion = slice(momentos, 'async function saveSeleccion(', '\n  async function saveClasesBaile(')
     expect(saveSeleccion).toContain('CLASES_BAILE_QUESTION_KEY')
-    expect(saveSeleccion).not.toContain('CANCION_PRIMER_BAILE_QUESTION_KEY')
+    expect(saveSeleccion).not.toContain('cancionQuestionKey')
   })
 
-  it('la pregunta de la canción solo se ve cuando Primer baile sigue seleccionado', () => {
-    expect(momentos).toContain("questionIsVisible(localFocus, CANCION_PRIMER_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile')")
+  it('la pregunta de la canción se ve por cada momento de MOMENTOS_CON_CANCION seleccionado, incluido Primer baile', () => {
+    expect(momentos).toContain("MOMENTOS_CON_CANCION.filter((momento) => seleccion?.selected.includes(momento)).map((momento) => {")
+    expect(momentos).toContain('questionIsVisible(localFocus, key) && (')
   })
 
   it('título y artista son opcionales de verdad: se puede guardar "Sí" sin rellenarlos', () => {

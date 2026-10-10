@@ -376,18 +376,20 @@ import {
   summarizeCelebrationBlock,
 } from '@/domain/eventCelebration'
 import {
-  CANCION_PRIMER_BAILE_QUESTION_KEY,
+  cancionQuestionKey,
   CLASES_BAILE_QUESTION_KEY,
-  desiredForCancionPrimerBaile,
+  desiredForCancionMomento,
   desiredForClasesBaile,
   listMomentosEspecialesBlockQuestions,
   MOMENTOS_ESPECIALES_CATALOG,
   MOMENTOS_ESPECIALES_QUESTION_KEY,
+  MOMENTOS_CON_CANCION,
   summarizeMomentosEspecialesBlock,
-  type CancionPrimerBaileAnswer,
-  type CancionPrimerBaileChoice,
+  type CancionMomentoAnswer,
+  type CancionMomentoChoice,
   type ClasesBaileAnswer,
   type ClasesBaileChoice,
+  MOMENTO_ESPECIAL_LABELS,
   type MomentoEspecialCatalogItem,
   type MomentoEspecialKey,
   type MomentosEspecialesAnswer,
@@ -466,15 +468,19 @@ import {
   summarizeMusicaFiestaBlock,
   desiredForMusica,
   desiredForAnimacion,
+  desiredForMusicaPartes,
   MUSICA_FIESTA_BLOCK_KEY,
   MUSICA_QUESTION_KEY,
   MUSICA_EXTRA_CONFIRM_QUESTION_KEY,
   MUSICA_CATALOG,
+  MUSICA_PARTES_QUESTION_KEY,
+  MUSICA_PARTES_CATALOG,
   ANIMACION_QUESTION_KEY,
   ANIMACION_CATALOG,
   type MusicaAnswer,
   type MusicaExtraConfirmAnswer,
   type MusicaExtraConfirmChoice,
+  type MusicaPartesAnswer,
   type AnimacionAnswer,
   type AnimacionChoice,
 } from '@/domain/eventMusicaFiesta'
@@ -8617,32 +8623,35 @@ function ClasesBaileQuestion({ existing, saving, onSave }: { existing: ClasesBai
   )
 }
 
-const CANCION_PRIMER_BAILE_OPTIONS: { value: CancionPrimerBaileChoice; label: string }[] = [
+const CANCION_MOMENTO_OPTIONS: { value: CancionMomentoChoice; label: string }[] = [
   { value: 'si', label: 'Sí' },
   { value: 'todavia_no_lo_sabemos', label: 'Todavía no' },
   { value: 'sin_cancion_concreta', label: 'No queremos elegir una canción concreta' },
 ]
 
-// A2 — título/artista solo se piden (y solo se guardan) con choice==='si', y son opcionales de verdad:
-// se puede guardar "Sí" sin rellenarlos todavía. Campos de texto libres, PEPA nunca sugiere ni completa.
-function CancionPrimerBaileQuestion({
+// A2, generalizado por la Parte G3 (orden de recuperación de requisitos) a cualquier momento de
+// MOMENTOS_CON_CANCION — título/artista solo se piden (y solo se guardan) con choice==='si', y son
+// opcionales de verdad: se puede guardar "Sí" sin rellenarlos todavía. Texto libre, PEPA nunca sugiere.
+function CancionMomentoQuestion({
+  label,
   existing,
   saving,
   onSave,
 }: {
-  existing: CancionPrimerBaileAnswer | undefined
+  label: string
+  existing: CancionMomentoAnswer | undefined
   saving: boolean
-  onSave: (answer: CancionPrimerBaileAnswer) => void
+  onSave: (answer: CancionMomentoAnswer) => void
 }) {
   const [titulo, setTitulo] = useState(existing?.titulo ?? '')
   const [artista, setArtista] = useState(existing?.artista ?? '')
   return (
     <div style={{ marginTop: 6 }}>
       <div className="muted" style={{ fontSize: 13 }}>
-        ¿Tenéis clara la canción del primer baile?
+        {label}
       </div>
       <ChoiceRow
-        options={CANCION_PRIMER_BAILE_OPTIONS}
+        options={CANCION_MOMENTO_OPTIONS}
         value={existing?.choice}
         disabled={saving}
         onSelect={(choice) => onSave(choice === 'si' ? { choice, titulo: titulo || null, artista: artista || null } : { choice })}
@@ -8757,21 +8766,22 @@ function MomentosEspecialesBlock({
     }
   }
 
-  // A2 (tanda del configurador de boda) — puramente informativa (desiredForCancionPrimerBaile es
-  // siempre NONE); se llama igual a applyPairDecisionGeneration por coherencia con el resto del motor.
-  // A diferencia de saveSeleccion con CLASES_BAILE_QUESTION_KEY, NUNCA se borra esta decisión al
-  // desmarcar "Primer baile" — listMomentosEspecialesBlockQuestions ya la oculta sin tocar sus datos.
-  async function saveCancionPrimerBaile(answer: CancionPrimerBaileAnswer) {
-    setSavingKey(CANCION_PRIMER_BAILE_QUESTION_KEY)
+  // A2, generalizado por la Parte G3 — puramente informativa (desiredForCancionMomento es siempre NONE);
+  // se llama igual a applyPairDecisionGeneration por coherencia con el resto del motor. A diferencia de
+  // saveSeleccion con CLASES_BAILE_QUESTION_KEY, NUNCA se borra esta decisión al desmarcar el momento —
+  // listMomentosEspecialesBlockQuestions ya la oculta sin tocar sus datos.
+  async function saveCancionMomento(momento: MomentoEspecialKey, answer: CancionMomentoAnswer) {
+    const key = cancionQuestionKey(momento)
+    setSavingKey(key)
     setError(null)
     try {
       const decision = await upsertEventDecision(event.id, {
         blockKey: 'momentos_especiales',
-        questionKey: CANCION_PRIMER_BAILE_QUESTION_KEY,
+        questionKey: key,
         answer: answer as unknown as Record<string, unknown>,
         isCustomOption: false,
       })
-      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForCancionPrimerBaile(answer))
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForCancionMomento(answer))
       await reload()
       if (actions.length > 0) onDerivedDataChanged()
       const message = describeEffects(actions)
@@ -8789,8 +8799,6 @@ function MomentosEspecialesBlock({
   const catalog = MOMENTOS_ESPECIALES_CATALOG[event.type]
   const clasesBaileDecision = findDecision(CLASES_BAILE_QUESTION_KEY)
   const clasesBaile = clasesBaileDecision?.answer as unknown as ClasesBaileAnswer | undefined
-  const cancionDecision = findDecision(CANCION_PRIMER_BAILE_QUESTION_KEY)
-  const cancion = cancionDecision?.answer as unknown as CancionPrimerBaileAnswer | undefined
   const summary = summarizeMomentosEspecialesBlock(decisions)
   const decisionSummary = buildMomentosEspecialesDecisionSummary(decisions)
 
@@ -8809,9 +8817,22 @@ function MomentosEspecialesBlock({
       {questionIsVisible(localFocus, CLASES_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile') && (
         <ClasesBaileQuestion existing={clasesBaile} saving={savingKey === CLASES_BAILE_QUESTION_KEY} onSave={saveClasesBaile} />
       )}
-      {questionIsVisible(localFocus, CANCION_PRIMER_BAILE_QUESTION_KEY) && seleccion?.selected.includes('primer_baile') && (
-        <CancionPrimerBaileQuestion existing={cancion} saving={savingKey === CANCION_PRIMER_BAILE_QUESTION_KEY} onSave={saveCancionPrimerBaile} />
-      )}
+      {MOMENTOS_CON_CANCION.filter((momento) => seleccion?.selected.includes(momento)).map((momento) => {
+        const key = cancionQuestionKey(momento)
+        const decision = findDecision(key)
+        const answer = decision?.answer as unknown as CancionMomentoAnswer | undefined
+        return (
+          questionIsVisible(localFocus, key) && (
+            <CancionMomentoQuestion
+              key={key}
+              label={`¿Tenéis clara la canción de "${MOMENTO_ESPECIAL_LABELS[momento]}"?`}
+              existing={answer}
+              saving={savingKey === key}
+              onSave={(a) => saveCancionMomento(momento, a)}
+            />
+          )
+        )
+      })}
       {localFocus && (
         <button type="button" className="link-button" onClick={() => setLocalFocus(null)} style={{ marginTop: 6 }}>
           Ver todas las preguntas
@@ -10206,6 +10227,27 @@ function MusicaFiestaBlock({
     }
   }
 
+  // Parte G2 (orden de recuperación de requisitos, aclaración directa del usuario) — puramente
+  // informativa (desiredForMusicaPartes es siempre NONE, igual que la canción de un momento especial):
+  // nunca genera tarea ni presupuesto duplicado, solo deja constancia de en qué partes del evento habrá
+  // DJ/música en directo. Opcional de verdad: no aparece si no han elegido DJ/directo, y no es obligatoria.
+  async function saveMusicaPartes(answer: MusicaPartesAnswer) {
+    setSavingKey(MUSICA_PARTES_QUESTION_KEY)
+    setError(null)
+    try {
+      const decision = await upsertEventDecision(event.id, { blockKey: MUSICA_FIESTA_BLOCK_KEY, questionKey: MUSICA_PARTES_QUESTION_KEY, answer: answer as unknown as Record<string, unknown>, isCustomOption: false })
+      const { actions } = await applyPairDecisionGeneration(event.id, decision.id, desiredForMusicaPartes(answer))
+      await reload()
+      if (actions.length > 0) onDerivedDataChanged()
+      const message = describeEffects(actions)
+      if (message) showToast(message)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
   async function saveAnimacion(answer: AnimacionAnswer) {
     setSavingKey(ANIMACION_QUESTION_KEY)
     setError(null)
@@ -10231,6 +10273,8 @@ function MusicaFiestaBlock({
   const musica = musicaDecision?.answer as unknown as MusicaAnswer | undefined
   const extraConfirmDecision = findDecision(MUSICA_EXTRA_CONFIRM_QUESTION_KEY)
   const extraConfirm = extraConfirmDecision?.answer as unknown as MusicaExtraConfirmAnswer | undefined
+  const partesDecision = findDecision(MUSICA_PARTES_QUESTION_KEY)
+  const partes = partesDecision?.answer as unknown as MusicaPartesAnswer | undefined
   const animacionDecision = findDecision(ANIMACION_QUESTION_KEY)
   const animacion = animacionDecision?.answer as unknown as AnimacionAnswer | undefined
   const summary = summarizeMusicaFiestaBlock(decisions)
@@ -10264,6 +10308,9 @@ function MusicaFiestaBlock({
           <MusicaCatalogQuestion label="¿Cómo vais a organizar la música?" existing={musica} saving={savingKey === MUSICA_QUESTION_KEY} onSave={saveMusica} />
         )
       )}
+      {questionIsVisible(localFocus, MUSICA_PARTES_QUESTION_KEY) && (musica?.selected.includes('dj') || musica?.selected.includes('directo')) && (
+        <MusicaPartesQuestion existing={partes} saving={savingKey === MUSICA_PARTES_QUESTION_KEY} onSave={saveMusicaPartes} />
+      )}
       {questionIsVisible(localFocus, ANIMACION_QUESTION_KEY) && (
         <div style={{ marginTop: 6 }}>
           <div className="muted" style={{ fontSize: 13 }}>
@@ -10284,6 +10331,30 @@ function MusicaFiestaBlock({
           Ver todas las preguntas
         </button>
       )}
+    </div>
+  )
+}
+
+// Parte G2 — selección múltiple compacta y opcional, sin pregunta de confirmación previa (a diferencia
+// de ClasesBaileQuestion/CancionMomentoQuestion): basta con marcar los chips que apliquen, nada que
+// "responder primero". Sin opción vacía porque no responder YA es "no especificado" (chips sin marcar).
+function MusicaPartesQuestion({ existing, saving, onSave }: { existing: MusicaPartesAnswer | undefined; saving: boolean; onSave: (answer: MusicaPartesAnswer) => void }) {
+  const selected = existing?.selected ?? []
+  function toggle(key: (typeof MUSICA_PARTES_CATALOG)[number]['key']) {
+    onSave({ selected: selected.includes(key) ? selected.filter((x) => x !== key) : [...selected, key] })
+  }
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div className="muted" style={{ fontSize: 13 }}>
+        ¿En qué partes del evento habrá DJ o música en directo? (opcional)
+      </div>
+      <div className="filter-row" style={{ flexWrap: 'wrap', marginTop: 4 }}>
+        {MUSICA_PARTES_CATALOG.map((item) => (
+          <button key={item.key} type="button" className={'chip' + (selected.includes(item.key) ? ' chip-active' : '')} disabled={saving} onClick={() => toggle(item.key)}>
+            {item.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

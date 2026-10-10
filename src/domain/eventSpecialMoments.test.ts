@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { isTaskUntouched, reconcilePairGeneration } from '@/domain/eventPairDecisions'
 import {
+  CANCION_PRIMER_BAILE_QUESTION_KEY,
+  cancionQuestionKey,
   CLASES_BAILE_QUESTION_KEY,
+  desiredForCancionMomento,
   desiredForClasesBaile,
+  listMomentosEspecialesBlockQuestions,
   momentosEspecialesStatus,
+  MOMENTO_ESPECIAL_LABELS,
+  MOMENTOS_CON_CANCION,
   MOMENTOS_ESPECIALES_CATALOG,
   MOMENTOS_ESPECIALES_QUESTION_KEY,
   summarizeMomentosEspecialesBlock,
@@ -164,5 +170,57 @@ describe('Claves de pregunta — nunca colisionan con event_moments ni con otros
     expect(MOMENTOS_ESPECIALES_QUESTION_KEY).toBe('momentos_especiales.seleccion')
     expect(CLASES_BAILE_QUESTION_KEY).toBe('momentos_especiales.primer_baile.clases_baile')
     expect(CLASES_BAILE_QUESTION_KEY.startsWith('momentos_especiales.')).toBe(true)
+  })
+})
+
+describe('Parte G3 (orden de recuperación de requisitos) — canción no solo para Primer baile', () => {
+  it('MOMENTOS_CON_CANCION cubre los momentos que pueden llevar música, sin inventar "Entrada" ni tocar "Otros momentos" (texto libre)', () => {
+    expect(MOMENTOS_CON_CANCION).toEqual(['primer_baile', 'corte_tarta', 'tarta', 'ramo', 'salida_especial', 'proyeccion'])
+  })
+
+  it('cancionQuestionKey("primer_baile") sigue produciendo la misma clave histórica — las decisiones ya guardadas no se rompen', () => {
+    expect(cancionQuestionKey('primer_baile')).toBe('momentos_especiales.primer_baile.cancion')
+    expect(CANCION_PRIMER_BAILE_QUESTION_KEY).toBe(cancionQuestionKey('primer_baile'))
+  })
+
+  it('cada momento de MOMENTOS_CON_CANCION tiene su propia clave, con su propio espacio de nombres', () => {
+    const keys = MOMENTOS_CON_CANCION.map((m) => cancionQuestionKey(m))
+    expect(new Set(keys).size).toBe(keys.length)
+    for (const key of keys) expect(key.startsWith('momentos_especiales.')).toBe(true)
+  })
+
+  it('MOMENTO_ESPECIAL_LABELS tiene una etiqueta para cada clave usada en algún catálogo', () => {
+    for (const catalog of Object.values(MOMENTOS_ESPECIALES_CATALOG)) {
+      for (const item of catalog) expect(MOMENTO_ESPECIAL_LABELS[item.key]).toBe(item.label)
+    }
+  })
+
+  it('desiredForCancionMomento es siempre NONE — puramente informativa, nunca genera Preparativo/Presupuesto/Proveedor', () => {
+    expect(desiredForCancionMomento(undefined)).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
+    expect(desiredForCancionMomento({ choice: 'si', titulo: 'Perfect', artista: 'Ed Sheeran' })).toEqual({ taskTitle: null, budgetCategory: null, providerCategory: null, resolved: false, groupKind: null, groupDefaultName: null })
+  })
+
+  it('la pregunta de canción solo aparece para los momentos seleccionados de MOMENTOS_CON_CANCION, nunca para los no seleccionados ni para los fuera del catálogo (p. ej. discursos)', () => {
+    const decisions = [
+      makeDecision({ answer: { choice: 'seleccionar', selected: ['corte_tarta', 'ramo', 'discursos'], customItems: [] } }),
+    ]
+    const keys = listMomentosEspecialesBlockQuestions(decisions).map((q) => q.questionKey)
+    expect(keys).toContain(cancionQuestionKey('corte_tarta'))
+    expect(keys).toContain(cancionQuestionKey('ramo'))
+    expect(keys).not.toContain(cancionQuestionKey('primer_baile'))
+    expect(keys).not.toContain(cancionQuestionKey('proyeccion'))
+    expect(keys.some((k) => k.includes('discursos'))).toBe(false)
+  })
+
+  it('desmarcar un momento oculta su pregunta de canción, pero nunca borra la decisión ya guardada (a diferencia de clases de baile)', () => {
+    const cancionKey = cancionQuestionKey('ramo')
+    const decisions = [
+      makeDecision({ answer: { choice: 'seleccionar', selected: ['primer_baile'], customItems: [] } }),
+      makeDecision({ id: 'd2', questionKey: cancionKey, answer: { choice: 'si', titulo: 'Y', artista: 'X' } }),
+    ]
+    const keys = listMomentosEspecialesBlockQuestions(decisions).map((q) => q.questionKey)
+    expect(keys).not.toContain(cancionKey)
+    // La decisión sigue ahí — listMomentosEspecialesBlockQuestions solo deja de mostrarla, no la elimina.
+    expect(decisions.find((d) => d.questionKey === cancionKey)).toBeDefined()
   })
 })

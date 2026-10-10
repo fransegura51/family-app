@@ -14,8 +14,10 @@ import {
   listMomentosEspecialesBlockQuestions,
   CLASES_BAILE_QUESTION_KEY,
   MOMENTOS_ESPECIALES_QUESTION_KEY,
-  CANCION_PRIMER_BAILE_QUESTION_KEY,
-  type CancionPrimerBaileAnswer,
+  MOMENTOS_CON_CANCION,
+  MOMENTO_ESPECIAL_LABELS,
+  cancionQuestionKey,
+  type CancionMomentoAnswer,
 } from '@/domain/eventSpecialMoments'
 import {
   listMusicaFiestaBlockQuestions,
@@ -246,17 +248,21 @@ const MOMENTOS_ESPECIALES_TAKEN_TEXT: Record<string, Record<string, string>> = {
 export function buildMomentosEspecialesDecisionSummary(decisions: EventDecision[]): DecisionSummary {
   const taken: DecisionSummaryItem[] = []
   const pending: DecisionSummaryItem[] = []
+  const cancionKeys = new Map(MOMENTOS_CON_CANCION.map((momento) => [cancionQuestionKey(momento), momento]))
   for (const q of listMomentosEspecialesBlockQuestions(decisions)) {
-    // Canción del primer baile (A2) — statusLabel dinámico (el título real si lo hay), no una frase fija
-    // de TAKEN_TEXT; mismo criterio que "Resúmenes de decisiones compactos" del resto de la app.
-    if (q.questionKey === CANCION_PRIMER_BAILE_QUESTION_KEY) {
+    // Canción de un momento especial (A2, generalizado por la Parte G3) — statusLabel dinámico (el
+    // título real si lo hay), no una frase fija de TAKEN_TEXT; mismo criterio que "Resúmenes de
+    // decisiones compactos" del resto de la app.
+    const momento = cancionKeys.get(q.questionKey)
+    if (momento) {
+      const text = `Canción de "${MOMENTO_ESPECIAL_LABELS[momento]}"`
       if (q.status !== 'decidida') {
-        pending.push({ key: q.questionKey, text: 'Canción del primer baile', statusLabel: 'Todavía no lo sabemos' })
+        pending.push({ key: q.questionKey, text, statusLabel: 'Todavía no lo sabemos' })
         continue
       }
-      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as CancionPrimerBaileAnswer | undefined
+      const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as CancionMomentoAnswer | undefined
       const statusLabel = answer?.choice === 'si' ? answer.titulo?.trim() || 'Sí' : 'Sin canción concreta'
-      taken.push({ key: q.questionKey, text: 'Canción del primer baile', statusLabel })
+      taken.push({ key: q.questionKey, text, statusLabel })
       continue
     }
     const choice = choiceOf(decisions, q.questionKey)

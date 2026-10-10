@@ -5,31 +5,154 @@ lo que está implementado, lo que se ha probado de verdad y lo que falta.
 Es el punto de partida obligatorio antes de empezar cualquier encargo nuevo
 (ver «Procedimiento obligatorio» más abajo).
 
+**Reconstrucción 2026-10-10**: los identificadores `EVT-007` a `EVT-010`
+(creados el 2026-10-09 antes de recuperar el texto literal del prompt
+consolidado) mezclaban varios requisitos distintos bajo un solo ID. Se
+sustituyen por IDs ligados a su apartado real del prompt original
+(`EVT-A1`...`EVT-K`), con el ID antiguo conservado como alias para no perder
+la trazabilidad de los commits ya hechos.
+
+## Prompts origen (localizados literalmente en la transcripción, nunca por resumen)
+
+| Alias | Prompt | Fecha/hora | Apartados |
+|---|---|---|---|
+| **CONSOLIDADO** | «PROMPT MAESTRO CONSOLIDADO DE MEJORAS DE EVENTOS» | 2026-10-09 11:16 | Partes A-K (proveedores, ofertas, encargos, presupuesto, pagos, calendario, configurador, seguridad, fases, pruebas, informe) |
+| **PG-MAESTRO** | «PROMPT MAESTRO PARA CLAUDE CODE — PEPA — NUEVA SECCIÓN "PEQUEÑOS GRANDES"» | 2026-10-09 17:46 | Fases 1-18 |
+| **CONTROL-REQ** | Encargo de implantar este mismo registro | 2026-10-10 06:45 | EVT-001 a EVT-006 (pendientes dictados directamente, sin corresponder 1:1 a un apartado del CONSOLIDADO) |
+| **RECUPERACIÓN** | «ORDEN DE RECUPERACIÓN INTEGRAL DE REQUISITOS PENDIENTES» | 2026-10-10 (sesión actual) | Ejecución de todo lo pendiente de CONSOLIDADO + PG-MAESTRO |
+
 ## Estados
 
 | Estado | Significado |
 |---|---|
 | Acordado | Descrito y aceptado como requisito, todavía sin tocar código. |
-| Enviado | Llegó en un prompt/encargo concreto, a la espera de implementarse. |
-| Implementado | El código existe y pasa los tests automáticos relacionados. |
+| Pendiente | Revisado contra el código real: no hay ninguna implementación. |
+| Parcial | Existe código real, pero no cubre todo lo pedido — ver columna Pendientes para el detalle exacto. |
+| Implementado | El código cubre el requisito completo y pasa los tests automáticos relacionados. |
 | Probado | Además de lo anterior, se ha comprobado a mano (navegador/móvil) el comportamiento descrito — abierto **y** cerrado en el caso de componentes plegables. |
+| No verificable | Requiere una comprobación puramente manual/de proceso que no deja rastro en el código (auditorías, pruebas en dispositivo real). |
 | Aprobado | El usuario lo ha confirmado expresamente. **Nunca se marca sin esa confirmación explícita, aunque los tests y la prueba manual hayan ido bien.** |
 
-## Registro
+---
 
-| ID | Módulo | Descripción y comportamiento esperado | Estado | Commit | Pruebas realizadas y evidencia | Pendientes y observaciones |
+## Parte A — Registro global de proveedores (CONSOLIDADO)
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
 |---|---|---|---|---|---|---|
-| EVT-001 | Eventos · Configurador | Si el lugar incluye música, el configurador debe ofrecer utilizarla o elegir una alternativa, evitando preguntas, tareas y gastos duplicados. | Acordado | — | — | No implementado todavía. Revisar primero cómo se gestiona hoy «Comida incluida en el lugar» (patrón ya resuelto, documentado en `docs/QA_EVENTOS_PENDIENTES.md` #110) para no duplicar lógica. |
-| EVT-002 | Eventos · Configurador | Misma lógica que EVT-001 aplicada a la decoración incluida en el lugar. | Acordado | — | — | Depende del diseño que se adopte para EVT-001; implementar en el mismo encargo si es razonable, nunca como copia independiente. |
-| EVT-003 | Eventos · Resúmenes de decisión | Sustituir la palabra «Resuelto» por un resumen breve de la respuesta real guardada. No inventar respuestas. | Acordado | — | — | Ya existe precedente parcial (p. ej. «Personas especiales · N» en vez de «Resuelto», tanda integrada, `QA_EVENTOS_PENDIENTES.md` #470-474) — revisar qué resúmenes quedan todavía con el texto genérico. |
-| EVT-004 | Eventos · Preguntas plegables | Permitir plegar independientemente los grupos de preguntas dentro de cada sección, conservando sus respuestas. | Acordado | — | — | Comprobar que no colisiona con el aislamiento de pregunta ya existente (Fase 1 del configurador, `QA_EVENTOS_PENDIENTES.md` #420-423). |
-| EVT-005 | Eventos · Pagos y fianzas | Compactar también el interior de las tarjetas desplegadas (no solo el estado cerrado). Añadir «+ Añadir pago» para pagos parciales sucesivos, conservando historial y recalculando el saldo pendiente. Reutilizar el sistema de pagos existente. | Acordado | — | — | Auditar `event_payments` y la pantalla de Pagos y fianzas antes de tocar nada — el requisito pide reutilizar, no crear un segundo sistema de pagos. |
-| EVT-006 | Eventos · Presupuesto | Organizar las partidas en categorías editables con sugerencias automáticas según el tipo de evento. Crear/renombrar/reorganizar categorías y mover partidas. Mostrar subtotales y mantener separados planeado, comprometido (vía encargos), pagado y lo registrado en Economía. | Acordado | — | — | El Presupuesto de evento ya distingue hoy Planeado/Comprometido vía encargos/Pagado de lo comprometido (ver Ayuda, entrada «Presupuesto») — el requisito nuevo es la organización por categorías, no las cuatro cifras, que ya existen. |
-| PG-001 | Pequeños Grandes · Hub | Las 3 tarjetas de acceso del hub (Puntos y recompensas / Educación financiera / Lista de deseos) en una sola columna, más pequeñas que la cabecera, proporción 16:9 sin recortar, sin bloques blancos ni subtítulos, imagen completa tocable. Sin generar ni tocar ninguna imagen aprobada. | Implementado | `7078fd9` | Test dedicado `src/ui/pequenosGrandesAccessCardsBloqueAUi.test.ts` (6 tests). `typecheck`/`lint`/`build` en verde. Deploy confirmado con éxito (`gh run watch`). | Verificación manual en navegador/móvil no registrada expresamente en este documento — pendiente de confirmar antes de pasar a Probado. |
-| EVT-007 | Eventos · Proveedores | Botones «+ Nuevo proveedor»/«+ Vincular proveedor existente» arriba, visibles sin scroll; texto introductorio plegado en «ℹ️ Qué es esto»; menú «⋯» por proveedor (Editar/Llamar/Email/Copiar email/Guardar en contactos/Descartar-Recuperar/Desvincular); descartar o desvincular nunca borra del registro familiar. | Implementado | `1c67ded` | Test dedicado `src/ui/eventosProveedoresOfertasBloqueB1B5B6Ui.test.ts` (19 tests, cubre también EVT-009 y el menú de ofertas). `typecheck`/`lint`/`build` en verde. Deploy confirmado con éxito. | Verificación manual no registrada expresamente en este documento — pendiente de confirmar. |
-| EVT-008 | Eventos · Ofertas | Formulario único («OfferFormFields») para crear y editar una oferta: proveedor, nombre opcional, importe total y «¿Qué incluye la oferta?» con Texto libre \| Desglosado. En Desglosado, servicios añadibles antes de guardar la oferta. Cambiar de modo nunca borra servicios ya guardados. «Más detalles (opcional)» agrupa qué NO incluye, fechas, condiciones, notas y adjunto. | Probado | `ef0c12c`, `070da58` | Migración `0232` (aditiva, con rollback). Test dedicado `src/ui/eventosOfertaUnificadaBloqueB3B4Ui.test.ts` (21 tests, incluye el caso «nunca borra en silencio al cambiar de modo» y que el nombre de la oferta se ve en las dos listas de tarjetas). Suite completa 361/361 archivos en verde tras el cambio. `typecheck`/`lint`/`build` en verde. Deploy confirmado con éxito. **Verificación manual real**: flujo completo (crear oferta con servicio en borrador → guardar → editar → detección automática de Desglosado → añadir segundo servicio → guardar → comprobar persistencia) probado en vivo contra los datos reales de Supabase de la familia, con limpieza inmediata de los datos de prueba. | La visualización del nombre de la oferta en las tarjetas (commit `070da58`) se verificó solo con test automático, no con captura real en navegador — sesión caducada al intentar repetirla. Pendiente una comprobación visual rápida la próxima vez que haya sesión abierta. |
-| EVT-009 | Eventos · Importación con IA | Selector único (📷 Hacer foto / 🖼️ Galería / 📁 Archivo) reutilizado de `FileOrPdfPicker` para importar presupuestos y fichas de proveedor; corrige el nombre de archivo adjunto cortado en móvil. | Implementado | `1c67ded` | Cubierto por `eventosProveedoresOfertasBloqueB1B5B6Ui.test.ts` y por `src/ui/offerBudgetImportUi.test.ts` (servicios incluidos/excluidos antes de aplicar). `typecheck`/`lint`/`build` en verde. Deploy confirmado con éxito. | Verificación manual en Android/iPhone real no registrada en este documento — pendiente de confirmar. |
-| EVT-010 | Eventos · Edición de ofertas | «Editar» abre el mismo formulario que crear, precargado con los servicios y el modo (Texto libre/Desglosado) ya guardados; nunca duplica ofertas; nunca pierde servicios, adjuntos, condiciones ni fechas; respeta el versionado (`supersedesOfferId`). | Probado | `ef0c12c`, `070da58` | Mismo test `eventosOfertaUnificadaBloqueB3B4Ui.test.ts` (carga de servicios existentes, auto-detección de modo, sincronización solo al guardar en Desglosado, actualizar sin duplicar). **Verificación manual real**: editar una oferta de prueba añadiendo un segundo servicio y confirmar en base de datos que ambos persistieron, ya detallado en EVT-008 (mismo flujo). | Igual que EVT-008: el añadido posterior (nombre visible) no se ha vuelto a comprobar a mano. |
+| EVT-A1 | Acceso "Proveedores y ofertas" desde Eventos→Inicio, sin depender de un evento | Implementado | `868a532`, `EventosScreen.tsx:775-786,874` | Cubierto por suite general de Eventos | — | — |
+| EVT-A2 | Registro global: buscar, histórico de ofertas por evento, valoraciones, habituales | Parcial | `providersGlobal.ts:44-103`; histórico → `listOfferHistoryForProvider` (`c67f6d8`) | `eventosProveedorHistorialOfertasUi.test.ts` (8 tests) | EVT-A5 (ficha provisional) | "Habitual" no se ve en la pantalla global (solo dentro de un evento); sin campo de valoraciones/comentarios privados — no implementado todavía |
+| EVT-A3 | Renombrar módulo, vista exclusiva por evento, filtros De interés/Todos/Descartados, archivar no borra | Implementado | `614f5f2` *(alias anterior: EVT-007)* | `eventosProveedoresOfertasBloqueB1B5B6Ui.test.ts` | — | — |
+| EVT-A4 | Fichas compactas cerrado/abierto, buscador, sin botones ambiguos | Parcial | `EventosScreen.tsx:12770-12774,13108-13112` | — | — | Datos de contacto siempre visibles (no colapsan en la vista cerrada); sin buscador dentro de la vista de un evento (solo en el registro global) |
+| EVT-A5 | Ficha provisional si no existe, sugerencias al escribir, detectar duplicados sin fusionar sola | Implementado (en ofertas de un encargo) | `findProviderGlobalMatch` (`providersGlobal.ts`), `AddOfferForm` (`c67f6d8`) | `eventosOfertaProveedorAutoVinculoUi.test.ts` (9 tests) | — | Mismo patrón NO aplicado todavía a "Resolver encargo" con proveedor nuevo (`ResolveGroupModal`) ni a `AddProviderAndLinkForm` (alta directa desde Proveedores de un evento) — pendiente en una fase posterior |
+| EVT-A6 | Importar con foto/Maps, extraer datos, no sobrescribir, conservar documento original | Parcial | `providerContactDocument.ts`, `AddProviderGlobalForm` | — | — | No conserva la imagen/documento original de la ficha de proveedor; no distingue WhatsApp de teléfono |
+| EVT-A7 | "Guardar en contactos" (.vcf), compartible, no modifica la ficha | Implementado | `3c80f8d`, `EventosScreen.tsx:12588-12609` | `providerSaveToContactsUi.test.ts` | — | — |
+
+## Parte B — Ofertas y presupuestos de proveedores (CONSOLIDADO)
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| EVT-B1 | Ofertas independientes de encargos, 3 puntos de entrada, sin efectos colaterales | Implementado | `b74cfdc`, `eventTaskGroups.ts:303-329` | `eventTaskGroupLooseOffersUi.test.ts` | — | — |
+| EVT-B2 | Servicios estructurados, 3 totales distinguidos, descuentos/impuestos *(alias anterior: parte de EVT-008)* | Parcial | `61d975a`, `OfferItemsPanel` | `eventTaskGroupOfferItemsUi.test.ts` | — | Descuentos/impuestos no son datos propios, solo texto libre en condiciones/notas |
+| EVT-B3 | Importar PDF/foto, extraer datos, descuentos/impuestos, revisión previa *(alias anterior: parte de EVT-008/EVT-009)* | Parcial | `offerBudgetDocument.ts`, `ImportOfferBudgetButton` | `offerBudgetImportUi.test.ts` | — | Mismo hueco que EVT-B2 (sin descuentos/impuestos propios); falta nombre descriptivo de oferta/adjunto a partir del número de presupuesto (pedido en RECUPERACIÓN) |
+| EVT-B4 | Comparar ofertas, versiones, recuperar descartadas, diferenciar descartar/desvincular/eliminar *(alias anterior: EVT-010)* | Parcial | `ef0c12c`, `070da58`, `OffersComparison` | `eventosOfertaUnificadaBloqueB3B4Ui.test.ts` (21 tests) | — | Comparación solo dentro de un encargo ya abierto, no como herramienta previa e independiente (pedido explícito en RECUPERACIÓN); falta "Desvincular" para una oferta (hoy solo Descartar/Eliminar) |
+| EVT-B5 | Histórico de ofertas de eventos anteriores visible en el registro global, sin trasladarse sola | Implementado | `c67f6d8`, `listOfferHistoryForProvider` | `eventosProveedorHistorialOfertasUi.test.ts` | EVT-A2 | — |
+
+## Parte C — Encargos y preparativos (CONSOLIDADO)
+
+| ID | Descripción | Estado | Pendientes |
+|---|---|---|---|
+| EVT-C1 | "Consultar ofertas disponibles" sin obligar a resolver el encargo | Pendiente | Solo accesible hoy vía "Resolver encargo"; falta un acceso propio |
+| EVT-C2a | Seleccionar servicios, precargar, calcular total, confirmar | Implementado | Funciona para un único proveedor por encargo |
+| EVT-C2b | Contratar con varios proveedores en el mismo encargo | Pendiente | Un encargo solo admite una resolución/proveedor hoy |
+| EVT-C2c | Trazabilidad oferta→servicios→encargo→presupuesto→pago | Parcial | Oferta↔resolución sí; resolución/pago↔presupuesto sin FK (requiere Parte D) |
+| EVT-C3a | Distinguir presupuestar/elegir oferta/confirmar/ejecutar/completar tareas | Implementado | — |
+| EVT-C3b | Revisar el texto "¿Cómo se ha resuelto?" | Pendiente | Texto sin tocar desde el prompt |
+| EVT-C4 | Precio total o desglosado al resolver, no sobrescribir sin confirmación | Parcial | Desglose solo existe hoy en Ofertas; `ResolveGroupModal`/`AddPaymentModal`/`AddBudgetItemModal` siguen con un único campo numérico |
+| EVT-C5a | Color por encargo, integrado con Pastel/Vivo/Neutro, sin fusionar | Implementado | — |
+| EVT-C5b | Plegar/desplegar cada encargo individualmente | Pendiente | Solo hay togglees globales (mostrar todas/completadas), no por encargo |
+
+## Parte D — Presupuesto (CONSOLIDADO) — también cubre EVT-006
+
+| ID | Descripción | Estado | Pendientes |
+|---|---|---|---|
+| EVT-D1 | Distinguir Planeado/Comprometido/Pagado/Gastado | Parcial | Existen, pero solo como totales agregados de TODO el evento, nunca por partida |
+| EVT-D2 | Consultar por Concepto/Encargo/Proveedor/Categoría | Pendiente | `event_budget_items` no tiene columnas `provider_id` ni `group_id` — falta en el esquema, no solo en la UI |
+| EVT-D3 | Desgloses si existen, totales simples si no | Pendiente | Las partidas son una línea plana sin conceptos |
+| EVT-D4 | Evitar duplicar importes | Implementado | — |
+| EVT-D5 | Gasto bancario ≠ pago manual en Eventos | Implementado | — |
+| EVT-D6 | Importes desconocidos ≠ cero | Implementado | — |
+| EVT-D7 | Preservar partidas manuales e historial | Parcial | Se preservan los datos; sin historial consultable de cambios |
+| EVT-006 *(alias de EVT-D2+D3)* | Categorías editables con sugerencias automáticas, partidas agrupadas plegables con subtotales | Pendiente | Mismo hueco de esquema que EVT-D2 — necesita migración (categoría/encargo/proveedor en `event_budget_items`) |
+
+## Parte E — Pagos y fianzas (CONSOLIDADO) — también cubre EVT-005
+
+| ID | Descripción | Estado | Pendientes |
+|---|---|---|---|
+| EVT-E1 | Tarjetas compactas desplegables | Implementado | — |
+| EVT-E2 | Vista principal con 8 campos (incl. barra de progreso) | Parcial | Solo 4 de 8 visibles sin desplegar; **la barra de progreso no existe en ningún sitio del archivo** |
+| EVT-E3 | Ordenar por 6 criterios | Pendiente | Sin estado de ordenación |
+| EVT-E4 | 3 filtros Todos/Pendientes/Pagados | Implementado | — |
+| EVT-E5 | Agrupar por categoría o proveedor | Pendiente | `event_payments` no tiene columna `category` — falta en el esquema |
+| EVT-E6 | Al desplegar: desglose contratado, pagos parciales, fechas, fianzas, documentos, historial | Pendiente | Solo existe corregir un importe acumulado (`deposit_paid`), no una lista de pagos parciales con fecha |
+| EVT-E7 | Mantener "Corregir lo pagado" | Implementado | — |
+| EVT-E8 | No duplicar importes / sin movimientos bancarios automáticos | Implementado | — |
+| EVT-005 *(alias de EVT-E2+E3+E5+E6)* | "+ Añadir pago" con historial de pagos parciales, fianzas, documentos | Pendiente | Necesita migración (tabla de pagos parciales en vez de un acumulado) |
+
+## Parte F — Calendario (CONSOLIDADO)
+
+| ID | Descripción | Estado |
+|---|---|---|
+| EVT-F1 | Preservar correcciones anteriores (overflow, FAB, navegación) | Implementado — regresión en sí no verificable por código |
+| EVT-F2 | Auditar colores por calendario/persona | Implementado el mecanismo — auditoría de contraste no verificable |
+| EVT-F3 | Integración con Eventos (fechas, sin duplicados, ofertas no crean eventos) | Implementado |
+| EVT-F4 | Auditoría de pendientes de Calendario como entregable propio | Pendiente — no existe documento dedicado |
+
+## Parte G — Configurador de eventos (CONSOLIDADO) — también cubre EVT-001/EVT-002
+
+| ID | Descripción | Estado | Pendientes |
+|---|---|---|---|
+| EVT-G1 | Reglas generales (no repreguntar, 5 estados, no inventar) | Implementado | — |
+| EVT-G2 *(alias: EVT-001)* | Música del lugar reflejada automáticamente, combinar fuentes | **Implementado — bug real corregido 2026-10-10** | `c67f6d8`: `MusicaFiestaBlock` filtraba sus propias decisiones y descartaba la de "qué incluye el lugar"; corregido. **Sigue pendiente**: indicar en qué parte del evento actúa el DJ/música en directo (Ceremonia/Cóctel/Comida/Baile/Fiesta) |
+| EVT-G3 | Canciones en momentos especiales | Parcial | Solo Primer baile tiene canción; Entrada/Salida/Tarta/Ramo/Presentación de fotos no |
+| EVT-G4 | Fotos: selección múltiple combinable + excluyentes | Implementado | — |
+| EVT-G5 *(alias: EVT-002)* | Decoración del lugar reflejada automáticamente, zonas | **Implementado — bug real corregido 2026-10-10** | `c67f6d8`: mismo bug que G2, en `OtrosDecoracionBlock`. **Sigue pendiente**: el caso "combinación" no desglosa qué zona se contrata vs. cuál hace la familia |
+| EVT-003 | Sustituir "Resuelto" por un resumen real en TODOS los resúmenes de decisión | Parcial | Ya existe el patrón (p. ej. Personas especiales) pero no se ha auditado si queda algún resumen con el texto genérico |
+| EVT-004 | Plegar independientemente los grupos de preguntas de cada sección | Pendiente | No implementado — revisar que no colisione con el aislamiento de pregunta ya existente |
+
+## Parte H — Seguridad y migraciones (CONSOLIDADO)
+
+Implementado en las migraciones revisadas (RLS explícito por familia, sin fusión automática de proveedores, FKs antiguas preservadas). La auditoría previa como proceso formal (los 10 pasos del prompt) no deja rastro de código — **no verificable** como entregable separado.
+
+## Detalles y recuerdos (no es parte del CONSOLIDADO — origen: tanda "Personas especiales")
+
+| ID | Descripción | Estado | Pendientes |
+|---|---|---|---|
+| EVT-DET-1 | Completar pendientes de QA_EVENTOS_PENDIENTES.md #495-501 (Personas especiales) | Por auditar | Pendiente de localizar qué de esa lista sigue sin hacer |
+| EVT-DET-2 | Investigar filas aparentemente duplicadas y estados Comprado/Pendiente | Por auditar | — |
+| EVT-DET-3 | Corregir presentación móvil sin ocultar ni borrar datos | Por auditar | — |
+
+---
+
+## Pequeños Grandes (PG-MAESTRO, 18 fases)
+
+| ID | Fase | Estado | Commits | Pendientes |
+|---|---|---|---|---|
+| PG-F1 | Auditoría inicial | Implementado | — (sin código, solo auditoría) | — |
+| PG-F2 | Inicio de Pequeños Grandes (hub, 3 tarjetas) | Implementado | `b3149f5`, refinado visualmente en `7078fd9` *(alias: PG-001)* | — |
+| PG-F3 | Identidad visual y cabeceras | Implementado | `b220a7f` | — |
+| PG-F4 | Puntos y recompensas | Implementado | `b3149f5`, bug de permisos corregido en `0231` | — |
+| PG-F5 | Educación financiera: reorganización | Implementado | `72fb6bf` | — |
+| PG-F6 | Educación financiera: diseño infantil (4 tarjetas) | Implementado | `a824ab8` | — |
+| PG-F7 | Ingresos y reparto automático 60/20/20 | Implementado | `40927da`, migración `0230` | — |
+| PG-F8 | Autonomía y aprobaciones (adulto aprueba operaciones infantiles) | Pendiente | — | Sin estado "pendiente" en `registerKidIncome`; se aplica directo |
+| PG-F9 | Conceptos con emojis (niños que no leen) | Pendiente | — | Sin selector de conceptos visuales en el formulario |
+| PG-F10 | Objetivos de ahorro completos | Parcial | `FinanceScreen.tsx:11282-11299` | Barra de progreso y porcentaje sí; emoji/foto por objetivo no |
+| PG-F11 | Fondo común de impuestos (aportaciones, historial, gastos) | Pendiente | — | Solo existe una frase explicativa, sin vista agregada |
+| PG-F12-16 | Lista de deseos completa (listas, regalos, invitados, reservas, sorpresa) | Pendiente | `PequenosGrandesScreen.tsx` tiene un "coming soon" honesto (`ListaDeseosComingSoon`) | Módulo nuevo completo sin construir — requiere tablas nuevas, enlaces públicos, RLS por enlace, protección de secreto |
+| PG-F17 | Auditoría dedicada de seguridad y privacidad | Pendiente | — | No se hizo como fase propia |
+| PG-F18 | Integración, Ayuda y pruebas (checklist de 24 + informe de 10 puntos) | Parcial | Ayuda actualizada en cada fase entregada | Checklist específico de 24 puntos no ejecutado como tal |
+
+---
 
 ## Procedimiento obligatorio desde ahora
 

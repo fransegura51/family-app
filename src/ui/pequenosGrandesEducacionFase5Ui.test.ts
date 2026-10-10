@@ -50,9 +50,10 @@ describe('Breadcrumb — un nivel real, nunca "Pequeños Grandes" repetido (la S
   it('Educación financiera usa un único nivel con su propia etiqueta', () => {
     expect(PG_SCREEN).toContain('<SectionBreadcrumb subsection="Educación financiera" />')
   })
-  it('Lista de deseos ya no repite "Pequeños Grandes" como nivel extra', () => {
-    expect(PG_SCREEN).toContain('<SectionBreadcrumb subsection="Lista de deseos" />')
-    expect(PG_SCREEN).not.toContain("subsection={[{ label: 'Pequeños Grandes'")
+  it('Lista de deseos (WishlistScreen.tsx, construida 2026-10-10) tampoco repite "Pequeños Grandes" como nivel extra', () => {
+    const wishlistScreen = UI['/src/ui/WishlistScreen.tsx']
+    expect(wishlistScreen).toContain('<SectionBreadcrumb subsection="Lista de deseos" />')
+    expect(wishlistScreen).not.toContain("subsection={[{ label: 'Pequeños Grandes'")
   })
   it('Puntos y recompensas (RewardsScreen) ya no dice "Inicio" estando dentro del hub — nombra su propio módulo', () => {
     expect(REWARDS_SCREEN).toContain('<SectionBreadcrumb subsection="Puntos y recompensas" />')

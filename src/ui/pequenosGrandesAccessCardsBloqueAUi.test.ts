@@ -39,9 +39,9 @@ describe('PequenosGrandesScreen — los 3 accesos en una sola columna, sin recor
 // las 3 imágenes se ven completas sin recortar, en una columna, más pequeñas que la cabecera.
 
 describe('La cabecera MASTER y las cabeceras de módulo no se tocan (Bloque A lo prohíbe explícitamente)', () => {
-  it('las 3 cabeceras kitchen-header-wide siguen intactas, mismas imágenes de siempre', () => {
+  it('las 2 cabeceras propias de este archivo siguen intactas, mismas imágenes de siempre (Lista de deseos tiene la suya en WishlistScreen.tsx desde que se construyó, 2026-10-10)', () => {
     const matches = PG_SCREEN.match(/className="kitchen-header kitchen-header-wide"/g) ?? []
-    expect(matches.length).toBe(3)
+    expect(matches.length).toBe(2)
     expect(PG_SCREEN).toContain("import pequenosGrandesHeaderImg from '@/assets/puntos/pequenos-grandes-header.jpg'")
   })
 })

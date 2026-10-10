@@ -50,9 +50,10 @@ describe('PequenosGrandesScreen — hub con tres accesos, ninguno muestra saldos
     expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
     expect(PG_SCREEN).not.toContain('to="/dinero"')
   })
-  it('"Lista de deseos" es un hueco honesto (en construcción), nunca una función fingida ni un enlace roto', () => {
-    expect(PG_SCREEN).toContain('ListaDeseosComingSoon')
-    expect(PG_SCREEN).toContain('todavía se está construyendo')
+  it('"Lista de deseos" es la pantalla real (construida 2026-10-10), nunca el hueco "próximamente" de antes', () => {
+    expect(PG_SCREEN).toContain("if (openModule === 'deseos') return <WishlistScreen profile={profile} onBack={() => setOpenModule(null)} />")
+    expect(PG_SCREEN).not.toContain('ListaDeseosComingSoon')
+    expect(PG_SCREEN).not.toContain('todavía se está construyendo')
   })
   it('volver a la sección (useSectionHome) resetea el hub al grid de tarjetas, mismo patrón que Eventos', () => {
     expect(PG_SCREEN).toContain('useSectionHome(() => setOpenModule(null))')

@@ -5,16 +5,22 @@ import { describe, expect, it } from 'vitest'
 const UI = (import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)
 const PG_SCREEN = UI['/src/ui/PequenosGrandesScreen.tsx']
 const REWARDS_SCREEN = UI['/src/ui/RewardsScreen.tsx']
+// Lista de deseos (Fases 12-16, construida 2026-10-10) ya no es un hueco dentro de
+// PequenosGrandesScreen.tsx — su propia cabecera vive en WishlistScreen.tsx, su pantalla real.
+const WISHLIST_SCREEN = UI['/src/ui/WishlistScreen.tsx']
 
-describe('PequenosGrandesScreen — las 3 cabeceras propias (hub, Educación financiera, Lista de deseos)', () => {
-  it('importa las 3 imágenes reales, ninguna queda pendiente', () => {
+describe('PequenosGrandesScreen — las 2 cabeceras propias del hub (hub, Educación financiera)', () => {
+  it('importa las 2 imágenes reales, ninguna queda pendiente', () => {
     expect(PG_SCREEN).toContain("import pequenosGrandesHeaderImg from '@/assets/puntos/pequenos-grandes-header.jpg'")
     expect(PG_SCREEN).toContain("import educacionFinancieraHeaderImg from '@/assets/puntos/educacion-financiera-header.jpg'")
-    expect(PG_SCREEN).toContain("import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'")
   })
-  it('las 3 pantallas llevan su kitchen-header-wide (mismo ratio 16:9 que el resto de Pequeños Grandes)', () => {
+  it('las 2 pantallas llevan su kitchen-header-wide (mismo ratio 16:9 que el resto de Pequeños Grandes)', () => {
     const matches = PG_SCREEN.match(/className="kitchen-header kitchen-header-wide"/g) ?? []
-    expect(matches.length).toBe(3)
+    expect(matches.length).toBe(2)
+  })
+  it('Lista de deseos (WishlistScreen.tsx) tiene su propia cabecera real, mismo ratio', () => {
+    expect(WISHLIST_SCREEN).toContain("import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'")
+    expect(WISHLIST_SCREEN).toContain('className="kitchen-header kitchen-header-wide"')
   })
 })
 

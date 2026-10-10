@@ -8,6 +8,7 @@ import { HomeScreen } from '@/ui/HomeScreen'
 import { NavShell } from '@/ui/NavShell'
 
 const RsvpScreen = lazy(() => import('@/ui/RsvpScreen').then((m) => ({ default: m.RsvpScreen })))
+const WishlistGuestScreen = lazy(() => import('@/ui/WishlistGuestScreen').then((m) => ({ default: m.WishlistGuestScreen })))
 
 // Preparación de escala / "que sea la mejor": el bundle único pesaba
 // ~1 MB (Vite avisaba en cada build) y en un móvil con datos eso es la
@@ -78,6 +79,13 @@ function rsvpParamsFromLocation(): { token: string | null; openToken: string | n
   return { token: params.get('rsvp'), openToken: params.get('rsvp_open') }
 }
 
+// Página pública de "Lista de deseos" (Pequeños Grandes) — mismo motivo y mismo patrón que
+// rsvpParamsFromLocation justo arriba: un invitado sin cuenta PEPA nunca debe ver el login, y "/" es un
+// archivo real en GitHub Pages, sin el truco de 404.html de por medio.
+function wishlistGuestTokenFromLocation(): string | null {
+  return new URLSearchParams(window.location.search).get('deseos')
+}
+
 // Enlace de "¿Olvidaste tu contraseña?" (LoginScreen) — Supabase
 // vuelve aquí con #access_token=...&type=recovery en el hash. Se
 // reconoce ANTES que nada (como RsvpScreen más abajo), para no pasar
@@ -97,6 +105,14 @@ export function App() {
     return (
       <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <RsvpScreen token={rsvpToken} openToken={rsvpOpenToken} />
+      </Suspense>
+    )
+  }
+  const wishlistGuestToken = wishlistGuestTokenFromLocation()
+  if (wishlistGuestToken) {
+    return (
+      <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
+        <WishlistGuestScreen token={wishlistGuestToken} />
       </Suspense>
     )
   }

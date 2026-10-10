@@ -1675,3 +1675,47 @@ export interface EventDeclaredNeed {
   acceptedNeedId: string | null
   createdAt: string
 }
+
+// Lista de deseos (Pequeños Grandes, Fases 12-16, migración 0239) — por persona/año/celebración; la
+// fecha de celebración es opcional a propósito (no todas las celebraciones tienen fecha fija).
+export interface Wishlist {
+  id: string
+  familyId: string
+  ownerMemberId: string
+  year: number
+  occasion: string
+  celebrationDate: string | null
+  guestToken: string | null
+  createdBy: string | null
+  createdAt: string
+}
+
+export interface WishlistItem {
+  id: string
+  wishlistId: string
+  familyId: string
+  name: string
+  description: string | null
+  link: string | null
+  price: number | null
+  // Regalo conjunto: varias personas pueden reservarlo a la vez (ver WishlistItemReservation).
+  allowJoint: boolean
+  photoStoragePath: string | null
+  photoOriginalName: string | null
+  photoMimeType: string | null
+  sortOrder: number
+  createdAt: string
+}
+
+// Reserva SECRETA (migración 0239) — ni el destinatario de la lista ni ningún 'child' pueden verla
+// (RLS a nivel de fila, no solo ocultado en la interfaz); "deshacer" marca undoneAt, nunca se borra.
+export interface WishlistItemReservation {
+  id: string
+  itemId: string
+  familyId: string
+  reservedByMemberId: string | null
+  reservedByGuestName: string | null
+  allowJoint: boolean
+  createdAt: string
+  undoneAt: string | null
+}

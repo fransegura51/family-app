@@ -69,3 +69,34 @@ jobs:
           name: PEPA-android
           path: PEPA-android.apk
           if-no-files-found: error
+
+  # Prueba de humo: abre el APK recién construido en un móvil Android virtual y comprueba que no se cierra solo. Si falla, el registro del job
+  # trae la traza del fallo. Así no se entrega un APK que se cierra al abrirlo (pasó con el complemento de voz).
+  smoke:
+    needs: apk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: PEPA-android
+          path: apk
+      - name: Activar KVM (emulador rápido)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Abrir el APK en un móvil virtual
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/android-smoke.sh apk/PEPA-android.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-logcat
+          path: smoke-logcat.txt
+          if-no-files-found: ignore

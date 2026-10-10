@@ -73,13 +73,47 @@ describe('dictado por voz en la app nativa', () => {
     expect(plugin.requestPermissions).not.toHaveBeenCalled()
   })
 
-  it('sin servicio de dictado en el móvil avisa en vez de quedarse mudo', async () => {
+  it('sin servicio interno de reconocimiento pasa a la ventana de voz del sistema y entrega lo que se ha dicho', async () => {
     plugin.available.mockResolvedValue({ available: false })
+    plugin.start.mockResolvedValue({ matches: ['pon leche en la lista'] })
+    const seen: string[] = []
+    listenContinuous({ onTranscript: (t) => seen.push(t), onError: vi.fn() })
+    await flush()
+    expect(plugin.start).toHaveBeenCalledWith(expect.objectContaining({ popup: true, language: 'es-ES' }))
+    expect(seen).toEqual(['pon leche en la lista'])
+  })
+
+  it('si el servicio interno se cierra solo dos veces seguidas sin oír nada, pasa a la ventana de voz en vez de quedarse mudo', async () => {
+    const seen: string[] = []
+    listenContinuous({ onTranscript: (t) => seen.push(t), onError: vi.fn() })
+    await flush()
+    emit('listeningState', { status: 'stopped' }) // 1.ª: se cierra al instante sin oír nada
+    await vi.advanceTimersByTimeAsync(500) // se reintenta una vez
+    expect(plugin.start).toHaveBeenCalledTimes(2)
+    plugin.start.mockResolvedValue({ matches: ['hola pepa'] })
+    emit('listeningState', { status: 'stopped' }) // 2.ª seguida: plan B
+    await flush()
+    expect(plugin.start).toHaveBeenLastCalledWith(expect.objectContaining({ popup: true }))
+    expect(seen).toEqual(['hola pepa'])
+  })
+
+  it('si el servicio interno no arranca, prueba la ventana del sistema; si también falla, dice la causa real de los dos fallos', async () => {
+    plugin.start.mockRejectedValueOnce(new Error('Missing permission')).mockRejectedValueOnce(new Error('Activity not found'))
     const onError = vi.fn()
     listenContinuous({ onTranscript: vi.fn(), onError })
     await flush()
-    expect(onError).toHaveBeenCalledWith(expect.stringContaining('dictado'))
-    expect(plugin.start).not.toHaveBeenCalled()
+    expect(plugin.start).toHaveBeenCalledTimes(2)
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Activity not found'))
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Missing permission'))
+  })
+
+  it('un fallo al preparar el dictado nombra el paso y la causa, no un mensaje genérico', async () => {
+    plugin.checkPermissions.mockRejectedValueOnce(new Error('Plugin is not implemented'))
+    const onError = vi.fn()
+    listenContinuous({ onTranscript: vi.fn(), onError })
+    await flush()
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Plugin is not implemented'))
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('pedir el permiso del micrófono'))
   })
 
   it('lo que se va oyendo llega como texto; al terminar la frase se abre otra sesión y las frases se unen con coma (separan los productos de una lista)', async () => {

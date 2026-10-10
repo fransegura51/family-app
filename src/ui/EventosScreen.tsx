@@ -4076,7 +4076,10 @@ function OffersComparison({
           <div key={o.id} className="card" style={{ padding: 8, marginTop: 6, opacity: o.status === 'descartada' ? 0.6 : 1 }}>
             <div className="inline-fields" style={{ alignItems: 'center' }}>
               <div style={{ flex: 1 }}>
-                <strong>{o.providerName}</strong>
+                <strong>
+                  {o.providerName}
+                  {o.name ? ` · ${o.name}` : ''}
+                </strong>
                 <span className="muted" style={{ fontSize: 12 }}>
                   {' '}
                   · {o.amount.toFixed(2)} €
@@ -4658,7 +4661,10 @@ function ProviderOffersPanel({
               <div key={o.id} className="card" style={{ padding: 8, marginTop: 6, opacity: o.status === 'descartada' ? 0.6 : 1 }}>
                 <div className="inline-fields" style={{ alignItems: 'center' }}>
                   <div style={{ flex: 1 }}>
-                    <strong>{o.amount.toFixed(2)} €</strong>
+                    <strong>
+                      {o.name ? `${o.name} · ` : ''}
+                      {o.amount.toFixed(2)} €
+                    </strong>
                   </div>
                   <span className="muted" style={{ fontSize: 11 }}>
                     {OFFER_STATUS_LABELS[o.status]}

@@ -20,6 +20,8 @@ const OFFER_FORM_FIELDS = window_(UI, 'function OfferFormFields(', '\nfunction O
 const ADD_OFFER_FORM = window_(UI, 'function AddOfferForm({', '\nfunction EditOfferForm(')
 const EDIT_OFFER_FORM = window_(UI, 'function EditOfferForm({', '\nfunction ProviderOffersPanel(')
 const ADD_LOOSE_OFFER_FORM = window_(UI, 'function AddLooseOfferForm({', '\nfunction OfferItemsPanel(')
+const OFFERS_COMPARISON = window_(UI, 'function OffersComparison(', '\nfunction AddOfferForm(')
+const PROVIDER_OFFERS_PANEL = window_(UI, 'function ProviderOffersPanel({', '\nfunction AddLooseOfferForm(')
 
 describe('Migración 0232 — nombre opcional de la oferta, aditiva, sin tocar ofertas ya existentes', () => {
   it('añade la columna "name", nullable, con límite de longitud', () => {
@@ -109,6 +111,15 @@ describe('Cambiar de modo nunca borra información en silencio (petición real e
   it('un servicio ya existente se actualiza (no se duplica); uno nuevo (sin id) se crea', () => {
     expect(saveFn).toContain('if (item.id) await updateEventTaskGroupOfferItem(item.id, item)')
     expect(saveFn).toContain('else await addEventTaskGroupOfferItem(offer, item)')
+  })
+})
+
+describe('El nombre de la oferta (cuando se puso) se ve en las dos listas de tarjetas — si no, no sirve para distinguir varias del mismo proveedor', () => {
+  it('OffersComparison (dentro de un encargo) muestra o.name junto al proveedor', () => {
+    expect(OFFERS_COMPARISON).toContain('{o.name ? ` · ${o.name}` : \'\'}')
+  })
+  it('ProviderOffersPanel (ofertas sueltas de un proveedor) muestra o.name junto al importe', () => {
+    expect(PROVIDER_OFFERS_PANEL).toContain('{o.name ? `${o.name} · ` : \'\'}')
   })
 })
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildFoodContext } from '@/domain/eventFood'
 import { decisionStatus, pairQuestionKey, type PairQuestionInfo } from '@/domain/eventPairDecisions'
-import { buildEspecialDecisionSummary, buildFoodDecisionSummary, buildPairDecisionSummary, mergeTipoResolucionPairs } from '@/domain/eventDecisionsSummary'
+import { buildEspecialDecisionSummary, buildFamiliaresDecisionSummary, buildFoodDecisionSummary, buildPairDecisionSummary, mergeTipoResolucionPairs } from '@/domain/eventDecisionsSummary'
 import { ESPECIAL_HAY_QUESTION_KEY, ESPECIAL_VESTIMENTA_QUESTION_KEY, ESPECIAL_COMPLEMENTOS_QUESTION_KEY, ESPECIAL_REGALOS_QUESTION_KEY } from '@/domain/eventSpecialPeople'
 import { makeDecision, makeEvent } from '@/domain/eventFoodFixtures'
 import type { EventDecision } from '@/domain/types'
@@ -159,5 +159,22 @@ describe('buildPairDecisionSummary — usa la fusión tipo+resolución, nunca do
     const vestuarioRows = [...s.taken, ...s.pending].filter((i) => i.key.startsWith(pairQuestionKey('partner1', 'vestuario')))
     expect(vestuarioRows.length).toBe(1)
     expect(s.taken.some((t) => t.key === pairQuestionKey('partner1', 'vestuario.resolucion'))).toBe(true)
+  })
+})
+
+describe('EVT-003 — buildFamiliaresDecisionSummary: statusLabel real (qué necesitan y para cuántos), nunca el genérico "Resuelto"', () => {
+  it('necesidades decididas: statusLabel combina las necesidades elegidas y el alcance', () => {
+    const decisions = [makeDecision('familiares.necesidades', { selected: ['vestimenta', 'peluqueria'], alcance: 'algunos', selectedPersonIds: ['p1'] })]
+    const s = buildFamiliaresDecisionSummary(decisions, 3)
+    const item = s.taken.find((t) => t.key === 'familiares.necesidades')
+    expect(item?.statusLabel).toBe('Vestimenta especial, Peluquería (Algunos)')
+  })
+
+  it('nunca cae en el genérico "Resuelto": statusLabel siempre tiene contenido real cuando hay respuesta', () => {
+    const decisions = [makeDecision('familiares.necesidades', { selected: ['maquillaje'], alcance: 'todos', selectedPersonIds: [] })]
+    const s = buildFamiliaresDecisionSummary(decisions, 2)
+    const item = s.taken.find((t) => t.key === 'familiares.necesidades')
+    expect(item?.statusLabel).not.toBe('Resuelto')
+    expect(item?.statusLabel).toBe('Maquillaje (Todos)')
   })
 })

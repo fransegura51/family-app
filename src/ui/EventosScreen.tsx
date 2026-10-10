@@ -9040,10 +9040,15 @@ function FoodInheritedLine({ children }: { children: ReactNode }) {
 // resumen de solo lectura (no hay ninguno hoy, pero mantiene el componente utilizable sin forzar el callback).
 function DecisionSummaryDetails({ summary, onSelect }: { summary: DecisionSummary; onSelect?: (key: string) => void }) {
   if (summary.taken.length === 0 && summary.pending.length === 0) return null
-  function Row({ item, icon, statusLabel }: { item: DecisionSummaryItem; icon: string; statusLabel: string }) {
+  // EVT-003 — el texto de cada decisión tomada (item.text) ya es, en todos los bloques, una frase completa
+  // y real ("La fecha está decidida", "Vendrán niños"...). Cuando el bloque además calcula un statusLabel
+  // propio (p. ej. Momentos especiales, Música) se muestra como coletilla corta; cuando NO lo calcula, antes
+  // se rellenaba con la palabra genérica "Resuelto" sin ningún contenido nuevo — ahora simplemente se omite
+  // esa coletilla, porque item.text ya es el resumen real y repetir "Resuelto" no añadía nada.
+  function Row({ item, icon, statusLabel }: { item: DecisionSummaryItem; icon: string; statusLabel?: string }) {
     const content = (
       <>
-        {icon} {item.text} · {statusLabel} {onSelect && '→'}
+        {icon} {item.text} {statusLabel && <>· {statusLabel} </>}{onSelect && '→'}
       </>
     )
     return onSelect ? (
@@ -9061,7 +9066,7 @@ function DecisionSummaryDetails({ summary, onSelect }: { summary: DecisionSummar
         <div style={{ marginTop: 4 }}>
           <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>DECISIONES TOMADAS</div>
           {summary.taken.map((item) => (
-            <Row key={item.key} item={item} icon="✓" statusLabel={item.statusLabel ?? 'Resuelto'} />
+            <Row key={item.key} item={item} icon="✓" statusLabel={item.statusLabel} />
           ))}
         </div>
       )}

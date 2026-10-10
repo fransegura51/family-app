@@ -51,8 +51,10 @@ import {
   ESPECIAL_VESTIMENTA_QUESTION_KEY,
   ESPECIAL_COMPLEMENTOS_QUESTION_KEY,
   ESPECIAL_REGALOS_QUESTION_KEY,
+  FAMILIARES_NECESIDAD_OPTIONS,
   listEspecialBlockQuestions,
   listFamiliaresBlockQuestions,
+  type FamiliaresNecesidadesAnswer,
 } from '@/domain/eventSpecialPeople'
 import type { EventDecision, FamilyEvent } from '@/domain/types'
 
@@ -461,7 +463,16 @@ export function buildFamiliaresDecisionSummary(decisions: EventDecision[], peopl
       pending.push({ key: q.questionKey, text: pendingText(q.label) })
       continue
     }
-    taken.push({ key: q.questionKey, text: q.label.replace(/^¿|\?$/g, '') })
+    // EVT-003 — statusLabel real: qué necesitan de verdad (vestimenta/complementos/peluquería/maquillaje)
+    // y para cuántos (todos/algunos), en vez del genérico "Resuelto" que no decía nada nuevo.
+    const answer = decisions.find((d) => d.questionKey === q.questionKey)?.answer as unknown as FamiliaresNecesidadesAnswer | undefined
+    const needsLabel = answer?.selected.map((n) => FAMILIARES_NECESIDAD_OPTIONS.find((o) => o.value === n)?.label ?? n).join(', ')
+    const alcanceLabel = answer ? GRUPO_ALCANCE_SHORT_LABEL[answer.alcance] ?? answer.alcance : undefined
+    taken.push({
+      key: q.questionKey,
+      text: q.label.replace(/^¿|\?$/g, ''),
+      statusLabel: needsLabel && alcanceLabel ? `${needsLabel} (${alcanceLabel})` : alcanceLabel,
+    })
   }
   return { taken, pending }
 }

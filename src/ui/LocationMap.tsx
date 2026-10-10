@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadGoogleMaps } from '@/services/googleMapsLoader'
 import { allowGoogleMapsUse } from '@/services/googleMapsUsageGuard'
-import { buildTrackDetail, decodePolyline, type TrackPoint } from '@/domain/geo'
+import { buildTrackDetail, decodePolyline, distanceMeters, type TrackPoint } from '@/domain/geo'
 import { chunkVehicleRun, splitIntoParts } from '@/domain/roadTrace'
 import { getCachedRoad, joinRoadPaths, requestRoad, type RoadPath } from '@/services/roadTrace'
 import type { FamilyMember, MemberLocation, MemberLocationPoint } from '@/domain/types'
@@ -93,6 +93,25 @@ function getPhotoMarkerOverlayClass(g: typeof google) {
 // Mapa interactivo (Google Maps, con el tráfico en vivo activado) con
 // la posición de cada persona y su ruta de las últimas 24h. El
 // marcador es un círculo con la foto de perfil si la tiene, o su
+
+// Tramo SIN datos (el móvil no mandó nada por el medio): se dibuja de rayas, y si está lejos, por la carretera más probable entre sus dos
+// extremos (lo que hace el historial de Google) en vez de en recta cruzando campos. Sigue siendo una estimación: por eso va de rayas.
+const MIN_GAP_ROAD_M = 1000
+function roadAwareGap(pair: [{ lat: number; lng: number }, { lat: number; lng: number }], onLoaded: () => void): RoadPath {
+  const [a, b] = pair
+  if (distanceMeters(a.lat, a.lng, b.lat, b.lng) < MIN_GAP_ROAD_M) return pair
+  const r = (n: number) => n.toFixed(5)
+  const chunk = {
+    key: `gap|${r(a.lat)},${r(a.lng)}>${r(b.lat)},${r(b.lng)}`,
+    waypoints: [
+      { latitude: a.lat, longitude: a.lng },
+      { latitude: b.lat, longitude: b.lng },
+    ],
+  }
+  const cached = getCachedRoad(chunk.key)
+  if (cached === undefined) void requestRoad(chunk).then((path) => path && onLoaded())
+  return cached && cached.length >= 2 ? cached : pair
+}
 
 // Camino a dibujar para un tramo continuo: los trozos «en coche» por la carretera (si ya se conoce su trazado), el resto como vienen. Si falta
 // algún trazado, se devuelve el tramo tal cual (línea recta) y se pide en segundo plano; `onLoaded` avisa para volver a pintar.
@@ -256,16 +275,16 @@ export function LocationMap({
       // en discontinua — ver buildTrackSegments.
       const history = histories[member.id] ?? []
       const detail = history.length >= 2 ? buildTrackDetail(history.map((p) => ({ lat: p.latitude, lng: p.longitude, at: new Date(p.recordedAt).getTime() }))) : { solid: [], gaps: [], solidPoints: [] }
-      const { gaps } = detail
+      const gaps = detail.gaps.map((pair) => roadAwareGap(pair, () => setRoadTick((t) => t + 1)))
       // Los trozos «en coche» se dibujan por la CARRETERA (petición real: «tiene que marcarme la carretera por la que va»): si ya se conoce su
       // trazado se usa; si no, se dibuja la línea recta de siempre y se pide en segundo plano (al llegar, se vuelve a pintar).
       const solid = detail.solid.map((raw, i) => roadAwarePath(detail.solidPoints[i], raw, () => setRoadTick((t) => t + 1)))
       for (const path of solid) for (const p of path) bounds.extend(p)
-      for (const pair of gaps) for (const p of pair) bounds.extend(p)
+      for (const path of gaps) for (const p of path) bounds.extend(p)
 
       // Las líneas solo se recrean si el rastro ha cambiado de verdad — con cada refresco de posición
       // (cada 30 s) borrar y volver a pintarlas todas haría parpadear el mapa, como ya pasó con los marcadores.
-      const signature = JSON.stringify([member.color, solid.map((s) => [s.length, s[0], s[s.length - 1]]), gaps])
+      const signature = JSON.stringify([member.color, solid.map((s) => [s.length, s[0], s[s.length - 1]]), gaps.map((g) => [g.length, g[0], g[g.length - 1]])])
       if (lineSignaturesRef.current.get(member.id) === signature && polylinesRef.current.has(member.id)) continue
       clearMemberLines(member.id)
       lineSignaturesRef.current.set(member.id, signature)
@@ -273,11 +292,11 @@ export function LocationMap({
       for (const path of solid) {
         lines.push(new g.maps.Polyline({ path, strokeColor: member.color, strokeWeight: 3, strokeOpacity: 0.7, map }))
       }
-      for (const pair of gaps) {
+      for (const gapPath of gaps) {
         // strokeOpacity 0 + un icono repetido = línea de rayas (la forma que trae Google Maps).
         lines.push(
           new g.maps.Polyline({
-            path: pair,
+            path: gapPath,
             strokeOpacity: 0,
             icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.55, strokeColor: member.color, scale: 2.5 }, offset: '0', repeat: '14px' }],
             map,

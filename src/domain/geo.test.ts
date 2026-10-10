@@ -89,7 +89,7 @@ describe('LocationMap — el recorrido ya no une los huecos con una recta', () =
   it('dibuja los trozos con datos en línea continua y los huecos en discontinua (rayas)', () => {
     expect(MAP).toContain('buildTrackDetail(') // buildTrackSegments con la hora de cada punto, para saber qué trozos fueron en coche
     expect(MAP).toContain('for (const path of solid)')
-    expect(MAP).toContain('for (const pair of gaps)')
+    expect(MAP).toContain('for (const gapPath of gaps)')
     expect(MAP).toContain('strokeOpacity: 0,')
     expect(MAP).toContain("repeat: '14px'")
   })

@@ -115,6 +115,13 @@ describe('conexión con el mapa y el servidor', () => {
     expect(locationMapSrc).toContain('[members, locations, histories, photoUrls, roadTick]')
   })
 
+  it('los tramos sin datos, si están lejos (más de 1 km), se dibujan de rayas por la carretera más probable y no en recta; los cortos se quedan como están', () => {
+    expect(locationMapSrc).toContain('roadAwareGap(')
+    expect(locationMapSrc).toContain('const MIN_GAP_ROAD_M = 1000')
+    expect(locationMapSrc).toContain('for (const gapPath of gaps)')
+    expect(locationMapSrc).toContain("key: `gap|")
+  })
+
   it('el servidor tiene la acción «trace»: puntos de paso «via», sin tráfico, y descarta rodeos absurdos', () => {
     expect(mapsFunctionSrc).toContain('action === "trace"')
     expect(mapsFunctionSrc).toContain('via: true')

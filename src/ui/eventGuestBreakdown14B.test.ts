@@ -269,6 +269,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(247) // 0247: whatsapp en providers_global (distinto del teléfono, Punto 1.4); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(248) // 0248: reward_participants/reward_settings (PG-PUNTOS-FINANZAS Parte A2/A3); la numeración la sube quien añada la siguiente
   })
 })

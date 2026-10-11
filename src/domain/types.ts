@@ -108,6 +108,30 @@ export interface PointGrant {
   createdAt: string
 }
 
+// PG-PUNTOS-FINANZAS (Parte A3) — "Camino de recompensas" (un único trayecto que nunca se reinicia,
+// pensado para un solo niño/a) frente a "Carrera mensual" (progreso que arranca de cero cada mes, para
+// comparar varios niños entre sí) — un ajuste de familia completa, nunca por miembro.
+export type RewardMode = 'camino' | 'carrera'
+
+// Ausencia de fila para la familia = 'camino' (ver migración 0248) — nunca hace falta un backfill.
+export interface RewardSettings {
+  familyId: string
+  mode: RewardMode
+  updatedAt: string
+}
+
+// PG-PUNTOS-FINANZAS (Parte A2) — qué miembros participan en Puntos y recompensas. Ausencia de fila
+// para un miembro = su valor por defecto (activado para child/baby/guest, desactivado para admin/adult
+// — ver isMemberRewardsEnabled en src/domain/rewards.ts); desactivar NUNCA borra su historial de puntos,
+// canjes o trofeos, solo lo oculta de las tarjetas mientras dure.
+export interface RewardParticipant {
+  id: string
+  familyId: string
+  memberId: string
+  enabled: boolean
+  updatedAt: string
+}
+
 export type ShoppingItemStatus = 'pendiente' | 'comprado' | 'omitido' | 'trasladado'
 export type ShoppingItemPriority = 'alta' | 'normal' | 'baja'
 export type TripStatus = 'planificada' | 'completada'

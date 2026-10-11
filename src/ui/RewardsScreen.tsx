@@ -10,14 +10,17 @@ import {
   markRewardRedemptionEnjoyed,
   listPointGrants,
   givePoints,
+  listRewardParticipants,
+  setMemberRewardsEnabled,
 } from '@/data/rewards'
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
-import { memberPointsBalance } from '@/domain/rewards'
-import type { FamilyMember, PointGrant, Profile, Reward, RewardRedemption } from '@/domain/types'
+import { memberPointsBalance, isMemberRewardsEnabled } from '@/domain/rewards'
+import { toPastel } from '@/domain/colors'
+import type { FamilyMember, PointGrant, Profile, Reward, RewardParticipant, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
@@ -44,21 +47,24 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [redemptions, setRedemptions] = useState<RewardRedemption[]>([])
   const [grants, setGrants] = useState<PointGrant[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [participants, setParticipants] = useState<RewardParticipant[]>([])
   const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddReward, setShowAddReward] = useState(false)
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null)
+  const [showParticipants, setShowParticipants] = useState(false)
 
   function reload() {
     setLoading(true)
-    Promise.all([listEventCompletions(), listRewards(), listRedemptions(), listFamilyMembers(), listPointGrants()])
-      .then(([c, r, red, m, g]) => {
+    Promise.all([listEventCompletions(), listRewards(), listRedemptions(), listFamilyMembers(), listPointGrants(), listRewardParticipants()])
+      .then(([c, r, red, m, g, p]) => {
         setCompletions(c)
         setRewards(r)
         setRedemptions(red)
         setMembers(m)
         setGrants(g)
+        setParticipants(p)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -111,34 +117,49 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      <h2 className="section-title">Puntos por persona</h2>
+      <div className="inline-fields" style={{ alignItems: 'center' }}>
+        <h2 className="section-title" style={{ flex: 1, margin: 0 }}>Puntos por persona</h2>
+        {isAdult && (
+          <button type="button" className="link-button" onClick={() => setShowParticipants((v) => !v)}>
+            ⚙️ Quién participa
+          </button>
+        )}
+      </div>
+      {showParticipants && isAdult && (
+        <ParticipantsPanel members={members} participants={participants} onChanged={reload} setError={setError} />
+      )}
       <div className="event-list">
-        {members.map((m) => {
-          const balance = memberPointsBalance(m.id, completions, redemptions, grants)
-          const open = expandedMemberId === m.id
-          return (
-            <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-              <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
-                <MemberAvatar member={m} size={32} />
-                <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
-                <span className="points-badge">⭐ {balance}</span>
+        {members
+          .filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
+          .map((m) => {
+            const balance = memberPointsBalance(m.id, completions, redemptions, grants)
+            const open = expandedMemberId === m.id
+            return (
+              <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
+                <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
+                  <MemberAvatar member={m} size={32} />
+                  <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
+                  <span className="points-badge">⭐ {balance}</span>
+                </div>
+                {open && (
+                  <MemberRewardsPanel
+                    member={m}
+                    balance={balance}
+                    rewards={activeRewards}
+                    redemptions={redemptions.filter((r) => r.memberId === m.id)}
+                    grants={grants.filter((g) => g.memberId === m.id)}
+                    isAdult={isAdult}
+                    onChanged={reload}
+                    setError={setError}
+                  />
+                )}
               </div>
-              {open && (
-                <MemberRewardsPanel
-                  member={m}
-                  balance={balance}
-                  rewards={activeRewards}
-                  redemptions={redemptions.filter((r) => r.memberId === m.id)}
-                  grants={grants.filter((g) => g.memberId === m.id)}
-                  isAdult={isAdult}
-                  onChanged={reload}
-                  setError={setError}
-                />
-              )}
-            </div>
-          )
-        })}
+            )
+          })}
         {members.length === 0 && <p className="muted">Todavía no hay miembros en la familia.</p>}
+        {members.length > 0 && members.every((m) => !isMemberRewardsEnabled(m.id, m.memberType, participants)) && (
+          <p className="muted">Nadie participa todavía — actívalo desde "⚙️ Quién participa".</p>
+        )}
       </div>
 
       {isAdult && (
@@ -187,6 +208,56 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// PG-PUNTOS-FINANZAS (Parte A2) — "los adultos pueden elegir qué miembros de la familia participan...
+// desactivar nunca borra sus datos, reactivar restaura todo, nunca toca los permisos generales de la
+// familia" — por eso esto es solo una lista de interruptores (reward_participants, migración 0248),
+// nunca roza allowedSections ni ningún otro permiso ya existente del miembro.
+function ParticipantsPanel({
+  members,
+  participants,
+  onChanged,
+  setError,
+}: {
+  members: FamilyMember[]
+  participants: RewardParticipant[]
+  onChanged: () => void
+  setError: (e: string | null) => void
+}) {
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  async function toggle(member: FamilyMember, enabled: boolean) {
+    setSavingId(member.id)
+    setError(null)
+    try {
+      await setMemberRewardsEnabled(member.id, enabled)
+      onChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSavingId(null)
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+      <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
+        Quién aparece en "Puntos por persona". Desactivar a alguien no borra nada de su historial — solo deja de verse mientras esté así.
+      </p>
+      {members.map((m) => {
+        const enabled = isMemberRewardsEnabled(m.id, m.memberType, participants)
+        return (
+          <label key={m.id} className="inline-fields" style={{ alignItems: 'center', marginTop: 4, cursor: 'pointer' }}>
+            <input type="checkbox" checked={enabled} disabled={savingId === m.id} onChange={(e) => void toggle(m, e.target.checked)} />
+            <MemberAvatar member={m} size={24} />
+            <span style={{ flex: 1 }}>{m.name}</span>
+          </label>
+        )
+      })}
+      {members.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Todavía no hay miembros en la familia.</p>}
     </div>
   )
 }

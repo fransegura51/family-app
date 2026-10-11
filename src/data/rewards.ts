@@ -1,5 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
-import type { PointGrant, Reward, RewardRedemption } from '@/domain/types'
+import type { PointGrant, Reward, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -179,6 +179,40 @@ export async function givePoints(memberId: string, amount: number, reason: strin
     .single()
   if (error) throw error
   return mapPointGrant(data)
+}
+
+// PG-PUNTOS-FINANZAS (Parte A2/A3) — migración 0248: ausencia de fila = valor por defecto (ver
+// isMemberRewardsEnabled/RewardSettings en src/domain/types.ts y src/domain/rewards.ts), así que estas
+// lecturas nunca necesitan devolver nada más que las filas que de verdad existen.
+export async function listRewardParticipants(): Promise<RewardParticipant[]> {
+  const { data, error } = await supabase.from('reward_participants').select('id, family_id, member_id, enabled, updated_at')
+  if (error) throw error
+  return (data ?? []).map((r) => ({ id: r.id, familyId: r.family_id, memberId: r.member_id, enabled: r.enabled, updatedAt: r.updated_at }))
+}
+
+// Solo un adulto autorizado puede cambiar quién participa (RLS, migración 0248) — nunca borra ni toca
+// el historial de puntos/canjes de ese miembro, solo esta fila de ajuste.
+export async function setMemberRewardsEnabled(memberId: string, enabled: boolean): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('reward_participants')
+    .upsert({ family_id: familyId, member_id: memberId, enabled, updated_at: new Date().toISOString() }, { onConflict: 'member_id' })
+  if (error) throw error
+}
+
+export async function getRewardMode(): Promise<RewardMode> {
+  const { data, error } = await supabase.from('reward_settings').select('mode').maybeSingle()
+  if (error) throw error
+  return (data?.mode as RewardMode | undefined) ?? 'camino'
+}
+
+// Ajuste de familia completa (nunca por miembro) — solo un adulto autorizado puede cambiarlo (RLS).
+export async function setRewardMode(mode: RewardMode): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase
+    .from('reward_settings')
+    .upsert({ family_id: familyId, mode, updated_at: new Date().toISOString() }, { onConflict: 'family_id' })
+  if (error) throw error
 }
 
 // Corrección trazable: NUNCA edita ni borra el movimiento original — inserta una fila nueva de signo

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -71,5 +71,69 @@ describe('memberPointsBalance — puntos dados a mano (point_grants)', () => {
   it('sin grants (parámetro omitido), el cálculo sigue funcionando igual que antes de la Fase 4', () => {
     const completions = [{ memberId: 'eric', pointsAwarded: 5 }]
     expect(memberPointsBalance('eric', completions, [])).toBe(5)
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A2) — "los adultos empiezan desactivados, cada niño/a activable o
+// desactivable individualmente, nunca toca los permisos generales de la familia". Ausencia de fila en
+// reward_participants = valor por defecto según el tipo de miembro, nunca un error ni "false" a ciegas.
+describe('isMemberRewardsEnabled', () => {
+  it('sin ninguna fila: un adulto/admin empieza desactivado, un niño/bebé/invitado empieza activado', () => {
+    expect(isMemberRewardsEnabled('paco', 'admin', [])).toBe(false)
+    expect(isMemberRewardsEnabled('jennifer', 'adult', [])).toBe(false)
+    expect(isMemberRewardsEnabled('eric', 'child', [])).toBe(true)
+    expect(isMemberRewardsEnabled('bebe', 'baby', [])).toBe(true)
+    expect(isMemberRewardsEnabled('invitado', 'guest', [])).toBe(true)
+  })
+
+  it('una fila explícita siempre manda sobre el valor por defecto de su tipo', () => {
+    const participants = [{ memberId: 'eric', enabled: false }]
+    expect(isMemberRewardsEnabled('eric', 'child', participants)).toBe(false)
+    const reactivated = [{ memberId: 'paco', enabled: true }]
+    expect(isMemberRewardsEnabled('paco', 'admin', reactivated)).toBe(true)
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A3) — el "Camino de recompensas" nunca se reinicia y, a propósito, nunca
+// baja al canjear un premio (a diferencia del saldo gastable de memberPointsBalance).
+describe('memberLifetimePoints — Camino de recompensas', () => {
+  it('suma todo lo ganado alguna vez, sin restar ningún canje', () => {
+    const completions = [{ memberId: 'eric', pointsAwarded: 5 }, { memberId: 'eric', pointsAwarded: 3 }]
+    const grants = [{ memberId: 'eric', amount: 10 }]
+    expect(memberLifetimePoints('eric', completions, grants)).toBe(18)
+  })
+
+  it('canjear un premio (modelado aparte en memberPointsBalance) nunca hace retroceder el camino', () => {
+    const completions = [{ memberId: 'eric', pointsAwarded: 20 }]
+    const beforeRedeeming = memberLifetimePoints('eric', completions, [])
+    // Un canje no es un parámetro de esta función a propósito: no hay forma de pasarle uno que la
+    // haga bajar, que es justo la garantía que pide el prompt ("nunca debe hacer retroceder a un niño").
+    expect(memberLifetimePoints('eric', completions, [])).toBe(beforeRedeeming)
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A3) — la "Carrera mensual" se reinicia SOLO al cambiar de mes (filtrando
+// desde cero), nunca borrando ni tocando ningún dato real de completions/point_grants.
+describe('memberMonthlyRacePoints — Carrera mensual', () => {
+  const completions = [
+    { memberId: 'eric', pointsAwarded: 5, occurrenceDate: '2026-10-02' },
+    { memberId: 'eric', pointsAwarded: 7, occurrenceDate: '2026-10-15' },
+    { memberId: 'eric', pointsAwarded: 9, occurrenceDate: '2026-09-28' },
+  ]
+  const grants = [
+    { memberId: 'eric', amount: 4, createdAt: '2026-10-05T10:00:00Z' },
+    { memberId: 'eric', amount: 6, createdAt: '2026-09-30T10:00:00Z' },
+  ]
+
+  it('solo cuenta lo ganado dentro del mes pedido', () => {
+    expect(memberMonthlyRacePoints('eric', '2026-10', completions, grants)).toBe(16)
+  })
+
+  it('el mes anterior sigue intacto para su propia consulta — nada se ha borrado', () => {
+    expect(memberMonthlyRacePoints('eric', '2026-09', completions, grants)).toBe(15)
+  })
+
+  it('un mes sin ningún movimiento da 0, nunca un error', () => {
+    expect(memberMonthlyRacePoints('eric', '2026-01', completions, grants)).toBe(0)
   })
 })

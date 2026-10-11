@@ -26,3 +26,54 @@ export function memberPointsBalance(
     .reduce((sum, r) => sum + r.pointsSpent, 0)
   return earned + granted - spent
 }
+
+// PG-PUNTOS-FINANZAS (Parte A2) — "los adultos empiezan desactivados, cada niño/a se puede activar o
+// desactivar individualmente, nunca toca los permisos generales de la familia". Sin fila en
+// reward_participants para ese miembro, el valor por defecto depende solo de su tipo — nunca hace falta
+// un backfill al crear la tabla ni al dar de alta un miembro nuevo.
+export function isMemberRewardsEnabled(
+  memberId: string,
+  memberType: 'admin' | 'adult' | 'child' | 'baby' | 'guest',
+  participants: { memberId: string; enabled: boolean }[],
+): boolean {
+  const override = participants.find((p) => p.memberId === memberId)
+  if (override) return override.enabled
+  return memberType !== 'admin' && memberType !== 'adult'
+}
+
+// PG-PUNTOS-FINANZAS (Parte A3) — progreso del "Camino de recompensas": TODO lo ganado alguna vez
+// (tareas + puntos dados a mano), a propósito SIN restar lo ya canjeado — "nunca se reinicia" significa
+// que pedir un premio no puede hacer retroceder el camino, a diferencia del saldo gastable de
+// memberPointsBalance (ese sí baja al canjear).
+export function memberLifetimePoints(
+  memberId: string,
+  completions: { memberId: string | null; pointsAwarded: number }[],
+  grants: { memberId: string; amount: number }[],
+): number {
+  const earned = completions
+    .filter((c) => c.memberId === memberId)
+    .reduce((sum, c) => sum + c.pointsAwarded, 0)
+  const granted = grants
+    .filter((g) => g.memberId === memberId)
+    .reduce((sum, g) => sum + g.amount, 0)
+  return earned + granted
+}
+
+// PG-PUNTOS-FINANZAS (Parte A3) — progreso de la "Carrera mensual": lo mismo que memberLifetimePoints
+// pero solo con lo ganado DENTRO del mes indicado (yearMonth, formato "YYYY-MM") — se reinicia solo al
+// cambiar de mes porque cada mes nuevo vuelve a filtrar desde cero, nunca por borrar nada. Independiente
+// del saldo gastable a propósito: "redimir un premio no debe hacer retroceder a un niño en la carrera".
+export function memberMonthlyRacePoints(
+  memberId: string,
+  yearMonth: string,
+  completions: { memberId: string | null; pointsAwarded: number; occurrenceDate: string }[],
+  grants: { memberId: string; amount: number; createdAt: string }[],
+): number {
+  const earned = completions
+    .filter((c) => c.memberId === memberId && c.occurrenceDate.startsWith(yearMonth))
+    .reduce((sum, c) => sum + c.pointsAwarded, 0)
+  const granted = grants
+    .filter((g) => g.memberId === memberId && g.createdAt.startsWith(yearMonth))
+    .reduce((sum, g) => sum + g.amount, 0)
+  return earned + granted
+}

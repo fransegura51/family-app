@@ -159,6 +159,31 @@ export function assignTrophies(standings: MonthlyRaceStanding[]): RewardTrophyRe
   }))
 }
 
+// PG-PUNTOS-FINANZAS (Parte A7) — "Gran Copa Anual": quien ganó MÁS carreras mensuales (trofeos "oro")
+// en el año indicado — "ties shared, no new points system", por eso cuenta trofeos YA guardados
+// (reward_monthly_results, Parte A6) en vez de inventar un sistema de puntos nuevo, y declara ganador a
+// TODOS los que empaten con el máximo (nunca desempata con un criterio no pedido). Sin ningún oro ese
+// año, no hay ganador — un array vacío, nunca un ganador inventado con 0 carreras ganadas.
+export interface AnnualCupStanding {
+  memberId: string
+  goldCount: number
+  isWinner: boolean
+}
+
+export function annualCupStandings(results: { memberId: string; yearMonth: string; trophy: RewardTrophy }[], year: string): AnnualCupStanding[] {
+  const goldByMember = new Map<string, number>()
+  for (const r of results) {
+    if (r.trophy !== 'oro' || !r.yearMonth.startsWith(`${year}-`)) continue
+    goldByMember.set(r.memberId, (goldByMember.get(r.memberId) ?? 0) + 1)
+  }
+  const maxGold = Math.max(0, ...goldByMember.values())
+  return Array.from(goldByMember.entries()).map(([memberId, goldCount]) => ({
+    memberId,
+    goldCount,
+    isWinner: maxGold > 0 && goldCount === maxGold,
+  }))
+}
+
 // PG-PUNTOS-FINANZAS (Parte A6) — el mes de Carrera anterior al indicado, mismo formato "YYYY-MM" —
 // sirve para saber qué mes cerrar en cuanto termina (nunca el mes en curso, que sigue cambiando).
 export function previousYearMonth(yearMonth: string): string {

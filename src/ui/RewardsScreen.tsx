@@ -34,6 +34,7 @@ import {
   newlyReachedMilestones,
   assignTrophies,
   previousYearMonth,
+  annualCupStandings,
 } from '@/domain/rewards'
 import { toPastel } from '@/domain/colors'
 import { MONTHS } from '@/domain/spokenDate'
@@ -292,7 +293,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                     rewards={activeRewards}
                     redemptions={redemptions.filter((r) => r.memberId === m.id)}
                     grants={grants.filter((g) => g.memberId === m.id)}
-                    trophies={monthlyResults.filter((t) => t.memberId === m.id)}
+                    monthlyResults={monthlyResults}
                     isAdult={isAdult}
                     onChanged={reload}
                     setError={setError}
@@ -499,7 +500,7 @@ function MemberRewardsPanel({
   rewards,
   redemptions,
   grants,
-  trophies,
+  monthlyResults,
   isAdult,
   onChanged,
   setError,
@@ -509,7 +510,7 @@ function MemberRewardsPanel({
   rewards: Reward[]
   redemptions: RewardRedemption[]
   grants: PointGrant[]
-  trophies: RewardMonthlyResult[]
+  monthlyResults: RewardMonthlyResult[]
   isAdult: boolean
   onChanged: () => void
   setError: (e: string | null) => void
@@ -518,6 +519,17 @@ function MemberRewardsPanel({
   const [showGivePoints, setShowGivePoints] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showTrophies, setShowTrophies] = useState(false)
+  const trophies = monthlyResults.filter((t) => t.memberId === member.id)
+  // PG-PUNTOS-FINANZAS (Parte A7) — "vitrina por niño/a, por defecto el año en curso, con acceso a años
+  // anteriores, nunca una lista mezclada" — los años disponibles salen de los trofeos reales de toda la
+  // familia (para poder ver un año donde este miembro no ganó nada, pero otros sí), siempre incluyendo el
+  // año en curso aunque todavía no tenga trofeos, para que el selector nunca aparezca vacío.
+  const currentYear = String(new Date().getFullYear())
+  const [selectedYear, setSelectedYear] = useState(currentYear)
+  const availableYears = Array.from(new Set([currentYear, ...monthlyResults.map((r) => r.yearMonth.slice(0, 4))])).sort((a, b) => b.localeCompare(a))
+  const trophiesForYear = trophies.filter((t) => t.yearMonth.startsWith(selectedYear))
+  const cupStandings = annualCupStandings(monthlyResults, selectedYear)
+  const isCupWinner = cupStandings.some((s) => s.memberId === member.id && s.isWinner)
 
   async function handleRequest(reward: Reward) {
     setRequestingId(reward.id)
@@ -612,15 +624,31 @@ function MemberRewardsPanel({
             {showTrophies ? '▾' : '▸'} 🏆 Trofeos
           </button>
           {showTrophies && (
-            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
-              {[...trophies]
-                .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
-                .map((t) => (
-                  <li key={t.id}>
-                    {TROPHY_EMOJI[t.trophy]} {formatYearMonth(t.yearMonth)} · ⭐ {t.points}
-                  </li>
+            <div style={{ marginTop: 4 }}>
+              <div className="filter-row" style={{ alignItems: 'center', marginBottom: 4 }}>
+                {availableYears.map((year) => (
+                  <button key={year} type="button" className={'chip' + (year === selectedYear ? ' chip-active' : '')} onClick={() => setSelectedYear(year)}>
+                    {year}
+                  </button>
                 ))}
-            </ul>
+              </div>
+              {isCupWinner && (
+                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600 }}>🏆 ¡Gran Copa {selectedYear}! (más carreras mensuales ganadas)</p>
+              )}
+              {trophiesForYear.length === 0 ? (
+                <p className="muted" style={{ fontSize: 12 }}>Sin trofeos en {selectedYear}.</p>
+              ) : (
+                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+                  {[...trophiesForYear]
+                    .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
+                    .map((t) => (
+                      <li key={t.id}>
+                        {TROPHY_EMOJI[t.trophy]} {formatYearMonth(t.yearMonth)} · ⭐ {t.points}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
           )}
         </>
       )}

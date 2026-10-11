@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones, assignTrophies, previousYearMonth } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones, assignTrophies, previousYearMonth, annualCupStandings } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -233,6 +233,43 @@ describe('previousYearMonth — Parte A6, qué mes cerrar', () => {
 
   it('enero: el anterior es diciembre del año ANTERIOR, nunca "2026-00"', () => {
     expect(previousYearMonth('2026-01')).toBe('2025-12')
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A7) — "Gran Copa Anual: quien ganó más carreras mensuales, empates
+// compartidos, sin ningún sistema de puntos nuevo" — cuenta solo trofeos "oro" ya guardados.
+describe('annualCupStandings — Parte A7, Gran Copa Anual', () => {
+  const results = [
+    { memberId: 'eric', yearMonth: '2026-01', trophy: 'oro' as const },
+    { memberId: 'eric', yearMonth: '2026-02', trophy: 'oro' as const },
+    { memberId: 'eric', yearMonth: '2026-03', trophy: 'plata' as const },
+    { memberId: 'lucia', yearMonth: '2026-01', trophy: 'plata' as const },
+    { memberId: 'lucia', yearMonth: '2026-02', trophy: 'oro' as const },
+    { memberId: 'eric', yearMonth: '2025-12', trophy: 'oro' as const },
+  ]
+
+  it('quien ganó más carreras (más oros) ese año es el ganador — nunca cuenta plata/bronce/participación', () => {
+    const standings = annualCupStandings(results, '2026')
+    expect(standings.find((s) => s.memberId === 'eric')).toEqual({ memberId: 'eric', goldCount: 2, isWinner: true })
+    expect(standings.find((s) => s.memberId === 'lucia')).toEqual({ memberId: 'lucia', goldCount: 1, isWinner: false })
+  })
+
+  it('un empate en el número de oros: los dos son ganadores a la vez, nunca se desempata con nada más', () => {
+    const tied = [
+      { memberId: 'eric', yearMonth: '2026-01', trophy: 'oro' as const },
+      { memberId: 'lucia', yearMonth: '2026-02', trophy: 'oro' as const },
+    ]
+    const standings = annualCupStandings(tied, '2026')
+    expect(standings.every((s) => s.isWinner)).toBe(true)
+  })
+
+  it('otro año no se mezcla con este (diciembre de 2025 no cuenta para la copa de 2026)', () => {
+    const standings = annualCupStandings(results, '2025')
+    expect(standings).toEqual([{ memberId: 'eric', goldCount: 1, isWinner: true }])
+  })
+
+  it('ningún oro ese año: no hay ganador, nunca uno inventado con 0 carreras', () => {
+    expect(annualCupStandings(results, '2030')).toEqual([])
   })
 })
 

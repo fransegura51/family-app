@@ -132,6 +132,17 @@ export interface RewardParticipant {
   updatedAt: string
 }
 
+// PG-PUNTOS-FINANZAS (Parte A5) — qué hitos de 10 puntos ya se le han enseñado a cada miembro (para no
+// repetir la celebración cada vez que abre la pantalla) — nunca el hito en sí, que sale siempre de
+// milestoneProgress() sobre el saldo canjeable real (memberPointsBalance), nunca guardado aparte.
+export interface RewardMilestoneSeen {
+  id: string
+  familyId: string
+  memberId: string
+  milestone: number
+  seenAt: string
+}
+
 export type ShoppingItemStatus = 'pendiente' | 'comprado' | 'omitido' | 'trasladado'
 export type ShoppingItemPriority = 'alta' | 'normal' | 'baja'
 export type TripStatus = 'planificada' | 'completada'

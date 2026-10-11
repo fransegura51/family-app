@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -208,5 +208,32 @@ describe('milestoneProgress — hito cada 10 puntos', () => {
 
   it('admite un tamaño de hito distinto de 10 si algún día hace falta', () => {
     expect(milestoneProgress(12, 5)).toEqual({ milestoneSize: 5, completedMilestones: 2, pointsIntoSegment: 2, pct: 40 })
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A5) — "no repetir la celebración cada vez que se abra la pantalla": sobre el
+// saldo CANJEABLE real (nunca sobre Camino/Carrera, que no baja al canjear), comparado contra el último
+// hito que ya se le enseñó a ese miembro.
+describe('newlyReachedMilestones — Parte A5, qué celebrar (y qué no repetir)', () => {
+  it('saldo 17, nunca visto nada (highestSeen 0): hito 1 es nuevo', () => {
+    expect(newlyReachedMilestones(17, 0)).toEqual([1])
+  })
+
+  it('saldo 17, ya se vio el hito 1: nada nuevo que celebrar (no se repite)', () => {
+    expect(newlyReachedMilestones(17, 1)).toEqual([])
+  })
+
+  it('un salto grande de golpe (p. ej. "Dar puntos" +50): se devuelven TODOS los hitos nuevos de una vez', () => {
+    expect(newlyReachedMilestones(53, 0)).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('canjear un premio baja el saldo pero nunca "deshace" un hito ya visto — solo no hay nada nuevo', () => {
+    // Antes del canje: saldo 25, highestSeen ya en 2 (del saldo de 25). Tras canjear 15, saldo baja a 10:
+    // sigue sin haber ningún hito NUEVO (10 ya estaba cubierto por el hito 1, que ya se había visto).
+    expect(newlyReachedMilestones(10, 2)).toEqual([])
+  })
+
+  it('saldo por debajo del primer hito: nada que celebrar todavía', () => {
+    expect(newlyReachedMilestones(7, 0)).toEqual([])
   })
 })

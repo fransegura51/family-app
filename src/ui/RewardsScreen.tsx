@@ -14,16 +14,19 @@ import {
   setMemberRewardsEnabled,
   getRewardMode,
   setRewardMode,
+  listRewardMilestonesSeen,
+  markRewardMilestoneSeen,
 } from '@/data/rewards'
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings, milestoneProgress } from '@/domain/rewards'
+import { Confetti } from '@/ui/Confetti'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones } from '@/domain/rewards'
 import { toPastel } from '@/domain/colors'
 import { MONTHS } from '@/domain/spokenDate'
-import type { FamilyMember, PointGrant, Profile, Reward, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
+import type { FamilyMember, PointGrant, Profile, Reward, RewardMilestoneSeen, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
@@ -66,11 +69,22 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [showParticipants, setShowParticipants] = useState(false)
   const [mode, setMode] = useState<RewardMode>('camino')
   const [showModeSettings, setShowModeSettings] = useState(false)
+  const [milestonesSeen, setMilestonesSeen] = useState<RewardMilestoneSeen[]>([])
+  const [celebrating, setCelebrating] = useState<{ memberId: string; memberName: string; milestone: number } | null>(null)
 
   function reload() {
     setLoading(true)
-    Promise.all([listEventCompletions(), listRewards(), listRedemptions(), listFamilyMembers(), listPointGrants(), listRewardParticipants(), getRewardMode()])
-      .then(([c, r, red, m, g, p, rewardMode]) => {
+    Promise.all([
+      listEventCompletions(),
+      listRewards(),
+      listRedemptions(),
+      listFamilyMembers(),
+      listPointGrants(),
+      listRewardParticipants(),
+      getRewardMode(),
+      listRewardMilestonesSeen(),
+    ])
+      .then(([c, r, red, m, g, p, rewardMode, seen]) => {
         setCompletions(c)
         setRewards(r)
         setRedemptions(red)
@@ -78,12 +92,44 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         setGrants(g)
         setParticipants(p)
         setMode(rewardMode)
+        setMilestonesSeen(seen)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
   useEffect(reload, [])
+
+  // PG-PUNTOS-FINANZAS (Parte A5) — detecta hitos de 10 puntos NUEVOS sobre el saldo canjeable REAL de
+  // cada miembro visible (nunca sobre Camino/Carrera) comparado con lo último que ya se le enseñó. Si
+  // hay varios de golpe, se marcan TODOS como vistos (para que ninguno quede pendiente para siempre) pero
+  // solo se celebra uno — "una celebración breve", nunca varias apiladas por el mismo evento.
+  useEffect(() => {
+    if (loading) return
+    const toMark: { memberId: string; milestone: number }[] = []
+    let celebrate: { memberId: string; memberName: string; milestone: number } | null = null
+    for (const m of members) {
+      if (!isMemberRewardsEnabled(m.id, m.memberType, participants)) continue
+      const balance = memberPointsBalance(m.id, completions, redemptions, grants)
+      const highestSeen = milestonesSeen.filter((s) => s.memberId === m.id).reduce((max, s) => Math.max(max, s.milestone), 0)
+      const newOnes = newlyReachedMilestones(balance, highestSeen)
+      if (newOnes.length === 0) continue
+      newOnes.forEach((milestone) => toMark.push({ memberId: m.id, milestone }))
+      if (!celebrate) celebrate = { memberId: m.id, memberName: m.name, milestone: newOnes[newOnes.length - 1] }
+    }
+    if (toMark.length === 0) return
+    if (celebrate) setCelebrating(celebrate)
+    Promise.all(toMark.map((t) => markRewardMilestoneSeen(t.memberId, t.milestone)))
+      .then(reload)
+      .catch(() => {})
+  }, [loading, members, participants, completions, redemptions, grants, milestonesSeen])
+
+  // Se cierra sola a los 4s — "breve", nunca algo que haya que cerrar a mano para seguir usando la pantalla.
+  useEffect(() => {
+    if (!celebrating) return
+    const timer = setTimeout(() => setCelebrating(null), 4000)
+    return () => clearTimeout(timer)
+  }, [celebrating])
 
   if (loading) return <div className="screen">Cargando puntos…</div>
 
@@ -101,6 +147,15 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         Se ganan puntos al marcar "Hecho" un evento o una tarea del calendario que lleve puntos (se pone al crear o editar, cuando es de una sola persona), o si un adulto te los da directamente.
       </p>
       {error && <p className="error">{error}</p>}
+
+      {celebrating && (
+        <>
+          <Confetti />
+          <div className="card banner" style={{ padding: 10, marginBottom: 8, textAlign: 'center' }}>
+            <strong>🎉 ¡{celebrating.memberName} ha llegado a {celebrating.milestone * 10} puntos!</strong>
+          </div>
+        </>
+      )}
 
       {isAdult && pendingApprovals.length > 0 && (
         <div className="card" style={{ padding: 8, marginBottom: 8 }}>
@@ -164,6 +219,10 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                 ? `🛤️ Camino: ${progressPoints} puntos en total`
                 : `🏁 ${standing?.rank ?? 1}º esta carrera · ${progressPoints} puntos en ${MONTHS[new Date().getMonth()]}`
             const milestone = milestoneProgress(progressPoints)
+            // PG-PUNTOS-FINANZAS (Parte A5) — "emojis de recompensa... calculados del saldo canjeable
+            // REAL": a propósito usa `balance` (memberPointsBalance), nunca progressPoints — solo lo que
+            // de verdad se puede solicitar ahora mismo, nunca el progreso de Camino/Carrera.
+            const affordableRewards = activeRewards.filter((r) => r.emoji && r.pointsCost <= balance).sort((a, b) => a.pointsCost - b.pointsCost)
             return (
               <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
                 <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
@@ -183,6 +242,11 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                     {milestone.pointsIntoSegment}/{milestone.milestoneSize} hasta el próximo premio de hito
                   </p>
                 </div>
+                {affordableRewards.length > 0 && (
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                    🎁 Ya puedes conseguir: {affordableRewards.map((r) => r.emoji).join(' ')}
+                  </p>
+                )}
                 {open && (
                   <MemberRewardsPanel
                     member={m}

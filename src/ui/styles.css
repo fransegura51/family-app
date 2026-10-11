@@ -3580,6 +3580,41 @@ textarea {
   }
 }
 
+/* PG-PUNTOS-FINANZAS (Parte A5/B2) — confeti breve para un hito conseguido o un objetivo de ahorro
+   cumplido. Pocas piezas, una sola caída, nunca en bucle — "no excesivo". */
+.confetti-burst {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 9999;
+}
+
+.confetti-piece {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 14px;
+  opacity: 0.9;
+  border-radius: 2px;
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  to {
+    top: 100%;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-burst {
+    display: none;
+  }
+}
+
 .banner {
   margin-top: 16px;
   display: flex;

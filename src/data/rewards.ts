@@ -1,5 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
-import type { PointGrant, Reward, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
+import type { PointGrant, Reward, RewardMilestoneSeen, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -212,6 +212,22 @@ export async function setRewardMode(mode: RewardMode): Promise<void> {
   const { error } = await supabase
     .from('reward_settings')
     .upsert({ family_id: familyId, mode, updated_at: new Date().toISOString() }, { onConflict: 'family_id' })
+  if (error) throw error
+}
+
+// PG-PUNTOS-FINANZAS (Parte A5) — "no repetir la celebración cada vez que se abra la pantalla": solo
+// lectura de qué hitos ya se vieron, nunca el hito en sí (eso sale de milestoneProgress() sobre el saldo
+// real). Insertable por cualquiera de la familia (migración 0249) — es solo "no repitas esto", sin
+// ningún efecto sobre puntos ni premios.
+export async function listRewardMilestonesSeen(): Promise<RewardMilestoneSeen[]> {
+  const { data, error } = await supabase.from('reward_milestones_seen').select('id, family_id, member_id, milestone, seen_at')
+  if (error) throw error
+  return (data ?? []).map((r) => ({ id: r.id, familyId: r.family_id, memberId: r.member_id, milestone: r.milestone, seenAt: r.seen_at }))
+}
+
+export async function markRewardMilestoneSeen(memberId: string, milestone: number): Promise<void> {
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('reward_milestones_seen').insert({ family_id: familyId, member_id: memberId, milestone })
   if (error) throw error
 }
 

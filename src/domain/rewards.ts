@@ -97,6 +97,18 @@ export function milestoneProgress(points: number, milestoneSize = 10): Milestone
   return { milestoneSize, completedMilestones, pointsIntoSegment, pct }
 }
 
+// PG-PUNTOS-FINANZAS (Parte A5) — qué hitos de 10 puntos son NUEVOS desde el último que ya se le enseñó
+// a este miembro (highestSeen), calculados sobre el saldo canjeable REAL (memberPointsBalance) — nunca
+// sobre el progreso de Camino/Carrera, que a propósito no baja al canjear y podría "festejar" puntos que
+// ya no se pueden gastar de verdad. Si hay varios de golpe (p. ej. un "Dar puntos" grande), se devuelven
+// todos para registrarlos como vistos, pero la pantalla solo celebra el más alto — "una celebración
+// breve", nunca varias seguidas por el mismo evento.
+export function newlyReachedMilestones(balance: number, highestSeen: number, milestoneSize = 10): number[] {
+  const { completedMilestones } = milestoneProgress(balance, milestoneSize)
+  if (completedMilestones <= highestSeen) return []
+  return Array.from({ length: completedMilestones - highestSeen }, (_, i) => highestSeen + i + 1)
+}
+
 export interface MonthlyRaceStanding {
   memberId: string
   points: number

@@ -78,6 +78,25 @@ export function memberMonthlyRacePoints(
   return earned + granted
 }
 
+export interface MilestoneProgress {
+  milestoneSize: number
+  completedMilestones: number
+  pointsIntoSegment: number
+  pct: number
+}
+
+// PG-PUNTOS-FINANZAS (Parte A4/A5) — hito cada 10 puntos (A5), calculado a partir del progreso real
+// (Camino o Carrera según el modo, decidido por quien llama) — nunca una posición inventada aparte. La
+// pista provisional de A4 usa `pct` para colocar su marcador; A5 reutilizará `completedMilestones` para
+// saber cuántos premios de hito tocan ya, sin repetir este cálculo.
+export function milestoneProgress(points: number, milestoneSize = 10): MilestoneProgress {
+  const safePoints = Math.max(0, points)
+  const completedMilestones = Math.floor(safePoints / milestoneSize)
+  const pointsIntoSegment = safePoints % milestoneSize
+  const pct = Math.round((pointsIntoSegment / milestoneSize) * 100)
+  return { milestoneSize, completedMilestones, pointsIntoSegment, pct }
+}
+
 export interface MonthlyRaceStanding {
   memberId: string
   points: number

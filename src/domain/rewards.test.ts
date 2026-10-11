@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -179,5 +179,34 @@ describe('monthlyRaceStandings — Carrera mensual, ranking con empates justos (
   it('un solo participante activo: va 1º solo/a, sin necesitar a nadie más', () => {
     const completions = [{ memberId: 'eric', pointsAwarded: 7, occurrenceDate: '2026-10-01' }]
     expect(monthlyRaceStandings(['eric'], '2026-10', completions, [])).toEqual([{ memberId: 'eric', points: 7, rank: 1 }])
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A4/A5) — hito cada 10 puntos: lo que falta para el siguiente, usado tanto
+// por la pista provisional (A4, pct de 0 a 100 dentro del tramo actual) como por los hitos ya alcanzados
+// (A5, completedMilestones).
+describe('milestoneProgress — hito cada 10 puntos', () => {
+  it('0 puntos: al principio del primer tramo, 0%', () => {
+    expect(milestoneProgress(0)).toEqual({ milestoneSize: 10, completedMilestones: 0, pointsIntoSegment: 0, pct: 0 })
+  })
+
+  it('7 puntos: 70% del primer tramo, ningún hito completado todavía', () => {
+    expect(milestoneProgress(7)).toEqual({ milestoneSize: 10, completedMilestones: 0, pointsIntoSegment: 7, pct: 70 })
+  })
+
+  it('justo 10 puntos: un hito completado, vuelve al 0% del tramo siguiente (nunca se queda "lleno")', () => {
+    expect(milestoneProgress(10)).toEqual({ milestoneSize: 10, completedMilestones: 1, pointsIntoSegment: 0, pct: 0 })
+  })
+
+  it('23 puntos: dos hitos completados, 30% del tercer tramo', () => {
+    expect(milestoneProgress(23)).toEqual({ milestoneSize: 10, completedMilestones: 2, pointsIntoSegment: 3, pct: 30 })
+  })
+
+  it('puntos negativos (no debería pasar, pero por seguridad): nunca un porcentaje negativo', () => {
+    expect(milestoneProgress(-5)).toEqual({ milestoneSize: 10, completedMilestones: 0, pointsIntoSegment: 0, pct: 0 })
+  })
+
+  it('admite un tamaño de hito distinto de 10 si algún día hace falta', () => {
+    expect(milestoneProgress(12, 5)).toEqual({ milestoneSize: 5, completedMilestones: 2, pointsIntoSegment: 2, pct: 40 })
   })
 })

@@ -20,7 +20,7 @@ import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings, milestoneProgress } from '@/domain/rewards'
 import { toPastel } from '@/domain/colors'
 import { MONTHS } from '@/domain/spokenDate'
 import type { FamilyMember, PointGrant, Profile, Reward, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
@@ -157,13 +157,13 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           return visibleMembers.map((m) => {
             const balance = memberPointsBalance(m.id, completions, redemptions, grants)
             const open = expandedMemberId === m.id
+            const standing = mode === 'carrera' ? standings.find((s) => s.memberId === m.id) : undefined
+            const progressPoints = mode === 'camino' ? memberLifetimePoints(m.id, completions, grants) : (standing?.points ?? 0)
             const progressLabel =
               mode === 'camino'
-                ? `🛤️ Camino: ${memberLifetimePoints(m.id, completions, grants)} puntos en total`
-                : (() => {
-                    const standing = standings.find((s) => s.memberId === m.id)
-                    return `🏁 ${standing?.rank ?? 1}º esta carrera · ${standing?.points ?? 0} puntos en ${MONTHS[new Date().getMonth()]}`
-                  })()
+                ? `🛤️ Camino: ${progressPoints} puntos en total`
+                : `🏁 ${standing?.rank ?? 1}º esta carrera · ${progressPoints} puntos en ${MONTHS[new Date().getMonth()]}`
+            const milestone = milestoneProgress(progressPoints)
             return (
               <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
                 <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
@@ -172,6 +172,17 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                   <span className="points-badge">⭐ {balance}</span>
                 </div>
                 <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>{progressLabel}</p>
+                <div className="rewards-track">
+                  <div className="rewards-track-lane" style={{ ['--rewards-track-pct' as string]: `${milestone.pct}%` }}>
+                    <div className="rewards-track-fill" />
+                    <div className="rewards-track-marker" style={{ background: toPastel(m.color, 'chart') }}>
+                      {m.name.charAt(0)}
+                    </div>
+                  </div>
+                  <p className="muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
+                    {milestone.pointsIntoSegment}/{milestone.milestoneSize} hasta el próximo premio de hito
+                  </p>
+                </div>
                 {open && (
                   <MemberRewardsPanel
                     member={m}

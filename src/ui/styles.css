@@ -3530,6 +3530,56 @@ textarea {
   border-radius: 999px;
 }
 
+/* PG-PUNTOS-FINANZAS (Parte A4) — representación provisional del "camino"/"carrera" mientras no haya un
+   personaje infantil corriendo con buena calidad (A4 pide no bloquear el resto del trabajo por esto): un
+   carril sencillo con una ficha que avanza hacia el próximo hito de 10 puntos (A5). Nunca un hueco vacío
+   ni un muñeco de baja calidad — un marcador simple y honesto, listo para sustituirse más adelante. */
+.rewards-track {
+  margin-top: 6px;
+}
+
+.rewards-track-lane {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  overflow: visible;
+}
+
+.rewards-track-fill {
+  position: absolute;
+  inset: 0;
+  width: var(--rewards-track-pct, 0%);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  transition: width 0.6s ease;
+}
+
+.rewards-track-marker {
+  position: absolute;
+  top: 50%;
+  left: var(--rewards-track-pct, 0%);
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: left 0.6s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rewards-track-fill,
+  .rewards-track-marker {
+    transition: none;
+  }
+}
+
 .banner {
   margin-top: 16px;
   display: flex;

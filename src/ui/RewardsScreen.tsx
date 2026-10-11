@@ -84,6 +84,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [error, setError] = useState<string | null>(null)
   const [showAddReward, setShowAddReward] = useState(false)
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null)
+  const [menuOpenRewardId, setMenuOpenRewardId] = useState<string | null>(null)
   const [showParticipants, setShowParticipants] = useState(false)
   const [mode, setMode] = useState<RewardMode>('camino')
   const [showModeSettings, setShowModeSettings] = useState(false)
@@ -312,47 +313,61 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       {isAdult && (
         <>
           <h2 className="section-title">Catálogo de recompensas</h2>
+          {showAddReward ? (
+            <AddRewardForm onClose={() => setShowAddReward(false)} onAdded={() => { setShowAddReward(false); reload() }} />
+          ) : (
+            <button type="button" className="link-button" onClick={() => setShowAddReward(true)} style={{ marginBottom: 6 }}>
+              + Nueva recompensa
+            </button>
+          )}
           <div className="event-list">
             {rewards.map((reward) =>
               editingRewardId === reward.id ? (
                 <EditRewardForm key={reward.id} reward={reward} onDone={() => setEditingRewardId(null)} onSaved={() => { setEditingRewardId(null); reload() }} />
               ) : (
-                <div key={reward.id} className="card task-card" style={{ opacity: reward.active ? 1 : 0.6 }}>
-                  <div className="task-card-main">
-                    <strong>
+                <div key={reward.id} className="card task-card" style={{ opacity: reward.active ? 1 : 0.6, flexDirection: 'column', alignItems: 'stretch' }}>
+                  <div className="inline-fields" style={{ alignItems: 'center' }}>
+                    <span style={{ flex: 1 }}>
                       {reward.emoji ? `${reward.emoji} ` : ''}
-                      {reward.title}
-                    </strong>
-                    <p className="muted">
-                      ⭐ {reward.pointsCost} puntos{!reward.active ? ' · Desactivada' : ''}
-                    </p>
-                    {reward.description && <p className="muted" style={{ fontSize: 12 }}>{reward.description}</p>}
+                      <strong>{reward.title}</strong>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {' '}
+                        · ⭐ {reward.pointsCost}
+                        {!reward.active ? ' · Desactivada' : ''}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="member-row-more"
+                      aria-label={`Acciones de ${reward.title}`}
+                      aria-expanded={menuOpenRewardId === reward.id}
+                      onClick={() => setMenuOpenRewardId((cur) => (cur === reward.id ? null : reward.id))}
+                    >
+                      ⋯
+                    </button>
                   </div>
-                  <button type="button" className="link-button" onClick={() => setEditingRewardId(reward.id)}>
-                    ✏️ Editar
-                  </button>
-                  <ConfirmButton
-                    label={reward.active ? '📦 Desactivar' : '♻️ Reactivar'}
-                    confirmMessage={
-                      reward.active
-                        ? `¿Desactivar «${reward.title}»? Deja de poderse solicitar, pero su historial de canjes se conserva.`
-                        : `¿Reactivar «${reward.title}»? Volverá a poderse solicitar.`
-                    }
-                    onConfirm={() => updateReward(reward.id, { active: !reward.active }).then(reload)}
-                  />
-                  <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar recompensa" onConfirm={() => deleteReward(reward.id).then(reload)} />
+                  {menuOpenRewardId === reward.id && (
+                    <div className="member-row-actions">
+                      <button type="button" className="link-button" onClick={() => { setEditingRewardId(reward.id); setMenuOpenRewardId(null) }}>
+                        ✏️ Editar
+                      </button>
+                      <ConfirmButton
+                        label={reward.active ? '📦 Desactivar' : '♻️ Reactivar'}
+                        confirmMessage={
+                          reward.active
+                            ? `¿Desactivar «${reward.title}»? Deja de poderse solicitar, pero su historial de canjes se conserva.`
+                            : `¿Reactivar «${reward.title}»? Volverá a poderse solicitar.`
+                        }
+                        onConfirm={() => updateReward(reward.id, { active: !reward.active }).then(reload)}
+                      />
+                      <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar recompensa" onConfirm={() => deleteReward(reward.id).then(reload)} />
+                    </div>
+                  )}
                 </div>
               ),
             )}
             {rewards.length === 0 && !showAddReward && <p className="muted">No hay recompensas todavía.</p>}
           </div>
-          {showAddReward ? (
-            <AddRewardForm onClose={() => setShowAddReward(false)} onAdded={() => { setShowAddReward(false); reload() }} />
-          ) : (
-            <button type="button" className="link-button" onClick={() => setShowAddReward(true)} style={{ marginTop: 6 }}>
-              + Nueva recompensa
-            </button>
-          )}
         </>
       )}
     </div>

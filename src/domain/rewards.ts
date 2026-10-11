@@ -77,3 +77,32 @@ export function memberMonthlyRacePoints(
     .reduce((sum, g) => sum + g.amount, 0)
   return earned + granted
 }
+
+export interface MonthlyRaceStanding {
+  memberId: string
+  points: number
+  rank: number
+}
+
+// PG-PUNTOS-FINANZAS (Parte A3/A6) — clasificación de la "Carrera mensual": empate = mismo puesto para
+// todos los empatados (ranking "1224": 1º, 1º, 3º — nunca "1º, 1º, 2º", que inflaría el siguiente puesto
+// como si no hubiera habido empate) — "adaptados al número real de participantes, con empates justos"
+// es justo lo que pide A6 para los trofeos; esta misma función servirá para repartirlos sin repetirla.
+export function monthlyRaceStandings(
+  memberIds: string[],
+  yearMonth: string,
+  completions: { memberId: string | null; pointsAwarded: number; occurrenceDate: string }[],
+  grants: { memberId: string; amount: number; createdAt: string }[],
+): MonthlyRaceStanding[] {
+  const scored = memberIds
+    .map((memberId) => ({ memberId, points: memberMonthlyRacePoints(memberId, yearMonth, completions, grants) }))
+    .sort((a, b) => b.points - a.points)
+
+  let rank = 0
+  let previousPoints: number | null = null
+  return scored.map((entry, index) => {
+    if (previousPoints === null || entry.points !== previousPoints) rank = index + 1
+    previousPoints = entry.points
+    return { ...entry, rank }
+  })
+}

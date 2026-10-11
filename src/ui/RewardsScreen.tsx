@@ -12,19 +12,29 @@ import {
   givePoints,
   listRewardParticipants,
   setMemberRewardsEnabled,
+  getRewardMode,
+  setRewardMode,
 } from '@/data/rewards'
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
-import { memberPointsBalance, isMemberRewardsEnabled } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings } from '@/domain/rewards'
 import { toPastel } from '@/domain/colors'
-import type { FamilyMember, PointGrant, Profile, Reward, RewardParticipant, RewardRedemption } from '@/domain/types'
+import { MONTHS } from '@/domain/spokenDate'
+import type { FamilyMember, PointGrant, Profile, Reward, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+
+// PG-PUNTOS-FINANZAS (Parte A3) — "YYYY-MM" del mes de hoy, para filtrar la Carrera mensual. Función
+// aparte (no inline) para que ambos sitios que la necesitan (reload y el render) usen siempre el mismo
+// instante de "hoy", en vez de arriesgarse a leer un new Date() distinto entre un cálculo y el siguiente.
+function currentYearMonth(): string {
+  return new Date().toISOString().slice(0, 7)
+}
 
 // Pequeños Grandes (prompt maestro) — Fase 4: Puntos y recompensas, AMPLIANDO el módulo que ya existía
 // (antes: un selector "Todos/miembro" + canje instantáneo). Ahora: una tarjeta por miembro (4.1), un
@@ -54,17 +64,20 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [showAddReward, setShowAddReward] = useState(false)
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null)
   const [showParticipants, setShowParticipants] = useState(false)
+  const [mode, setMode] = useState<RewardMode>('camino')
+  const [showModeSettings, setShowModeSettings] = useState(false)
 
   function reload() {
     setLoading(true)
-    Promise.all([listEventCompletions(), listRewards(), listRedemptions(), listFamilyMembers(), listPointGrants(), listRewardParticipants()])
-      .then(([c, r, red, m, g, p]) => {
+    Promise.all([listEventCompletions(), listRewards(), listRedemptions(), listFamilyMembers(), listPointGrants(), listRewardParticipants(), getRewardMode()])
+      .then(([c, r, red, m, g, p, rewardMode]) => {
         setCompletions(c)
         setRewards(r)
         setRedemptions(red)
         setMembers(m)
         setGrants(g)
         setParticipants(p)
+        setMode(rewardMode)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -117,23 +130,40 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      <div className="inline-fields" style={{ alignItems: 'center' }}>
+      <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
         <h2 className="section-title" style={{ flex: 1, margin: 0 }}>Puntos por persona</h2>
+        {isAdult && (
+          <button type="button" className="link-button" onClick={() => setShowModeSettings((v) => !v)}>
+            ⚙️ {mode === 'camino' ? '🛤️ Camino' : '🏁 Carrera'}
+          </button>
+        )}
         {isAdult && (
           <button type="button" className="link-button" onClick={() => setShowParticipants((v) => !v)}>
             ⚙️ Quién participa
           </button>
         )}
       </div>
+      {showModeSettings && isAdult && (
+        <ModeSettingsPanel mode={mode} onChanged={(m) => { setMode(m); setShowModeSettings(false) }} setError={setError} />
+      )}
       {showParticipants && isAdult && (
         <ParticipantsPanel members={members} participants={participants} onChanged={reload} setError={setError} />
       )}
       <div className="event-list">
-        {members
-          .filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
-          .map((m) => {
+        {(() => {
+          const visibleMembers = members.filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
+          const yearMonth = currentYearMonth()
+          const standings = mode === 'carrera' ? monthlyRaceStandings(visibleMembers.map((m) => m.id), yearMonth, completions, grants) : []
+          return visibleMembers.map((m) => {
             const balance = memberPointsBalance(m.id, completions, redemptions, grants)
             const open = expandedMemberId === m.id
+            const progressLabel =
+              mode === 'camino'
+                ? `🛤️ Camino: ${memberLifetimePoints(m.id, completions, grants)} puntos en total`
+                : (() => {
+                    const standing = standings.find((s) => s.memberId === m.id)
+                    return `🏁 ${standing?.rank ?? 1}º esta carrera · ${standing?.points ?? 0} puntos en ${MONTHS[new Date().getMonth()]}`
+                  })()
             return (
               <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
                 <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
@@ -141,6 +171,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                   <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
                   <span className="points-badge">⭐ {balance}</span>
                 </div>
+                <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>{progressLabel}</p>
                 {open && (
                   <MemberRewardsPanel
                     member={m}
@@ -155,7 +186,8 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                 )}
               </div>
             )
-          })}
+          })
+        })()}
         {members.length === 0 && <p className="muted">Todavía no hay miembros en la familia.</p>}
         {members.length > 0 && members.every((m) => !isMemberRewardsEnabled(m.id, m.memberType, participants)) && (
           <p className="muted">Nadie participa todavía — actívalo desde "⚙️ Quién participa".</p>
@@ -258,6 +290,44 @@ function ParticipantsPanel({
         )
       })}
       {members.length === 0 && <p className="muted" style={{ fontSize: 12 }}>Todavía no hay miembros en la familia.</p>}
+    </div>
+  )
+}
+
+// PG-PUNTOS-FINANZAS (Parte A3) — "Camino de recompensas" (un único trayecto que nunca se reinicia,
+// pensado para un solo niño/a) frente a "Carrera mensual" (progreso que arranca de cero cada mes, para
+// comparar varios niños entre sí) — ajuste de FAMILIA completa (reward_settings, migración 0248), nunca
+// por miembro, y solo un adulto puede cambiarlo.
+function ModeSettingsPanel({ mode, onChanged, setError }: { mode: RewardMode; onChanged: (m: RewardMode) => void; setError: (e: string | null) => void }) {
+  const [saving, setSaving] = useState(false)
+
+  async function choose(next: RewardMode) {
+    if (next === mode) return
+    setSaving(true)
+    setError(null)
+    try {
+      await setRewardMode(next)
+      onChanged(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+      <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
+        Cómo se mide el progreso de todos — es un ajuste de toda la familia, no de cada niño/a por separado.
+      </p>
+      <div className="filter-row">
+        <button type="button" className={'chip' + (mode === 'camino' ? ' chip-active' : '')} disabled={saving} onClick={() => void choose('camino')}>
+          🛤️ Camino de recompensas — nunca se reinicia, pensado para un solo niño/a
+        </button>
+        <button type="button" className={'chip' + (mode === 'carrera' ? ' chip-active' : '')} disabled={saving} onClick={() => void choose('carrera')}>
+          🏁 Carrera mensual — empieza de cero cada mes, para comparar varios niños/as
+        </button>
+      </div>
     </div>
   )
 }

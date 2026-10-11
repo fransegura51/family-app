@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -135,5 +135,49 @@ describe('memberMonthlyRacePoints — Carrera mensual', () => {
 
   it('un mes sin ningún movimiento da 0, nunca un error', () => {
     expect(memberMonthlyRacePoints('eric', '2026-01', completions, grants)).toBe(0)
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A3/A6) — "trofeos adaptados al número real de participantes, con empates
+// justos" — el ranking 1224 (empatados comparten puesto, el siguiente puesto salta) es lo que hace que
+// repartir medallas más adelante (A6) nunca invente un 2º puesto que en realidad no existió.
+describe('monthlyRaceStandings — Carrera mensual, ranking con empates justos (1224)', () => {
+  it('sin empates: 1º, 2º, 3º en orden de puntos', () => {
+    const completions = [
+      { memberId: 'eric', pointsAwarded: 10, occurrenceDate: '2026-10-01' },
+      { memberId: 'fernando', pointsAwarded: 20, occurrenceDate: '2026-10-01' },
+      { memberId: 'lucia', pointsAwarded: 5, occurrenceDate: '2026-10-01' },
+    ]
+    const standings = monthlyRaceStandings(['eric', 'fernando', 'lucia'], '2026-10', completions, [])
+    expect(standings).toEqual([
+      { memberId: 'fernando', points: 20, rank: 1 },
+      { memberId: 'eric', points: 10, rank: 2 },
+      { memberId: 'lucia', points: 5, rank: 3 },
+    ])
+  })
+
+  it('un empate en cabeza: los dos comparten el 1º puesto, el siguiente es 3º (nunca 2º)', () => {
+    const completions = [
+      { memberId: 'eric', pointsAwarded: 20, occurrenceDate: '2026-10-01' },
+      { memberId: 'fernando', pointsAwarded: 20, occurrenceDate: '2026-10-01' },
+      { memberId: 'lucia', pointsAwarded: 5, occurrenceDate: '2026-10-01' },
+    ]
+    const standings = monthlyRaceStandings(['eric', 'fernando', 'lucia'], '2026-10', completions, [])
+    expect(standings.find((s) => s.memberId === 'eric')?.rank).toBe(1)
+    expect(standings.find((s) => s.memberId === 'fernando')?.rank).toBe(1)
+    expect(standings.find((s) => s.memberId === 'lucia')?.rank).toBe(3)
+  })
+
+  it('nadie ha ganado puntos este mes: todos empatados a 0 en el mismo puesto 1º, nunca un error', () => {
+    const standings = monthlyRaceStandings(['eric', 'fernando'], '2026-10', [], [])
+    expect(standings).toEqual([
+      { memberId: 'eric', points: 0, rank: 1 },
+      { memberId: 'fernando', points: 0, rank: 1 },
+    ])
+  })
+
+  it('un solo participante activo: va 1º solo/a, sin necesitar a nadie más', () => {
+    const completions = [{ memberId: 'eric', pointsAwarded: 7, occurrenceDate: '2026-10-01' }]
+    expect(monthlyRaceStandings(['eric'], '2026-10', completions, [])).toEqual([{ memberId: 'eric', points: 7, rank: 1 }])
   })
 })

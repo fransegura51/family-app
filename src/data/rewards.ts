@@ -1,5 +1,5 @@
 import { supabase } from '@/data/supabaseClient'
-import type { PointGrant, Reward, RewardMilestoneSeen, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
+import type { PointGrant, Reward, RewardMilestoneSeen, RewardMode, RewardMonthlyResult, RewardParticipant, RewardRedemption, RewardTrophy } from '@/domain/types'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -228,6 +228,39 @@ export async function listRewardMilestonesSeen(): Promise<RewardMilestoneSeen[]>
 export async function markRewardMilestoneSeen(memberId: string, milestone: number): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('reward_milestones_seen').insert({ family_id: familyId, member_id: memberId, milestone })
+  if (error) throw error
+}
+
+// PG-PUNTOS-FINANZAS (Parte A6) — resultados ya cerrados de meses de Carrera anteriores. "Historial
+// preservado" — solo lectura/inserción, nunca update/delete (RLS, migración 0250).
+export async function listRewardMonthlyResults(): Promise<RewardMonthlyResult[]> {
+  const { data, error } = await supabase.from('reward_monthly_results').select('id, family_id, year_month, member_id, points, rank, trophy, finalized_at')
+  if (error) throw error
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    familyId: r.family_id,
+    yearMonth: r.year_month,
+    memberId: r.member_id,
+    points: r.points,
+    rank: r.rank,
+    trophy: r.trophy as RewardTrophy,
+    finalizedAt: r.finalized_at,
+  }))
+}
+
+// Cierra un mes YA TERMINADO guardando su resultado calculado con datos reales (assignTrophies, nunca
+// inventado) — ignora un posible choque por "unique (year_month, member_id)" si otra pestaña/persona ya
+// lo cerró justo antes (la carrera por cerrarlo primero no importa: el resultado real es el mismo).
+export async function finalizeMonthlyResults(
+  yearMonth: string,
+  results: { memberId: string; points: number; rank: number; trophy: RewardTrophy }[],
+): Promise<void> {
+  if (results.length === 0) return
+  const familyId = await currentFamilyId()
+  const { error } = await supabase.from('reward_monthly_results').upsert(
+    results.map((r) => ({ family_id: familyId, year_month: yearMonth, member_id: r.memberId, points: r.points, rank: r.rank, trophy: r.trophy })),
+    { onConflict: 'year_month,member_id', ignoreDuplicates: true },
+  )
   if (error) throw error
 }
 

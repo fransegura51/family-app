@@ -16,6 +16,8 @@ import {
   setRewardMode,
   listRewardMilestonesSeen,
   markRewardMilestoneSeen,
+  listRewardMonthlyResults,
+  finalizeMonthlyResults,
 } from '@/data/rewards'
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
@@ -23,10 +25,19 @@ import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
 import { Confetti } from '@/ui/Confetti'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones } from '@/domain/rewards'
+import {
+  memberPointsBalance,
+  isMemberRewardsEnabled,
+  memberLifetimePoints,
+  monthlyRaceStandings,
+  milestoneProgress,
+  newlyReachedMilestones,
+  assignTrophies,
+  previousYearMonth,
+} from '@/domain/rewards'
 import { toPastel } from '@/domain/colors'
 import { MONTHS } from '@/domain/spokenDate'
-import type { FamilyMember, PointGrant, Profile, Reward, RewardMilestoneSeen, RewardMode, RewardParticipant, RewardRedemption } from '@/domain/types'
+import type { FamilyMember, PointGrant, Profile, Reward, RewardMilestoneSeen, RewardMode, RewardMonthlyResult, RewardParticipant, RewardRedemption } from '@/domain/types'
 import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
@@ -37,6 +48,12 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 // instante de "hoy", en vez de arriesgarse a leer un new Date() distinto entre un cálculo y el siguiente.
 function currentYearMonth(): string {
   return new Date().toISOString().slice(0, 7)
+}
+
+// PG-PUNTOS-FINANZAS (Parte A6) — "YYYY-MM" legible, para el historial de trofeos ("octubre 2026").
+function formatYearMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split('-').map(Number)
+  return `${MONTHS[month - 1]} ${year}`
 }
 
 // Pequeños Grandes (prompt maestro) — Fase 4: Puntos y recompensas, AMPLIANDO el módulo que ya existía
@@ -71,6 +88,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [showModeSettings, setShowModeSettings] = useState(false)
   const [milestonesSeen, setMilestonesSeen] = useState<RewardMilestoneSeen[]>([])
   const [celebrating, setCelebrating] = useState<{ memberId: string; memberName: string; milestone: number } | null>(null)
+  const [monthlyResults, setMonthlyResults] = useState<RewardMonthlyResult[]>([])
 
   function reload() {
     setLoading(true)
@@ -83,8 +101,9 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       listRewardParticipants(),
       getRewardMode(),
       listRewardMilestonesSeen(),
+      listRewardMonthlyResults(),
     ])
-      .then(([c, r, red, m, g, p, rewardMode, seen]) => {
+      .then(([c, r, red, m, g, p, rewardMode, seen, results]) => {
         setCompletions(c)
         setRewards(r)
         setRedemptions(red)
@@ -93,6 +112,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         setParticipants(p)
         setMode(rewardMode)
         setMilestonesSeen(seen)
+        setMonthlyResults(results)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -123,6 +143,24 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       .then(reload)
       .catch(() => {})
   }, [loading, members, participants, completions, redemptions, grants, milestonesSeen])
+
+  // PG-PUNTOS-FINANZAS (Parte A6) — cierra el mes de Carrera YA TERMINADO (el anterior al actual, nunca
+  // el que sigue en curso) la primera vez que alguien abre esta pantalla después de que acabó — solo si
+  // la familia usa el modo "carrera" (nunca se abre esta tabla para quien no usa la función). "Historial
+  // preservado": una vez insertado un resultado nunca se recalcula ni se sobrescribe.
+  useEffect(() => {
+    if (loading || mode !== 'carrera') return
+    const yearMonth = previousYearMonth(currentYearMonth())
+    const visibleMembers = members.filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
+    if (visibleMembers.length === 0) return
+    const alreadyClosed = visibleMembers.every((m) => monthlyResults.some((r) => r.yearMonth === yearMonth && r.memberId === m.id))
+    if (alreadyClosed) return
+    const standings = monthlyRaceStandings(visibleMembers.map((m) => m.id), yearMonth, completions, grants)
+    if (standings.every((s) => s.points === 0)) return
+    finalizeMonthlyResults(yearMonth, assignTrophies(standings))
+      .then(reload)
+      .catch(() => {})
+  }, [loading, mode, members, participants, completions, grants, monthlyResults])
 
   // Se cierra sola a los 4s — "breve", nunca algo que haya que cerrar a mano para seguir usando la pantalla.
   useEffect(() => {
@@ -254,6 +292,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                     rewards={activeRewards}
                     redemptions={redemptions.filter((r) => r.memberId === m.id)}
                     grants={grants.filter((g) => g.memberId === m.id)}
+                    trophies={monthlyResults.filter((t) => t.memberId === m.id)}
                     isAdult={isAdult}
                     onChanged={reload}
                     setError={setError}
@@ -447,12 +486,20 @@ function RedemptionDecisionRow({
 // Panel desplegable de un miembro (4.1) — reunir en un solo sitio: solicitar una recompensa, dar puntos
 // a mano (solo adultos) y el historial propio de ese miembro, para no duplicar formularios por toda la
 // pantalla.
+const TROPHY_EMOJI: Record<RewardMonthlyResult['trophy'], string> = {
+  oro: '🥇',
+  plata: '🥈',
+  bronce: '🥉',
+  participacion: '🎖️',
+}
+
 function MemberRewardsPanel({
   member,
   balance,
   rewards,
   redemptions,
   grants,
+  trophies,
   isAdult,
   onChanged,
   setError,
@@ -462,6 +509,7 @@ function MemberRewardsPanel({
   rewards: Reward[]
   redemptions: RewardRedemption[]
   grants: PointGrant[]
+  trophies: RewardMonthlyResult[]
   isAdult: boolean
   onChanged: () => void
   setError: (e: string | null) => void
@@ -469,6 +517,7 @@ function MemberRewardsPanel({
   const [requestingId, setRequestingId] = useState<string | null>(null)
   const [showGivePoints, setShowGivePoints] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showTrophies, setShowTrophies] = useState(false)
 
   async function handleRequest(reward: Reward) {
     setRequestingId(reward.id)
@@ -555,6 +604,25 @@ function MemberRewardsPanel({
             </ul>
           )}
         </div>
+      )}
+
+      {trophies.length > 0 && (
+        <>
+          <button type="button" className="link-button" onClick={() => setShowTrophies((v) => !v)} style={{ marginTop: 6 }}>
+            {showTrophies ? '▾' : '▸'} 🏆 Trofeos
+          </button>
+          {showTrophies && (
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12 }}>
+              {[...trophies]
+                .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
+                .map((t) => (
+                  <li key={t.id}>
+                    {TROPHY_EMOJI[t.trophy]} {formatYearMonth(t.yearMonth)} · ⭐ {t.points}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </>
       )}
     </div>
   )

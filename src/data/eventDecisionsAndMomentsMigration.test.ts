@@ -248,6 +248,6 @@ describe('ratchet de migraciones — Fase 1 de Eventos es la 0176; 0177 es el ci
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(249) // 0249: reward_milestones_seen (PG-PUNTOS-FINANZAS Parte A5); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(250) // 0250: reward_monthly_results (PG-PUNTOS-FINANZAS Parte A6); la numeración la sube quien añada la siguiente
   })
 })

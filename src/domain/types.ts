@@ -143,6 +143,23 @@ export interface RewardMilestoneSeen {
   seenAt: string
 }
 
+// PG-PUNTOS-FINANZAS (Parte A6) — trofeo de un mes de Carrera ya cerrado: "oro"/"plata"/"bronce" para
+// los 3 primeros puestos (cuando de verdad existen — con menos participantes simplemente no se reparten,
+// ver assignTrophies en domain/rewards.ts) y "participacion" para el resto. Nunca mueve puntos de
+// verdad — es solo un trofeo simbólico, jamás una fila de point_grants.
+export type RewardTrophy = 'oro' | 'plata' | 'bronce' | 'participacion'
+
+export interface RewardMonthlyResult {
+  id: string
+  familyId: string
+  yearMonth: string
+  memberId: string
+  points: number
+  rank: number
+  trophy: RewardTrophy
+  finalizedAt: string
+}
+
 export type ShoppingItemStatus = 'pendiente' | 'comprado' | 'omitido' | 'trasladado'
 export type ShoppingItemPriority = 'alta' | 'normal' | 'baja'
 export type TripStatus = 'planificada' | 'completada'

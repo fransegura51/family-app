@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones, assignTrophies, previousYearMonth } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -179,6 +179,60 @@ describe('monthlyRaceStandings — Carrera mensual, ranking con empates justos (
   it('un solo participante activo: va 1º solo/a, sin necesitar a nadie más', () => {
     const completions = [{ memberId: 'eric', pointsAwarded: 7, occurrenceDate: '2026-10-01' }]
     expect(monthlyRaceStandings(['eric'], '2026-10', completions, [])).toEqual([{ memberId: 'eric', points: 7, rank: 1 }])
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte A6) — "trofeos adaptados al número real de participantes, con empates
+// justos, nunca conceder puntos extra por ganar". El reparto es un simple mapa de puesto → trofeo
+// apoyado en el ranking 1224 de monthlyRaceStandings, nunca una lógica de empates aparte.
+describe('assignTrophies — Parte A6', () => {
+  it('3 o más participantes sin empates: oro, plata, bronce y el resto participación', () => {
+    const standings = [
+      { memberId: 'a', points: 30, rank: 1 },
+      { memberId: 'b', points: 20, rank: 2 },
+      { memberId: 'c', points: 10, rank: 3 },
+      { memberId: 'd', points: 0, rank: 4 },
+    ]
+    expect(assignTrophies(standings).map((t) => t.trophy)).toEqual(['oro', 'plata', 'bronce', 'participacion'])
+  })
+
+  it('solo 2 participantes (adaptado al número real): nadie llega a bronce, nunca se inventa un 3er puesto', () => {
+    const standings = [
+      { memberId: 'a', points: 10, rank: 1 },
+      { memberId: 'b', points: 5, rank: 2 },
+    ]
+    expect(assignTrophies(standings).map((t) => t.trophy)).toEqual(['oro', 'plata'])
+  })
+
+  it('solo 1 participante: oro en solitario, nunca necesita rivales para tener trofeo', () => {
+    expect(assignTrophies([{ memberId: 'a', points: 5, rank: 1 }])).toEqual([{ memberId: 'a', points: 5, rank: 1, trophy: 'oro' }])
+  })
+
+  it('empate en el 1er puesto: los dos reciben oro, el siguiente puesto real es 3º (bronce, nunca plata)', () => {
+    const standings = [
+      { memberId: 'a', points: 20, rank: 1 },
+      { memberId: 'b', points: 20, rank: 1 },
+      { memberId: 'c', points: 10, rank: 3 },
+    ]
+    const trophies = assignTrophies(standings)
+    expect(trophies.find((t) => t.memberId === 'a')?.trophy).toBe('oro')
+    expect(trophies.find((t) => t.memberId === 'b')?.trophy).toBe('oro')
+    expect(trophies.find((t) => t.memberId === 'c')?.trophy).toBe('bronce')
+  })
+
+  it('nunca concede puntos: el resultado solo trae memberId/points/rank/trophy, nada que pueda sumarse a un saldo', () => {
+    const [result] = assignTrophies([{ memberId: 'a', points: 5, rank: 1 }])
+    expect(Object.keys(result).sort()).toEqual(['memberId', 'points', 'rank', 'trophy'])
+  })
+})
+
+describe('previousYearMonth — Parte A6, qué mes cerrar', () => {
+  it('un mes cualquiera: el anterior dentro del mismo año', () => {
+    expect(previousYearMonth('2026-10')).toBe('2026-09')
+  })
+
+  it('enero: el anterior es diciembre del año ANTERIOR, nunca "2026-00"', () => {
+    expect(previousYearMonth('2026-01')).toBe('2025-12')
   })
 })
 

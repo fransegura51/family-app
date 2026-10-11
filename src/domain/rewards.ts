@@ -137,3 +137,33 @@ export function monthlyRaceStandings(
     return { ...entry, rank }
   })
 }
+
+// PG-PUNTOS-FINANZAS (Parte A6) — trofeos "adaptados al número real de participantes, con empates
+// justos": el reparto es un simple mapa de puesto → trofeo porque monthlyRaceStandings() ya resuelve los
+// empates (1224) antes de llegar aquí — si solo hay 2 participantes, nadie llega al puesto 3, así que
+// nadie recibe bronce; un empate en el 1º puesto da oro a los dos y deja el puesto 2 vacío de verdad (el
+// siguiente es 3º, bronce, nunca plata). Nunca concede puntos — ningún trofeo toca point_grants.
+export type RewardTrophy = 'oro' | 'plata' | 'bronce' | 'participacion'
+
+export interface RewardTrophyResult {
+  memberId: string
+  points: number
+  rank: number
+  trophy: RewardTrophy
+}
+
+export function assignTrophies(standings: MonthlyRaceStanding[]): RewardTrophyResult[] {
+  return standings.map((s) => ({
+    ...s,
+    trophy: s.rank === 1 ? 'oro' : s.rank === 2 ? 'plata' : s.rank === 3 ? 'bronce' : 'participacion',
+  }))
+}
+
+// PG-PUNTOS-FINANZAS (Parte A6) — el mes de Carrera anterior al indicado, mismo formato "YYYY-MM" —
+// sirve para saber qué mes cerrar en cuanto termina (nunca el mes en curso, que sigue cambiando).
+export function previousYearMonth(yearMonth: string): string {
+  const [year, month] = yearMonth.split('-').map(Number)
+  const date = new Date(Date.UTC(year, month - 1, 1))
+  date.setUTCMonth(date.getUTCMonth() - 1)
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`
+}

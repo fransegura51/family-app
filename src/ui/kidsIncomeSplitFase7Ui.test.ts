@@ -71,13 +71,14 @@ describe('KidsFinanceTab — ahora recibe profile (para saber si isAdult puede e
   const PG_SCREEN = UI['/src/ui/PequenosGrandesScreen.tsx']
 
   it('la firma del componente exportado incluye profile', () => {
-    expect(FS).toContain('export function KidsFinanceTab({ profile }: { profile: Profile }) {')
+    // Parte B1 añade `standalone` (para la propia miga de pan) sin quitar `profile` — sigue incluido.
+    expect(FS).toContain('export function KidsFinanceTab({ profile, standalone = false }: { profile: Profile; standalone?: boolean }) {')
   })
-  it('las 2 llamadas dentro de FinanceScreen (Economía restringida y pestaña de adulto) pasan profile', () => {
-    const matches = FS.match(/<KidsFinanceTab profile=\{profile\} \/>/g) ?? []
-    expect(matches.length).toBe(2)
+  it('las 2 llamadas dentro de FinanceScreen (Economía restringida, con standalone, y pestaña de adulto, sin él) pasan profile', () => {
+    expect(FS).toContain('<KidsFinanceTab profile={profile} standalone />')
+    expect(FS).toContain("{tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}")
   })
-  it('la llamada desde Pequeños Grandes también pasa profile', () => {
-    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
+  it('la llamada desde Pequeños Grandes también pasa profile (y standalone, Parte B1)', () => {
+    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} standalone />')
   })
 })

@@ -24,21 +24,26 @@ function window_(src: string, fromMarker: string, toMarker: string): string {
 
 // El detalle de la firma (profile como prop, Fase 7) se cubre en kidsIncomeSplitFase7Ui.test.ts — aquí
 // solo se comprueba que sigue siendo la MISMA función exportada, reutilizada en los 3 sitios de siempre.
+//
+// PG-PUNTOS-FINANZAS (Parte B1) — de los 3 sitios de siempre, los DOS donde KidsFinanceTab ES la
+// pantalla entera (vista restringida de un hijo en /dinero, y el acceso desde /puntos) ahora pasan
+// `standalone` para que sea el propio componente quien pinte su miga de pan de 2/3 niveles (nunca dos
+// migas de pan a la vez) — el tercero (pestaña de un adulto dentro de Economía, que ya tiene su propia
+// miga de pan genérica) sigue sin él, sin cambios.
 describe('FinanceScreen — KidsFinanceTab se exporta para reutilizarse, nunca se duplica', () => {
   it('sigue siendo la misma función, ahora exportada', () => {
     expect(FINANCE_SCREEN).toContain('export function KidsFinanceTab(')
   })
-  it('sigue usándose también dentro de Economía (vista restringida de un hijo y pestaña de un adulto)', () => {
-    expect(FINANCE_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
-    const matches = FINANCE_SCREEN.match(/<KidsFinanceTab profile=\{profile\} \/>/g) ?? []
-    expect(matches.length).toBe(2)
+  it('sigue usándose también dentro de Economía (vista restringida de un hijo, con standalone, y pestaña de un adulto, sin él)', () => {
+    expect(FINANCE_SCREEN).toContain('<KidsFinanceTab profile={profile} standalone />')
+    expect(FINANCE_SCREEN).toContain("{tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}")
   })
 })
 
 describe('PequenosGrandesScreen — Educación financiera reutiliza KidsFinanceTab como punto de acceso principal', () => {
   it('importa KidsFinanceTab de FinanceScreen, nunca un enlace a /dinero ni una copia', () => {
     expect(PG_SCREEN).toContain("import { KidsFinanceTab } from '@/ui/FinanceScreen'")
-    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} />')
+    expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} standalone />')
   })
   it('la tarjeta del hub abre el módulo "educacion"', () => {
     expect(PG_SCREEN).toContain("{ key: 'educacion', label: 'Educación financiera'")
@@ -47,8 +52,9 @@ describe('PequenosGrandesScreen — Educación financiera reutiliza KidsFinanceT
 })
 
 describe('Breadcrumb — un nivel real, nunca "Pequeños Grandes" repetido (la Sección ya la añade sola SectionBreadcrumb)', () => {
-  it('Educación financiera usa un único nivel con su propia etiqueta', () => {
-    expect(PG_SCREEN).toContain('<SectionBreadcrumb subsection="Educación financiera" />')
+  it('Educación financiera (Parte B1): ya no la pinta PequenosGrandesScreen por su cuenta — la pinta KidsFinanceTab (standalone), con 2 o 3 niveles según haya o no una tarjeta abierta', () => {
+    expect(PG_SCREEN).not.toContain('<SectionBreadcrumb subsection="Educación financiera" />')
+    expect(FINANCE_SCREEN).toContain('{standalone && <SectionBreadcrumb subsection="Educación financiera" />}')
   })
   it('Lista de deseos (WishlistScreen.tsx, construida 2026-10-10) tampoco repite "Pequeños Grandes" como nivel extra', () => {
     const wishlistScreen = UI['/src/ui/WishlistScreen.tsx']

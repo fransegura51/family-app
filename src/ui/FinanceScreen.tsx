@@ -144,7 +144,7 @@ import {
   type EconomiaMenuGroup,
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
-import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
@@ -572,8 +572,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         <div className="kitchen-header">
           <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
         </div>
-        <SectionBreadcrumb subsection="Educación financiera" />
-        <KidsFinanceTab profile={profile} />
+        <KidsFinanceTab profile={profile} standalone />
       </div>
     )
   }
@@ -11199,7 +11198,16 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
 // como punto de entrada principal para la educación financiera — nunca se
 // duplica su lógica. Sigue usándose también aquí dentro de Economía (vista
 // restringida de un hijo y pestaña "Educación financiera" para un adulto).
-export function KidsFinanceTab({ profile }: { profile: Profile }) {
+//
+// PG-PUNTOS-FINANZAS (Parte B1) — `standalone` es true solo en los dos sitios donde este componente ES
+// la pantalla entera (sin pestañas hermanas alrededor: /puntos y la vista restringida de un hijo en
+// /dinero) — ahí es este propio componente quien pinta su migas de pan, con un tercer nivel cuando hay
+// una tarjeta abierta ("Pequeños Grandes / Educación financiera / Recibir"), y el nivel intermedio vuelve
+// a la rejilla sin ruta nueva (BreadcrumbLevel.onClick), así que el antiguo "← Volver a Pequeños Grandes"
+// ya no hace falta (ver PequenosGrandesScreen.tsx) — "sin enlaces de vuelta duplicados". Cuando es una
+// pestaña más dentro de Economía (standalone=false, valor por defecto), la migas de pan genérica de esa
+// pantalla ya cubre "Economía / Educación financiera" — nunca se pintan dos migas de pan a la vez.
+export function KidsFinanceTab({ profile, standalone = false }: { profile: Profile; standalone?: boolean }) {
   const isAdult = profile.role === 'admin' || profile.role === 'adult'
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [activeMemberId, setActiveMemberId] = useState<string>('')
@@ -11292,11 +11300,18 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
     const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === openCard && t.status !== 'rechazado')
     return (
       <div>
+        {standalone && (
+          <SectionBreadcrumb
+            subsection={[{ label: 'Educación financiera', onClick: () => setOpenCard(null) }, { label: cardInfo.label }] satisfies BreadcrumbLevel[]}
+          />
+        )}
         {error && <p className="error">{error}</p>}
         {memberChips}
-        <button type="button" className="link-button" onClick={() => setOpenCard(null)}>
-          ← Volver
-        </button>
+        {!standalone && (
+          <button type="button" className="link-button" onClick={() => setOpenCard(null)}>
+            ← Volver
+          </button>
+        )}
 
         <h2 className="section-title">
           {cardInfo.label}: {categoryTotal.toFixed(2)} €
@@ -11361,6 +11376,7 @@ export function KidsFinanceTab({ profile }: { profile: Profile }) {
 
   return (
     <div>
+      {standalone && <SectionBreadcrumb subsection="Educación financiera" />}
       {error && <p className="error">{error}</p>}
       {memberChips}
       {isAdult && pendingTransactions.length > 0 && (

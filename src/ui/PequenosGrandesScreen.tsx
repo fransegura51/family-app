@@ -36,7 +36,7 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
   useSectionHome(() => setOpenModule(null))
 
   if (openModule === 'recompensas') return <RewardsScreen profile={profile} />
-  if (openModule === 'educacion') return <EducacionFinancieraTab profile={profile} onBack={() => setOpenModule(null)} />
+  if (openModule === 'educacion') return <EducacionFinancieraTab profile={profile} />
   if (openModule === 'deseos') return <WishlistScreen profile={profile} onBack={() => setOpenModule(null)} />
 
   return (
@@ -64,17 +64,18 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
 // 'dinero', ver NavShell) llega aquí igual, porque kid_wallet_transactions/kid_goals tienen su propia
 // RLS (migración 0097) completamente independiente de 'dinero' — nunca toca bank_accounts/bank_
 // connections/bank_transactions, ni directa ni indirectamente.
-function EducacionFinancieraTab({ profile, onBack }: { profile: Profile; onBack: () => void }) {
+//
+// PG-PUNTOS-FINANZAS (Parte B1) — "quitar el enlace redundante, la miga de pan ya permite volver": el
+// antiguo botón de vuelta repetía exactamente lo que ya hace el primer nivel de la propia miga de pan
+// ("Pequeños Grandes", siempre presente y siempre a un toque). Ahora KidsFinanceTab (`standalone`) pinta
+// su propia miga de pan de 2 o 3 niveles — nunca dos migas de pan a la vez aquí.
+function EducacionFinancieraTab({ profile }: { profile: Profile }) {
   return (
     <div className="screen">
       <div className="kitchen-header kitchen-header-wide">
         <img src={educacionFinancieraHeaderImg} alt="Educación financiera" className="kitchen-header-img" />
       </div>
-      <SectionBreadcrumb subsection="Educación financiera" />
-      <button type="button" className="link-button" onClick={onBack}>
-        ← Volver a Pequeños Grandes
-      </button>
-      <KidsFinanceTab profile={profile} />
+      <KidsFinanceTab profile={profile} standalone />
     </div>
   )
 }

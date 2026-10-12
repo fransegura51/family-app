@@ -31,6 +31,10 @@ export interface BreadcrumbLevel {
   label: string
   to?: string
   state?: Record<string, boolean>
+  // Nivel intermedio genuino SIN ruta propia (estado puramente local, p. ej. una tarjeta abierta dentro
+  // de la misma pantalla) — alternativa a `to` para cuando no hay ningún destino de verdad al que
+  // navegar, solo un estado que resetear. Nunca se usa junto con `to` en el mismo nivel.
+  onClick?: () => void
 }
 
 // Navegación de orientación "Sección / Ubicación actual", o "Sección / Contexto real / Ubicación actual"
@@ -64,6 +68,10 @@ export function SectionBreadcrumb({ subsection }: { subsection: string | Breadcr
               <Link to={level.to} state={level.state} className="section-breadcrumb-section">
                 {level.label}
               </Link>
+            ) : !isCurrent && level.onClick ? (
+              <button type="button" className="section-breadcrumb-section link-button" onClick={level.onClick}>
+                {level.label}
+              </button>
             ) : (
               // El último nivel es la ubicación actual: texto destacado, nunca un enlace (aria-current
               // marca "estás aquí"). Un nivel intermedio sin `to` (no debería darse hoy) cae también aquí

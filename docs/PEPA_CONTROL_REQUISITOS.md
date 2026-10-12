@@ -200,6 +200,20 @@ No mezclado con las correcciones de Eventos/Proveedores/Presupuesto/Calendario (
 
 ---
 
+## Educación financiera (PG-PUNTOS-FINANZAS, Parte B)
+
+Auditado ANTES de tocar nada (D1): KidsFinanceTab (`src/ui/FinanceScreen.tsx`) ya existía, completo —
+pantalla principal/4 tarjetas ilustradas/selector de hijo, objetivos de ahorro con foto/emoji, reparto
+60/20/20 editable y no retroactivo, aprobación de ingresos/gastos de un niño, fondo común real — ver el
+informe de auditoría (2026-10-13) citado en el propio código. No se mezcla con las correcciones de
+Eventos/Proveedores/Presupuesto/Calendario ni con la Parte A — estado de revisión propio.
+
+| ID | Descripción | Estado | Commits / evidencia | Pendientes |
+|---|---|---|---|---|
+| PGP-B1 | Educación financiera: quitar el enlace redundante "← Volver a Pequeños Grandes", migas de pan de 2/3 niveles en todas las pantallas internas | **Implementado 2026-10-13** | Botón eliminado de verdad (nunca solo oculto) en `PequenosGrandesScreen.tsx`. `SectionBreadcrumb`/`BreadcrumbLevel` (ambos reutilizados tal cual) ganan un `onClick` opcional para un nivel intermedio SIN ruta propia (mismo criterio ya usado por Eventos con `to`+`state.eventHome`, pero aquí no hace falta ruta nueva porque la "tarjeta abierta" es solo estado local). `KidsFinanceTab` gana un prop `standalone` (por defecto `false`, sin tocar su uso como pestaña dentro de Economía, que ya tenía su propia miga de pan genérica): en los dos sitios donde SÍ es la pantalla entera (`/puntos` y la vista restringida de un hijo en `/dinero`) pinta su propia miga de pan — 2 niveles en la rejilla ("Pequeños Grandes / Educación financiera"), 3 cuando hay una tarjeta abierta ("... / Recibir", con el nivel intermedio clicable volviendo a la rejilla sin navegar a ninguna ruta nueva). Verificado EN VIVO de principio a fin: familia de pruebas con un niño — la rejilla muestra 2 niveles sin ningún botón de volver; al abrir "Recibir" aparecen 3 niveles; tocar el nivel intermedio "Educación financiera" (confirmado que es un `<button>` real, no solo texto) vuelve a la rejilla. Probado: `educacionFinancieraBreadcrumbUi.test.ts` (nuevo), más 4 archivos de test ya existentes actualizados tras el cambio (`pequenosGrandesEducacionFase5Ui.test.ts`, `pequenosGrandesHomeUi.test.ts`, `kidsIncomeSplitFase7Ui.test.ts`, `sectionHomeIntegrationUi.test.ts` — sus aserciones describían el patrón ANTERIOR a este cambio, nunca una regresión real) | — |
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

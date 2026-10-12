@@ -173,7 +173,10 @@ describe('SectionBreadcrumb — el nivel de Sección pasa state.sectionHome, sin
   it('usa <Link state={{ sectionHome: true }}>, nunca un onClick/navigate manual', () => {
     expect(BREADCRUMB).toContain('{ label: section.label, to: section.to, state: { sectionHome: true } }')
     expect(BREADCRUMB).toContain('<Link to={level.to} state={level.state} className="section-breadcrumb-section">')
-    expect(BREADCRUMB).not.toMatch(/section-breadcrumb-section[^>]*onClick/)
+    // El nivel de Sección en sí NUNCA lleva onClick (solo `to`/`state`, arriba) — no confundir con el
+    // `onClick` que Parte B1 añade como alternativa para un nivel INTERMEDIO genuino sin ruta propia
+    // (p. ej. KidsFinanceTab: "Educación financiera" volviendo a su rejilla), que sí es legítimo.
+    expect(BREADCRUMB).not.toContain('{ label: section.label, to: section.to, state: { sectionHome: true }, onClick')
     expect(BREADCRUMB).not.toContain('useNavigate')
   })
 })

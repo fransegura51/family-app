@@ -23,6 +23,12 @@ describe('SectionBreadcrumb — componente', () => {
     expect(BREADCRUMB_SRC).toContain('<Link to={level.to} state={level.state} className="section-breadcrumb-section">')
   })
 
+  it('Parte B1 — un nivel intermedio SIN ruta propia (solo estado local) acepta `onClick` como alternativa a `to`, mismo estilo visual (section-breadcrumb-section), nunca ambos a la vez', () => {
+    expect(BREADCRUMB_SRC).toContain('onClick?: () => void')
+    expect(BREADCRUMB_SRC).toContain('!isCurrent && level.onClick')
+    expect(BREADCRUMB_SRC).toContain('<button type="button" className="section-breadcrumb-section link-button" onClick={level.onClick}>')
+  })
+
   it('el último nivel es texto actual, marcado con aria-current, nunca un enlace', () => {
     expect(BREADCRUMB_SRC).toContain("aria-current={isCurrent ? 'page' : undefined}")
     expect(BREADCRUMB_SRC).toContain("isCurrent ? 'section-breadcrumb-current' : 'section-breadcrumb-section'")
@@ -100,10 +106,10 @@ describe('SectionBreadcrumb — integración: una llamada justo debajo de cada k
     expect(src).toContain("subsection={tab === 'Lista' ? 'Lista de la Compra' : COMPRAS_MENU_ITEM_META[tab].label}")
   })
 
-  it('Economía: "Presupuesto Generales" muestra "Presupuestos" (corrección deliberada), el resto usa ECONOMIA_MENU_ITEM_META; la vista restringida de niños fija "Educación financiera"', () => {
+  it('Economía: "Presupuesto Generales" muestra "Presupuestos" (corrección deliberada), el resto usa ECONOMIA_MENU_ITEM_META; la vista restringida de niños ya NO pinta su propia miga de pan (KidsFinanceTab `standalone` lo hace, Parte B1)', () => {
     const src = readFile('/src/ui/FinanceScreen.tsx')
     expect(src).toContain("subsection={tab === 'Presupuesto Generales' ? 'Presupuestos' : ECONOMIA_MENU_ITEM_META[tab].label}")
-    expect(src).toContain('<SectionBreadcrumb subsection="Educación financiera" />')
+    expect(src).toContain('<KidsFinanceTab profile={profile} standalone />')
   })
 
   it('HomeScreen NO lleva SectionBreadcrumb — Inicio es la raíz global, "Inicio / Inicio" no aporta nada', () => {

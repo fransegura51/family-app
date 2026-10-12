@@ -575,7 +575,7 @@ export async function deleteWalletTransaction(id: string): Promise<void> {
 export async function listGoals(): Promise<KidGoal[]> {
   const { data, error } = await supabase
     .from('kid_goals')
-    .select('id, family_id, member_id, title, target_amount, emoji, photo_storage_path, photo_original_name, photo_mime_type')
+    .select('id, family_id, member_id, title, target_amount, emoji, photo_storage_path, photo_original_name, photo_mime_type, celebrated_at')
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -587,7 +587,15 @@ export async function listGoals(): Promise<KidGoal[]> {
     photoStoragePath: r.photo_storage_path,
     photoOriginalName: r.photo_original_name,
     photoMimeType: r.photo_mime_type,
+    celebratedAt: r.celebrated_at,
   }))
+}
+
+// PG-PUNTOS-FINANZAS (Parte B2) — marca que ya se le enseñó "¡Enhorabuena!" a este objetivo, para que no
+// se repita — nunca vuelve a limpiarse aunque el ahorro baje después de cumplirlo.
+export async function markGoalCelebrated(id: string): Promise<void> {
+  const { error } = await supabase.from('kid_goals').update({ celebrated_at: new Date().toISOString() }).eq('id', id)
+  if (error) throw error
 }
 
 export async function createGoal(input: { memberId: string; title: string; targetAmount: number; emoji?: string | null }): Promise<string> {

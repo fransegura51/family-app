@@ -81,9 +81,19 @@ describe('Disponible vs Ahorro acumulado — las 2 cifras que importan, nunca 4 
 })
 
 describe('Objetivos de ahorro — se conservan tal cual, solo dentro del detalle de la tarjeta Ahorrar', () => {
-  it('AddGoalForm y el listado de objetivos siguen reutilizándose sin cambios de lógica', () => {
+  it('el listado de objetivos sigue reutilizándose sin cambios de lógica', () => {
     const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
     expect(body).toContain("openCard === 'ahorro' && (")
-    expect(body).toContain('<AddGoalForm memberId={activeMemberId} onAdded={reload} />')
+    expect(body).toContain('{memberGoals.map((goal, i) => (')
+  })
+  // Parte B2 (PG-PUNTOS-FINANZAS) — "+ Nuevo objetivo de ahorro" pasa a un botón que despliega
+  // AddGoalForm, ANTES de la lista (no siempre visible debajo como antes).
+  it('"+ Nuevo objetivo de ahorro" aparece antes de la lista de objetivos, nunca siempre visible', () => {
+    const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
+    const addIdx = body.indexOf('+ Nuevo objetivo de ahorro')
+    const listIdx = body.indexOf('{memberGoals.map((goal, i) => (')
+    expect(addIdx).toBeGreaterThan(-1)
+    expect(listIdx).toBeGreaterThan(-1)
+    expect(addIdx).toBeLessThan(listIdx)
   })
 })

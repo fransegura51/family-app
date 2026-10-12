@@ -438,6 +438,9 @@ export interface KidGoal {
   photoStoragePath: string | null
   photoOriginalName: string | null
   photoMimeType: string | null
+  // PG-PUNTOS-FINANZAS (Parte B2, migración 0251) — ya se le enseñó la celebración "¡Enhorabuena!" al
+  // llegar al 100%; nunca se repite, aunque el ahorro suba y baje más adelante.
+  celebratedAt: string | null
 }
 
 // Pequeños Grandes, Fase 11 (migración 0241) — gasto del fondo común de impuestos (no es de ningún niño

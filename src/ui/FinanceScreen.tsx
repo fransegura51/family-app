@@ -30,6 +30,7 @@ import {
   listTags,
   listTaxFundExpenses,
   listWalletTransactions,
+  markGoalCelebrated,
   registerKidIncome,
   saveGoalPhoto,
   setKidIncomeSplitConfig,
@@ -145,6 +146,7 @@ import {
   type EconomiaMenuItemKey,
 } from '@/state/economiaMenu'
 import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
+import { Confetti } from '@/ui/Confetti'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
@@ -11221,6 +11223,8 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [decidingId, setDecidingId] = useState<string | null>(null)
+  const [celebratingGoal, setCelebratingGoal] = useState<{ memberName: string; title: string } | null>(null)
+  const [showAddGoal, setShowAddGoal] = useState(false)
 
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
@@ -11246,6 +11250,36 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   }
 
   useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // PG-PUNTOS-FINANZAS (Parte B2) — "al completar un objetivo, '¡Enhorabuena!' + confeti, que no se
+  // repita". Mira TODOS los objetivos de la familia (no solo los del niño/a activo/a en los chips de
+  // arriba) — mismo criterio ya usado arriba para pendingTransactions, para no perderse la celebración de
+  // un hermano/a por no tenerlo seleccionado justo entonces. Nunca cuenta un objetivo dos veces entre sí
+  // (cada uno compara contra el ahorro TOTAL real de su propio dueño, como ya hacía GoalCard). `reload` se
+  // recrea cada render (mismo motivo que useEffect(reload, []) de más arriba) — incluirla en las
+  // dependencias dispararía el efecto sin fin, de ahí el eslint-disable de la última línea.
+  useEffect(() => {
+    if (loading || celebratingGoal) return
+    const justCompleted = goals.find((g) => {
+      if (g.celebratedAt) return false
+      const saved = walletCategoryTotal(g.memberId, 'ahorro', transactions)
+      return saved >= g.targetAmount
+    })
+    if (!justCompleted) return
+    const memberName = members.find((m) => m.id === justCompleted.memberId)?.name ?? 'Un niño/a'
+    setCelebratingGoal({ memberName, title: justCompleted.title })
+    markGoalCelebrated(justCompleted.id)
+      .then(reload)
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, goals, transactions, members, celebratingGoal])
+
+  // Se cierra sola a los 4s — "breve", mismo patrón ya usado en Puntos y recompensas (Parte A5).
+  useEffect(() => {
+    if (!celebratingGoal) return
+    const timer = setTimeout(() => setCelebratingGoal(null), 4000)
+    return () => clearTimeout(timer)
+  }, [celebratingGoal])
 
   // Pequeños Grandes, Fase 8 — "autonomía y aprobaciones": un adulto decide los ingresos/gastos que CADA
   // niño registró sobre sí mismo, estén pendientes de cualquiera de ellos (no solo del que esté activo
@@ -11305,6 +11339,16 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
             subsection={[{ label: 'Educación financiera', onClick: () => setOpenCard(null) }, { label: cardInfo.label }] satisfies BreadcrumbLevel[]}
           />
         )}
+        {celebratingGoal && (
+          <>
+            <Confetti />
+            <div className="card banner" style={{ padding: 10, marginBottom: 8, textAlign: 'center' }}>
+              <strong>
+                🎉 ¡Enhorabuena, {celebratingGoal.memberName}! "{celebratingGoal.title}" cumplido
+              </strong>
+            </div>
+          </>
+        )}
         {error && <p className="error">{error}</p>}
         {memberChips}
         {!standalone && (
@@ -11325,13 +11369,19 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         {openCard === 'ahorro' && (
           <>
             <h3>Objetivos de ahorro</h3>
+            {showAddGoal ? (
+              <AddGoalForm memberId={activeMemberId} onAdded={() => { setShowAddGoal(false); reload() }} onClose={() => setShowAddGoal(false)} />
+            ) : (
+              <button type="button" className="link-button" onClick={() => setShowAddGoal(true)}>
+                + Nuevo objetivo de ahorro
+              </button>
+            )}
             <div className="event-list">
               {memberGoals.map((goal, i) => (
                 <GoalCard key={goal.id} goal={goal} categoryTotal={categoryTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />
               ))}
               {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
             </div>
-            <AddGoalForm memberId={activeMemberId} onAdded={reload} />
           </>
         )}
 
@@ -11377,6 +11427,16 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   return (
     <div>
       {standalone && <SectionBreadcrumb subsection="Educación financiera" />}
+      {celebratingGoal && (
+        <>
+          <Confetti />
+          <div className="card banner" style={{ padding: 10, marginBottom: 8, textAlign: 'center' }}>
+            <strong>
+              🎉 ¡Enhorabuena, {celebratingGoal.memberName}! "{celebratingGoal.title}" cumplido
+            </strong>
+          </div>
+        </>
+      )}
       {error && <p className="error">{error}</p>}
       {memberChips}
       {isAdult && pendingTransactions.length > 0 && (
@@ -11433,6 +11493,8 @@ function GoalCard({
 }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
+  // PG-PUNTOS-FINANZAS (Parte B2) — "importe restante", nunca negativo una vez cumplido el objetivo.
+  const remaining = Math.max(0, goal.targetAmount - categoryTotal)
 
   useEffect(() => {
     if (goal.photoStoragePath) getGoalPhotoUrl(goal.photoStoragePath).then(setPhotoUrl).catch(() => setPhotoUrl(null))
@@ -11455,6 +11517,9 @@ function GoalCard({
           <div className="progress-bar">
             <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
           </div>
+          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+            {remaining > 0 ? `Faltan ${remaining.toFixed(2)} €` : '¡Objetivo cumplido!'}
+          </p>
         </span>
       </div>
       <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(onChanged)} />
@@ -11682,7 +11747,7 @@ function EditIncomeSplitForm({
 
 // Pequeños Grandes, Fase 10 — emoji (catálogo cerrado + "escribe el tuyo") y foto (opcional, se sube
 // DESPUÉS de crear el objetivo porque hace falta su id — mismo criterio que AddWishlistItemModal).
-function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => void }) {
+function AddGoalForm({ memberId, onAdded, onClose }: { memberId: string; onAdded: () => void; onClose: () => void }) {
   const [title, setTitle] = useState('')
   const [targetAmount, setTargetAmount] = useState('')
   const [emoji, setEmoji] = useState('')
@@ -11740,9 +11805,14 @@ function AddGoalForm({ memberId, onAdded }: { memberId: string; onAdded: () => v
         <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Crear objetivo'}
-      </button>
+      <div className="filter-row" style={{ marginTop: 4 }}>
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Crear objetivo'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
     </form>
   )
 }

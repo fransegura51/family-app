@@ -11299,11 +11299,15 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
     }
   }
 
-  // Las dos únicas cifras que importan de un vistazo (petición real, Fase 6): lo que tiene disponible
-  // para gastar AHORA y lo que lleva ahorrado en total — nunca 4 cifras en fila como si fueran 4 saldos
-  // independientes (eso era justo lo que hacía el diseño anterior).
+  // Lo que tiene disponible para gastar AHORA y lo que lleva ahorrado en total (petición real, Fase 6) —
+  // nunca 4 cifras en fila como si fueran 4 saldos independientes. Parte B3 (PG-PUNTOS-FINANZAS) las
+  // junta en la tira "💰 Mi dinero ahora" (en vez del par "Disponible"/"Ahorro acumulado" de antes) +
+  // gastoTotal, mostrado en negativo — `balance` YA tiene el gasto restado (walletBalance en
+  // domain/finance.ts), así que gastoTotal es solo informativo, nunca se vuelve a restar de nada.
   const balance = activeMemberId ? walletBalance(activeMemberId, transactions) : 0
   const savedTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'ahorro', transactions) : 0
+  const gastoTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'gasto', transactions) : 0
+  const moneyNow = savedTotal + balance
   const memberGoals = goals.filter((g) => g.memberId === activeMemberId)
   // Reparto automático de Fase 7 — un niño sin fila propia en kid_income_split_configs usa el 60/20/20
   // obligatorio por defecto (mismo criterio que el RPC register_kid_income en el servidor).
@@ -11364,25 +11368,6 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
 
         {openCard === 'ingreso' && (
           <IncomeSplitInfo isAdult={isAdult} memberId={activeMemberId} config={activeSplitConfig} onSaved={reload} />
-        )}
-
-        {openCard === 'ahorro' && (
-          <>
-            <h3>Objetivos de ahorro</h3>
-            {showAddGoal ? (
-              <AddGoalForm memberId={activeMemberId} onAdded={() => { setShowAddGoal(false); reload() }} onClose={() => setShowAddGoal(false)} />
-            ) : (
-              <button type="button" className="link-button" onClick={() => setShowAddGoal(true)}>
-                + Nuevo objetivo de ahorro
-              </button>
-            )}
-            <div className="event-list">
-              {memberGoals.map((goal, i) => (
-                <GoalCard key={goal.id} goal={goal} categoryTotal={categoryTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />
-              ))}
-              {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
-            </div>
-          </>
         )}
 
         {openCard === 'impuesto' && (
@@ -11461,8 +11446,37 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         </div>
       )}
 
-      <p className="points-badge">Disponible: {balance.toFixed(2)} €</p>
-      <p className="muted">Ahorro acumulado: {savedTotal.toFixed(2)} €</p>
+      {/* PG-PUNTOS-FINANZAS (Parte B2) — "+ Nuevo objetivo de ahorro" arriba del todo, en la pantalla
+          principal (ya no dentro del detalle de "Ahorrar") — justo lo que pide la Parte B3 al describir
+          su tira de dinero como "entre el objetivo y las 4 tarjetas". */}
+      <h3 style={{ marginBottom: 4 }}>Objetivos de ahorro</h3>
+      {showAddGoal ? (
+        <AddGoalForm memberId={activeMemberId} onAdded={() => { setShowAddGoal(false); reload() }} onClose={() => setShowAddGoal(false)} />
+      ) : (
+        <button type="button" className="link-button" onClick={() => setShowAddGoal(true)}>
+          + Nuevo objetivo de ahorro
+        </button>
+      )}
+      <div className="event-list">
+        {memberGoals.map((goal, i) => (
+          <GoalCard key={goal.id} goal={goal} categoryTotal={savedTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />
+        ))}
+        {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
+      </div>
+
+      {/* Parte B3 — sustituye el par "Disponible"/"Ahorro acumulado": el total (hucha + para gastar) y
+          los 3 conceptos alineados debajo, compacto y sin scroll horizontal (flex-wrap, nunca una fila
+          que se salga de la pantalla). Nunca pie charts aquí — eso es cosa de las 4 tarjetas (Parte B4). */}
+      <div className="card" style={{ marginTop: 10, padding: 10 }}>
+        <p style={{ margin: '0 0 6px', fontWeight: 600 }}>💰 Mi dinero ahora: {moneyNow.toFixed(2)} €</p>
+        <div className="inline-fields" style={{ flexWrap: 'wrap', gap: '4px 16px', fontSize: 13 }}>
+          <span>🐷 Hucha: {savedTotal.toFixed(2)} €</span>
+          <span>🛒 Para gastar: {balance.toFixed(2)} €</span>
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => setOpenCard('gasto')}>
+            💸 Ya gastado: -{gastoTotal.toFixed(2)} €
+          </button>
+        </div>
+      </div>
 
       <div className="card-grid" style={{ marginTop: 8 }}>
         {WALLET_TABS.map((t) => (

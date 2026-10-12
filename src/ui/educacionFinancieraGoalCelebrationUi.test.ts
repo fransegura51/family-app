@@ -52,8 +52,10 @@ describe('B2 — GoalCard muestra el importe restante, nunca negativo tras cumpl
     expect(card).toContain('const remaining = Math.max(0, goal.targetAmount - categoryTotal)')
     expect(card).toContain("remaining > 0 ? `Faltan ${remaining.toFixed(2)} €` : '¡Objetivo cumplido!'")
   })
-  it('sigue comparando contra el MISMO categoryTotal que reciben todos los objetivos de ese niño/a — nunca un reparto/asignación entre objetivos que pudiera hacer doble cuenta', () => {
+  it('sigue comparando contra el MISMO categoryTotal (savedTotal, el ahorro total real) que reciben todos los objetivos de ese niño/a — nunca un reparto/asignación entre objetivos que pudiera hacer doble cuenta', () => {
     expect(card).toContain('categoryTotal: number')
-    expect(UI).toContain('<GoalCard key={goal.id} goal={goal} categoryTotal={categoryTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />')
+    // Parte B3 — los objetivos viven en el grid principal (savedTotal), ya no dentro del detalle de
+    // "Ahorrar" (que usaba su propia variable local `categoryTotal`, el mismo valor con otro nombre).
+    expect(UI).toContain('<GoalCard key={goal.id} goal={goal} categoryTotal={savedTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />')
   })
 })

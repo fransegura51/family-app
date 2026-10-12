@@ -65,35 +65,59 @@ describe('KidsFinanceTab — grid de 4 tarjetas grandes, toca para ver el detall
   })
 })
 
-describe('Disponible vs Ahorro acumulado — las 2 cifras que importan, nunca 4 saldos en fila como antes', () => {
+// Parte B3 (PG-PUNTOS-FINANZAS) — el par "Disponible"/"Ahorro acumulado" se sustituye por la tira
+// compacta "💰 Mi dinero ahora", pero las cifras de verdad (balance/savedTotal) son EXACTAMENTE las
+// mismas de siempre — walletBalance/walletCategoryTotal (domain/finance.ts) nunca se tocan, solo cambia
+// cómo se presentan (ahora junto al 💸 "Ya gastado" informativo, que nunca se resta otra vez de nada).
+describe('"💰 Mi dinero ahora" — sustituye a Disponible/Ahorro acumulado, mismas cifras de siempre', () => {
   const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
 
-  it('"Disponible" sigue siendo walletBalance (ingreso - ahorro - gasto - impuesto), sin recalcularlo aparte', () => {
+  it('"Para gastar" sigue siendo walletBalance (ingreso - ahorro - gasto - impuesto), sin recalcularlo aparte', () => {
     expect(body).toContain('const balance = activeMemberId ? walletBalance(activeMemberId, transactions) : 0')
   })
-  it('"Ahorro acumulado" es walletCategoryTotal de tipo ahorro — un acumulado, no un 5º saldo independiente nuevo', () => {
+  it('"Hucha" es walletCategoryTotal de tipo ahorro — un acumulado, no un 5º saldo independiente nuevo', () => {
     expect(body).toContain("const savedTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'ahorro', transactions) : 0")
-    expect(body).toContain('Ahorro acumulado: {savedTotal.toFixed(2)} €')
+    expect(body).toContain('🐷 Hucha: {savedTotal.toFixed(2)} €')
+  })
+  it('el total es hucha + para gastar; "Ya gastado" se enseña en negativo pero es solo informativo — balance YA tiene el gasto restado, nunca se resta dos veces', () => {
+    expect(body).toContain('const moneyNow = savedTotal + balance')
+    expect(body).toContain("const gastoTotal = activeMemberId ? walletCategoryTotal(activeMemberId, 'gasto', transactions) : 0")
+    expect(body).toContain('💸 Ya gastado: -{gastoTotal.toFixed(2)} €')
+  })
+  it('el antiguo par "Disponible"/"Ahorro acumulado" ya no existe', () => {
+    expect(body).not.toContain('Disponible: {balance.toFixed(2)} €')
+    expect(body).not.toContain('Ahorro acumulado: {savedTotal.toFixed(2)} €')
   })
   it('ya no hay una fila con las 4 cifras en paralelo (el patrón "label total · label total · ...")', () => {
     expect(body).not.toContain("WALLET_TABS.map((t) => `${t.label} ${walletCategoryTotal")
   })
 })
 
-describe('Objetivos de ahorro — se conservan tal cual, solo dentro del detalle de la tarjeta Ahorrar', () => {
-  it('el listado de objetivos sigue reutilizándose sin cambios de lógica', () => {
-    const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
-    expect(body).toContain("openCard === 'ahorro' && (")
-    expect(body).toContain('{memberGoals.map((goal, i) => (')
+// Parte B2/B3 (PG-PUNTOS-FINANZAS) — "+ Nuevo objetivo de ahorro" vive en la pantalla PRINCIPAL (el
+// grid), no dentro del detalle de la tarjeta Ahorrar — justo lo que exige B3 al describir su tira de
+// dinero como "entre el objetivo y las 4 tarjetas". El detalle de "Ahorrar" ya no gestiona objetivos.
+describe('Objetivos de ahorro — en la pantalla principal, entre el grid y la tira "Mi dinero ahora"', () => {
+  const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
+  // El grid es el JSX devuelto DESPUÉS del bloque "if (openCard) { ... }" (el detalle de una tarjeta) —
+  // arranca en su propio marcador único, justo al principio de ese segundo `return (`, hasta GoalCard.
+  const grid = window_(body, '{standalone && <SectionBreadcrumb subsection="Educación financiera" />}', '\nfunction GoalCard(')
+
+  it('el listado de objetivos vive en el grid principal, nunca dentro del detalle de la tarjeta Ahorrar', () => {
+    expect(grid).toContain('{memberGoals.map((goal, i) => (')
+    expect(body).not.toContain("openCard === 'ahorro' && (")
   })
-  // Parte B2 (PG-PUNTOS-FINANZAS) — "+ Nuevo objetivo de ahorro" pasa a un botón que despliega
-  // AddGoalForm, ANTES de la lista (no siempre visible debajo como antes).
   it('"+ Nuevo objetivo de ahorro" aparece antes de la lista de objetivos, nunca siempre visible', () => {
-    const body = window_(FS, 'export function KidsFinanceTab(', '\nfunction AddGoalForm(')
-    const addIdx = body.indexOf('+ Nuevo objetivo de ahorro')
-    const listIdx = body.indexOf('{memberGoals.map((goal, i) => (')
+    const addIdx = grid.indexOf('+ Nuevo objetivo de ahorro')
+    const listIdx = grid.indexOf('{memberGoals.map((goal, i) => (')
     expect(addIdx).toBeGreaterThan(-1)
     expect(listIdx).toBeGreaterThan(-1)
     expect(addIdx).toBeLessThan(listIdx)
+  })
+  it('los objetivos aparecen ANTES de "Mi dinero ahora", que a su vez va antes de las 4 tarjetas', () => {
+    const goalsIdx = grid.indexOf('{memberGoals.map((goal, i) => (')
+    const moneyIdx = grid.indexOf('💰 Mi dinero ahora')
+    const cardsIdx = grid.indexOf('className="card-grid"')
+    expect(goalsIdx).toBeLessThan(moneyIdx)
+    expect(moneyIdx).toBeLessThan(cardsIdx)
   })
 })

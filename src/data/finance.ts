@@ -614,6 +614,19 @@ export async function deleteGoal(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Corrección real (incidencia 2 — "No puedo editar objetivos de ahorro"): hasta ahora solo existía crear
+// y borrar. Reutiliza la MISMA fila/política ya permitida — markGoalCelebrated/saveGoalPhoto (arriba) ya
+// hacían update() sobre kid_goals sin ninguna política nueva, así que esto no necesita ni migración ni
+// RLS aparte. Nunca toca kid_wallet_transactions: editar el objetivo (nombre/importe/imagen) no mete,
+// quita ni recalcula ningún movimiento de ahorro ya registrado.
+export async function updateGoal(id: string, input: { title: string; targetAmount: number; emoji?: string | null }): Promise<void> {
+  const { error } = await supabase
+    .from('kid_goals')
+    .update({ title: input.title, target_amount: input.targetAmount, emoji: input.emoji ?? null })
+    .eq('id', id)
+  if (error) throw error
+}
+
 // Pequeños Grandes, Fase 10 — foto de un objetivo de ahorro, mismo patrón ya en producción que
 // saveProviderGlobalAttachment/saveWishlistItemPhoto: comprime si es imagen, sube a un bucket privado
 // por familia, una sola foto por objetivo (sustituye y borra la anterior).

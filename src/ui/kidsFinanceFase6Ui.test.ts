@@ -48,17 +48,16 @@ describe('KidsFinanceTab — grid de 4 tarjetas grandes, toca para ver el detall
     expect(body).toContain('useState<WalletTransactionType | null>(null)')
     expect(body).not.toContain("useState<WalletTransactionType>('ingreso')")
   })
-  it('el grid usa el mismo patrón visual que el hub de Pequeños Grandes (home-card-photo), cuadrado 1:1', () => {
+  it('el grid usa el mismo patrón visual que el hub de Pequeños Grandes (home-card-photo), cuadrado 1:1 — el aspect-ratio vive en el CSS del botón, nunca en el <img> (corrección incidencia 1)', () => {
     expect(body).toContain('className="card event-module-card home-card-photo wallet-type-card"')
-    expect(body).toContain("style={{ aspectRatio: '1 / 1' }}")
-    expect(body).toContain('onClick={() => openWalletCard(t.key)}')
+    expect(body).toContain('className="wallet-type-card-tap"')
+    expect(body).not.toMatch(/<img[^>]*style=\{\{\s*aspectRatio/)
+    expect(body).toContain('onClick={() => setOpenCard(t.key)}')
   })
-  it('el formulario de nuevo movimiento (AddTransactionForm) solo se renderiza dentro del detalle de una tarjeta abierta, nunca en el grid', () => {
-    const grid = body.slice(0, body.indexOf('if (openCard)'))
-    expect(grid).not.toContain('<AddTransactionForm')
-    expect(body).toContain('<AddTransactionForm')
+  it('corrección incidencia 3 — AddTransactionForm vive SIEMPRE dentro de WalletTransactionModal (modal real), nunca desplegado directamente en el grid ni en el detalle', () => {
+    expect(body).not.toContain('<AddTransactionForm')
+    expect(body).toContain('<WalletTransactionModal')
     expect(body).toContain('memberId={activeMemberId}')
-    expect(body).toContain('type={openCard}')
   })
   it('"← Volver" cierra la tarjeta y vuelve al grid', () => {
     expect(body).toContain('onClick={() => setOpenCard(null)}')

@@ -36,6 +36,7 @@ import {
   setKidIncomeSplitConfig,
   updateBudgetCategory,
   updateExpense,
+  updateGoal,
   updateTag,
   type ResolvedInternalTransferDestination,
 } from '@/data/finance'
@@ -11247,17 +11248,11 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   const [decidingId, setDecidingId] = useState<string | null>(null)
   const [celebratingGoal, setCelebratingGoal] = useState<{ memberName: string; title: string } | null>(null)
   const [showAddGoal, setShowAddGoal] = useState(false)
-  // PG-PUNTOS-FINANZAS (Parte B6) — el formulario de nuevo movimiento del detalle NUNCA se queda siempre
-  // visible: empieza oculto tras un botón "+ Nuevo X", igual que ya hacían AddGoalForm/TaxFundSection.
-  // `openWalletCard` es el único sitio que entra a una tarjeta, así que decide aquí si el formulario
-  // arranca abierto (cuando el propio "+ Nuevo X" del grid es lo que se tocó) o cerrado (al tocar la
-  // imagen/el dónut, o al llegar desde los resúmenes de gasto/fondo compartido de más abajo — intención
-  // de mirar, no de añadir).
-  const [showAddTransaction, setShowAddTransaction] = useState(false)
-  function openWalletCard(key: WalletTransactionType, opts?: { addNow?: boolean }) {
-    setOpenCard(key)
-    setShowAddTransaction(opts?.addNow ?? false)
-  }
+  // Corrección real (incidencia 3) — "+ Nuevo X" (tanto desde la rejilla principal como desde dentro de
+  // cada sección) abre SIEMPRE el mismo modal real (WalletTransactionModal), nunca un formulario
+  // desplegado dentro de la página; independiente de `openCard` (navegar a ver el detalle/historial de
+  // una tarjeta es una acción aparte, no requiere abrir el modal).
+  const [addModalType, setAddModalType] = useState<WalletTransactionType | null>(null)
 
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
@@ -11368,6 +11363,24 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
     </div>
   )
 
+  // Corrección real (incidencia 3) — el modal vive en un `createPortal` aparte (document.body), para que
+  // su posición `fixed` nunca dependa del scroll/tamaño de ninguna de las dos ramas de `return` de abajo
+  // (rejilla o detalle de una tarjeta) — se incluye en las dos, calculado una sola vez aquí.
+  const transactionModal =
+    addModalType &&
+    createPortal(
+      <WalletTransactionModal
+        type={addModalType}
+        formLabel={WALLET_TABS.find((t) => t.key === addModalType)!.formLabel}
+        memberId={activeMemberId}
+        splitConfig={addModalType === 'ingreso' ? activeSplitConfig : null}
+        needsApproval={!isAdult && (addModalType === 'ingreso' || addModalType === 'gasto')}
+        onAdded={reload}
+        onClose={() => setAddModalType(null)}
+      />,
+      document.body,
+    )
+
   if (openCard) {
     const cardInfo = WALLET_TABS.find((t) => t.key === openCard)!
     const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, openCard, transactions) : 0
@@ -11414,6 +11427,12 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           <TaxFundSection isAdult={isAdult} transactions={transactions} expenses={taxFundExpenses} onChanged={reload} />
         )}
 
+        {/* Corrección real (incidencia 3) — botón compacto "+ Nuevo X" inmediatamente encima del
+            historial (nunca el formulario desplegado aquí dentro): abre el mismo modal real que el
+            botón de la tarjeta principal. */}
+        <button type="button" className="link-button" onClick={() => setAddModalType(openCard)}>
+          + Nuevo {cardInfo.formLabel}
+        </button>
         <div className="event-list">
           {/* PG-PUNTOS-FINANZAS (Parte B7) — Año → Mes → Movimientos, cada nivel plegable por su cuenta
               (patrón <details>/<summary> ya usado en el resto de la app, nunca un acordeón nuevo). El año
@@ -11452,21 +11471,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           ))}
           {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
         </div>
-        {showAddTransaction ? (
-          <AddTransactionForm
-            memberId={activeMemberId}
-            type={openCard}
-            formLabel={cardInfo.formLabel}
-            splitConfig={openCard === 'ingreso' ? activeSplitConfig : null}
-            needsApproval={!isAdult && (openCard === 'ingreso' || openCard === 'gasto')}
-            onAdded={reload}
-            onClose={() => setShowAddTransaction(false)}
-          />
-        ) : (
-          <button type="button" className="link-button" onClick={() => setShowAddTransaction(true)}>
-            + Nuevo {cardInfo.formLabel}
-          </button>
-        )}
+        {transactionModal}
       </div>
     )
   }
@@ -11534,7 +11539,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         <div className="inline-fields" style={{ flexWrap: 'wrap', gap: '4px 16px', fontSize: 13 }}>
           <span>🐷 Hucha: {savedTotal.toFixed(2)} €</span>
           <span>🛒 Para gastar: {balance.toFixed(2)} €</span>
-          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => openWalletCard('gasto')}>
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => setOpenCard('gasto')}>
             💸 Ya gastado: -{gastoTotal.toFixed(2)} €
           </button>
         </div>
@@ -11559,8 +11564,8 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           const donutCenter = highlightedSlice ?? { label: 'Reparto', total: 100 }
           return (
             <div key={t.key} className="card event-module-card home-card-photo wallet-type-card">
-              <button type="button" className="wallet-type-card-tap" onClick={() => openWalletCard(t.key)}>
-                <img src={t.img} alt={t.label} className="home-card-photo-img" style={{ aspectRatio: '1 / 1' }} />
+              <button type="button" className="wallet-type-card-tap" onClick={() => setOpenCard(t.key)}>
+                <img src={t.img} alt={t.label} />
               </button>
               <div className="home-card-photo-caption wallet-type-card-body">
                 <p style={{ margin: 0, fontWeight: 600 }}>{t.label}</p>
@@ -11571,11 +11576,11 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
                   slices={splitSlices}
                   centerLabel={{ name: donutCenter.label, total: donutCenter.total }}
                   highlightedKey={highlightedKey}
-                  onSliceClick={() => openWalletCard(t.key)}
+                  onSliceClick={() => setOpenCard(t.key)}
                   size={68}
                   centerUnit="%"
                 />
-                <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => openWalletCard(t.key, { addNow: true })}>
+                <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => setAddModalType(t.key)}>
                   + Nuevo {t.formLabel}
                 </button>
               </div>
@@ -11589,7 +11594,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           del niño/a activo/a; este total es de TODA la familia, aportado por cualquier hijo/a — se aclara
           con más de un niño para que no se confunda con "solo el activo"). Mismo cálculo ya existente de
           TaxFundSection (taxFundAvailable), reutilizado tal cual — nunca una cifra nueva aparte. */}
-      <button type="button" className="card" style={{ marginTop: 8, padding: 10, textAlign: 'left', width: '100%' }} onClick={() => openWalletCard('impuesto')}>
+      <button type="button" className="card" style={{ marginTop: 8, padding: 10, textAlign: 'left', width: '100%' }} onClick={() => setOpenCard('impuesto')}>
         <p style={{ margin: 0, fontWeight: 600 }}>🏛️ Total fondo común: {taxFundTotal.toFixed(2)} €</p>
         <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
           {members.length > 1
@@ -11597,6 +11602,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
             : 'Lo aportado, menos lo ya gastado del fondo común.'}
         </p>
       </button>
+      {transactionModal}
     </div>
   )
 }
@@ -11619,6 +11625,9 @@ function GoalCard({
   onChanged: () => void
 }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
+  // Corrección real (incidencia 2 — "No puedo editar objetivos de ahorro"): modal real (mismo patrón que
+  // WalletTransactionModal), nunca un formulario aparte dentro de la página.
+  const [editing, setEditing] = useState(false)
   const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
   // PG-PUNTOS-FINANZAS (Parte B2) — "importe restante", nunca negativo una vez cumplido el objetivo.
   const remaining = Math.max(0, goal.targetAmount - categoryTotal)
@@ -11638,7 +11647,12 @@ function GoalCard({
         </div>
         <div className="goal-card-info">
           <div className="goal-card-row">
-            <strong>{goal.title}</strong>
+            <span className="goal-card-title-row">
+              <strong>{goal.title}</strong>
+              <button type="button" className="icon-button goal-card-edit" onClick={() => setEditing(true)} aria-label={`Editar objetivo ${goal.title}`}>
+                ✏️
+              </button>
+            </span>
             <span>{pct}%</span>
           </div>
           <p className="goal-card-motivation">{pct >= 100 ? '¡Lo has conseguido!' : '¡Sigue ahorrando!'}</p>
@@ -11659,6 +11673,86 @@ function GoalCard({
         {pct >= 100 ? '🏆 ¡Enhorabuena! Has conseguido tu objetivo.' : `🏆 Te faltan ${remaining.toFixed(2)} € para «${goal.title}».`}
       </p>
       <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(onChanged)} />
+      {editing &&
+        createPortal(<EditGoalForm goal={goal} onSaved={onChanged} onClose={() => setEditing(false)} />, document.body)}
+    </div>
+  )
+}
+
+// Corrección real (incidencia 2) — formulario de edición del objetivo (título/coste/emoji/foto), mismos
+// campos que AddGoalForm y las mismas funciones de datos (updateGoal nuevo, saveGoalPhoto ya existente),
+// en un modal real — nunca saca al usuario de Educación financiera. No toca ningún movimiento de ahorro
+// ya registrado: editar el objetivo nunca mete, quita ni recalcula dinero.
+function EditGoalForm({ goal, onSaved, onClose }: { goal: KidGoal; onSaved: () => void; onClose: () => void }) {
+  const [title, setTitle] = useState(goal.title)
+  const [targetAmount, setTargetAmount] = useState(String(goal.targetAmount))
+  const [emoji, setEmoji] = useState(goal.emoji ?? '')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await updateGoal(goal.id, { title, targetAmount: Number(targetAmount), emoji: emoji.trim() || null })
+      if (photoFile) await saveGoalPhoto(goal, photoFile)
+      onSaved()
+      onClose()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="sheet-modal-overlay" onClick={onClose}>
+      <div className="sheet-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-modal-header">
+          <h2>Editar objetivo</h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="sheet-modal-body">
+          <form onSubmit={handleSubmit} className="member-form">
+            <label>
+              Título
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+            </label>
+            <label>
+              Coste (€)
+              <input type="number" step="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} required />
+            </label>
+            <div className="filter-row" style={{ flexWrap: 'wrap' }}>
+              {GOAL_EMOJI_OPTIONS.map((e) => (
+                <button key={e} type="button" className={'chip' + (emoji === e ? ' chip-active' : '')} onClick={() => setEmoji(e)} style={{ fontSize: 18 }}>
+                  {e}
+                </button>
+              ))}
+            </div>
+            <label>
+              O escribe tu propio emoji (opcional)
+              <input type="text" value={emoji} onChange={(e) => setEmoji(e.target.value)} style={{ width: 60 }} />
+            </label>
+            <label>
+              Cambiar foto (opcional)
+              <input type="file" accept="image/*" onChange={(e) => setPhotoFile(e.target.files?.[0] ?? null)} />
+            </label>
+            {error && <p className="error">{error}</p>}
+            <div className="inline-fields">
+              <button type="submit" disabled={saving}>
+                {saving ? 'Guardando…' : 'Guardar'}
+              </button>
+              <button type="button" className="link-button" onClick={onClose}>
+                Cancelar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }
@@ -11980,7 +12074,6 @@ function AddGoalForm({ memberId, onAdded, onClose }: { memberId: string; onAdded
 function AddTransactionForm({
   memberId,
   type,
-  formLabel,
   splitConfig,
   needsApproval,
   onAdded,
@@ -11988,7 +12081,6 @@ function AddTransactionForm({
 }: {
   memberId: string
   type: WalletTransactionType
-  formLabel: string
   splitConfig: { ahorroPct: number; impuestoPct: number } | null
   // Pequeños Grandes, Fase 8 — true cuando quien registra es el propio niño (ingreso/gasto sobre sí
   // mismo): solo cambia el mensaje de después de guardar, nunca el propio guardado (el servidor decide
@@ -11996,10 +12088,12 @@ function AddTransactionForm({
   // queda pendiente de un adulto).
   needsApproval: boolean
   onAdded: () => void
-  // PG-PUNTOS-FINANZAS (Parte B6) — "Cancelar" opcional para cerrar el formulario a mano; `onAdded`
-  // NUNCA lo cierra solo, porque needsApproval depende de que `sentNotice` ("⏳ Enviado...") siga visible
-  // después de guardar — cerrarlo de golpe se lo escondería al niño justo cuando más falta hace leerlo.
-  onClose?: () => void
+  // Incidencia 3 (corrección) — este formulario SIEMPRE vive dentro de WalletTransactionModal ahora
+  // (nunca desplegado dentro de la página); `onAdded` NUNCA cierra el modal por sí solo, porque
+  // needsApproval depende de que `sentNotice` ("⏳ Enviado...") siga visible después de guardar — cerrarlo
+  // de golpe se lo escondería al niño justo cuando más falta hace leerlo. Cerrar es siempre una acción
+  // explícita (X o "Cancelar" del propio modal).
+  onClose: () => void
 }) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
@@ -12035,8 +12129,7 @@ function AddTransactionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
-      <h2>Nuevo {formLabel}</h2>
+    <form onSubmit={handleSubmit} className="member-form">
       {concepts.length > 0 && (
         <div className="filter-row" style={{ flexWrap: 'wrap' }}>
           {concepts.map((c) => (
@@ -12066,12 +12159,50 @@ function AddTransactionForm({
         <button type="submit" disabled={saving}>
           {saving ? 'Guardando…' : 'Registrar'}
         </button>
-        {onClose && (
-          <button type="button" className="link-button" onClick={onClose}>
-            Cancelar
-          </button>
-        )}
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
       </div>
     </form>
+  )
+}
+
+// Corrección real (incidencia 3 — "los formularios emergentes no son ventanas emergentes de verdad"): el
+// botón "+ Nuevo X" de cada una de las 4 tarjetas (tanto el de la rejilla principal como el de dentro de
+// cada sección) abre este mismo modal real — ventana superpuesta con fondo atenuado, título, botón X,
+// Cancelar, scroll propio si el formulario es largo, respeta la safe-area de iPhone — nunca un formulario
+// desplegado dentro de la página ni una navegación a otra sección. AddTransactionForm (sus campos,
+// validaciones y llamadas a registerKidIncome/addWalletTransaction) no cambia, solo cambia dónde vive.
+function WalletTransactionModal({
+  type,
+  formLabel,
+  memberId,
+  splitConfig,
+  needsApproval,
+  onAdded,
+  onClose,
+}: {
+  type: WalletTransactionType
+  formLabel: string
+  memberId: string
+  splitConfig: { ahorroPct: number; impuestoPct: number } | null
+  needsApproval: boolean
+  onAdded: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="sheet-modal-overlay" onClick={onClose}>
+      <div className="sheet-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-modal-header">
+          <h2>Nuevo {formLabel}</h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <div className="sheet-modal-body">
+          <AddTransactionForm memberId={memberId} type={type} splitConfig={splitConfig} needsApproval={needsApproval} onAdded={onAdded} onClose={onClose} />
+        </div>
+      </div>
+    </div>
   )
 }

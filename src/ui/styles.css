@@ -220,13 +220,32 @@ body {
   cursor: default;
 }
 
+/* Corrección real (incidencia 1 — "la imagen de Recibido aparece solo como una franja, el resto en
+   blanco", confirmado solo en Safari de iPhone, no en el navegador de desarrollo): la causa es que el
+   <img> llevaba su `aspect-ratio` puesto a sí mismo (style inline), como hijo directo de este <button> sin
+   ningún tamaño propio — un ciclo de dependencia (el alto del botón depende del img, el alto "usado" del
+   img depende de su aspect-ratio × el ancho que le da el botón) que algunos motores, sobre todo WebKit
+   bajo descarga de red real, resuelven mal en el primer pintado y nunca vuelven a recalcular. El patrón
+   que SÍ funciona ya en la app (.pg-access-card/.pg-access-card-img, el hub de Pequeños Grandes) pone el
+   aspect-ratio en el CONTENEDOR (tamaño fijo, sin depender del contenido) y el <img> solo rellena ese
+   tamaño ya decidido (width/height 100%) — se aplica aquí igual, moviendo aspect-ratio+overflow al propio
+   botón en vez de al <img>, para las 4 tarjetas por igual (nunca solo para "Recibido"). */
 .wallet-type-card-tap {
   display: block;
   width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
   padding: 0;
   border: none;
   background: none;
   cursor: pointer;
+}
+
+.wallet-type-card-tap img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .wallet-type-card-body .donut-ring-wrap {
@@ -321,6 +340,21 @@ body {
   white-space: nowrap;
 }
 
+/* Corrección real (incidencia 2 — "añade un pequeño icono de lápiz junto al título del objetivo"). */
+.goal-card-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.goal-card-edit {
+  flex: none;
+  font-size: 13px;
+  padding: 0 2px;
+}
+
 .goal-card-motivation {
   margin: 2px 0;
   font-size: 13px;
@@ -379,6 +413,61 @@ body {
   margin: 4px 0 0;
   font-size: 13px;
   font-weight: 600;
+}
+
+/* Corrección real (incidencia 3 — "los formularios emergentes no son ventanas emergentes de verdad") —
+   modal genérico de tipo "hoja": cabecera fija, cuerpo con scroll propio (nunca un formulario desplegado
+   dentro de la propia página), safe-area respetada arriba y abajo. Mismo patrón ya probado en
+   .menu-shopping-* (MenuShoppingModal.tsx), generalizado aquí para no duplicar la hoja de estilos cada
+   vez que un formulario nuevo necesite ser un modal real — se usa tanto para "+ Nuevo ingreso/ahorro/
+   gasto/impuesto" como para editar un objetivo de ahorro. */
+.sheet-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 18, 30, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 60;
+  overscroll-behavior: contain;
+}
+
+.sheet-modal {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - 12px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 12px);
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  background: #ffffff;
+  color: var(--text);
+}
+
+.sheet-modal-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.sheet-modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.sheet-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Pequeños Grandes — los 3 accesos de la pantalla principal (Puntos y recompensas / Educación

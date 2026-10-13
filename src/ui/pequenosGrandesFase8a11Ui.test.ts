@@ -69,8 +69,8 @@ describe('KidsFinanceTab — pendientes de aprobar visibles para el adulto, nunc
   it('un movimiento pendiente se enseña con su aviso y sin contar para el saldo (walletBalance ya filtra por aprobado en el dominio)', () => {
     expect(tab).toContain("t.status === 'pendiente' && <p className=\"muted\">⏳ Pendiente de que un adulto lo apruebe")
   })
-  it('AddTransactionForm recibe needsApproval solo para ingreso/gasto y solo cuando quien registra NO es adulto', () => {
-    expect(tab).toContain("needsApproval={!isAdult && (openCard === 'ingreso' || openCard === 'gasto')}")
+  it('AddTransactionForm (vía WalletTransactionModal) recibe needsApproval solo para ingreso/gasto y solo cuando quien registra NO es adulto', () => {
+    expect(tab).toContain("needsApproval={!isAdult && (addModalType === 'ingreso' || addModalType === 'gasto')}")
   })
 })
 

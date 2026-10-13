@@ -34,7 +34,7 @@ describe('B3 — "💰 Mi dinero ahora": el total y los 3 conceptos alineados', 
     expect(KIDS_TAB).not.toContain('moneyNow - gastoTotal')
   })
   it('"Ya gastado" enlaza al historial de gastos (abre la tarjeta "Gastar" ya existente, nunca una vista nueva)', () => {
-    expect(KIDS_TAB).toContain("onClick={() => openWalletCard('gasto')}")
+    expect(KIDS_TAB).toContain("onClick={() => setOpenCard('gasto')}")
   })
   it('compacto y sin scroll horizontal: flex-wrap, nunca overflow-x/white-space nowrap', () => {
     const strip = window_(KIDS_TAB, '💰 Mi dinero ahora', '</div>\n      </div>')

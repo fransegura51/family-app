@@ -241,7 +241,7 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(251) // 0251: kid_goals.celebrated_at (PG-PUNTOS-FINANZAS Parte B2); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(252) // 0252: kid_wallet_transactions.source_income_id on delete cascade (PG-PUNTOS-FINANZAS Parte B8); la numeración la sube quien añada la siguiente
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

@@ -7,6 +7,7 @@ import { listMenuEntries, listRecipes } from '@/data/food'
 import { listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { describeCookIdeas, parseCookRequest, pickCookIdea, type CookIdeaData } from '@/domain/cookIdeas'
+import { describeSavedMatches, findRecipesWithIngredients, type SavedRecipeMatch } from '@/domain/cookFromSaved'
 import { buildMenuAnswer, findRecipeMatches, MEAL_LABELS } from '@/domain/kitchenMenu'
 import { kitchenDateLabel, parseKitchenIntent, type KitchenIntent } from '@/domain/kitchenQuery'
 import { extractTrailingStore } from '@/domain/talkParse'
@@ -14,7 +15,7 @@ import type { MealType, MenuEntry, Recipe } from '@/domain/types'
 import { findKnownStore, normalize } from '@/domain/voiceQuery'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
-import { recentCookIdeasForVoice, rememberCookIdeas } from '@/pepa/cookIdeasStore'
+import { recentCookIdeasForVoice, rememberCookIdeas, type WebRecipeHit } from '@/pepa/cookIdeasStore'
 import { pendingRecipeRequest, recentRecipeIds, rememberRecipeRequest, rememberRecipes, type RecipeRequest } from '@/pepa/recentContext'
 
 export type KitchenOutcome =
@@ -232,15 +233,35 @@ async function handleRecipeRequest(intent: Extract<KitchenIntent, { kind: 'recip
   return { kind: 'recipe-offer', request, text: 'No tienes esa receta guardada. ¿Quieres que te prepare una?' }
 }
 
-// «Tengo pepino, lechuga y tomate, ¿qué cocino?»: la persona lo pide expresamente, así que se llama a la IA directamente (no hay que confirmar antes) y se
-// cuentan las ideas por voz; las recetas completas se enseñan en La cocina de Pepa → «¿Qué cocino hoy?» y se guardan solo si la persona lo decide.
-async function handleCookIdeas(ingredients: string[]): Promise<KitchenOutcome> {
-  const servings = await defaultServings()
+// «Tengo pepino, lechuga y tomate, ¿qué cocino?»: PRIMERO se buscan las recetas ya guardadas de la familia (sin IA y sin coste: domain/cookFromSaved.ts); la IA
+// es un segundo paso que la persona pide aparte («pídeselas a la IA»), para no gastar IA cuando basta con lo que ya tiene guardado.
+async function handleCookRequest(ingredients: string[]): Promise<KitchenOutcome> {
+  // Recetas guardadas + búsqueda en internet (Cookpad): las dos gratis y a la vez; si internet falla, se sigue con lo guardado.
+  const [recipes, servings, web] = await Promise.all([listRecipes(), defaultServings(), searchWebRecipes(ingredients)])
+  const saved = findRecipesWithIngredients(ingredients, recipes)
+  rememberCookIdeas({ ingredients, servings, ideas: [], saved, web })
+  return { kind: 'cook-ideas', ingredients, ideas: [], text: describeSavedMatches(ingredients, saved, web.map((w) => w.title)) }
+}
+
+// Cookpad (sin IA ni coste) con los 3 primeros ingredientes. Import dinámico: el cliente de Supabase solo se carga si de verdad se busca.
+async function searchWebRecipes(ingredients: string[]): Promise<WebRecipeHit[]> {
+  try {
+    const { searchCookpadRecipes } = await import('@/services/cookpadSearch')
+    const results = await searchCookpadRecipes(ingredients.slice(0, 3).join(' '))
+    return results.filter((r) => r.title && r.url).slice(0, 5)
+  } catch {
+    return []
+  }
+}
+
+// Con la IA (la persona lo ha pedido): ideas de platos con receta completa, contadas por voz; las recetas se enseñan en La cocina de Pepa y se guardan solo si
+// la persona lo decide.
+async function handleCookAi(ingredients: string[], servings: number, saved: SavedRecipeMatch[], web: WebRecipeHit[]): Promise<KitchenOutcome> {
   // Import dinámico: el cliente de IA (y con él el de Supabase) solo se carga cuando de verdad se pide una idea de cocina.
   const [{ requestCookIdeas }, { AiUnavailableError }] = await Promise.all([import('@/services/whatToCook'), import('@/services/aiClient')])
   try {
     const ideas = await requestCookIdeas({ ingredients, servings, preferences: [] })
-    rememberCookIdeas({ ingredients, servings, ideas })
+    rememberCookIdeas({ ingredients, servings, ideas, saved, web })
     return { kind: 'cook-ideas', ingredients, ideas, text: describeCookIdeas(ingredients, ideas) }
   } catch (err) {
     if (err instanceof AiUnavailableError) {
@@ -258,11 +279,15 @@ async function handleCookIdeas(ingredients: string[]): Promise<KitchenOutcome> {
 // Solo frases cortas y sin verbos de apuntar, para no confundir «añade dos limones» con «la segunda».
 const NOT_A_PICK_RE = /\b(?:anade|apunta|pon|compra|agrega|mete|borra|quita|cuando|donde|cuanto)\b/
 
-function handleCookPick(text: string): KitchenOutcome | null {
+// «Sí», «pídeselas a la IA», «más ideas»… justo después de contar las recetas guardadas: se piden las ideas a la IA.
+const ASK_AI_RE = /\b(?:si|vale|ok|dale|venga|claro|ia|ideas|pidesela|pideselas|pidelas|pidele|pideselo|pidemelas)\b/
+
+async function handleCookPick(text: string): Promise<KitchenOutcome | null> {
   const recent = recentCookIdeasForVoice()
   if (!recent) return null
   const plain = normalize(text).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim()
   if (plain.split(' ').length > 7 || NOT_A_PICK_RE.test(plain)) return null
+  if (recent.ideas.length === 0) return ASK_AI_RE.test(plain) ? handleCookAi(recent.ingredients, recent.servings, recent.saved, recent.web) : null
   const idea: CookIdeaData | null = pickCookIdea(text, recent.ideas)
   if (!idea) return null
   const request: RecipeRequest = { dish: idea.title, servings: idea.recipe.servings, preferences: [], draft: idea.recipe }
@@ -307,8 +332,8 @@ export async function handleKitchenText(
   // «¿Qué cocino hoy?» por voz (solo «Hablar con PEPA»): pedir ideas con lo que se tiene, o elegir una de las que Pepa acaba de contar.
   if (options.recipeRequests) {
     const cook = parseCookRequest(text)
-    if (cook) return handleCookIdeas(cook.ingredients)
-    const pick = handleCookPick(text)
+    if (cook) return handleCookRequest(cook.ingredients)
+    const pick = await handleCookPick(text)
     if (pick) return pick
   }
   const intent = parseKitchenIntent(parseText, today)

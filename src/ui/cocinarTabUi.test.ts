@@ -26,8 +26,19 @@ describe('La cocina de Pepa → ¿Qué cocino hoy?', () => {
 
   it('la pantalla la muestra, y el Inicio de la sección tiene su acceso', () => {
     expect(screen).toContain("'Cocinar'")
-    expect(screen).toContain("{tab === 'Cocinar' && <CocinarTab />}")
+    expect(screen).toContain("{tab === 'Cocinar' && <CocinarTab onOpenRecipes={() => setTab('Recetas')} />}")
     expect(screen).toContain("{ tab: 'Cocinar',")
+  })
+
+  it('primero busca gratis (tus recetas e internet) y la IA solo se pide con su botón', () => {
+    expect(tab).toContain('findRecipesWithIngredients(')
+    expect(tab).toContain('searchCookpadRecipes(')
+    expect(tab).toContain('importRecipeFromUrl(')
+    expect(tab).toContain('draftFromImportedRecipe(')
+    // La IA solo se llama desde askAi, que solo cuelga del botón «Pedir ideas a la IA».
+    expect(tab.match(/requestCookIdeas\(/g)).toHaveLength(1)
+    expect(tab).toContain('onClick={() => void askAi()}')
+    expect(tab).toContain('Pedir ideas a la IA')
   })
 
   it('la pestaña pide las ideas a la IA, se puede dictar y escuchar, y guarda con la tarjeta de siempre', () => {

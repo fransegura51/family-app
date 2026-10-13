@@ -1,11 +1,24 @@
 // Las últimas ideas de «¿Qué cocino hoy?» (de la pestaña o de Pepa por voz), para poder decir después «la primera» y para que la pestaña las enseñe al
 // abrirse. Solo en memoria del navegador y solo un rato: nada se guarda en ningún servidor.
+import type { SavedRecipeMatch } from '@/domain/cookFromSaved'
 import type { CookIdeaData } from '@/domain/cookIdeas'
 
 export interface CookIdeasResult {
   ingredients: string[]
   servings: number
+  // Ideas de la IA (vacío mientras la persona no las haya pedido).
   ideas: CookIdeaData[]
+  // Recetas ya guardadas de la familia que se pueden hacer con esos ingredientes (sin IA).
+  saved: SavedRecipeMatch[]
+  // Recetas encontradas en internet (Cookpad, gratis) con esos ingredientes.
+  web: WebRecipeHit[]
+}
+
+export interface WebRecipeHit {
+  id: string
+  title: string
+  imageUrl: string | null
+  url: string
 }
 
 const VOICE_PICK_MS = 5 * 60 * 1000

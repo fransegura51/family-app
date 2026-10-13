@@ -202,7 +202,7 @@ export function AlimentacionScreen() {
       {tab === 'Inicio' && <AlimentacionInicioTab onNavigate={setTab} />}
       {tab === 'Menú' && <MenuTab />}
       {tab === 'Recetas' && <RecipesTab />}
-      {tab === 'Cocinar' && <CocinarTab />}
+      {tab === 'Cocinar' && <CocinarTab onOpenRecipes={() => setTab('Recetas')} />}
     </div>
   )
 }

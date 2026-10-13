@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { draftFromImportedRecipe, findRecipesWithIngredients } from '@/domain/cookFromSaved'
 import { describeCookIdeas, parseIngredientList, type CookIdeaData } from '@/domain/cookIdeas'
 import { errorMessage } from '@/domain/errorMessage'
 import type { Recipe } from '@/domain/types'
 import { handleDialogReply } from '@/pepa/dialog'
-import { latestCookIdeas, onCookIdeas, rememberCookIdeas, type CookIdeasResult } from '@/pepa/cookIdeasStore'
+import { latestCookIdeas, onCookIdeas, rememberCookIdeas, type CookIdeasResult, type WebRecipeHit } from '@/pepa/cookIdeasStore'
 import { ingredientsFlowFor, type KitchenOutcome } from '@/pepa/kitchen'
 import type { ActionProposal } from '@/pepa/actions/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
 import { AiUnavailableError } from '@/services/aiClient'
+import { searchCookpadRecipes } from '@/services/cookpadSearch'
+import { importRecipeFromUrl } from '@/services/recipeUrlImport'
 import { isDictationSupported, listenContinuous, speakAsync, type ListenSession } from '@/services/voice'
 import { requestCookIdeas } from '@/services/whatToCook'
 import { showToast } from '@/state/toast'
@@ -16,10 +19,12 @@ import { RecipeDraftSheet } from '@/ui/RecipeDraftSheet'
 import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
 import { listRecipes } from '@/data/food'
 
-// «¿Qué cocino hoy?» — La cocina de Pepa. La persona dice o escribe lo que tiene en casa («pepino, lechuga y tomate», «lentejas y calabacín») y la IA propone
-// hasta 3 platos que se pueden hacer con ello, cada uno con su receta completa. Se pueden escuchar en voz alta y guardar en Recetas (con la tarjeta de
-// siempre: revisar, cambiar raciones, editar y guardar; después se ofrece añadir los ingredientes a la compra). Pepa también lo hace por voz desde
-// «Hablar con PEPA» («tengo pepino, lechuga y tomate, ¿qué puedo cocinar?») y deja aquí las ideas.
+// «¿Qué cocino hoy?» — La cocina de Pepa. La persona dice o escribe lo que tiene en casa («pepino, lechuga y tomate», «lentejas y calabacín») y:
+//   1. PRIMERO se buscan, sin IA y sin coste, sus recetas ya guardadas que se pueden hacer con eso (domain/cookFromSaved.ts) y recetas de internet
+//      (Cookpad, también gratis; se pueden guardar en Recetas con la tarjeta de siempre);
+//   2. y, SOLO si la persona lo pide con el botón, la IA propone hasta 3 platos con su receta completa, que se pueden guardar en Recetas con la tarjeta de siempre
+//      (revisar, cambiar raciones, editar y guardar; después se ofrece añadir los ingredientes a la compra).
+// Pepa también lo hace por voz desde «Hablar con PEPA» («tengo pepino, lechuga y tomate, ¿qué puedo cocinar?») y deja aquí lo que cuenta.
 //
 // Nada se guarda sin que la persona lo decida. A la IA solo viajan los ingredientes y las raciones (services/whatToCook.ts).
 
@@ -34,7 +39,7 @@ function aiErrorText(err: unknown): string {
   return 'No he podido preparar ideas ahora mismo. Inténtalo de nuevo en un momento.'
 }
 
-export function CocinarTab() {
+export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
   const [text, setText] = useState('')
   const [servings, setServings] = useState(4)
   const [busy, setBusy] = useState(false)
@@ -47,7 +52,7 @@ export function CocinarTab() {
   const sessionRef = useRef<ListenSession | null>(null)
   const lockRef = useRef(false)
 
-  // Si Pepa acaba de contar ideas por voz, aquí aparecen (y los ingredientes se rellenan).
+  // Si Pepa acaba de contar algo por voz, aquí aparece (y los ingredientes se rellenan).
   useEffect(
     () =>
       onCookIdeas(() => {
@@ -87,11 +92,16 @@ export function CocinarTab() {
     })
   }
 
-  async function search() {
-    if (lockRef.current) return
+  function stopListening() {
     sessionRef.current?.stop()
     sessionRef.current = null
     setListening(false)
+  }
+
+  // Paso 1, gratis: las recetas ya guardadas que se pueden hacer con lo que hay.
+  async function searchSaved() {
+    if (lockRef.current) return
+    stopListening()
     const ingredients = parseIngredientList(text)
     if (ingredients.length === 0) {
       setError('Escribe o di qué ingredientes tienes, por ejemplo: «pepino, lechuga y tomate».')
@@ -101,12 +111,55 @@ export function CocinarTab() {
     setBusy(true)
     setError(null)
     try {
-      const ideas = await requestCookIdeas({ ingredients, servings, preferences: [] })
-      const next = { ingredients, servings, ideas }
+      // Recetas guardadas + internet (Cookpad), a la vez y gratis; si internet falla, se sigue con lo guardado.
+      const [recipes, web] = await Promise.all([listRecipes(), searchCookpadRecipes(ingredients.slice(0, 3).join(' ')).catch(() => [] as WebRecipeHit[])])
+      const saved = findRecipesWithIngredients(ingredients, recipes)
+      const next: CookIdeasResult = { ingredients, servings, ideas: [], saved, web: web.filter((w) => w.title && w.url).slice(0, 5) }
+      rememberCookIdeas(next)
+      setResult(next)
+    } catch (err) {
+      setError(errorMessage(err, 'No he podido mirar tus recetas ahora mismo.'))
+    } finally {
+      lockRef.current = false
+      setBusy(false)
+    }
+  }
+
+  // Paso 2, con IA: solo si la persona lo pide.
+  async function askAi() {
+    if (lockRef.current || !result) return
+    lockRef.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      const ideas = await requestCookIdeas({ ingredients: result.ingredients, servings, preferences: [] })
+      const next: CookIdeasResult = { ...result, servings, ideas }
       rememberCookIdeas(next)
       setResult(next)
     } catch (err) {
       setError(aiErrorText(err))
+    } finally {
+      lockRef.current = false
+      setBusy(false)
+    }
+  }
+
+  // Receta de internet → se lee su ficha (sin IA), se convierte en borrador y se revisa/guarda con la tarjeta de siempre.
+  async function saveWeb(hit: WebRecipeHit) {
+    if (lockRef.current) return
+    lockRef.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      const imported = await importRecipeFromUrl(hit.url)
+      if (imported.ingredients.length === 0 || !imported.instructions.trim()) {
+        setError('Esa página no trae la receta completa en un formato que se pueda leer. Ábrela con «Ver» y cópiala a mano si te gusta.')
+        return
+      }
+      const draft = draftFromImportedRecipe({ ...imported, title: imported.title || hit.title }, servings)
+      setRecipeRequest({ dish: draft.title, servings: draft.servings, preferences: [], draft })
+    } catch (err) {
+      setError(errorMessage(err, 'No he podido leer esa receta.'))
     } finally {
       lockRef.current = false
       setBusy(false)
@@ -147,7 +200,7 @@ export function CocinarTab() {
     <div>
       <div className="card member-form">
         <h2>🥘 ¿Qué cocino hoy?</h2>
-        <p className="muted">Dime qué ingredientes tienes en casa y te propongo qué puedes cocinar, con su receta para guardarla.</p>
+        <p className="muted">Dime qué ingredientes tienes en casa y miro qué puedes cocinar con tus recetas guardadas y con recetas de internet. Si quieres más ideas, se las pido a la IA.</p>
         <label>
           Tengo…
           <textarea
@@ -176,25 +229,72 @@ export function CocinarTab() {
           )}
         </div>
         {error && <p className="error">{error}</p>}
-        <button type="button" onClick={() => void search()} disabled={busy || text.trim() === ''}>
-          {busy ? 'Pensando qué puedes cocinar…' : '🍳 ¿Qué puedo cocinar?'}
+        <button type="button" onClick={() => void searchSaved()} disabled={busy || text.trim() === ''}>
+          🔍 Buscar qué cocinar (gratis)
         </button>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-          También puedes decírselo a Pepa: «tengo pepino, lechuga y tomate, ¿qué puedo cocinar?». Usa la IA (solo cuentas de adultos).
+          También puedes decírselo a Pepa: «tengo pepino, lechuga y tomate, ¿qué puedo cocinar?». Buscar en tus recetas y en internet es gratis; la IA solo se usa si pulsas su botón (solo cuentas de adultos).
         </p>
       </div>
 
       {result && (
         <div className="event-list" style={{ marginTop: 12 }}>
-          <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 className="section-title" style={{ margin: 0 }}>
+            📖 De tus recetas guardadas
+          </h3>
+          {result.saved.length === 0 && (
+            <p className="muted">
+              No tienes ninguna receta guardada que se pueda hacer con {result.ingredients.slice(0, 5).join(', ')}
+              {result.ingredients.length > 5 ? ' y más' : ''}.
+            </p>
+          )}
+          {result.saved.map((match) => (
+            <div key={match.recipe.id} className="card" style={{ marginTop: 8 }}>
+              <strong>{match.recipe.title}</strong>
+              <p className="muted" style={{ margin: '4px 0' }}>
+                Usa: {match.have.join(', ')}. {match.missing.length === 0 ? '✅ Tienes todo lo necesario.' : `Te faltaría: ${match.missing.join(', ')}.`}
+              </p>
+              {onOpenRecipes && (
+                <button type="button" className="link-button" onClick={onOpenRecipes}>
+                  Abrir mis recetas
+                </button>
+              )}
+            </div>
+          ))}
+
+          <h3 className="section-title" style={{ margin: '12px 0 0' }}>
+            🌐 Recetas de internet (gratis)
+          </h3>
+          {result.web.length === 0 && <p className="muted">No he encontrado recetas en internet con eso ahora mismo.</p>}
+          {result.web.map((hit) => (
+            <div key={hit.id || hit.url} className="card" style={{ marginTop: 8 }}>
+              <strong>{hit.title}</strong>
+              <div className="inline-fields" style={{ marginTop: 6 }}>
+                <a className="link-button" href={hit.url} target="_blank" rel="noopener noreferrer">
+                  🔗 Ver
+                </a>
+                <button type="button" className="link-button" onClick={() => void saveWeb(hit)} disabled={busy}>
+                  💾 Guardar en mis recetas
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <div className="inline-fields" style={{ alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
             <h3 className="section-title" style={{ margin: 0 }}>
-              Con {result.ingredients.slice(0, 5).join(', ')}
-              {result.ingredients.length > 5 ? ' y más' : ''} puedes hacer:
+              💡 Ideas de la IA
             </h3>
-            <button type="button" className="link-button" onClick={() => void speakAsync(describeCookIdeas(result.ingredients, result.ideas))}>
-              🔊 Escuchar
-            </button>
+            {result.ideas.length > 0 && (
+              <button type="button" className="link-button" onClick={() => void speakAsync(describeCookIdeas(result.ingredients, result.ideas))}>
+                🔊 Escuchar
+              </button>
+            )}
           </div>
+          {result.ideas.length === 0 && (
+            <button type="button" onClick={() => void askAi()} disabled={busy}>
+              {busy ? 'Pensando qué puedes cocinar…' : '💡 Pedir ideas a la IA'}
+            </button>
+          )}
           {result.ideas.map((idea, index) => (
             <div key={`${idea.title}-${index}`} className="card" style={{ marginTop: 8 }}>
               <strong>

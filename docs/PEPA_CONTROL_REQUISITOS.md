@@ -287,12 +287,41 @@ revisión propio, nunca marcado "Aprobado" hasta que el usuario lo confirme pers
 | REC-6 | Editar/eliminar una serie recurrente (Tarea o Evento) con alcance "Solo esta repetición"/"Esta y las siguientes" (edición) y "Solo este día"/"Toda la serie" (borrado, ya existía); una edición/borrado de una ocurrencia nunca afecta a otras fechas ni duplica nada; el historial de puntos de ocurrencias anteriores a una edición "esta y las siguientes" se conserva intacto | Sí (2026-10-13) | Sí — borrado por ocurrencia: `deleteEventOccurrence` (ya existía, vía `exception_dates`). Edición nueva: `updateEventOccurrenceOnly` (excluye la fecha de la serie + crea fila suelta `recurrenceRule:null`) y `updateEventFromOccurrenceForward` (trunca la serie original con `UNTIL` el día antes, crea fila nueva con los campos editados desde esa fecha) en `data/calendar.ts`; ambas reapuntan a la fila nueva cualquier `calendar_event_completions` existente para no perder el historial de puntos; selector "Guardar cambios en" en `EditEventForm`, visible solo si `event.recurrenceRule` es verdadero, por defecto "Toda la serie" (cero cambio de comportamiento para lo no recurrente) | Sí — verificado en vivo + por SQL en la serie de prueba "Piano Mar+Jue" (semanal Martes/Jueves): "solo esta repetición" sobre el 13/10 creó "Piano SOLO HOY" suelto y dejó `exception_dates=['2026-10-13']` en la serie original sin tocar el resto; "esta y las siguientes" sobre el 15/10 truncó la serie original a `UNTIL=2026-10-14` y creó "Piano FUTURO" (visible el 15 y el 20/10, con el título nuevo) mientras el 13/10 siguió mostrando "Piano SOLO HOY" sin cambios; borrado "Solo este día" sobre el 20/10 de la serie nueva dejó el 22/10 ("Piano FUTURO") intacto. Suite automática: 5 tests de comportamiento nuevos (`calendarEditScope.behavior.test.ts`) + tests estructurales de la UI, 422/422 archivos en verde | No |
 | REC-7 | Eventos: mismo selector de días de la semana que Tareas, sin tocar ninguna otra funcionalidad existente (horas, recordatorios, participantes, ubicación, recurrencias ya guardadas) | Sí (2026-10-13) | Sí — en gran parte YA estaba resuelto antes de este encargo (`RecurrenceControl`/`WeekdayPicker` ya servían a Eventos); este encargo solo añadió `requireWeeklyDays`/`onValidChange` sin afectar la rama de Eventos (`requireWeeklyDays` únicamente `true` para Tareas) | Sí — verificado en vivo: "Nuevo evento" con repetición semanal personalizada sigue mostrando el selector de días con su texto de siempre ("deja vacío para repetir cada 7 días…"), sin el bloqueo nuevo de Tareas — comportamiento previo de Eventos confirmado intacto | No |
 
+### Verificación en la versión publicada (desplegado 2026-10-13, commit `bcf5dcf`)
+
+`bcf5dcf` (este encargo) se empujó a `origin/master` y GitHub Actions lo desplegó con éxito
+(`gh run view 38370587249`, `headSha` confirmado) en <https://fransegura51.github.io/family-app/>
+— nótese que ese mismo push ya traía encima, sin que esta sesión lo pidiera, el commit `35babb8`
+("Mapa: los huecos sin datos…", de otra sesión en esta misma máquina, sobre `LocationMap.tsx`):
+se dejó tal cual por decisión expresa del usuario, no se reescribió el historial compartido.
+
+Repetido en la propia web publicada (nunca solo en local), con la cuenta de pruebas "Bartolo" de
+la familia **"Familia Prueba"** (otra familia de pruebas distinta de "Familia Prueba Breadcrumb",
+también desechable) y confirmado además por SQL directo contra la base de datos real:
+- **REC-1/REC-2**: tarea "PROD Piano Lun+Mie" creada desde la propia web con repetición semanal
+  personalizada Lunes+Miércoles — `recurrence_rule` guardado exactamente como
+  `FREQ=WEEKLY;BYDAY=MO,WE`; "¿Para quién?" quedó asignada a Bartolo (usuario autenticado) por
+  defecto.
+- **REC-4/REC-5**: tarea suelta de prueba con fecha pasada (09/10) sin completar se mostró "No
+  realizada"; al marcarla hecha, `calendar_event_completions` registró `points_awarded=7` para el
+  miembro correcto.
+- **REC-6**: sobre esa misma serie, "Esta y las siguientes" (14/10, miércoles) truncó la serie
+  original a `UNTIL=2026-10-13` y creó "PROD Piano NUEVO" continuando el patrón — mismo resultado
+  exacto que en la verificación previa en local.
+- Datos de prueba borrados por completo (SQL) al terminar, igual que en la verificación en local.
+
+**Sin reverificar en la web publicada esta vez** (si se verificaron en local, en dev, contra la
+misma base de datos real, antes del despliegue): el bloqueo de guardar una semana vacía en Tareas,
+el selector de días en Eventos (REC-7) y el borrado por alcance ("Solo este día"/"Toda la serie").
+No hay motivo técnico para esperar un comportamiento distinto (mismo código, mismo build, mismo
+backend), pero no se ha repetido el gesto exacto en la URL pública.
+
 **Pendiente**: matriz de pruebas mínima del encargo (mensual/anual, varias combinaciones de día
 suelto, persistencia tras cerrar/reabrir PEPA) solo parcialmente ejercitada en esta sesión — lo
-verificado en vivo cubre diario/semanal con días sueltos (L-V y Mar+Jue probados vía selector),
-"No realizada"→corrección→puntos, edición de alcance y borrado de alcance; mensual/anual y la
-persistencia tras cerrar/reabrir la PWA en un móvil real quedan sin comprobar explícitamente. El
-usuario debe comprobarlo personalmente en PEPA (incluido en un teléfono real) antes de que
+verificado en vivo cubre diario/semanal con días sueltos (L-V, Mar+Jue y Lun+Mié probados vía
+selector), "No realizada"→corrección→puntos, edición de alcance y borrado de alcance; mensual/anual
+y la persistencia tras cerrar/reabrir la PWA en un móvil real quedan sin comprobar explícitamente.
+El usuario debe comprobarlo personalmente en PEPA (incluido en un teléfono real) antes de que
 cualquier fila de esta tabla pueda pasar a "Aprobado por el usuario".
 
 ---

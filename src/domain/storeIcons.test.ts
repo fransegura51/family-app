@@ -58,8 +58,9 @@ describe('COM-02 — reconoce la cadena como palabra completa dentro de un nombr
     expect(getStoreIcon('Supermercados Manper')).toEqual({ kind: 'logo', domain: 'manper.com' })
   })
 
-  it('Charter se queda con el icono genérico a propósito: no tiene web propia verificada (solo una subpágina de consum.es) y asignarle el favicon de Consum sería justo la asociación errónea que prohíbe el encargo', () => {
-    expect(getStoreIcon('Charter')).toEqual({ kind: 'emoji', icon: '🏬' })
+  it('Charter: sin dominio propio verificable, usa su logo real dado directamente por el usuario (imagen empaquetada) en vez del favicon de Consum', () => {
+    expect(getStoreIcon('Charter')).toEqual({ kind: 'image', src: expect.any(String) })
+    expect(getStoreIcon('Charter')).not.toEqual({ kind: 'logo', domain: 'consum.es' })
   })
 
   it('nunca coincidencia parcial de una palabra: una cadena NO aparece dentro de una tienda real distinta solo por contener las mismas letras', () => {
@@ -77,5 +78,11 @@ describe('COM-02 — reconoce la cadena como palabra completa dentro de un nombr
     expect(getStoreIcon('Carrefour')).toEqual({ kind: 'logo', domain: 'carrefour.es' })
     expect(getStoreIcon('Alcampo')).toEqual({ kind: 'logo', domain: 'alcampo.es' })
     expect(getStoreIcon('Superdumbo')).toEqual({ kind: 'image', src: expect.any(String) })
+  })
+
+  it('Charter: la coincidencia por palabra completa también cubre su imagen empaquetada, no solo los dominios en vivo', () => {
+    const charter = getStoreIcon('Charter')
+    expect(getStoreIcon('SUPERMERCADO CHARTER RAFAL')).toEqual(charter)
+    expect(getStoreIcon('CHARTER-ALMORADI')).toEqual(charter)
   })
 })

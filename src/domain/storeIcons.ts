@@ -1,4 +1,5 @@
 import superDumboLogo from '@/assets/store-logos/superdumbo.png'
+import charterLogo from '@/assets/store-logos/charter.jpg'
 import { normalizeStoreName } from '@/domain/storeChains'
 
 // Icono por tienda para que se reconozcan de un vistazo en vez de solo
@@ -49,10 +50,11 @@ const STORE_LOGOS: Record<string, string> = {
   'el corte ingles': 'elcorteingles.es',
   hipercor: 'hipercor.es',
   // COM-02 — dominios comprobados uno a uno (nunca adivinados): amazon.es, coviran.es y manper.com
-  // cargan la web real de cada cadena. "Charter" se queda fuera a propósito: no tiene dominio propio
-  // (su única presencia web es una subpágina de consum.es, "franquicia-charter"), y store_chains ya
-  // documenta que su cadena "nunca se funde con Consum" — usar el favicon de consum.es mostraría el
-  // logo de Consum bajo el nombre de Charter, justo la asociación errónea que este encargo prohíbe.
+  // cargan la web real de cada cadena. "Charter" no tiene dominio propio (su única presencia web es una
+  // subpágina de consum.es) y store_chains ya documenta que su cadena "nunca se funde con Consum" —
+  // usar el favicon de consum.es mostraría el logo de Consum bajo el nombre de Charter, justo la
+  // asociación errónea que este encargo prohíbe; su logo real (dado directamente por el usuario, ver
+  // STORE_IMAGE_LOGOS) resuelve esto sin depender de ningún dominio.
   amazon: 'amazon.es',
   coviran: 'coviran.es',
   manper: 'manper.com',
@@ -61,10 +63,12 @@ const STORE_LOGOS: Record<string, string> = {
 // Cadenas regionales cuyo logo real ha dado el usuario directamente
 // (petición real: "este es el logo de Super Dumbo, pónlo también en su
 // tienda") porque no tienen un favicon fiable que se pueda referenciar
-// en vivo.
+// en vivo. Charter (COM-02) entra por el mismo motivo: no tiene dominio
+// propio verificable, así que el usuario dio su logo real directamente.
 const STORE_IMAGE_LOGOS: Record<string, string> = {
   superdumbo: superDumboLogo,
   'super dumbo': superDumboLogo,
+  charter: charterLogo,
 }
 
 // Para tiendas sin una marca única reconocible, un icono relacionado en
@@ -111,13 +115,15 @@ function normalizeKey(name: string): string {
 // Arreglo: además del nombre completo, se reconoce la cadena cuando su clave aparece como PALABRA
 // COMPLETA dentro del nombre (reutilizando normalizeStoreName, el mismo normalizador ya usado y probado
 // por domain/storeChains.ts para interpretar texto de banco) — nunca una coincidencia parcial de una
-// palabra ("consum" nunca encaja dentro de "consumible"). Si una familia ya vinculó manualmente la tienda
-// a una cadena con su propio logo (logoAsset) o le puso una foto personalizada, esto no se usa — esos dos
-// casos ya se resuelven antes y siguen intactos.
-function findLogoDomainByWord(name: string): string | null {
+// palabra ("consum" nunca encaja dentro de "consumible"). Cubre tanto el favicon en vivo (STORE_LOGOS)
+// como una imagen empaquetada (STORE_IMAGE_LOGOS, p. ej. Charter). Si una familia ya vinculó manualmente
+// la tienda a una cadena con su propio logo (logoAsset) o le puso una foto personalizada, esto no se usa
+// — esos dos casos ya se resuelven antes y siguen intactos.
+function findLogoByWord(name: string): StoreIcon | null {
   const words = normalizeStoreName(name).split(' ').filter(Boolean)
   for (const word of words) {
-    if (STORE_LOGOS[word]) return STORE_LOGOS[word]
+    if (STORE_IMAGE_LOGOS[word]) return { kind: 'image', src: STORE_IMAGE_LOGOS[word] }
+    if (STORE_LOGOS[word]) return { kind: 'logo', domain: STORE_LOGOS[word] }
   }
   return null
 }
@@ -127,7 +133,7 @@ export function getStoreIcon(name: string, logoAsset?: string | null): StoreIcon
   const key = normalizeKey(name)
   if (STORE_IMAGE_LOGOS[key]) return { kind: 'image', src: STORE_IMAGE_LOGOS[key] }
   if (STORE_LOGOS[key]) return { kind: 'logo', domain: STORE_LOGOS[key] }
-  const byWord = findLogoDomainByWord(name)
-  if (byWord) return { kind: 'logo', domain: byWord }
+  const byWord = findLogoByWord(name)
+  if (byWord) return byWord
   return { kind: 'emoji', icon: STORE_EMOJIS[key] ?? DEFAULT_EMOJI }
 }

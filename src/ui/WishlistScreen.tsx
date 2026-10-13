@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { DateField } from '@/ui/DateField'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { listFamilyMembers } from '@/data/family'
@@ -183,7 +184,7 @@ function AddWishlistModal({ members, onClose, onAdded }: { members: FamilyMember
           </div>
           <label>
             Fecha de la celebración (opcional)
-            <input type="date" value={celebrationDate} onChange={(e) => setCelebrationDate(e.target.value)} />
+            <DateField value={celebrationDate} onChange={setCelebrationDate} placeholder="Sin fecha" />
           </label>
           <button type="submit" disabled={saving}>
             {saving ? 'Creando…' : 'Crear lista'}

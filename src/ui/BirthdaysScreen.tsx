@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { listFamilyMembers, setFamilyMemberBirthdayFavorite, updateFamilyMemberBirthDate } from '@/data/family'
 import { listContacts, setContactBirthdayFavorite, updateContactBirthDate } from '@/data/contacts'
 import { nextBirthday, sortByDaysUntil, type UpcomingBirthday } from '@/domain/birthdays'
+import { DateField } from '@/ui/DateField'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { Contact, FamilyMember } from '@/domain/types'
 import cumpleanosHeaderImg from '@/assets/cumpleanos/cumpleanos-header.jpg'
@@ -183,7 +184,7 @@ function BirthdayDateEditor({
   const [value, setValue] = useState(initialValue)
   return (
     <div className="inline-form-row">
-      <input type="date" value={value} onChange={(e) => setValue(e.target.value)} />
+      <DateField value={value} onChange={setValue} placeholder="Sin cumpleaños" />
       <button type="button" onClick={() => onSave(value)}>
         Guardar
       </button>

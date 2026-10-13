@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
 import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
+import { DateField } from '@/ui/DateField'
 import { useSectionHome, useLocationFlag } from '@/ui/useSectionHome'
 import { questionIsVisible, useConfiguratorQuestionFocus, type ConfiguratorFocusRequest } from '@/ui/useConfiguratorQuestionFocus'
 import { computeConfiguratorSummary, type ConfiguratorQuestionRef, type ConfiguratorSummary } from '@/domain/eventConfiguratorSummary'
@@ -2486,7 +2487,7 @@ function ManageEventModal({
           </label>
           <label>
             Plazo de RSVP (opcional)
-            <input type="date" value={rsvpDeadline} onChange={(e) => setRsvpDeadline(e.target.value)} />
+            <DateField value={rsvpDeadline} onChange={setRsvpDeadline} placeholder="Sin plazo de RSVP" />
           </label>
           <button type="submit" disabled={savingInfo}>
             {savingInfo ? 'Guardando…' : infoSaved ? '✓ Guardado' : 'Guardar información'}
@@ -3093,13 +3094,12 @@ function TaskEditModal({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             <label style={{ flex: '1 1 140px', minWidth: 0 }}>
               Fecha
-              <input
-                type="date"
+              <DateField
                 value={dueDate}
-                style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }}
-                onChange={(e) => {
-                  setDueDate(e.target.value)
-                  if (!e.target.value) {
+                placeholder="Sin fecha"
+                onChange={(next) => {
+                  setDueDate(next)
+                  if (!next) {
                     setShowInCalendar(false)
                     setDueTime('')
                   }
@@ -4027,11 +4027,11 @@ function OfferFormFields({
           <div className="inline-fields" style={{ marginTop: 6 }}>
             <label style={{ flex: 1 }}>
               Fecha de la oferta (opcional)
-              <input type="date" value={offerDate} onChange={(e) => setOfferDate(e.target.value)} />
+              <DateField value={offerDate} onChange={setOfferDate} placeholder="Sin fecha" />
             </label>
             <label style={{ flex: 1 }}>
               Válida hasta (opcional)
-              <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} />
+              <DateField value={validUntil} onChange={setValidUntil} placeholder="Sin fecha de caducidad" />
             </label>
           </div>
           <label style={{ marginTop: 6 }}>
@@ -6445,7 +6445,7 @@ function DateTimeStatusFields({
       <label>
         {DATE_FIELD_LABEL}
         {dateHint && <span className="muted"> {dateHint}</span>}
-        <input type="date" value={draft.date} disabled={disabled} onChange={(e) => onChange({ ...draft, date: e.target.value })} />
+        <DateField value={draft.date} disabled={disabled} placeholder="Seleccionar fecha" onChange={(date) => onChange({ ...draft, date })} />
       </label>
       <label>
         {TIME_FIELD_LABEL}
@@ -10835,6 +10835,11 @@ function FotosRecuerdosBlock({
                 disabled={savingKey === SESION_FOTOS_QUESTION_KEY}
                 onSelect={(quien) => saveSesion({ choice: sesion!.choice, quien, fecha: sesion?.fecha ?? null })}
               />
+              {/* Auditoría "campos de fecha vacíos" — se queda sin envolver en DateField a propósito: es
+                  un campo sin controlar (defaultValue/onBlur) cuyo guardado hace una llamada de red
+                  (saveSesion → upsertEventDecision) antes de que `sesion` se actualice — el texto de
+                  encima de DateField mostraría la fecha VIEJA durante ese hueco, justo después de
+                  elegir la nueva, un regresión visible que no tenía antes. */}
               <input
                 type="date"
                 defaultValue={sesion?.fecha ?? ''}
@@ -14963,7 +14968,7 @@ function PaymentEntriesPanel({ payment, onChanged }: { payment: EventPayment; on
           ))}
           {error && <p className="error">{error}</p>}
           <form className="inline-fields" style={{ marginTop: 4 }} onSubmit={handleAdd}>
-            <input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} />
+            <DateField value={paidAt} onChange={setPaidAt} placeholder="Seleccionar fecha" />
             <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="€" style={{ width: 80 }} />
             <button type="submit" className="link-button">
               + Añadir abono
@@ -15178,7 +15183,7 @@ function AddPaymentModal({
           </div>
           <label>
             Vence (opcional)
-            <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <DateField value={dueDate} onChange={setDueDate} placeholder="Sin vencimiento" />
           </label>
           <label>
             Categoría (opcional)

@@ -281,7 +281,7 @@ describe('resumen agrupado del "Plan de pagos" — plegado por defecto, expandib
     const idx = SRC.indexOf('{finitePlanExpanded && (')
     expect(idx).toBeGreaterThan(-1)
     const block = SRC.slice(idx, idx + 2200)
-    expect(block).toContain('updatePlanLine(i, { date: e.target.value })')
+    expect(block).toContain('updatePlanLine(i, { date })')
     expect(block).toContain('setShowAllPlanLines(false)')
   })
 })

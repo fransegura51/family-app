@@ -16,6 +16,7 @@ import {
   type CalendarioMenuItemKey,
 } from '@/state/calendarioMenu'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { CalendarCategoriesSection } from '@/ui/MenuSettingsScreen'
 import {
@@ -3576,7 +3577,7 @@ function RecurrenceControl({
         <>
           <label>
             Repetir hasta (opcional)
-            <input type="date" value={value.until} onChange={(e) => onChange({ ...value, until: e.target.value })} />
+            <DateField value={value.until} onChange={(until) => onChange({ ...value, until })} placeholder="Sin fecha de fin" />
           </label>
           <label className="checkbox-label">
             <input
@@ -4223,7 +4224,7 @@ function AddEventForm({
       </label>
       <label>
         Fecha
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       {!allDay && (
         <div className="inline-fields">
@@ -4397,7 +4398,7 @@ function AddTaskForm({
       </label>
       <label>
         Fecha
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       <label className="checkbox-label">
         <input

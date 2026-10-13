@@ -1103,6 +1103,96 @@ label:has(> input[type='time']) {
   overflow: hidden;
 }
 
+/* Auditoría "campos de fecha vacíos" (DateField.tsx) — el <input type=date> real se queda tal
+   cual (sigue abriendo el selector nativo al tocarlo, sigue siendo lo que lee un lector de
+   pantalla), pero su propio texto se hace transparente para que el <span> de encima sea lo único
+   visible: la fecha en español cuando hay valor, o el texto orientativo cuando está vacío — así
+   Safari/iPhone deja de enseñar un rectángulo completamente en blanco. .date-field hereda aquí
+   mismo (en vez de depender de label:has(> input...) de arriba) el mismo overflow:hidden/ancho al
+   100% que ya hacía falta para el input nativo, porque ahora el input ya no es hijo DIRECTO del
+   <label> — sigue siendo una caja igual de ancha, solo que con un nivel más por dentro. */
+.date-field {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.date-field-input {
+  color: transparent;
+}
+
+.date-field-input::-webkit-datetime-edit,
+.date-field-input::-webkit-datetime-edit-fields-wrapper {
+  color: transparent;
+}
+
+.date-field-input:disabled {
+  background: #f3f4f6;
+}
+
+/* Con el foco puesto, el propio control nativo resalta el segmento que se está editando (día/mes/
+   año) — ese resaltado se ve detrás de nuestro texto si lo dejamos encima, se pisan. Mientras está
+   enfocado se enseña el control nativo de verdad (vuelve a tener color) y nuestro texto se oculta;
+   al perder el foco vuelve a mandar nuestro texto (fecha en español o el texto orientativo). */
+.date-field-input:focus {
+  color: var(--text);
+}
+
+.date-field-input:focus::-webkit-datetime-edit,
+.date-field-input:focus::-webkit-datetime-edit-fields-wrapper {
+  color: var(--text);
+}
+
+.date-field-input:focus ~ .date-field-display {
+  opacity: 0;
+}
+
+.date-field-display {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 16px;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 58px);
+}
+
+.date-field-display-placeholder {
+  color: #6b7280;
+}
+
+.date-field-input:disabled ~ .date-field-display {
+  color: #9ca3af;
+}
+
+.date-field-clear {
+  position: absolute;
+  right: 34px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 button {
   padding: 14px;
   border-radius: 12px;

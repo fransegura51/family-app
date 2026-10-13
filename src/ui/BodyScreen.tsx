@@ -13,6 +13,7 @@ import {
 import { DEFAULT_BABY_UNTIL_MONTHS, getBabyUntilMonths, listFamilyMembers } from '@/data/family'
 import { effectiveMemberType, normalizeHeightCm } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { DateField } from '@/ui/DateField'
 import { BabyGrowthView } from '@/ui/BabyGrowthView'
 import { KidsMeterView } from '@/ui/KidsMeterView'
 import { AdultBodyView } from '@/ui/AdultBodyView'
@@ -466,7 +467,7 @@ function MeasurementForm({
       {!initial && <h2>Registrar {mode === 'baby' || mode === 'kid' ? 'una medida' : 'peso y medidas'}</h2>}
       <label>
         Fecha
-        <input type="date" value={date} max={toDateStr(new Date())} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} max={toDateStr(new Date())} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       <label>
         Peso (kg)
@@ -541,7 +542,7 @@ function EditPhotoForm({ photo, onSaved, onCancel }: { photo: BodyPhoto; onSaved
     <form onSubmit={handleSubmit} className="member-form">
       <label>
         Fecha
-        <input type="date" value={date} max={toDateStr(new Date())} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} max={toDateStr(new Date())} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       <label>
         Nota (opcional)
@@ -596,7 +597,7 @@ function AddPhotoFormBody({ memberId, onAdded }: { memberId: string; onAdded: ()
       </label>
       <label>
         Fecha
-        <input type="date" value={date} max={toDateStr(new Date())} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} max={toDateStr(new Date())} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       <label>
         Nota (opcional)

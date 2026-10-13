@@ -15,6 +15,7 @@ import {
 } from '@/data/family'
 import { adminResetProfilePin } from '@/data/appLock'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
@@ -469,7 +470,7 @@ function EditMemberForm({
       </label>
       <label>
         Fecha de nacimiento (opcional)
-        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin fecha de nacimiento" />
       </label>
       <label>
         Sexo (opcional, solo para las curvas de crecimiento)
@@ -638,7 +639,7 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
       </label>
       <label>
         Fecha de nacimiento (opcional)
-        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin fecha de nacimiento" />
       </label>
       <label>
         Sexo (opcional, solo para las curvas de crecimiento)

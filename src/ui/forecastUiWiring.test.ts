@@ -281,7 +281,7 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     // agrupado (summarizeFinitePlanLines) plegado por defecto se interpone antes de llegar a las líneas
     // editables una a una.
     const block = FS.slice(idx, idx + 4200)
-    expect(block).toContain('updatePlanLine(i, { date: e.target.value })')
+    expect(block).toContain('updatePlanLine(i, { date })')
     expect(block).toContain('updatePlanLine(i, { amountStatus:')
     expect(block).toContain('updatePlanLine(i, { amount: e.target.value })')
     expect(block).toContain('updatePlanLine(i, { amountEstimatedBasis: e.target.value })')
@@ -375,7 +375,7 @@ describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
     const idx = FS.indexOf('Cobros de cada renovación')
     expect(idx).toBeGreaterThan(-1)
     const block = FS.slice(idx, idx + 2200)
-    expect(block).toContain('updateSplitCharge(i, { date: e.target.value })')
+    expect(block).toContain('updateSplitCharge(i, { date })')
     expect(block).toContain('updateSplitCharge(i, { amountStatus:')
     expect(block).toContain('updateSplitCharge(i, { amount: e.target.value })')
   })

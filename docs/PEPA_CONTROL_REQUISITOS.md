@@ -326,6 +326,34 @@ cualquier fila de esta tabla pueda pasar a "Aprobado por el usuario".
 
 ---
 
+## Auditoría global de campos de fecha vacíos (PEPA-FECHA)
+
+Encargo independiente («PEPA — AUDITORÍA GLOBAL DE CAMPOS DE FECHA VACÍOS», 2026-10-13), motivado
+por dos casos detectados (Calendario → Nueva tarea → Repetición → "Repetir hasta", y Economía →
+Previsión de pagos → Nuevo pago previsto → "Vencimiento"): un `<input type="date">` vacío no enseña
+NADA en Safari/iPhone (a diferencia de escritorio, donde al menos Chrome pinta "dd/mm/aaaa" en
+gris). Presentación pura — ningún campo cambió de obligatorio a opcional ni al revés, ninguna fecha
+orientativa se guarda como fecha real, ninguna lógica de pagos/recurrencias/importes/recordatorios
+se tocó. Estado de revisión propio, nunca marcado "Aprobado" hasta que el usuario lo confirme
+personalmente en PEPA.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| FECHA-1 | Auditoría completa de `<input type="date">`/`datetime-local` en toda la app, no solo los 2 ejemplos | Sí (2026-10-13) | Sí — búsqueda exhaustiva en `src/ui/*.tsx`: 38 campos de fecha en 10 pantallas (Calendario, Eventos, Economía, Cuerpo/Familia, Contactos, Cumpleaños, Familia, Lista de deseos, Documentos); `datetime-local` no se usa en ningún sitio del código (fecha+hora siempre son dos `<input>` sueltos, `date`+`time`) | Sí — inventario completo documentado; 34 de 38 convertidos, 4 dejados tal cual con motivo explícito (ver FECHA-6) | No |
+| FECHA-2 | Componente compartido `DateField` — mismo criterio visual en todos los campos equivalentes, reutilizable, cero cambio de lógica (mismo value/onChange/required de siempre) | Sí (2026-10-13) | Sí — `src/ui/DateField.tsx` (nuevo): el `<input type="date">` real sigue ahí (sigue abriendo el selector nativo al tocarlo, lo sigue leyendo un lector de pantalla igual que antes), pero su propio texto se hace transparente y un `<span>` por encima pinta la fecha en español o el texto orientativo; al enfocar el campo, el control nativo recupera su color y nuestro texto se oculta (evita que el resaltado nativo del segmento día/mes/año se pise con nuestro texto) | Sí — typecheck/lint limpios; verificado en vivo (navegador, Calendario/Economía/Familia): placeholder correcto vacío, fecha en español (`03/05/2020`, con ceros) al rellenar, el selector nativo se sigue abriendo al tocar, sin solape visual al enfocar | No |
+| FECHA-3 | Texto orientativo según el significado real de cada campo (obligatorio → "Seleccionar…", opcional → "Sin…"), nunca genérico | Sí (2026-10-13) | Sí — 34 campos revisados uno a uno con su propio texto: "Seleccionar vencimiento", "Sin fecha de fin" (Repetir hasta / Fecha final), "Seleccionar fecha de inicio" (Empieza el, presupuesto), "Sin cumpleaños" (Contactos/Cumpleaños), "Sin fecha de nacimiento" (Familia), "Sin vencimiento" (Documentos / Vence opcional de proveedor), "Sin plazo de RSVP", "Sin fecha de caducidad" (oferta válida hasta), etc. | Sí — verificado en vivo que el texto mostrado coincide con el campo (Vencimiento/Familia/Documentos/Repetir hasta) | No |
+| FECHA-4 | iPhone/Safari: cuando el campo nativo no enseña el texto orientativo, una presentación accesible SÍ lo enseña; tocar sigue abriendo el selector nativo; sin bloquear el calendario nativo ni empeorar la accesibilidad | Sí (2026-10-13) | Sí — técnica CSS estándar (texto del `<input>` transparente + `<span>` encima con `aria-hidden`, incluido el `::-webkit-datetime-edit` de WebKit); el `<input>` real sigue siendo el objetivo de todos los toques (el `<span>` lleva `pointer-events: none`) y sigue siendo lo que lee un lector de pantalla (su valor/aria no cambian) | Parcial — verificado en el navegador de escritorio (Chrome/WebKit vía Claude Browser); **sin verificar todavía en un iPhone físico con Safari real**, que es justo el caso que motivó el encargo | No |
+| FECHA-5 | Consistencia visual: mismo diseño de PEPA, sin rediseñar formularios completos; fecha ya puesta se ve clara en español; limpiar la fecha solo si el campo es opcional | Sí (2026-10-13) | Sí — `DateField` no cambia ningún layout existente (hereda el `width:100%`/`overflow:hidden` que ya tenía el `<input type="date">` de antes, ahora en el propio wrapper en vez de depender de `label:has(> input[type=date])`, que dejaba de aplicar al dejar de ser el input hijo directo); botón "✕ Quitar" solo aparece con valor puesto Y el campo no es `required` (o `clearable` explícito) | Sí — verificado en vivo: con un campo obligatorio relleno (Vencimiento) nunca aparece "✕"; con uno opcional relleno (Fecha de nacimiento) sí aparece y limpia correctamente | No |
+| FECHA-6 | Campos deliberadamente NO convertidos, con motivo documentado en el propio código | Sí (2026-10-13) | Sí — 4 excepciones: (1) `CalendarScreen.tsx` `DateJumpControl` ("ir a una fecha") — `defaultValue` siempre relleno, nunca vacío; (2) `CalendarScreen.tsx` borrado de una sola ocurrencia — `occurrenceDate` siempre inicializado a la fecha del evento, nunca vacío; (3) `CalendarScreen.tsx` `EditEventForm` "Fecha" — siempre deriva de `event.startAt` de un registro YA existente, nunca vacío; (4) `EventosScreen.tsx` sesión de fotos (pregunta "¿Con quién?") — campo sin controlar (`defaultValue`/`onBlur`) cuyo guardado hace una llamada de red antes de refrescar `sesion`; envolverlo en `DateField` mostraría la fecha VIEJA un instante justo después de elegir la nueva (regresión visual que no tenía antes) | Sí — los 4 casos confirmados por lectura directa del código y, en los 3 primeros, por qué su valor nunca puede estar vacío en uso normal | No |
+
+**Pendiente**: verificación en un iPhone físico con Safari real (FECHA-4) — la verificación de esta
+sesión fue en el navegador de escritorio del entorno de desarrollo, que ya reproduce el patrón CSS
+correctamente pero no es el dispositivo que reportó el fallo original. El usuario debe comprobarlo
+personalmente en su iPhone antes de que cualquier fila de esta tabla pueda pasar a "Aprobado por el
+usuario".
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

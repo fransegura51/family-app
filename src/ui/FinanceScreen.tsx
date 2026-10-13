@@ -135,6 +135,7 @@ import {
 } from '@/domain/forecastInstallmentSplitForm'
 import { centsToEurosString, checkCentsDistribution, eurosStringToCents, type CentsDistributionCheck } from '@/domain/forecastMoneyCents'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
+import { DateField } from '@/ui/DateField'
 import { getAccountsMode, getDateFilterPreferences, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode, type DateFilterPreferences } from '@/data/family'
 import {
   ECONOMIA_MENU_ITEM_META,
@@ -2080,11 +2081,11 @@ function DateFilterTab({
             <div className="inline-fields" style={{ padding: '10px 12px' }}>
               <label>
                 Desde
-                <input type="date" value={customFrom} onChange={(e) => onCustomFromChange(e.target.value)} />
+                <DateField value={customFrom} onChange={onCustomFromChange} placeholder="Seleccionar fecha" />
               </label>
               <label>
                 Hasta
-                <input type="date" value={customTo} onChange={(e) => onCustomToChange(e.target.value)} />
+                <DateField value={customTo} onChange={onCustomToChange} placeholder="Seleccionar fecha" />
               </label>
             </div>
           )}
@@ -4300,7 +4301,7 @@ function MovementFormFields({
       <div className="inline-fields">
         <label>
           Fecha
-          <input type="date" value={draft.date} onChange={(e) => onChange({ ...draft, date: e.target.value })} required={required} />
+          <DateField value={draft.date} onChange={(date) => onChange({ ...draft, date })} placeholder="Seleccionar fecha" required={required} />
         </label>
         <label>
           Importe (€)
@@ -6302,7 +6303,7 @@ function ReceiptForm({
       <div className="inline-fields">
         <label>
           Fecha
-          <input type="date" value={receiptDate} onChange={(e) => setReceiptDate(e.target.value)} required />
+          <DateField value={receiptDate} onChange={setReceiptDate} placeholder="Seleccionar fecha" required />
         </label>
         <label>
           Importe total (€)
@@ -7914,8 +7915,8 @@ function BudgetsSection({
 // petición real: "quiero poder ir poniendo los ingresos que tengo ese
 // mes y cuando los tengo... que se cree el ingreso el día que lo
 // apunte pero que se pueda cambiar con un calendario". La fecha
-// arranca en hoy pero es un <input type="date"> normal — se puede
-// cambiar a cualquier otro día antes de guardar.
+// arranca en hoy pero es un campo de fecha normal — se puede cambiar
+// a cualquier otro día antes de guardar.
 function AddIncomeInline({
   group,
   categories,
@@ -7977,7 +7978,7 @@ function AddIncomeInline({
       </label>
       <label>
         Fecha
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       <label>
         Importe (€)
@@ -8441,7 +8442,7 @@ function EditCategoryExpenseRow({
   return (
     <div className="card member-form">
       <div className="inline-fields">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" />
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </div>
       {error && <p className="error">{error}</p>}
@@ -8758,7 +8759,7 @@ function AddBudgetForm({
       </label>
       <label>
         Empieza el
-        <input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} required />
+        <DateField value={periodStart} onChange={setPeriodStart} placeholder="Seleccionar fecha de inicio" required />
       </label>
       <label>
         Categoría
@@ -10772,7 +10773,7 @@ function ForecastPaymentForm({
           forma de crear/editarlos desde aquí. */}
       <label>
         Vencimiento
-        <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} required />
+        <DateField value={dueDate} onChange={setDueDate} placeholder="Seleccionar vencimiento" required />
       </label>
 
       <label className="checkbox-label">
@@ -10782,7 +10783,7 @@ function ForecastPaymentForm({
       {hasExpectedPaymentDate && (
         <label>
           Fecha prevista de pago
-          <input type="date" value={expectedPaymentDate} onChange={(e) => setExpectedPaymentDate(e.target.value)} required />
+          <DateField value={expectedPaymentDate} onChange={setExpectedPaymentDate} placeholder="Seleccionar fecha" required />
         </label>
       )}
 
@@ -10889,7 +10890,7 @@ function ForecastPaymentForm({
                       </strong>
                       <label>
                         Fecha
-                        <input type="date" value={line.date} onChange={(e) => updatePlanLine(i, { date: e.target.value })} required />
+                        <DateField value={line.date} onChange={(date) => updatePlanLine(i, { date })} placeholder="Seleccionar fecha" required />
                       </label>
                       <label>
                         Estado del importe
@@ -10939,7 +10940,7 @@ function ForecastPaymentForm({
                   </strong>
                   <label>
                     Fecha prevista
-                    <input type="date" value={charge.date} onChange={(e) => updateSplitCharge(i, { date: e.target.value })} required />
+                    <DateField value={charge.date} onChange={(date) => updateSplitCharge(i, { date })} placeholder="Seleccionar fecha" required />
                   </label>
                   <label>
                     Estado del importe
@@ -11061,7 +11062,7 @@ function ForecastPaymentForm({
           {recursDurationChoice === 'date' && (
             <label>
               Fecha final
-              <input type="date" value={untilDate} onChange={(e) => setUntilDate(e.target.value)} />
+              <DateField value={untilDate} onChange={setUntilDate} placeholder="Sin fecha de fin" />
             </label>
           )}
         </>

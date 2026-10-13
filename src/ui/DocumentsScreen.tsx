@@ -9,6 +9,7 @@ import {
 import { createDocumentCategory, listDocumentCategories, type DocumentCategory } from '@/data/documentCategories'
 import { listFamilyMembers } from '@/data/family'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { DateField } from '@/ui/DateField'
 import type { FamilyMember, MemberDocument } from '@/domain/types'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -375,7 +376,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
         </label>
         <label>
           Fecha de vencimiento
-          <input type="date" value={expiryDraft} onChange={(e) => setExpiryDraft(e.target.value)} />
+          <DateField value={expiryDraft} onChange={setExpiryDraft} placeholder="Sin vencimiento" />
         </label>
         <div className="inline-fields">
           <button type="submit" disabled={saving || !titleDraft.trim()}>
@@ -573,7 +574,7 @@ function AddDocumentForm({
       </label>
       <label>
         Fecha de vencimiento (opcional)
-        <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} />
+        <DateField value={expiryDate} onChange={setExpiryDate} placeholder="Sin vencimiento" />
       </label>
       {expiryDate && (
         <p className="muted">

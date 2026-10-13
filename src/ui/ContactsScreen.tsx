@@ -4,6 +4,7 @@ import { isContactPickerSupported, pickContacts, type PickedContact } from '@/se
 import { parseIcs } from '@/domain/icsParser'
 import { parseVcf } from '@/domain/vcardParser'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
+import { DateField } from '@/ui/DateField'
 import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
 import contactosHeaderImg from '@/assets/contactos/contactos-header.jpg'
@@ -357,7 +358,7 @@ function ContactCard({
         {c.notes && <p className="muted contact-card-detail">{c.notes}</p>}
         {editingBirthday ? (
           <div className="inline-fields">
-            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+            <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin cumpleaños" />
             <button type="button" className="link-button" onClick={handleSaveBirthday} disabled={saving}>
               {saving ? 'Guardando…' : 'Guardar'}
             </button>
@@ -459,7 +460,7 @@ function EditContactForm({
       </label>
       <label>
         Cumpleaños (opcional)
-        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin cumpleaños" />
       </label>
       <label>
         Notas
@@ -923,7 +924,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
       </label>
       <label>
         Cumpleaños (opcional)
-        <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin cumpleaños" />
       </label>
       <label>
         Notas

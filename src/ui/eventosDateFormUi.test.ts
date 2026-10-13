@@ -25,10 +25,14 @@ describe('Patrón común: Fecha → Hora (opcional) → estado', () => {
     expect(FIELDS).toContain('{TIME_FIELD_LABEL}')
     expect((FIELDS.match(/<label>/g) ?? []).length).toBe(2)
     expect(FIELDS).not.toContain('aria-label=')
-    expect(FIELDS).not.toContain('placeholder')
+    // Auditoría "campos de fecha vacíos" — DateField SÍ lleva un placeholder (el texto orientativo
+    // cuando el campo está vacío, p. ej. "Seleccionar fecha"), pero nunca EN LUGAR de la etiqueta
+    // real — {DATE_FIELD_LABEL} sigue siendo texto visible dentro de su propio <label> (arriba). El
+    // placeholder vive dentro del propio <DateField>, nunca suelto en un <input placeholder=...>.
+    expect(FIELDS).not.toMatch(/<input[^>]*placeholder=/)
   })
   it('B. el orden es Fecha, Hora, pregunta de estado y chips', () => {
-    const order = ['type="date"', 'type="time"', '{DATE_STATUS_QUESTION}', '<ChoiceRow options={DATE_CHOICES}']
+    const order = ['<DateField', 'type="time"', '{DATE_STATUS_QUESTION}', '<ChoiceRow options={DATE_CHOICES}']
     let last = -1
     for (const marker of order) {
       const idx = FIELDS.indexOf(marker)

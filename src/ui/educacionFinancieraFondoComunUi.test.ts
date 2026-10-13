@@ -35,7 +35,7 @@ describe('"Total fondo común" — debajo de las 4 tarjetas, saldo real de toda 
   })
   it('tocarlo abre la tarjeta "Impuestos" ya existente, nunca una pantalla nueva', () => {
     const fundBlock = window_(body, '🏛️ Total fondo común', '</button>')
-    expect(body.slice(body.indexOf('🏛️ Total fondo común') - 200, body.indexOf('🏛️ Total fondo común'))).toContain("onClick={() => setOpenCard('impuesto')}")
+    expect(body.slice(body.indexOf('🏛️ Total fondo común') - 200, body.indexOf('🏛️ Total fondo común'))).toContain("onClick={() => openWalletCard('impuesto')}")
     expect(fundBlock).toContain('taxFundTotal.toFixed(2)')
   })
 })

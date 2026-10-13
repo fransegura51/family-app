@@ -51,7 +51,7 @@ describe('KidsFinanceTab — grid de 4 tarjetas grandes, toca para ver el detall
   it('el grid usa el mismo patrón visual que el hub de Pequeños Grandes (home-card-photo), cuadrado 1:1', () => {
     expect(body).toContain('className="card event-module-card home-card-photo wallet-type-card"')
     expect(body).toContain("style={{ aspectRatio: '1 / 1' }}")
-    expect(body).toContain('onClick={() => setOpenCard(t.key)}')
+    expect(body).toContain('onClick={() => openWalletCard(t.key)}')
   })
   it('el formulario de nuevo movimiento (AddTransactionForm) solo se renderiza dentro del detalle de una tarjeta abierta, nunca en el grid', () => {
     const grid = body.slice(0, body.indexOf('if (openCard)'))

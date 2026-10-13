@@ -61,9 +61,10 @@ describe('Las 4 tarjetas grandes — cifra real + dónut del reparto en vivo + "
     expect(grid).toContain('highlightedKey={highlightedKey}')
     expect(grid).toContain('size={68}')
   })
-  it('"+ Nuevo {formLabel}" abre el mismo detalle que tocar la tarjeta (setOpenCard), sin formulario nuevo inline', () => {
+  it('"+ Nuevo {formLabel}" abre el mismo detalle que tocar la tarjeta (openWalletCard), sin formulario nuevo inline', () => {
     expect(grid).toContain('+ Nuevo {t.formLabel}')
-    expect(grid).toContain('onClick={() => setOpenCard(t.key)}')
+    expect(grid).toContain('onClick={() => openWalletCard(t.key)}')
+    expect(grid).toContain('onClick={() => openWalletCard(t.key, { addNow: true })}')
     expect(grid).not.toContain('<AddTransactionForm')
   })
   it('el botón que envolvía toda la tarjeta ahora solo envuelve la imagen (ya no puede anidar otro botón dentro)', () => {

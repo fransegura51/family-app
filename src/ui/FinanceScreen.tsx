@@ -11246,6 +11246,17 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   const [decidingId, setDecidingId] = useState<string | null>(null)
   const [celebratingGoal, setCelebratingGoal] = useState<{ memberName: string; title: string } | null>(null)
   const [showAddGoal, setShowAddGoal] = useState(false)
+  // PG-PUNTOS-FINANZAS (Parte B6) — el formulario de nuevo movimiento del detalle NUNCA se queda siempre
+  // visible: empieza oculto tras un botón "+ Nuevo X", igual que ya hacían AddGoalForm/TaxFundSection.
+  // `openWalletCard` es el único sitio que entra a una tarjeta, así que decide aquí si el formulario
+  // arranca abierto (cuando el propio "+ Nuevo X" del grid es lo que se tocó) o cerrado (al tocar la
+  // imagen/el dónut, o al llegar desde los resúmenes de gasto/fondo compartido de más abajo — intención
+  // de mirar, no de añadir).
+  const [showAddTransaction, setShowAddTransaction] = useState(false)
+  function openWalletCard(key: WalletTransactionType, opts?: { addNow?: boolean }) {
+    setOpenCard(key)
+    setShowAddTransaction(opts?.addNow ?? false)
+  }
 
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
@@ -11425,14 +11436,21 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           ))}
           {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
         </div>
-        <AddTransactionForm
-          memberId={activeMemberId}
-          type={openCard}
-          formLabel={cardInfo.formLabel}
-          splitConfig={openCard === 'ingreso' ? activeSplitConfig : null}
-          needsApproval={!isAdult && (openCard === 'ingreso' || openCard === 'gasto')}
-          onAdded={reload}
-        />
+        {showAddTransaction ? (
+          <AddTransactionForm
+            memberId={activeMemberId}
+            type={openCard}
+            formLabel={cardInfo.formLabel}
+            splitConfig={openCard === 'ingreso' ? activeSplitConfig : null}
+            needsApproval={!isAdult && (openCard === 'ingreso' || openCard === 'gasto')}
+            onAdded={reload}
+            onClose={() => setShowAddTransaction(false)}
+          />
+        ) : (
+          <button type="button" className="link-button" onClick={() => setShowAddTransaction(true)}>
+            + Nuevo {cardInfo.formLabel}
+          </button>
+        )}
       </div>
     )
   }
@@ -11500,7 +11518,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         <div className="inline-fields" style={{ flexWrap: 'wrap', gap: '4px 16px', fontSize: 13 }}>
           <span>🐷 Hucha: {savedTotal.toFixed(2)} €</span>
           <span>🛒 Para gastar: {balance.toFixed(2)} €</span>
-          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => setOpenCard('gasto')}>
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => openWalletCard('gasto')}>
             💸 Ya gastado: -{gastoTotal.toFixed(2)} €
           </button>
         </div>
@@ -11525,7 +11543,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           const donutCenter = highlightedSlice ?? { label: 'Reparto', total: 100 }
           return (
             <div key={t.key} className="card event-module-card home-card-photo wallet-type-card">
-              <button type="button" className="wallet-type-card-tap" onClick={() => setOpenCard(t.key)}>
+              <button type="button" className="wallet-type-card-tap" onClick={() => openWalletCard(t.key)}>
                 <img src={t.img} alt={t.label} className="home-card-photo-img" style={{ aspectRatio: '1 / 1' }} />
               </button>
               <div className="home-card-photo-caption wallet-type-card-body">
@@ -11537,11 +11555,11 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
                   slices={splitSlices}
                   centerLabel={{ name: donutCenter.label, total: donutCenter.total }}
                   highlightedKey={highlightedKey}
-                  onSliceClick={() => setOpenCard(t.key)}
+                  onSliceClick={() => openWalletCard(t.key)}
                   size={68}
                   centerUnit="%"
                 />
-                <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => setOpenCard(t.key)}>
+                <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => openWalletCard(t.key, { addNow: true })}>
                   + Nuevo {t.formLabel}
                 </button>
               </div>
@@ -11555,7 +11573,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           del niño/a activo/a; este total es de TODA la familia, aportado por cualquier hijo/a — se aclara
           con más de un niño para que no se confunda con "solo el activo"). Mismo cálculo ya existente de
           TaxFundSection (taxFundAvailable), reutilizado tal cual — nunca una cifra nueva aparte. */}
-      <button type="button" className="card" style={{ marginTop: 8, padding: 10, textAlign: 'left', width: '100%' }} onClick={() => setOpenCard('impuesto')}>
+      <button type="button" className="card" style={{ marginTop: 8, padding: 10, textAlign: 'left', width: '100%' }} onClick={() => openWalletCard('impuesto')}>
         <p style={{ margin: 0, fontWeight: 600 }}>🏛️ Total fondo común: {taxFundTotal.toFixed(2)} €</p>
         <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
           {members.length > 1
@@ -11925,6 +11943,7 @@ function AddTransactionForm({
   splitConfig,
   needsApproval,
   onAdded,
+  onClose,
 }: {
   memberId: string
   type: WalletTransactionType
@@ -11936,6 +11955,10 @@ function AddTransactionForm({
   // queda pendiente de un adulto).
   needsApproval: boolean
   onAdded: () => void
+  // PG-PUNTOS-FINANZAS (Parte B6) — "Cancelar" opcional para cerrar el formulario a mano; `onAdded`
+  // NUNCA lo cierra solo, porque needsApproval depende de que `sentNotice` ("⏳ Enviado...") siga visible
+  // después de guardar — cerrarlo de golpe se lo escondería al niño justo cuando más falta hace leerlo.
+  onClose?: () => void
 }) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
@@ -11998,9 +12021,16 @@ function AddTransactionForm({
       {needsApproval && <p className="muted">Un adulto tendrá que aprobarlo antes de que cuente.</p>}
       {sentNotice && <p className="muted">⏳ Enviado — espera a que un adulto lo apruebe.</p>}
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
-        {saving ? 'Guardando…' : 'Registrar'}
-      </button>
+      <div className="inline-fields">
+        <button type="submit" disabled={saving}>
+          {saving ? 'Guardando…' : 'Registrar'}
+        </button>
+        {onClose && (
+          <button type="button" className="link-button" onClick={onClose}>
+            Cancelar
+          </button>
+        )}
+      </div>
     </form>
   )
 }

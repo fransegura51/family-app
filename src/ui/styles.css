@@ -213,6 +213,38 @@ body {
   text-align: center;
 }
 
+/* Pequeños Grandes, Educación financiera (Parte B4) — las 4 tarjetas ya no son un único <button>: la
+   ilustración sigue siendo tocable, pero debajo hay texto + un dónut pequeño + su propio botón "+ Nuevo
+   X", así que el botón no puede envolver a otro botón. */
+.wallet-type-card {
+  cursor: default;
+}
+
+.wallet-type-card-tap {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.wallet-type-card-body .donut-ring-wrap {
+  gap: 2px 10px;
+}
+
+.wallet-type-card-body .donut-ring {
+  margin: 4px 0;
+}
+
+.wallet-type-card-body .donut-legend {
+  max-width: none;
+}
+
+.wallet-type-card-body .donut-legend-item {
+  font-size: 11px;
+}
+
 /* Pequeños Grandes — los 3 accesos de la pantalla principal (Puntos y recompensas / Educación
    financiera / Lista de deseos). Petición real, segunda ronda: una sola columna también en móvil, más
    pequeñas que la cabecera (~65-70% de su altura — se consigue dándoles el mismo ~66% del ancho de la

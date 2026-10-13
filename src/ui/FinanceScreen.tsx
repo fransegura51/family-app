@@ -2624,6 +2624,10 @@ function SvgDonut({
   onSliceClick,
   size = 190,
   colors = PASTEL_DONUT_FALLBACK,
+  // PG-PUNTOS-FINANZAS (Parte B4) — las 4 tarjetas de Educación financiera usan este mismo dónut para
+  // dibujar el reparto (%), no un importe en euros; unidad configurable para no mentir la unidad del
+  // centro. El resto de usos del dónut (siempre en €) no pasan esta prop y se comportan igual que antes.
+  centerUnit = '€',
 }: {
   slices: { key: string; total: number; color?: string; label?: string }[]
   centerLabel: { name: string; total: number }
@@ -2631,6 +2635,7 @@ function SvgDonut({
   onSliceClick: (key: string) => void
   size?: number
   colors?: string[]
+  centerUnit?: string
 }) {
   if (slices.length === 0) {
     return <p className="muted">No hay movimientos en este periodo para esta vista.</p>
@@ -2702,12 +2707,14 @@ function SvgDonut({
         <div className="donut-ring-center">
           <span>{centerLabel.name}</span>
           <strong>
-            {centerLabel.total.toFixed(2)} €
+            {centerLabel.total.toFixed(centerUnit === '€' ? 2 : 0)} {centerUnit}
             {/* Petición real: "en todas las estadísticas de dónut quiero
                 que pongas en paréntesis el porcentaje al que corresponde
                 el importe" — solo tiene sentido para una porción tocada,
-                no para "Todo" (siempre sería 100%). */}
-            {highlightedKey != null && grandTotal > 0 && ` (${((centerLabel.total / grandTotal) * 100).toFixed(0)}%)`}
+                no para "Todo" (siempre sería 100%); si el centro ya es un
+                porcentaje (Parte B4) el paréntesis sería una repetición. */}
+            {highlightedKey != null && grandTotal > 0 && centerUnit === '€' &&
+              ` (${((centerLabel.total / grandTotal) * 100).toFixed(0)}%)`}
           </strong>
         </div>
       </div>
@@ -11164,7 +11171,9 @@ function ForecastPaymentForm({
 const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: string; img: string; teaser: string; explain: string }[] = [
   {
     key: 'ingreso',
-    label: 'Recibir',
+    // PG-PUNTOS-FINANZAS (Parte B4) — "Recibido" = todo lo recibido DESDE SIEMPRE, nunca el saldo actual
+    // (que ya está gastado/ahorrado en parte); se distingue justo de las otras 3 tarjetas por eso.
+    label: 'Recibido',
     formLabel: 'ingreso',
     img: walletRecibirImg,
     teaser: 'Cuando te dan dinero',
@@ -11172,7 +11181,7 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
   },
   {
     key: 'ahorro',
-    label: 'Ahorrar',
+    label: 'Ahorro',
     formLabel: 'ahorro',
     img: walletAhorrarImg,
     teaser: 'Guardas para más tarde',
@@ -11180,7 +11189,7 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
   },
   {
     key: 'gasto',
-    label: 'Gastar',
+    label: 'Para gastar',
     formLabel: 'gasto',
     img: walletGastarImg,
     teaser: 'Compras algo',
@@ -11195,6 +11204,18 @@ const WALLET_TABS: { key: WalletTransactionType; label: string; formLabel: strin
     explain: 'Una parte del dinero va a un fondo común de la familia, como el que se usa para el cole, el médico o el parque.',
   },
 ]
+
+// PG-PUNTOS-FINANZAS (Parte B4) — las 4 tarjetas comparten SIEMPRE el mismo reparto configurado (nunca
+// un % distinto por tarjeta, nunca recalculado "sobre lo que queda ahora"): "Recibido" enseña las 3
+// porciones reales, las otras 3 solo resaltan la suya (el resto se atenúa, nunca desaparece — mismo
+// criterio ya usado en SvgDonut). "gasto" no es una porción del reparto (gastar no reparte dinero
+// nuevo, consume el disponible ya repartido) — resalta la porción "disponible" en su lugar.
+const WALLET_SPLIT_HIGHLIGHT: Record<WalletTransactionType, 'ahorro' | 'impuesto' | 'disponible' | null> = {
+  ingreso: null,
+  ahorro: 'ahorro',
+  gasto: 'disponible',
+  impuesto: 'impuesto',
+}
 
 // Pequeños Grandes (prompt maestro, Fase 5) reutiliza este mismo componente
 // como punto de entrada principal para la educación financiera — nunca se
@@ -11335,6 +11356,10 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   if (openCard) {
     const cardInfo = WALLET_TABS.find((t) => t.key === openCard)!
     const categoryTotal = activeMemberId ? walletCategoryTotal(activeMemberId, openCard, transactions) : 0
+    // PG-PUNTOS-FINANZAS (Parte B4) — "Para gastar" es lo DISPONIBLE ahora (balance, igual que en la
+    // tarjeta y en "Mi dinero ahora"), nunca el total histórico de gasto acumulado — serían dos cifras
+    // distintas con el mismo nombre si no se corrigiera aquí también.
+    const headlineTotal = openCard === 'gasto' ? balance : categoryTotal
     const categoryTransactions = transactions.filter((t) => t.memberId === activeMemberId && t.type === openCard && t.status !== 'rechazado')
     return (
       <div>
@@ -11362,7 +11387,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         )}
 
         <h2 className="section-title">
-          {cardInfo.label}: {categoryTotal.toFixed(2)} €
+          {cardInfo.label}: {headlineTotal.toFixed(2)} €
         </h2>
         <p className="muted">{cardInfo.explain}</p>
 
@@ -11478,13 +11503,48 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         </div>
       </div>
 
+      {/* Parte B4 — mismo reparto configurado (p. ej. 60/20/20) en las 4 tarjetas, nunca porcentajes
+          fijos ni recalculados a partir de movimientos reales: solo cambia qué porción se resalta en
+          cada una. "Recibido" no resalta ninguna (se ve el reparto completo). */}
       <div className="card-grid" style={{ marginTop: 8 }}>
-        {WALLET_TABS.map((t) => (
-          <button key={t.key} type="button" className="card event-module-card home-card-photo" onClick={() => setOpenCard(t.key)}>
-            <img src={t.img} alt={t.label} className="home-card-photo-img" style={{ aspectRatio: '1 / 1' }} />
-            <p className="muted home-card-photo-caption">{t.teaser}</p>
-          </button>
-        ))}
+        {WALLET_TABS.map((t) => {
+          const cardTotal = t.key === 'gasto' ? balance : walletCategoryTotal(activeMemberId, t.key, transactions)
+          const disponiblePct = Math.max(0, 100 - activeSplitConfig.ahorroPct - activeSplitConfig.impuestoPct)
+          const splitSlices = [
+            { key: 'ahorro', total: activeSplitConfig.ahorroPct, label: 'Ahorro' },
+            { key: 'impuesto', total: activeSplitConfig.impuestoPct, label: 'Impuestos' },
+            { key: 'disponible', total: disponiblePct, label: 'Para gastar' },
+          ]
+          const highlightedKey = WALLET_SPLIT_HIGHLIGHT[t.key]
+          const highlightedSlice = splitSlices.find((s) => s.key === highlightedKey)
+          // "Recibido" no resalta ninguna porción — mostrar "0 %" en el centro confundiría con que no hay
+          // reparto; en su lugar el centro resume el reparto completo (100%).
+          const donutCenter = highlightedSlice ?? { label: 'Reparto', total: 100 }
+          return (
+            <div key={t.key} className="card event-module-card home-card-photo wallet-type-card">
+              <button type="button" className="wallet-type-card-tap" onClick={() => setOpenCard(t.key)}>
+                <img src={t.img} alt={t.label} className="home-card-photo-img" style={{ aspectRatio: '1 / 1' }} />
+              </button>
+              <div className="home-card-photo-caption wallet-type-card-body">
+                <p style={{ margin: 0, fontWeight: 600 }}>{t.label}</p>
+                <p className="muted" style={{ margin: '2px 0 6px' }}>{cardTotal.toFixed(2)} €</p>
+                {/* Dónut pequeño a propósito (nunca debe desplazar la ilustración): solo el reparto, no
+                    un importe nuevo — el importe real ya está arriba. */}
+                <SvgDonut
+                  slices={splitSlices}
+                  centerLabel={{ name: donutCenter.label, total: donutCenter.total }}
+                  highlightedKey={highlightedKey}
+                  onSliceClick={() => setOpenCard(t.key)}
+                  size={68}
+                  centerUnit="%"
+                />
+                <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => setOpenCard(t.key)}>
+                  + Nuevo {t.formLabel}
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

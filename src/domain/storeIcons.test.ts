@@ -30,3 +30,52 @@ describe('getStoreIcon — resolución por logoAsset (cadenas) con fallback al c
     expect(getStoreIcon('Hipercor')).toEqual({ kind: 'logo', domain: 'hipercor.es' })
   })
 })
+
+// Encargo "COM-02 — recuperar los logotipos de las tiendas". Causa real (ver comentario en
+// domain/storeIcons.ts): el emparejamiento solo comparaba el nombre COMPLETO, así que un establecimiento
+// guardado con el texto más largo que trae el banco nunca encontraba su logo — nunca una ruta rota, un
+// asset perdido ni un problema de Safari/GitHub Pages. Nunca fue una regresión para Amazon/Charter
+// (jamás tuvieron entrada) ni para Covirán/Manper (nunca estuvieron en el catálogo de cadenas).
+describe('COM-02 — reconoce la cadena como palabra completa dentro de un nombre más largo (texto de banco)', () => {
+  it('Hiperber y Consum: ya tenían su dominio en el diccionario, pero el nombre exacto del banco nunca lo encontraba — ahora sí', () => {
+    expect(getStoreIcon('HIPERBER DISTRIBUCION Y L-RAFAL')).toEqual({ kind: 'logo', domain: 'hiperber.es' })
+    expect(getStoreIcon('SUPERMERCADO CONSUM RAFAL-RAFAL')).toEqual({ kind: 'logo', domain: 'consum.es' })
+    expect(getStoreIcon('Supermercado Consum Rafal-Rafal')).toEqual({ kind: 'logo', domain: 'consum.es' })
+  })
+
+  it('Amazon: dominio nuevo (amazon.es, comprobado), reconoce tanto el ticket como el texto de banco', () => {
+    expect(getStoreIcon('Amazon')).toEqual({ kind: 'logo', domain: 'amazon.es' })
+    expect(getStoreIcon('WWW.AMAZON-LUXEMBOURG')).toEqual({ kind: 'logo', domain: 'amazon.es' })
+  })
+
+  it('Covirán: dominio nuevo (coviran.es, comprobado), reconoce la variante con tilde y la del banco sin tilde', () => {
+    expect(getStoreIcon('Covirán')).toEqual({ kind: 'logo', domain: 'coviran.es' })
+    expect(getStoreIcon('SUPERMERCADO COVIRAN-ALMORADI')).toEqual({ kind: 'logo', domain: 'coviran.es' })
+  })
+
+  it('Manper: dominio nuevo (manper.com, comprobado), reconoce el nombre con "Supermercados" delante', () => {
+    expect(getStoreIcon('Manper')).toEqual({ kind: 'logo', domain: 'manper.com' })
+    expect(getStoreIcon('Supermercados Manper')).toEqual({ kind: 'logo', domain: 'manper.com' })
+  })
+
+  it('Charter se queda con el icono genérico a propósito: no tiene web propia verificada (solo una subpágina de consum.es) y asignarle el favicon de Consum sería justo la asociación errónea que prohíbe el encargo', () => {
+    expect(getStoreIcon('Charter')).toEqual({ kind: 'emoji', icon: '🏬' })
+  })
+
+  it('nunca coincidencia parcial de una palabra: una cadena NO aparece dentro de una tienda real distinta solo por contener las mismas letras', () => {
+    expect(getStoreIcon('Consumibles de Oficina SL')).toEqual({ kind: 'emoji', icon: '🏬' })
+    expect(getStoreIcon('Aldilandia Juguetería')).toEqual({ kind: 'emoji', icon: '🏬' })
+  })
+
+  it('logoAsset (vínculo manual a una cadena) y una foto personalizada siguen ganando siempre, igual que antes — esto no las toca', () => {
+    expect(getStoreIcon('Carnicería Manolo', 'carrefour')).toEqual({ kind: 'emoji', icon: '🏬' })
+  })
+
+  it('Mercadona/Lidl/Carrefour/Alcampo (ya funcionaban) y Superdumbo (imagen empaquetada) siguen exactamente igual', () => {
+    expect(getStoreIcon('Mercadona')).toEqual({ kind: 'logo', domain: 'mercadona.es' })
+    expect(getStoreIcon('Lidl')).toEqual({ kind: 'logo', domain: 'lidl.es' })
+    expect(getStoreIcon('Carrefour')).toEqual({ kind: 'logo', domain: 'carrefour.es' })
+    expect(getStoreIcon('Alcampo')).toEqual({ kind: 'logo', domain: 'alcampo.es' })
+    expect(getStoreIcon('Superdumbo')).toEqual({ kind: 'image', src: expect.any(String) })
+  })
+})

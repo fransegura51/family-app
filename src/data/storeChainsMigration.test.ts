@@ -106,11 +106,14 @@ describe('Fase 3: aislamiento y rollback', () => {
     expect(users.sort()).toEqual(EXPECTED.sort())
   })
 
-  it('las utilidades nuevas son puras; domain/storeChains.ts solo lo usan sharedLearning.ts y el selector de tiendas de Compras', () => {
+  it('las utilidades nuevas son puras; domain/storeChains.ts solo lo usan sharedLearning.ts, el selector de tiendas de Compras y el resolutor de logos (COM-02)', () => {
     for (const file of ['/src/domain/storeChains.ts', '/src/domain/productText.ts']) {
       expect(APP[file], file).not.toMatch(/^import /m)
     }
-    const ALLOWED_IMPORTERS = ['/src/domain/sharedLearning.ts', '/src/ui/ShoppingScreen.tsx']
+    // COM-02 — storeIcons.ts reutiliza normalizeStoreName (el mismo normalizador ya probado para
+    // interpretar texto de banco) para reconocer una cadena como palabra completa dentro de un nombre
+    // más largo, en vez de duplicar esa lógica de normalización una segunda vez.
+    const ALLOWED_IMPORTERS = ['/src/domain/sharedLearning.ts', '/src/ui/ShoppingScreen.tsx', '/src/domain/storeIcons.ts']
     const importers = Object.entries(APP)
       .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && !ALLOWED_IMPORTERS.includes(file) && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
       .map(([file]) => file)

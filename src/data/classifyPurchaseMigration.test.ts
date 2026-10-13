@@ -171,7 +171,7 @@ describe('interfaz: la categoría de una compra solo cambia por classify_purchas
       const code = text.replace(/\/\/[^\n]*/g, '') // classify_purchase se menciona solo en el comentario explicativo del webhook de Amazon
       expect(code, file).not.toContain('classify_purchase')
     }
-    // el formulario de ticket NUEVO sigue con su categoría de siempre
-    expect(FORM).toContain("useState(receipt ? (receipt.category ?? '') : 'Alimentación')")
+    // el formulario de ticket NUEVO sigue con una categoría por defecto propia (COM-01: la subcategoría real, no un literal fijo)
+    expect(FORM).toContain("useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
   })
 })

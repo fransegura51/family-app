@@ -43,6 +43,18 @@ export function defaultExpenseCategory(categories: BudgetCategory[]): string {
   return categories[0]?.name ?? 'Alimentación'
 }
 
+// Encargo "COM-01" — un ticket NUEVO (nunca uno ya editado, que conserva su propia categoría) parte
+// directamente de la subcategoría real "Supermercado, carnicería y tiendas de alimentación" (sembrada
+// en 0076_category_necessity_taxonomy.sql bajo Alimentación), no de la categoría general "Alimentación"
+// como antes — así no hace falta bajar un nivel a mano en el caso más frecuente. Si una familia borró o
+// renombró esa subcategoría, cae al mismo "Alimentación" de siempre (nunca una categoría inventada).
+export const RECEIPT_DEFAULT_SUBCATEGORY_NAME = 'Supermercado, carnicería y tiendas de alimentación'
+
+export function defaultReceiptCategory(categories: BudgetCategory[]): string {
+  const match = categories.find((c) => c.name === RECEIPT_DEFAULT_SUBCATEGORY_NAME)
+  return match?.name ?? 'Alimentación'
+}
+
 export function defaultIncomeCategory(categories: BudgetCategory[]): string {
   return incomeSelectableCategories(categories)[0]?.name ?? 'Ingreso'
 }

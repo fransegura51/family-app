@@ -6,6 +6,7 @@ import {
   classificationKindFor,
   defaultExpenseCategory,
   defaultIncomeCategory,
+  defaultReceiptCategory,
   draftCategory,
   emptyMovementDraft,
   movementFieldValues,
@@ -63,6 +64,26 @@ describe('Nuevo movimiento — borrador inicial (A/B)', () => {
     expect(defaultExpenseCategory([cat({ id: 'x', name: 'Mi categoría' })])).toBe('Mi categoría')
     expect(defaultIncomeCategory([])).toBe('Ingreso')
     expect(defaultIncomeCategory(CATEGORIES)).toBe('Sueldo')
+  })
+})
+
+// Encargo "COM-01" — un ticket nuevo parte de la subcategoría real "Supermercado, carnicería y tiendas
+// de alimentación", nunca de la categoría general "Alimentación" (salvo que esa subcategoría no exista
+// en la familia, p. ej. la borró o la renombró — ahí sí cae al mismo "Alimentación" de siempre).
+describe('defaultReceiptCategory — Parte COM-01, subcategoría real al abrir «Subir ticket»', () => {
+  const SUPERMERCADO = cat({ id: 'super', name: 'Supermercado, carnicería y tiendas de alimentación', parentId: 'ali' })
+
+  it('con la subcategoría presente en el catálogo de la familia, la usa tal cual (mismo id real, sin duplicarla)', () => {
+    expect(defaultReceiptCategory([...CATEGORIES, SUPERMERCADO])).toBe('Supermercado, carnicería y tiendas de alimentación')
+  })
+
+  it('sin esa subcategoría en el catálogo (familia que la borró o renombró), cae a «Alimentación», nunca a una inventada', () => {
+    expect(defaultReceiptCategory(CATEGORIES)).toBe('Alimentación')
+    expect(defaultReceiptCategory([])).toBe('Alimentación')
+  })
+
+  it('el orden de las categorías no importa — busca por nombre exacto, no por posición', () => {
+    expect(defaultReceiptCategory([SUPERMERCADO, ...CATEGORIES])).toBe('Supermercado, carnicería y tiendas de alimentación')
   })
 })
 

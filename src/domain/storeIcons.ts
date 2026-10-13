@@ -1,4 +1,5 @@
 import superDumboLogo from '@/assets/store-logos/superdumbo.png'
+import { normalizeStoreName } from '@/domain/storeChains'
 
 // Icono por tienda para que se reconozcan de un vistazo en vez de solo
 // el nombre (petición real: "en vez de ponerme Aldi con la x, me lo
@@ -47,6 +48,14 @@ const STORE_LOGOS: Record<string, string> = {
   spar: 'spar.es',
   'el corte ingles': 'elcorteingles.es',
   hipercor: 'hipercor.es',
+  // COM-02 — dominios comprobados uno a uno (nunca adivinados): amazon.es, coviran.es y manper.com
+  // cargan la web real de cada cadena. "Charter" se queda fuera a propósito: no tiene dominio propio
+  // (su única presencia web es una subpágina de consum.es, "franquicia-charter"), y store_chains ya
+  // documenta que su cadena "nunca se funde con Consum" — usar el favicon de consum.es mostraría el
+  // logo de Consum bajo el nombre de Charter, justo la asociación errónea que este encargo prohíbe.
+  amazon: 'amazon.es',
+  coviran: 'coviran.es',
+  manper: 'manper.com',
 }
 
 // Cadenas regionales cuyo logo real ha dado el usuario directamente
@@ -91,10 +100,34 @@ function normalizeKey(name: string): string {
     .trim()
 }
 
+// COM-02 (Fase 1-3) — causa real de la desaparición: esta función solo comparaba el nombre COMPLETO
+// contra las claves de arriba, así que una tienda guardada con el nombre exacto de la cadena ("Hiperber")
+// encontraba su logo, pero el mismo establecimiento con el texto más largo que trae el banco
+// ("HIPERBER DISTRIBUCION Y L-RAFAL", "SUPERMERCADO CONSUM RAFAL-RAFAL") nunca coincidía — nunca fue una
+// ruta rota, un asset perdido ni un problema de Safari/GitHub Pages: el emparejamiento por nombre
+// completo nunca cubrió esos nombres, antes ni ahora. Mercadona/Lidl/Superdumbo/Carrefour/Alcampo seguían
+// viendo su logo solo porque esas tiendas concretas tenían guardado el nombre corto exacto de la cadena.
+//
+// Arreglo: además del nombre completo, se reconoce la cadena cuando su clave aparece como PALABRA
+// COMPLETA dentro del nombre (reutilizando normalizeStoreName, el mismo normalizador ya usado y probado
+// por domain/storeChains.ts para interpretar texto de banco) — nunca una coincidencia parcial de una
+// palabra ("consum" nunca encaja dentro de "consumible"). Si una familia ya vinculó manualmente la tienda
+// a una cadena con su propio logo (logoAsset) o le puso una foto personalizada, esto no se usa — esos dos
+// casos ya se resuelven antes y siguen intactos.
+function findLogoDomainByWord(name: string): string | null {
+  const words = normalizeStoreName(name).split(' ').filter(Boolean)
+  for (const word of words) {
+    if (STORE_LOGOS[word]) return STORE_LOGOS[word]
+  }
+  return null
+}
+
 export function getStoreIcon(name: string, logoAsset?: string | null): StoreIcon {
   if (logoAsset && STORE_CHAIN_LOGOS[logoAsset]) return { kind: 'image', src: STORE_CHAIN_LOGOS[logoAsset] }
   const key = normalizeKey(name)
   if (STORE_IMAGE_LOGOS[key]) return { kind: 'image', src: STORE_IMAGE_LOGOS[key] }
   if (STORE_LOGOS[key]) return { kind: 'logo', domain: STORE_LOGOS[key] }
+  const byWord = findLogoDomainByWord(name)
+  if (byWord) return { kind: 'logo', domain: byWord }
   return { kind: 'emoji', icon: STORE_EMOJIS[key] ?? DEFAULT_EMOJI }
 }

@@ -178,6 +178,7 @@ import {
   classificationKindFor,
   defaultExpenseCategory,
   defaultIncomeCategory,
+  defaultReceiptCategory,
   draftCategory,
   emptyMovementDraft,
   movementFieldValues,
@@ -6019,9 +6020,11 @@ function ReceiptForm({
   const [store, setStore] = useState(receipt?.store ?? '')
   const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate ?? toDateStr(new Date()))
   const [totalAmount, setTotalAmount] = useState(receipt?.totalAmount != null ? String(receipt.totalAmount) : '')
-  // Un ticket nuevo parte de «Alimentación» (preselección visible, como siempre). Uno existente sin categoría (NULL, pendiente) se abre
-  // SIN categoría: abrirlo o guardarlo no lo convierte en Alimentación.
-  const [category, setCategory] = useState(receipt ? (receipt.category ?? '') : 'Alimentación')
+  // COM-01 — un ticket nuevo parte directamente de la subcategoría "Supermercado, carnicería y tiendas
+  // de alimentación" (preselección visible), no de la categoría general "Alimentación" como antes. Uno
+  // existente sin categoría (NULL, pendiente) se abre SIN categoría: abrirlo o guardarlo no lo convierte
+  // en Alimentación ni en esa subcategoría.
+  const [category, setCategory] = useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))
   const [purchasedByMemberId, setPurchasedByMemberId] = useState(receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
@@ -6193,7 +6196,7 @@ function ReceiptForm({
         setFile(null)
         setStore('')
         setTotalAmount('')
-        setCategory('Alimentación')
+        setCategory(defaultReceiptCategory(categories))
         setPurchasedByMemberId('')
         setLines([])
         setOcrStatus('idle')

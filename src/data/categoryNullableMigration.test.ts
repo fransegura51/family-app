@@ -110,9 +110,10 @@ describe('formulario y datos de tickets: un NULL no se convierte en Alimentació
   const form = APP['/src/ui/FinanceScreen.tsx']
   const receipts = APP['/src/data/receipts.ts']
 
-  it('un ticket existente se abre con SU categoría (NULL → sin categoría); solo un ticket nuevo parte de «Alimentación»', () => {
-    expect(form).toContain("useState(receipt ? (receipt.category ?? '') : 'Alimentación')")
+  it('un ticket existente se abre con SU categoría (NULL → sin categoría); solo un ticket nuevo parte de la subcategoría/categoría por defecto (COM-01)', () => {
+    expect(form).toContain("useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
     expect(form).not.toMatch(/receipt\?\.category \?\? 'Alimentación'/)
+    expect(form).not.toMatch(/receipt\?\.category \?\? defaultReceiptCategory/)
     // al crear: vacío → null, nunca «Alimentación». Al editar (6C.2C) la categoría ya no se manda: solo cambia por classify_purchase
     expect((form.match(/category: category \|\| null,/g) ?? []).length).toBe(1)
   })
@@ -176,6 +177,6 @@ describe('NINGÚN productor genera NULL todavía (6C.2A no cambia el comportamie
 
   it('el alta de gastos (addExpense) y de tickets nuevos sigue exigiendo una categoría', () => {
     expect(APP['/src/data/finance.ts']).toMatch(/export async function addExpense\(input: \{[\s\S]*?category: string\b/)
-    expect(APP['/src/ui/FinanceScreen.tsx']).toContain("useState(receipt ? (receipt.category ?? '') : 'Alimentación')")
+    expect(APP['/src/ui/FinanceScreen.tsx']).toContain("useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
   })
 })

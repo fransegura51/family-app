@@ -354,6 +354,35 @@ usuario".
 
 ---
 
+## Integración de la carrera animada V6 (PEPA-CARRERA)
+
+Encargo independiente («PEPA — Integración de la carrera animada V6», 2026-10-13). Sustituye el
+carril provisional de "Puntos por persona" (A4 — documentado desde su origen como "no todavía el
+personaje infantil corriendo con el que se sueña... listo para sustituirse más adelante") por la
+demo V6 aprobada (`PEPA_Carrera_V6_Conejo_completo.html`), trasladada al código real de PEPA sin
+incrustarla en un iframe. Estado de revisión propio, nunca marcado "Aprobado" hasta que el usuario
+lo confirme personalmente en PEPA.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| CARRERA-1 | Auditoría previa de la implementación actual de Puntos y recompensas (componentes, datos, permisos) antes de tocar nada | Sí (2026-10-13) | Sí — ver el propio encargo en la conversación: identificado `RewardsScreen.tsx` (carril provisional en `.rewards-track`, documentado como placeholder en `rewardsScreenTrackUi.test.ts`), el modelo de recompensas real (`Reward.pointsCost`, catálogo de coste — no de umbrales fijos), `FamilyMember.color`/`photoPath` + `<MemberAvatar>` ya existente, y los permisos de la pantalla (sin cambios) | No aplica (es la propia auditoría) | No |
+| CARRERA-2 | Conserva el diseño visual y las animaciones de la V6 (corredores articulados, pista con perspectiva, paisaje y fauna animada) | Sí (2026-10-13) | Sí — `src/ui/RaceTrack.tsx`: paisaje, pista, marcas de distancia y fauna (pájaro/conejo/mariposa) trasladados tal cual de la demo; los 2 diseños de corredor (24 fotogramas cada uno) se guardan sin tocar en `src/ui/raceSpriteData.ts` y se asignan por turno a los participantes reales (nunca un tercer diseño inventado) | Sí — verificado en vivo (navegador, Familia Prueba Breadcrumb): paisaje, pista con marcas 0-30, fauna (conejo visible) y el ciclo de carrera del corredor, visualmente iguales a la demo | No |
+| CARRERA-3 | Sustituye los avatares de demostración por las fotografías circulares de los participantes, conservando los colores identificativos | Sí (2026-10-13) | Sí — el cuerpo animado se conserva (CARRERA-2); encima de cada corredor se superpone una insignia DOM (no dibujada dentro del canvas) con `<MemberAvatar>` (foto real o inicial sobre su color, igual componente que el resto de la app) + su nombre, que sigue la posición del corredor fotograma a fotograma | Sí — verificado en vivo: insignia con foto/inicial y color real de "Eric" y, al activar un segundo participante, también de "Ana", cada una sobre su propio corredor | No |
+| CARRERA-4 | Obtiene nombres y puntos de los datos reales de PEPA; elimina los controles de demostración | Sí (2026-10-13) | Sí — `RaceTrack` recibe `runners` (miembro + sus puntos reales de Camino/Carrera, calculados UNA vez en `RewardsScreen.tsx` y reutilizados tanto por la pista como por cada tarjeta, nunca un cálculo aparte que pueda desincronizarse) y `rewards` (catálogo activo real); ninguno de los botones de demostración de la V6 (+1/+5/reiniciar/pausar/probar diferencia) se trasladó | Sí — verificado en vivo: la pista muestra "Eric"/"Ana" reales (nunca "Eric"/"Fernando" fijos de la demo), sin ningún control de demostración visible | No |
+| CARRERA-5 | Los corredores avanzan según sus puntuaciones reales, sin modificar el sistema de asignación de puntos | Sí (2026-10-13) | Sí — cero cambios en `domain/rewards.ts`, `data/rewards.ts` ni en cómo se ganan/gastan puntos; `RaceTrack` solo LEE `memberLifetimePoints`/`monthlyRaceStandings`, ya calculados por `RewardsScreen.tsx` exactamente igual que antes de este encargo | Sí — suite automática sin tocar ningún test de `domain/rewards.test.ts` ni de asignación de puntos; 425/425 archivos en verde | No |
+| CARRERA-6 | Muestra recompensas en los hitos correspondientes únicamente cuando estén configuradas | Sí (2026-10-13) | Sí — `domain/race.ts` (`raceMilestones`): solo recompensas `active` y con `emoji` configurado se pintan, en la posición de su propio `pointsCost` (el modelo real de PEPA es de coste, no de umbrales fijos — se traduce 1:1 en vez de inventar un campo nuevo); sin recompensas, la pista no pinta ningún marcador | Sí — 5 tests automáticos (`domain/race.test.ts`) + verificado en vivo con un catálogo vacío ("No hay recompensas todavía"): la pista no muestra ningún emoji | No |
+| CARRERA-7 | Cámara adaptable a diferencias grandes de puntuación; pista que puede seguir avanzando sin límite fijo | Sí (2026-10-13) | Sí — `domain/race.ts` (`raceCameraRange`/`raceDistanceStep`): misma fórmula que la demo V6, generalizada de 2 a cualquier número de corredores (cubre siempre al que menos y al que más puntos lleva); sin tope fijo de puntos, el tramo visible crece con la diferencia real | Sí — 8 tests automáticos cubren diferencia pequeña, grande y con más de 2 corredores | No |
+| CARRERA-8 | Adaptado a móvil y escritorio, especialmente Safari de iPhone | Sí (2026-10-13) | Sí — `devicePixelRatio`/`ResizeObserver` (primer uso de canvas animado en esta app, sin precedente previo); `aspect-ratio` con variante `@media (max-width:480px)` para pantalla estrecha; `prefers-reduced-motion` deja un único fotograma estático (sin bucle, sin fauna, sin nubes) en vez de solo ralentizar, mismo criterio que el resto de animaciones de PEPA | Parcial — verificado en el navegador de escritorio del entorno de desarrollo (tamaño de pantalla estrecho simulado incluido); **sin verificar todavía en un iPhone físico con Safari real** | No |
+| CARRERA-9 | Mantiene intactas las demás funciones de Puntos y recompensas | Sí (2026-10-13) | Sí — Camino/Carrera, hitos de 10 puntos con confeti, "Ya puedes conseguir", solicitar/aprobar/rechazar/disfrutar premios, catálogo (crear/editar/desactivar/borrar), trofeos mensuales y Gran Copa Anual: cero cambios de código en esas rutas, solo se retiró el carril provisional por tarjeta (ya duplicado por la pista compartida de arriba) | Sí — suite automática completa (425/425 archivos, 8139/8139 tests) sin tocar ningún test de esas funciones; verificado en vivo que "Quién participa"/"Camino-Carrera"/catálogo siguen funcionando igual | No |
+| CARRERA-10 | Sin datos ficticios en producción; sin cambios en las políticas de seguridad | Sí (2026-10-13) | Sí — ninguna migración, ninguna tabla ni política RLS nueva; los datos de prueba usados para verificar en vivo (activar temporalmente a "Ana" como participante) se dejaron exactamente como estaban al terminar | Sí — confirmado por lectura directa: `git status`/diff solo tocan `src/ui/`, `src/domain/`, `docs/` — ninguna carpeta `supabase/migrations` | No |
+
+**Pendiente**: verificación en un iPhone físico con Safari real (CARRERA-8) — la verificación de esta
+sesión fue en el navegador de escritorio del entorno de desarrollo. El usuario debe comprobarlo
+personalmente en PEPA (incluido en su iPhone) antes de que cualquier fila de esta tabla pueda pasar a
+"Aprobado por el usuario".
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

@@ -22,6 +22,7 @@ import {
 import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
+import { RaceTrack } from '@/ui/RaceTrack'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
 import { Confetti } from '@/ui/Confetti'
@@ -225,8 +226,13 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
-        <h2 className="section-title" style={{ flex: 1, margin: 0 }}>Puntos por persona</h2>
+      {/* Encargo "Integración de la carrera animada V6" (corrección obligatoria 6) — en pantalla
+          estrecha (iPhone), "Puntos por persona" + los dos botones de ajuste en la MISMA fila
+          (flex:1 en el título) hacía que el título partido en varias líneas y los botones quedaran
+          montados unos encima de otros — el título ahora ocupa SIEMPRE su propia fila entera
+          (flex-basis:100%) y los dos botones van juntos debajo, nunca pegados al texto. */}
+      <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
+        <h2 className="section-title" style={{ flex: '1 0 100%', margin: 0 }}>Puntos por persona</h2>
         {isAdult && (
           <button type="button" className="link-button" onClick={() => setShowModeSettings((v) => !v)}>
             ⚙️ {mode === 'camino' ? '🛤️ Camino' : '🏁 Carrera'}
@@ -244,71 +250,75 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       {showParticipants && isAdult && (
         <ParticipantsPanel members={members} participants={participants} onChanged={reload} setError={setError} />
       )}
-      <div className="event-list">
-        {(() => {
-          const visibleMembers = members.filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
-          const yearMonth = currentYearMonth()
-          const standings = mode === 'carrera' ? monthlyRaceStandings(visibleMembers.map((m) => m.id), yearMonth, completions, grants) : []
-          return visibleMembers.map((m) => {
-            const balance = memberPointsBalance(m.id, completions, redemptions, grants)
-            const open = expandedMemberId === m.id
-            const standing = mode === 'carrera' ? standings.find((s) => s.memberId === m.id) : undefined
-            const progressPoints = mode === 'camino' ? memberLifetimePoints(m.id, completions, grants) : (standing?.points ?? 0)
-            const progressLabel =
-              mode === 'camino'
-                ? `🛤️ Camino: ${progressPoints} puntos en total`
-                : `🏁 ${standing?.rank ?? 1}º esta carrera · ${progressPoints} puntos en ${MONTHS[new Date().getMonth()]}`
-            const milestone = milestoneProgress(progressPoints)
-            // PG-PUNTOS-FINANZAS (Parte A5) — "emojis de recompensa... calculados del saldo canjeable
-            // REAL": a propósito usa `balance` (memberPointsBalance), nunca progressPoints — solo lo que
-            // de verdad se puede solicitar ahora mismo, nunca el progreso de Camino/Carrera.
-            const affordableRewards = activeRewards.filter((r) => r.emoji && r.pointsCost <= balance).sort((a, b) => a.pointsCost - b.pointsCost)
-            return (
-              <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
-                <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
-                  <MemberAvatar member={m} size={32} />
-                  <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
-                  <span className="points-badge">⭐ {balance}</span>
-                </div>
-                <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>{progressLabel}</p>
-                <div className="rewards-track">
-                  <div className="rewards-track-lane" style={{ ['--rewards-track-pct' as string]: `${milestone.pct}%` }}>
-                    <div className="rewards-track-fill" />
-                    <div className="rewards-track-marker" style={{ background: toPastel(m.color, 'chart') }}>
-                      {m.name.charAt(0)}
+      {(() => {
+        const visibleMembers = members.filter((m) => isMemberRewardsEnabled(m.id, m.memberType, participants))
+        const yearMonth = currentYearMonth()
+        const standings = mode === 'carrera' ? monthlyRaceStandings(visibleMembers.map((m) => m.id), yearMonth, completions, grants) : []
+        // Carrera animada V6 — mismos puntos de progreso (Camino/Carrera) que ya calcula cada
+        // tarjeta de abajo, una sola vez aquí para no repetir la cuenta y para que el corredor de
+        // cada uno en la pista compartida sea EXACTAMENTE el mismo número que su tarjeta enseña.
+        const raceRunners = visibleMembers.map((m) => {
+          const standing = mode === 'carrera' ? standings.find((s) => s.memberId === m.id) : undefined
+          const points = mode === 'camino' ? memberLifetimePoints(m.id, completions, grants) : (standing?.points ?? 0)
+          return { member: m, points }
+        })
+        return (
+          <>
+            {raceRunners.length > 0 && <RaceTrack runners={raceRunners} rewards={activeRewards} />}
+            <div className="event-list">
+              {raceRunners.map(({ member: m, points: progressPoints }) => {
+                const balance = memberPointsBalance(m.id, completions, redemptions, grants)
+                const open = expandedMemberId === m.id
+                const standing = mode === 'carrera' ? standings.find((s) => s.memberId === m.id) : undefined
+                const progressLabel =
+                  mode === 'camino'
+                    ? `🛤️ Camino: ${progressPoints} puntos en total`
+                    : `🏁 ${standing?.rank ?? 1}º esta carrera · ${progressPoints} puntos en ${MONTHS[new Date().getMonth()]}`
+                const milestone = milestoneProgress(progressPoints)
+                // PG-PUNTOS-FINANZAS (Parte A5) — "emojis de recompensa... calculados del saldo canjeable
+                // REAL": a propósito usa `balance` (memberPointsBalance), nunca progressPoints — solo lo que
+                // de verdad se puede solicitar ahora mismo, nunca el progreso de Camino/Carrera.
+                const affordableRewards = activeRewards.filter((r) => r.emoji && r.pointsCost <= balance).sort((a, b) => a.pointsCost - b.pointsCost)
+                return (
+                  <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
+                    <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
+                      <MemberAvatar member={m} size={32} />
+                      <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
+                      <span className="points-badge">⭐ {balance}</span>
                     </div>
+                    <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>{progressLabel}</p>
+                    <p className="muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
+                      {milestone.pointsIntoSegment}/{milestone.milestoneSize} hasta el próximo premio de hito
+                    </p>
+                    {affordableRewards.length > 0 && (
+                      <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                        🎁 Ya puedes conseguir: {affordableRewards.map((r) => r.emoji).join(' ')}
+                      </p>
+                    )}
+                    {open && (
+                      <MemberRewardsPanel
+                        member={m}
+                        balance={balance}
+                        rewards={activeRewards}
+                        redemptions={redemptions.filter((r) => r.memberId === m.id)}
+                        grants={grants.filter((g) => g.memberId === m.id)}
+                        monthlyResults={monthlyResults}
+                        isAdult={isAdult}
+                        onChanged={reload}
+                        setError={setError}
+                      />
+                    )}
                   </div>
-                  <p className="muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
-                    {milestone.pointsIntoSegment}/{milestone.milestoneSize} hasta el próximo premio de hito
-                  </p>
-                </div>
-                {affordableRewards.length > 0 && (
-                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-                    🎁 Ya puedes conseguir: {affordableRewards.map((r) => r.emoji).join(' ')}
-                  </p>
-                )}
-                {open && (
-                  <MemberRewardsPanel
-                    member={m}
-                    balance={balance}
-                    rewards={activeRewards}
-                    redemptions={redemptions.filter((r) => r.memberId === m.id)}
-                    grants={grants.filter((g) => g.memberId === m.id)}
-                    monthlyResults={monthlyResults}
-                    isAdult={isAdult}
-                    onChanged={reload}
-                    setError={setError}
-                  />
-                )}
-              </div>
-            )
-          })
-        })()}
-        {members.length === 0 && <p className="muted">Todavía no hay miembros en la familia.</p>}
-        {members.length > 0 && members.every((m) => !isMemberRewardsEnabled(m.id, m.memberType, participants)) && (
-          <p className="muted">Nadie participa todavía — actívalo desde "⚙️ Quién participa".</p>
-        )}
-      </div>
+                )
+              })}
+              {members.length === 0 && <p className="muted">Todavía no hay miembros en la familia.</p>}
+              {members.length > 0 && members.every((m) => !isMemberRewardsEnabled(m.id, m.memberType, participants)) && (
+                <p className="muted">Nadie participa todavía — actívalo desde "⚙️ Quién participa".</p>
+              )}
+            </div>
+          </>
+        )
+      })()}
 
       {isAdult && (
         <>

@@ -3902,53 +3902,61 @@ textarea {
   border-radius: 999px;
 }
 
-/* PG-PUNTOS-FINANZAS (Parte A4) — representación provisional del "camino"/"carrera" mientras no haya un
-   personaje infantil corriendo con buena calidad (A4 pide no bloquear el resto del trabajo por esto): un
-   carril sencillo con una ficha que avanza hacia el próximo hito de 10 puntos (A5). Nunca un hueco vacío
-   ni un muñeco de baja calidad — un marcador simple y honesto, listo para sustituirse más adelante. */
-.rewards-track {
-  margin-top: 6px;
-}
-
-.rewards-track-lane {
+/* Carrera animada V6 (encargo "Integración de la carrera animada V6") — sustituye la pista
+   provisional que hubo aquí (A4: un carril simple con una ficha, documentado siempre como algo a
+   sustituir, nunca aprobado) por la carrera real de PEPA_Carrera_V6_Conejo_completo.html. El canvas
+   dibuja el paisaje/pista/fauna/corredores tal cual la demo; las insignias de foto+nombre son
+   elementos DOM aparte, posicionadas por RaceTrack.tsx con transform (nunca recreadas por React en
+   cada fotograma, por eso no llevan transition aquí — su movimiento ya es continuo via canvas). */
+.race-track-wrap {
   position: relative;
   width: 100%;
-  height: 22px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.55);
-  overflow: visible;
+  aspect-ratio: 1.48;
+  border-radius: 20px;
+  overflow: hidden;
+  background: #9edbfa;
+  box-shadow: 0 10px 30px rgba(23, 62, 81, 0.13);
+  margin-bottom: 10px;
 }
 
-.rewards-track-fill {
-  position: absolute;
-  inset: 0;
-  width: var(--rewards-track-pct, 0%);
-  background: rgba(255, 255, 255, 0.85);
-  border-radius: 999px;
-  transition: width 0.6s ease;
+.race-track-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.rewards-track-marker {
+.race-track-badge {
   position: absolute;
-  top: 50%;
-  left: var(--rewards-track-pct, 0%);
-  transform: translate(-50%, -50%);
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  top: 0;
+  left: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  border: 2px solid white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
-  transition: left 0.6s ease;
+  gap: 2px;
+  pointer-events: none;
+  will-change: transform;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .rewards-track-fill,
-  .rewards-track-marker {
-    transition: none;
+.race-track-badge-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #24364b;
+  background: rgba(255, 255, 255, 0.82);
+  padding: 1px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 480px) {
+  .race-track-wrap {
+    aspect-ratio: 1.05;
+  }
+  .race-track-badge-name {
+    font-size: 10px;
+    max-width: 60px;
   }
 }
 

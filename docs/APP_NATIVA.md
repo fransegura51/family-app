@@ -60,7 +60,9 @@ Con la app deslizada los avisos de Firebase sí llegaron (13/10). La guía por m
 Solo miembros de la MISMA familia (RLS), respeta el consentimiento y las cuentas sin acceso a Ubicación.
 
 ## Limitaciones conocidas
-- Tras reiniciar el móvil, la ubicación con la app cerrada no se retoma hasta abrir PEPA (ver arriba).
+- Tras reiniciar el móvil, la ubicación con la app cerrada no se retoma hasta abrir PEPA. Decisión (13/10/2026): NO se añade un receptor de arranque, porque
+  un servicio de ubicación lanzado desde el arranque no tiene acceso a la ubicación sin el permiso «Permitir siempre» (ACCESS_BACKGROUND_LOCATION), que
+  obligaría a una pantalla de ajustes más y a la declaración de ubicación en segundo plano de Google Play. Se reabre si hace falta.
 - Si un móvil tiene a la vez la PEPA web instalada (con Web Push) y la app nativa (FCM), recibe **dos** avisos: quitar la web de ese móvil.
 - Play Protect / Mi Protect avisan al instalar el APK fuera de tienda (esperable).
 - iPhone: no existe todavía (hace falta cuenta de Apple + Mac en la nube; `npx cap add ios` se haría en un runner macOS). En iOS la ubicación en

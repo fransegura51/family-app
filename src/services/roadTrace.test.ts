@@ -117,11 +117,10 @@ describe('conexión con el mapa y el servidor', () => {
     expect(locationMapSrc).toContain('[members, locations, histories, photoUrls, roadTick]')
   })
 
-  it('los tramos sin datos, si están lejos (más de 1 km), se dibujan de rayas por la carretera más probable y no en recta; los cortos se quedan como están', () => {
-    expect(locationMapSrc).toContain('roadAwareGap(')
-    expect(locationMapSrc).toContain('const MIN_GAP_ROAD_M = 1000')
-    expect(locationMapSrc).toContain('for (const gapPath of gaps)')
-    expect(locationMapSrc).toContain("key: `gap|")
+  it('los huecos sin datos NO se dibujan: ni recta, ni por carretera, ni de rayas (petición real: «marca una ruta que no he hecho»)', () => {
+    expect(locationMapSrc).not.toContain('roadAwareGap')
+    expect(locationMapSrc).not.toContain('for (const gapPath of gaps)')
+    expect(locationMapSrc).toContain('for (const path of solid)')
   })
 
   it('el servidor tiene la acción «trace»: puntos de paso «via», sin tráfico, y descarta rodeos absurdos', () => {

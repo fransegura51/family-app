@@ -269,6 +269,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(253) // 0253: location_device_tokens (ubicación con la app nativa cerrada: tabla privada y funciones de ubicación, no toca esto); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(254) // 0254: suggestions_owner_by_profile (la dueña de la app es una persona, no una familia; no toca esto) tras 0253 location_device_tokens; la numeración la sube quien añada la siguiente
   })
 })

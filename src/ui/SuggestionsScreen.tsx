@@ -1,12 +1,13 @@
 // Buzón de sugerencias — petición real: "que cuando alguna familia de
 // prueba tenga alguna sugerencia, nos la dejen en el buzón y nosotros
-// podamos aplicarlo". Cualquier familia deja las suyas; la familia
-// dueña de la app las ve TODAS para revisarlas (RLS, ver migración
-// 0078 — el mismo id de familia está hardcodeado aquí solo para saber
-// si hay que pintar los controles de administración, la seguridad de
-// verdad la hace la base de datos, no esta comprobación).
+// podamos aplicarlo". Cualquier familia deja las suyas; la dueña de la
+// app (profiles.is_app_owner, migración 0254) las ve TODAS para
+// revisarlas. Que esta pantalla sepa si pintar los controles de
+// administración es solo comodidad: la seguridad de verdad la hace la
+// base de datos, no esta comprobación.
 import { FormEvent, useEffect, useState } from 'react'
 import {
+  amIAppOwner,
   createSuggestion,
   getFamilyNameForSuggestion,
   listSuggestions,
@@ -20,8 +21,6 @@ import type { Suggestion } from '@/domain/types'
 import sugerenciasHeaderImg from '@/assets/sugerencias/sugerencias-header.jpg'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 
-const OWNER_FAMILY_ID = '011429a4-4fd8-4341-9c04-ec6b2f585196'
-
 const STATUS_LABELS: Record<Suggestion['status'], string> = {
   pendiente: '🕓 Pendiente',
   aplicada: '✅ Aplicada',
@@ -32,6 +31,7 @@ export function SuggestionsScreen() {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [familyNames, setFamilyNames] = useState<Map<string, string>>(new Map())
   const [isOwner, setIsOwner] = useState(false)
+  const [myFamilyId, setMyFamilyId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -41,15 +41,16 @@ export function SuggestionsScreen() {
     setLoading(true)
     Promise.all([
       listSuggestions(),
+      amIAppOwner(),
       supabase.auth.getUser().then(async ({ data }) => {
         if (!data.user) return null
         const { data: profileRow } = await supabase.from('profiles').select('family_id').eq('id', data.user.id).single()
         return profileRow?.family_id ?? null
       }),
     ])
-      .then(async ([rows, myFamilyId]) => {
-        const owner = myFamilyId === OWNER_FAMILY_ID
+      .then(async ([rows, owner, myFamilyId]) => {
         setIsOwner(owner)
+        setMyFamilyId(myFamilyId)
         setSuggestions(rows)
         if (owner) {
           const otherFamilyIds = [...new Set(rows.map((r) => r.familyId).filter((id) => id !== myFamilyId))]
@@ -118,7 +119,7 @@ export function SuggestionsScreen() {
           <div key={s.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <strong style={{ fontSize: 13 }}>
-                {isOwner && s.familyId !== OWNER_FAMILY_ID ? `${familyNames.get(s.familyId) ?? 'Familia'} · ` : ''}
+                {isOwner && s.familyId !== myFamilyId ? `${familyNames.get(s.familyId) ?? 'Familia'} · ` : ''}
                 {STATUS_LABELS[s.status]}
               </strong>
               <span className="muted" style={{ fontSize: 12 }}>

@@ -70,8 +70,16 @@ export async function updateSuggestionStatus(
   if (error) throw error
 }
 
+// ¿Esta cuenta es la dueña de la app (profiles.is_app_owner)? Decide si se pintan los controles de administración; la seguridad de verdad la hace la
+// base de datos (migración 0254), no esta comprobación.
+export async function amIAppOwner(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('am_i_app_owner')
+  if (error) throw error
+  return data === true
+}
+
 // Nombre de la familia que dejó una sugerencia — solo devuelve algo si
-// quien pregunta es la familia dueña (ver 0079_suggestions_family_name.sql).
+// quien pregunta es la dueña de la app (ver 0079 y 0254).
 export async function getFamilyNameForSuggestion(familyId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc('get_family_name_for_suggestion', { p_family_id: familyId })
   if (error) throw error

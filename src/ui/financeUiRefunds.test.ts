@@ -243,7 +243,7 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(253) // 0253: location_device_tokens (ubicación con la app nativa cerrada: tabla privada y funciones de ubicación, no toca esto); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(254) // 0254: suggestions_owner_by_profile (la dueña de la app es una persona, no una familia; no toca esto) tras 0253 location_device_tokens; la numeración la sube quien añada la siguiente
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

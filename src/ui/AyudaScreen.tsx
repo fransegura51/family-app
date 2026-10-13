@@ -37,6 +37,13 @@ const SUMMARIES: Record<string, string> = {
   '/documentos': 'Documentos importantes por persona o carpeta, con fecha de vencimiento y recordatorios de renovación si hace falta.',
 }
 
+// Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan
+// tráfico de la base de datos y la app solo guarda el enlace. El <video> no se crea hasta que se toca «Ver vídeo» (nada se descarga antes).
+const HELP_VIDEO_BASE = 'https://pepafamilyapp.es/ayuda/'
+const HELP_VIDEOS: Record<string, { src: string; poster: string }> = {
+  '/calendario': { src: `${HELP_VIDEO_BASE}calendario.mp4`, poster: `${HELP_VIDEO_BASE}calendario.jpg` },
+}
+
 interface HelpItem {
   title: string
   text: string
@@ -376,6 +383,7 @@ function HelpCard({
   onToggle,
   highlightedItem,
   cardRef,
+  video,
 }: {
   to: string
   icon: string
@@ -386,7 +394,9 @@ function HelpCard({
   onToggle: () => void
   highlightedItem?: string | null
   cardRef?: (el: HTMLDivElement | null) => void
+  video?: { src: string; poster: string }
 }) {
+  const [showVideo, setShowVideo] = useState(false)
   return (
     <div className="card ayuda-card" ref={cardRef}>
       <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={expanded}>
@@ -402,6 +412,24 @@ function HelpCard({
       </button>
       {expanded && (
         <div className="ayuda-card-detail">
+          {video &&
+            (showVideo ? (
+              <video
+                src={video.src}
+                poster={video.poster}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+                style={{ display: 'block', width: '100%', maxWidth: 320, margin: '4px auto 12px', borderRadius: 12, background: '#000' }}
+              >
+                Tu navegador no puede reproducir este vídeo.
+              </video>
+            ) : (
+              <button type="button" style={{ margin: '4px 0 12px', width: '100%' }} onClick={() => setShowVideo(true)}>
+                ▶ Ver vídeo explicativo (1 min 27 s, con la voz de Pepa)
+              </button>
+            ))}
           {details.map((item) => (
             <div
               key={item.title}
@@ -501,6 +529,7 @@ export function AyudaScreen() {
               expanded={expandedTo === tab.to}
               onToggle={() => setExpandedTo((cur) => (cur === tab.to ? null : tab.to))}
               highlightedItem={expandedTo === tab.to ? highlightedItem : null}
+              video={HELP_VIDEOS[tab.to]}
               cardRef={(el) => {
                 cardRefs.current[tab.to] = el
               }}

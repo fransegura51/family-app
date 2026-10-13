@@ -9,7 +9,7 @@ vi.mock('@/data/food', () => ({
   addRecipeIngredientsToShoppingList: vi.fn(),
   createRecipe: vi.fn(),
 }))
-vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/data/shopping', () => ({ addShoppingItems: vi.fn().mockResolvedValue(undefined), addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 

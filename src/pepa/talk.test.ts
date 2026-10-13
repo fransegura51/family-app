@@ -5,12 +5,12 @@ vi.mock('@/data/food', () => ({
   updateMenuEntry: vi.fn(),
   addRecipeIngredientsToShoppingList: vi.fn(),
 }))
-vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/data/shopping', () => ({ addShoppingItems: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { createEvent } from '@/data/calendar'
-import { addShoppingItem } from '@/data/shopping'
+import { addShoppingItems as addShoppingItem } from '@/data/shopping'
 import { NOT_UNDERSTOOD, runTalk, type TalkDeps } from '@/pepa/talk'
 
 const TODAY = new Date(2026, 8, 20) // domingo 20 de septiembre de 2026
@@ -103,8 +103,8 @@ describe('runTalk: escribir siempre con tarjeta', () => {
     const view = outcome.proposal.preview(outcome.proposal.initialSelection)
     expect(view.lines).toEqual(['Tienda: Mercadona'])
     await outcome.proposal.confirm(outcome.proposal.initialSelection)
-    expect(addShoppingItem).toHaveBeenCalledTimes(3)
-    expect(addShoppingItem).toHaveBeenCalledWith(expect.objectContaining({ name: 'huevos', store: 'Mercadona' }))
+    expect(addShoppingItem).toHaveBeenCalledTimes(1) // los tres productos, en UNA sola llamada
+    expect(addShoppingItem).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ name: 'huevos', store: 'Mercadona' })]))
   })
 
   it('una tienda que no está dada de alta, dicha al final, también se reconoce', async () => {
@@ -470,7 +470,7 @@ describe('runTalk: preferencia «hacerlo directamente, sin tarjeta»', () => {
   it('con la preferencia, la compra se añade al momento y Pepa dice que está hecho', async () => {
     const outcome = await runTalk('añade leche, huevos y pan a Mercadona', makeDeps({ autoConfirm: () => true }))
     expect(outcome.kind).toBe('answer')
-    expect(addShoppingItem).toHaveBeenCalledTimes(3)
+    expect(addShoppingItem).toHaveBeenCalledTimes(1)
     if (outcome.kind === 'answer') expect(outcome.text.length).toBeGreaterThan(0)
   })
 

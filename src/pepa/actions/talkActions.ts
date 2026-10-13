@@ -1,5 +1,5 @@
 import { createEvent } from '@/data/calendar'
-import { addShoppingItem } from '@/data/shopping'
+import { addShoppingItems } from '@/data/shopping'
 import { findScheduleWarnings, groupScheduleWarnings, type ScheduleWarning } from '@/domain/calendar'
 import { kitchenDateLabel } from '@/domain/kitchenQuery'
 import { recurrenceLabel } from '@/domain/recurrence'
@@ -71,9 +71,7 @@ export const shoppingAddAction = defineAction<ShoppingAddParams>({
 
   async execute(params) {
     const items = params.items.filter((_, i) => !params.skipped.includes(i))
-    for (const name of items) {
-      await addShoppingItem({ name, quantity: '', unit: '', priority: 'normal', tripId: null, store: params.store })
-    }
+    await addShoppingItems(items.map((name) => ({ name, quantity: '', unit: '', priority: 'normal' as const, tripId: null, store: params.store })))
     window.dispatchEvent(new CustomEvent('family-app:compras-changed'))
     const where = params.store ? ` (${params.store})` : ''
     return `Apuntado en la lista de la compra${where}: ${items.join(', ')}.`

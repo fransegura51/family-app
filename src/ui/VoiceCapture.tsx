@@ -1,7 +1,7 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
-import { addShoppingItem, listShoppingItems } from '@/data/shopping'
+import { addShoppingItems, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
 import { listFamilyMembers } from '@/data/family'
 import { listConsents, listMemberLocations, listPlaces } from '@/data/location'
@@ -287,9 +287,7 @@ const PANEL_INFO: Record<
 }
 
 async function saveShoppingEntries(entries: string[], store: string | null): Promise<void> {
-  for (const entry of entries) {
-    await addShoppingItem({ name: entry, quantity: '', unit: '', priority: 'normal', tripId: null, store })
-  }
+  await addShoppingItems(entries.map((entry) => ({ name: entry, quantity: '', unit: '', priority: 'normal' as const, tripId: null, store })))
   // Si ya estás en Lista de la compra, que se vea al momento en vez de
   // tener que recargar.
   window.dispatchEvent(new CustomEvent('family-app:compras-changed'))

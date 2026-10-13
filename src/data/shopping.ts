@@ -74,7 +74,7 @@ export async function reorderShoppingItems(orderedIds: string[]): Promise<void> 
   if (failed?.error) throw new Error(failed.error.message)
 }
 
-export async function addShoppingItem(input: {
+export interface NewShoppingItem {
   name: string
   quantity: string
   unit: string
@@ -86,20 +86,31 @@ export async function addShoppingItem(input: {
   // ver «Menú del evento» → selector de ingredientes de una receta) — independiente
   // de tripId, que es "ir físicamente a una tienda", no "para qué es".
   eventId?: string | null
-}): Promise<void> {
+}
+
+// Varios productos de golpe: la familia se busca UNA vez y se inserta todo en UNA petición (antes, una por producto con su propia consulta de familia:
+// guardar 6 productos eran 18 llamadas seguidas; queja real: «tarda mucho en guardar»). Todo o nada.
+export async function addShoppingItems(inputs: NewShoppingItem[]): Promise<void> {
+  if (inputs.length === 0) return
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('shopping_items').insert({
-    family_id: familyId,
-    trip_id: input.tripId,
-    name: input.name,
-    quantity: input.quantity || null,
-    unit: input.unit || null,
-    priority: input.priority,
-    store: input.store || null,
-    price: input.price ?? null,
-    event_id: input.eventId ?? null,
-  })
+  const { error } = await supabase.from('shopping_items').insert(
+    inputs.map((input) => ({
+      family_id: familyId,
+      trip_id: input.tripId,
+      name: input.name,
+      quantity: input.quantity || null,
+      unit: input.unit || null,
+      priority: input.priority,
+      store: input.store || null,
+      price: input.price ?? null,
+      event_id: input.eventId ?? null,
+    })),
+  )
   if (error) throw error
+}
+
+export async function addShoppingItem(input: NewShoppingItem): Promise<void> {
+  await addShoppingItems([input])
 }
 
 export async function updateShoppingItemStore(id: string, store: string): Promise<void> {

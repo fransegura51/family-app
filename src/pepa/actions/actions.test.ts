@@ -6,14 +6,14 @@ vi.mock('@/data/food', () => ({
   addRecipeIngredientsToShoppingList: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/data/shopping', () => ({ addShoppingItem: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('@/data/shopping', () => ({ addShoppingItems: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/calendar', () => ({ createEvent: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/data/location', () => ({ addPlace: vi.fn().mockResolvedValue(undefined) }))
 
 import { createEvent } from '@/data/calendar'
 import { addRecipeIngredientsToShoppingList, setMenuEntry, updateMenuEntry } from '@/data/food'
 import { addPlace } from '@/data/location'
-import { addShoppingItem } from '@/data/shopping'
+import { addShoppingItems as addShoppingItem } from '@/data/shopping'
 import { actionIds, proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext } from '@/pepa/actions/types'
 import type { MenuEntry, Recipe } from '@/domain/types'
@@ -184,8 +184,9 @@ describe('shopping.add', () => {
     expect(view.checks.map((c) => c.label)).toEqual(['leche', 'huevos', 'pan'])
     expect(addShoppingItem).not.toHaveBeenCalled()
     const message = await result.proposal.confirm(result.proposal.initialSelection)
-    expect(addShoppingItem).toHaveBeenCalledTimes(3)
-    expect(addShoppingItem).toHaveBeenCalledWith({ name: 'leche', quantity: '', unit: '', priority: 'normal', tripId: null, store: 'Mercadona' })
+    expect(addShoppingItem).toHaveBeenCalledTimes(1) // todos los productos en UNA sola llamada
+    expect(vi.mocked(addShoppingItem).mock.calls[0][0]).toHaveLength(3)
+    expect(addShoppingItem).toHaveBeenCalledWith(expect.arrayContaining([{ name: 'leche', quantity: '', unit: '', priority: 'normal', tripId: null, store: 'Mercadona' }]))
     expect(message).toBe('Apuntado en la lista de la compra (Mercadona): leche, huevos, pan.')
   })
 
@@ -195,8 +196,8 @@ describe('shopping.add', () => {
     const unchecked = { choices: {}, checked: ['0', '2'] }
     expect(result.proposal.preview(unchecked).checks.map((c) => c.label)).toEqual(['leche', 'huevos', 'pan'])
     await result.proposal.confirm(unchecked)
-    expect(addShoppingItem).toHaveBeenCalledTimes(2)
-    expect(vi.mocked(addShoppingItem).mock.calls.map((c) => c[0].name)).toEqual(['leche', 'pan'])
+    expect(addShoppingItem).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(addShoppingItem).mock.calls[0][0].map((i) => i.name)).toEqual(['leche', 'pan'])
   })
 
   it('sin ningún producto marcado no se puede confirmar', async () => {

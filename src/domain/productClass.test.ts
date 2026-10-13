@@ -216,8 +216,8 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
     expect(classFor('Mercadona', '10 S.JARDÍN C. FÁCIL')).toMatchObject({ className: 'Limpieza del hogar', kind: 'no_alimentos', source: 'shared' })
   })
 
-  it('Charter + SUP.BEBIDA FRÍA → lo compartido NO decide: cae a reglas/respaldo, o a la clase manual', () => {
-    expect(classFor('Charter', 'SUP.BEBIDA FRÍA')).toMatchObject({ source: 'rule', sharedOutcome: 'ambiguous', className: 'Bebidas' })
+  it('Charter + SUP.BEBIDA FRÍA → lo compartido NO decide: cae a reglas/respaldo (COM-03: "bebida" sin más datos es no alcohólica, nunca la genérica "Bebidas"), o a la clase manual', () => {
+    expect(classFor('Charter', 'SUP.BEBIDA FRÍA')).toMatchObject({ source: 'rule', sharedOutcome: 'ambiguous', className: 'Bebidas no alcohólicas', foodTypeKey: 'food.bebidas_no_alcoholicas' })
     const manual = { category: 'Bebidas alcohólicas', classConfirmedAt: 'x', nonFood: false }
     expect(classFor('Charter', 'SUP.BEBIDA FRÍA', manual)).toMatchObject({ source: 'manual', className: 'Bebidas alcohólicas' })
     const legacy = { category: 'Bebidas alcohólicas', classConfirmedAt: null, nonFood: false }

@@ -489,6 +489,44 @@ en un dispositivo físico en esta sesión) antes de marcar COM-01/COM-02 como "A
 
 ---
 
+## Compras: eliminar la categoría genérica «Bebidas» (PEPA-COM, COM-03)
+
+Encargo del usuario (2026-10-13, resumido): «Bebidas» genérica se clasificaba automáticamente en vez de
+usar las dos subcategorías específicas que el usuario ya tenía creadas («Bebidas alcohólicas»/«Bebidas no
+alcohólicas»). Eliminarla de la clasificación automática y de los selectores, sin perder histórico ni
+tocar las dos específicas.
+
+**Auditoría previa** (antes de tocar nada): «Bebidas» NO es una categoría de `budget_categories` (esas
+son las del ticket completo, p. ej. COM-01) — es una entrada del clasificador de PRODUCTOS por palabra
+clave (`domain/foodTypes.ts`, `FOOD_TYPES`/`KEYWORDS_BY_TYPE`), con una sola clave `bebidas` que mezclaba
+palabras de ambos tipos (cerveza/vino junto a zumo/agua/café). `productClass.ts` ya tenía una nota
+explícita de que esa clave se dejaba a propósito SIN `foodTypeKey` real ("bebidas... no se adivina"),
+reconociendo el problema sin resolverlo. «Bebidas alcohólicas»/«Bebidas no alcohólicas» SÍ son del
+catálogo PEPA real (`food.bebidas_alcoholicas`/`food.bebidas_no_alcoholicas`, `0139_catalog_base.sql`),
+con su propio `catalog_key` protegido por un trigger (solo PEPA/migraciones pueden asignarlo). Consultado
+por SQL de solo lectura antes de cambiar nada: **0 productos en toda la base de datos** tenían
+`category = 'Bebidas'`; solo UNA familia tenía una fila `family_food_types` llamada "Bebidas" sin
+`catalog_key` (semilla antigua, de antes de que existiera el catálogo), sin ningún producto que la usara.
+No existe ningún clasificador por IA para productos — toda la clasificación es por reglas/aprendizaje
+compartido/manual (ver `domain/productClass.ts`, orden de precedencia ya documentado ahí).
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| COM-03 | Eliminar «Bebidas» genérica de la clasificación automática y de los selectores; distinguir alcohólicas/no alcohólicas por palabra clave, con «sin alcohol» nunca asumido como alcohol; sin perder histórico; conservar las dos específicas intactas | Sí (2026-10-13) | Sí — `domain/foodTypes.ts`: la única clave `bebidas` se divide en `bebidas_alcoholicas`/`bebidas_no_alcoholicas`, con sus propias listas de palabras (se corrigió además un error real heredado: "mosto" estaba en la lista de alcohólicas, pero es zumo de uva SIN fermentar — se mueve a no alcohólicas). Nueva `hasAlcoholNegation()`: "cerveza/vino/sidra sin alcohol" se resuelve a no alcohólicas ANTES del resto, nunca asumiendo alcohol. `productClass.ts` (`RULE_KEY_TO_FOOD_TYPE_KEY`): cada clave ya apunta a su `food.bebidas_*` real (antes `null` a propósito). Sin palabra reconocida de ningún tipo → "Sin clasificar" (mecanismo YA existente, "PEPA NO DEBE ADIVINAR"), nunca una clasificación inventada. Migración `0255_remove_generic_bebidas_food_type.sql` (+ rollback): borra la ÚNICA fila huérfana confirmada sin ningún producto que la usara — nunca una reclasificación masiva, porque no había nada que reclasificar | Sí — 438/438 archivos, 8279/8279 tests (`foodTypes.test.ts` con la matriz completa del encargo: agua/Coca-Cola/café/té/isotónica/energética → no alcohólica; cerveza/vino/sidra/cava/licor/ginebra/ron/whisky → alcohólica; cerveza y vino SIN alcohol → no alcohólica; producto sin ninguna palabra reconocible → "otros", nunca inventada); verificado en vivo (Familia Prueba Breadcrumb): añadir "Cerveza sin alcohol Mahou" a la lista de la compra la agrupó bajo "🥤 BEBIDAS NO ALCOHÓLICAS", "Vino Rioja Crianza" bajo "🍺 BEBIDAS ALCOHÓLICAS"; el selector "Clasificaciones de productos" ya NO ofrece "Bebidas" en ningún sitio, solo las dos específicas, junto al resto de clases de la familia sin tocar. Migración aplicada a la base de datos real y confirmada por SQL: la fila huérfana desapareció, las filas de las 4 familias con Bebidas alcohólicas/no alcohólicas (17 y 19 productos ya clasificados respectivamente) siguen exactamente igual | No |
+
+**Datos históricos afectados**: ninguno. 0 productos tenían la categoría genérica en ningún momento; la
+única fila que se borró (`family_food_types`) no tenía ningún producto asociado — no hizo falta ninguna
+reclasificación, solo retirar una opción que nunca llegó a usarse de verdad.
+
+**Categorías específicas**: «Bebidas alcohólicas» y «Bebidas no alcohólicas» se conservan exactamente
+igual (mismo id, mismo `catalog_key`, mismos 17+19 productos ya clasificados) en las 4 familias que las
+tienen — no se han tocado en ningún momento.
+
+**Pendiente**: el usuario debe comprobar personalmente el funcionamiento en PEPA antes de marcar COM-03
+como "Aprobado".
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

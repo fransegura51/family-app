@@ -42,10 +42,50 @@ describe('classifyFoodType', () => {
     expect(key('PANCETA IBÉRICA')).toBe('carne')
   })
 
-  it('bebidas, incluido un refresco de sabor a fruta', () => {
-    expect(key('CERVEZA ESTRELLA')).toBe('bebidas')
-    expect(key('NARANJA ZERO')).toBe('bebidas')
-    expect(key('REFRES COCA-COLA')).toBe('bebidas')
+  // COM-03 — "Bebidas" genérica eliminada: se distingue alcohólicas de no alcohólicas por palabra
+  // clave, con "sin alcohol" gestionado aparte (nunca se asume alcohol en ese caso).
+  describe('bebidas no alcohólicas', () => {
+    it('agua, refrescos, zumos, café, té, isotónicas y energéticas', () => {
+      expect(key('AGUA MINERAL 1,5L')).toBe('bebidas_no_alcoholicas')
+      expect(key('COCA-COLA ZERO 2L')).toBe('bebidas_no_alcoholicas')
+      expect(key('ZUMO NARANJA 1L')).toBe('bebidas_no_alcoholicas')
+      expect(key('CAFE SOLUBLE NESCAFE')).toBe('bebidas_no_alcoholicas')
+      expect(key('TE ROJO HORNIMANS')).toBe('bebidas_no_alcoholicas')
+      expect(key('AQUARIUS ISOTONICA LIMON')).toBe('bebidas_no_alcoholicas')
+      expect(key('MONSTER ENERGETICA')).toBe('bebidas_no_alcoholicas')
+    })
+
+    it('refresco de sabor a fruta: "Naranja Zero" no cae en Fruta solo por llevar "naranja"', () => {
+      expect(key('NARANJA ZERO')).toBe('bebidas_no_alcoholicas')
+      expect(key('REFRES COCA-COLA')).toBe('bebidas_no_alcoholicas')
+    })
+
+    it('mosto: es zumo de uva SIN fermentar, nunca vino — no es alcohólico', () => {
+      expect(key('MOSTO DON SIMON')).toBe('bebidas_no_alcoholicas')
+    })
+
+    it('cerveza/vino/sidra SIN alcohol: el fabricante lo dice explícitamente, nunca se asume alcohol', () => {
+      expect(key('CERVEZA SIN ALCOHOL MAHOU')).toBe('bebidas_no_alcoholicas')
+      expect(key('VINO SIN ALCOHOL 0,0')).toBe('bebidas_no_alcoholicas')
+      expect(key('SIDRA SIN ALCOHOL EL GAITERO')).toBe('bebidas_no_alcoholicas')
+    })
+  })
+
+  describe('bebidas alcohólicas', () => {
+    it('cerveza, vino, sidra, licores y destilados', () => {
+      expect(key('CERVEZA ESTRELLA')).toBe('bebidas_alcoholicas')
+      expect(key('VINO TINTO CRIANZA')).toBe('bebidas_alcoholicas')
+      expect(key('SIDRA EL GAITERO')).toBe('bebidas_alcoholicas')
+      expect(key('CAVA FREIXENET')).toBe('bebidas_alcoholicas')
+      expect(key('LICOR 43')).toBe('bebidas_alcoholicas')
+      expect(key('GINEBRA BEEFEATER')).toBe('bebidas_alcoholicas')
+      expect(key('RON BRUGAL')).toBe('bebidas_alcoholicas')
+      expect(key('WHISKY JB')).toBe('bebidas_alcoholicas')
+    })
+  })
+
+  it('producto ambiguo sin ninguna palabra de alcohol ni de bebida: no cae en ninguna de las dos, nunca una clasificación inventada', () => {
+    expect(key('MARCA DESCONOCIDA XYZ 123')).toBe('otros')
   })
 
   it('congelados', () => {

@@ -75,9 +75,12 @@ export interface ResolvedProductClass {
   classKnown: boolean
 }
 
-// Clave del catálogo de las clases por reglas (bebidas queda sin clave: alcohólicas / no alcohólicas no se adivina).
+// Clave del catálogo de las clases por reglas. COM-03 — bebidas ya no es una única clave ambigua: el
+// clasificador (foodTypes.ts) distingue alcohólicas/no alcohólicas por palabra clave (con "sin alcohol"
+// gestionado aparte), así que cada una tiene ya su propia clave real del catálogo.
 const RULE_KEY_TO_FOOD_TYPE_KEY: Record<string, string | null> = {
-  bebidas: null,
+  bebidas_alcoholicas: 'food.bebidas_alcoholicas',
+  bebidas_no_alcoholicas: 'food.bebidas_no_alcoholicas',
   congelados: 'food.congelados_helados',
   snacks: 'food.snacks_dulces',
   panaderia: 'food.panaderia_bolleria',

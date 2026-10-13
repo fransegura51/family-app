@@ -14,8 +14,14 @@ export interface FoodType {
   icon: string
 }
 
+// COM-03 — "Bebidas" genérica se elimina: los productos se clasificaban ahí en vez de en las dos
+// específicas que la familia ya tenía (Bebidas alcohólicas/no alcohólicas), porque antes era una única
+// clave que mezclaba palabras de ambos tipos. Los mismos emojis e icono por defecto que ya usaba el
+// catálogo PEPA (food.bebidas_alcoholicas/food.bebidas_no_alcoholicas, 0139_catalog_base.sql) para que
+// el nombre resuelto por regla coincida exactamente con esas clases reales, nunca con una tercera.
 export const FOOD_TYPES: FoodType[] = [
-  { key: 'bebidas', label: 'Bebidas', icon: '🥤' },
+  { key: 'bebidas_alcoholicas', label: 'Bebidas alcohólicas', icon: '🍺' },
+  { key: 'bebidas_no_alcoholicas', label: 'Bebidas no alcohólicas', icon: '🥤' },
   { key: 'congelados', label: 'Congelados y helados', icon: '🧊' },
   { key: 'snacks', label: 'Snacks y dulces', icon: '🍬' },
   { key: 'panaderia', label: 'Panadería y bollería', icon: '🍞' },
@@ -78,14 +84,25 @@ export const ICON_CHOICES: string[] = [
   '🎁', '🌸', '🕯️', '🍽️',
 ]
 
-// Orden de comprobación = prioridad: "bebidas" y "zero" se miran antes
+// Orden de comprobación = prioridad: las bebidas y "zero" se miran antes
 // que "fruta" para que "Naranja Zero" (refresco) no caiga en Fruta
 // solo por llevar "naranja" en el nombre.
+//
+// COM-03 — separadas por si CONTIENEN alcohol, nunca mezcladas: "mosto" se saca de alcohólicas (es
+// mosto de uva SIN fermentar, un refresco habitual, no vino) y se reparte entre las dos lista según
+// corresponda. "Cerveza/vino/sidra sin alcohol" se gestiona aparte con hasAlcoholNegation() más abajo —
+// nunca se asume alcohol solo por la palabra, el propio fabricante lo dice explícitamente cuando no lo
+// hay. Una palabra ausente de ambas listas no cae en ninguna — "Sin clasificar" antes que adivinar
+// (mismo principio ya documentado en domain/productClass.ts, "PEPA NO DEBE ADIVINAR").
 const KEYWORDS_BY_TYPE: Record<string, string[]> = {
-  bebidas: [
-    'cerveza', 'vino', 'mosto', 'vermut', 'vermout', 'sidra', 'cava', 'champan',
-    'refresco', 'refres', 'cola', 'zumo', 'nectar', 'bebida', 'licor', 'ron',
-    'vodka', 'whisky', 'ginebra', 'cafe', 'nescafe', 'agua', 'zero',
+  bebidas_alcoholicas: [
+    'cerveza', 'vino', 'vermut', 'vermout', 'sidra', 'cava', 'champan',
+    'licor', 'ron', 'vodka', 'whisky', 'ginebra',
+  ],
+  bebidas_no_alcoholicas: [
+    'refresco', 'refres', 'cola', 'zumo', 'nectar', 'bebida', 'mosto',
+    'cafe', 'nescafe', 'agua', 'zero', 'te', 'isotonica', 'isotonico',
+    'energetica', 'energetico',
   ],
   congelados: ['helado', 'congelado', 'congelada', 'sorbete', 'granizado'],
   snacks: [
@@ -156,8 +173,20 @@ function tokenMatches(token: string, keyword: string): boolean {
   return token === keyword || token === `${keyword}s` || token === `${keyword}es`
 }
 
+// COM-03 — "sin alcohol" en cualquier posición del nombre ("Cerveza sin alcohol", "Vino sin alcohol
+// 0,0 San Miguel") — el fabricante lo dice explícitamente cuando una bebida que normalmente lleva
+// alcohol no lo lleva; nunca se asume alcohol en ese caso.
+function hasAlcoholNegation(tokens: string[]): boolean {
+  return tokens.some((t, i) => t === 'sin' && tokens[i + 1] === 'alcohol')
+}
+
 export function classifyFoodType(displayName: string): FoodType {
   const tokens = tokenize(displayName)
+  // "Cerveza/vino/sidra sin alcohol" → no alcohólica, aunque la palabra en sí esté en la lista de
+  // alcohólicas — se resuelve ANTES del recorrido normal para que nunca caiga en esa categoría.
+  if (hasAlcoholNegation(tokens) && KEYWORDS_BY_TYPE.bebidas_alcoholicas.some((k) => tokens.some((t) => tokenMatches(t, k)))) {
+    return FOOD_TYPES.find((t) => t.key === 'bebidas_no_alcoholicas')!
+  }
   for (const type of FOOD_TYPES) {
     const keywords = KEYWORDS_BY_TYPE[type.key]
     if (keywords?.some((k) => tokens.some((t) => tokenMatches(t, k)))) return type

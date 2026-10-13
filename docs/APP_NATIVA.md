@@ -31,9 +31,37 @@ Cada ejecución sube el `versionCode` (número de ejecución): se instala encima
 5. Guardar el JSON de la cuenta de servicio en Supabase Vault con el nombre `fcm_service_account` (Dashboard → Vault, o `select vault.create_secret(...)`).
 6. Lanzar de nuevo el workflow «Android APK» e instalar el APK nuevo. Al abrir la app con permiso de notificaciones, el móvil se registra solo.
 
-## Limitaciones conocidas (a 2026-10-10, sin probar en movimiento)
-- La ubicación en segundo plano solo está comprobada con el móvil quieto; falta la prueba en movimiento y la de batería de Xiaomi.
-- Google Calendar y el banco abren el navegador y **vuelven al navegador**, no a la app (pendiente: deep links).
+## Ubicación con la app CERRADA (APK 18, 13/10/2026)
+El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla en apps recientes) y sin JavaScript nadie recibe la posición. Solución:
+- `scripts/patch-background-geolocation.mjs` (se ejecuta en `postinstall` y en el workflow del APK) sustituye el servicio por
+  `android-patches/background-geolocation/BackgroundGeolocationService.java` y añade `setNativeUpload` / `clearNativeUpload` al plugin. Comprueba
+  versión (1.2.26) y huella del original: si el plugin se actualiza, FALLA en voz alta.
+- Con la app cerrada el servicio sigue en primer plano (`START_STICKY`, se levanta solo si el sistema lo mata) y manda cada posición él solo a
+  `public.report_device_location` (migración 0253) con una **llave propia del móvil**: 64 caracteres, solo su huella sha256 en la base, solo sirve para
+  mandar la posición de ESA persona mientras tenga «Compartir ubicación» activo. Pedir otra llave anula la anterior (un móvil nativo por persona).
+- JS (`src/services/nativeUpload.ts`): pide la llave una vez por arranque al empezar a compartir y la entrega al servicio; al dejar de compartir o
+  cerrar sesión la anula. Al volver a abrir la app, el envío nativo se retira y manda JS (sin duplicados).
+- El servidor contesta `ok` / `off` / `revoked` / `invalid`; con `off` o `revoked` el servicio se para y borra su configuración.
+- Pendiente conocido: tras REINICIAR el móvil el servicio no arranca solo hasta abrir PEPA (falta un receptor BOOT_COMPLETED); sin
+  `ACCESS_BACKGROUND_LOCATION` un reinicio del proceso por el sistema puede perder el acceso a la ubicación.
+
+## Ajustes del móvil para que lleguen los avisos con la app cerrada (Xiaomi, comprobado)
+Ajustes → Aplicaciones → botón «Autoinicio en segundo plano» → activar la app; batería «Sin restricciones»; cerrar con el botón de inicio.
+Con la app deslizada los avisos de Firebase sí llegaron (13/10). La guía por marca está en Familia (`src/ui/BatteryGuideCard.tsx`).
+
+## Avisos de llegada/salida
+- Radio por defecto de los lugares: **50 m** (salta a ~82 m al salir: radio·1,25+20). Casa sigue en 100 m.
+- Buzón con reintentos (`location_alert_outbox`, migración 0243), canal Android `pepa-avisos`. El modo prueba (`location_alert_test_mode` en Vault,
+  hace que el aviso llegue también a quien se mueve) está BORRADO; para volver a probar: `select vault.create_secret('on', 'location_alert_test_mode')`.
+- Aviso de prueba directo a una persona: `net.http_post` a `send-family-push` con `only_profile_id` y cabecera `x-cron-secret` (`public.get_app_secret('cron_shared_secret')`).
+
+## Pepa: «¿dónde está Eric?»
+`src/domain/memberWhere.ts` + `handleWhere` en `src/pepa/location.ts`: contesta por voz y abre el mapa centrado en esa persona (`services/mapFocus.ts`).
+Solo miembros de la MISMA familia (RLS), respeta el consentimiento y las cuentas sin acceso a Ubicación.
+
+## Limitaciones conocidas
+- Tras reiniciar el móvil, la ubicación con la app cerrada no se retoma hasta abrir PEPA (ver arriba).
 - Si un móvil tiene a la vez la PEPA web instalada (con Web Push) y la app nativa (FCM), recibe **dos** avisos: quitar la web de ese móvil.
 - Play Protect / Mi Protect avisan al instalar el APK fuera de tienda (esperable).
-- iPhone: no existe todavía (hace falta cuenta de Apple + Mac en la nube; `npx cap add ios` se haría en un runner macOS).
+- iPhone: no existe todavía (hace falta cuenta de Apple + Mac en la nube; `npx cap add ios` se haría en un runner macOS). En iOS la ubicación en
+  segundo plano funciona distinto (permiso «Siempre», cambios significativos).

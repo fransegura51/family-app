@@ -20,6 +20,7 @@ import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
+import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
@@ -209,6 +210,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         </button>
       </div>
       <NotificationsCard />
+      <BatteryGuideCard />
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {order.map((m) =>

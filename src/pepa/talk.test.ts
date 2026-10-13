@@ -459,3 +459,37 @@ describe('runTalk: IA solo si las reglas no bastan, y solo para preguntas', () =
     expect(createEvent).not.toHaveBeenCalled()
   })
 })
+
+describe('runTalk: preferencia «hacerlo directamente, sin tarjeta»', () => {
+  it('sin la preferencia (o desactivada) sigue siendo tarjeta y no se escribe nada', async () => {
+    const outcome = await runTalk('añade leche a Mercadona', makeDeps({ autoConfirm: () => false }))
+    expect(outcome.kind).toBe('proposal')
+    expect(addShoppingItem).not.toHaveBeenCalled()
+  })
+
+  it('con la preferencia, la compra se añade al momento y Pepa dice que está hecho', async () => {
+    const outcome = await runTalk('añade leche, huevos y pan a Mercadona', makeDeps({ autoConfirm: () => true }))
+    expect(outcome.kind).toBe('answer')
+    expect(addShoppingItem).toHaveBeenCalledTimes(3)
+    if (outcome.kind === 'answer') expect(outcome.text.length).toBeGreaterThan(0)
+  })
+
+  it('con la preferencia, una cita sin dudas se guarda directamente', async () => {
+    const outcome = await runTalk('dentista mañana a las 17:00', makeDeps({ autoConfirm: () => true }))
+    expect(outcome.kind).toBe('answer')
+    expect(createEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('con la preferencia, una cita con una duda («las cinco»: ¿de la tarde?) enseña la tarjeta con su aviso y no guarda nada', async () => {
+    const outcome = await runTalk('dentista mañana a las cinco', makeDeps({ autoConfirm: () => true }))
+    expect(outcome.kind).toBe('proposal')
+    expect(createEvent).not.toHaveBeenCalled()
+  })
+
+  it('con la preferencia, si falla al guardar se enseña la tarjeta de siempre (no se pierde nada)', async () => {
+    vi.mocked(addShoppingItem).mockRejectedValueOnce(new Error('sin red'))
+    const outcome = await runTalk('añade leche a Mercadona', makeDeps({ autoConfirm: () => true }))
+    expect(outcome.kind).toBe('proposal')
+  })
+})
+

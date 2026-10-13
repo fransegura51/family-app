@@ -44,7 +44,7 @@ describe('guía de batería: conectada en la pantalla de Familia, solo en la app
   it('Familia la enseña justo debajo de los avisos, y la tarjeta se oculta fuera de la app nativa', async () => {
     const family = (await import('@/ui/FamilyScreen.tsx?raw')).default
     const card = (await import('@/ui/BatteryGuideCard.tsx?raw')).default
-    expect(family).toMatch(/<NotificationsCard \/>\s*<BatteryGuideCard \/>/)
+    expect(family).toMatch(/<NotificationsCard \/>\s*(?:<PepaPreferencesCard \/>\s*)?<BatteryGuideCard \/>/)
     expect(card).toContain('if (!isNativeApp()) return null')
   })
 })

@@ -37,6 +37,7 @@ import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/o
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
 import { reverseGeocode, searchAndResolveFirst } from '@/services/geocoding'
 import { requestMemberFocus } from '@/services/mapFocus'
+import { getAutoConfirm } from '@/services/pepaPreferences'
 import { canAccessSection } from '@/pepa/sectionAccess'
 import { getDrivingEta } from '@/services/drivingEta'
 import { getWeather } from '@/services/weather'
@@ -757,6 +758,7 @@ const talkDeps: TalkDeps = {
   kitchen: (text) => handleKitchenText(text, 'create', new Date(), { recipeRequests: true, conversation: true }),
   financeAction: (text) => handleBudgetAction(text),
   location: (text) => locationAction(text, locationDeps),
+  autoConfirm: () => getAutoConfirm(),
   finance: (text) => handleFinanceText(text),
   forgetFinance: () => {
     forgetFinanceContext()

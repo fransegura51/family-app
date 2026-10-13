@@ -24,6 +24,7 @@ import { ConfirmButton } from '@/ui/ConfirmButton'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
+import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
@@ -216,6 +217,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         </button>
       </div>
       <NotificationsCard />
+      <PepaPreferencesCard />
       <BatteryGuideCard />
       {error && <p className="error">{error}</p>}
       <div className="event-list">

@@ -21,6 +21,7 @@ import { extractChain } from '@/domain/supermarketChains'
 import type { ScheduleEvent } from '@/domain/calendar'
 import type { KitchenOutcome } from '@/pepa/kitchen'
 import { proposeAction } from '@/pepa/actions/registry'
+import { autoConfirmProposal } from '@/pepa/autoConfirm'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
 import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
@@ -75,6 +76,8 @@ export interface TalkDeps {
   classifyWithAi(text: string, today: string): Promise<AiQuestion>
   answerFromAi(question: AiQuestion, text: string): Promise<string | null>
   splitWithAi(text: string): Promise<string[]>
+  // Preferencia «hacer directamente, sin tarjeta de confirmación» (ver services/pepaPreferences.ts y pepa/autoConfirm.ts). Si falta, siempre tarjeta.
+  autoConfirm?(): boolean
 }
 
 export const NOT_UNDERSTOOD =
@@ -198,7 +201,18 @@ async function askWithAi(text: string, deps: TalkDeps, today: Date): Promise<Tal
   return { kind: 'answer', text: NOT_UNDERSTOOD }
 }
 
+// Un turno de «Hablar con PEPA». Si la preferencia «directo» está activada y la acción lo permite (pepa/autoConfirm.ts), la tarjeta se salta: se hace
+// y se contesta con el mensaje de «hecho». En cualquier otro caso, la tarjeta de siempre.
 export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome> {
+  const outcome = await runTalkRules(text, deps)
+  if (outcome.kind === 'proposal' && deps.autoConfirm?.()) {
+    const done = await autoConfirmProposal(outcome.proposal)
+    if (done) return { kind: 'answer', text: done }
+  }
+  return outcome
+}
+
+async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> {
   const today = deps.today()
 
   // Presupuestos por voz (preparar, con confirmación) antes que las consultas: son órdenes, no preguntas.

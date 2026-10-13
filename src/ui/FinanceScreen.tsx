@@ -11333,6 +11333,9 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   // Reparto automático de Fase 7 — un niño sin fila propia en kid_income_split_configs usa el 60/20/20
   // obligatorio por defecto (mismo criterio que el RPC register_kid_income en el servidor).
   const activeSplitConfig = splitConfigs.find((c) => c.memberId === activeMemberId) ?? DEFAULT_KID_INCOME_SPLIT
+  // PG-PUNTOS-FINANZAS (Parte B5) — saldo real del fondo común de TODA la familia (no solo del niño/a
+  // activo/a): mismo cálculo que ya usa TaxFundSection, nunca uno nuevo ni una cuenta bancaria real.
+  const taxFundTotal = taxFundAvailable(transactions, taxFundExpenses)
 
   if (loading) return <p className="muted">Cargando…</p>
   if (members.length === 0) return <p className="muted">No hay niños/bebés en la familia todavía.</p>
@@ -11546,6 +11549,20 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
           )
         })}
       </div>
+
+      {/* PG-PUNTOS-FINANZAS (Parte B5) — saldo REAL del fondo común (aportado por impuesto − gastado),
+          nunca una cuenta bancaria real ni un duplicado de la tarjeta "Impuestos" de arriba (esa es solo
+          del niño/a activo/a; este total es de TODA la familia, aportado por cualquier hijo/a — se aclara
+          con más de un niño para que no se confunda con "solo el activo"). Mismo cálculo ya existente de
+          TaxFundSection (taxFundAvailable), reutilizado tal cual — nunca una cifra nueva aparte. */}
+      <button type="button" className="card" style={{ marginTop: 8, padding: 10, textAlign: 'left', width: '100%' }} onClick={() => setOpenCard('impuesto')}>
+        <p style={{ margin: 0, fontWeight: 600 }}>🏛️ Total fondo común: {taxFundTotal.toFixed(2)} €</p>
+        <p className="muted" style={{ margin: '4px 0 0', fontSize: 13 }}>
+          {members.length > 1
+            ? 'Lo que han aportado entre todos los niños, menos lo ya gastado del fondo común.'
+            : 'Lo aportado, menos lo ya gastado del fondo común.'}
+        </p>
+      </button>
     </div>
   )
 }

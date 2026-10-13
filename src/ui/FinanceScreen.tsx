@@ -213,6 +213,7 @@ import {
   taxFundAvailable,
   taxFundContributed,
   taxFundSpent,
+  groupByYearMonth,
   walletBalance,
   walletCategoryTotal,
 } from '@/domain/finance'
@@ -11414,25 +11415,40 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         )}
 
         <div className="event-list">
-          {categoryTransactions.map((t) => (
-            <div key={t.id} className="card task-card">
-              <div className="task-card-main">
-                <strong>
-                  {t.amount.toFixed(2)} € — {t.description}
-                </strong>
-                {t.status === 'pendiente' && <p className="muted">⏳ Pendiente de que un adulto lo apruebe — todavía no cuenta en el saldo.</p>}
-              </div>
-              {t.status === 'pendiente' && isAdult ? (
-                <div className="filter-row">
-                  <button type="button" disabled={decidingId === t.id} onClick={() => decide(t.id, true)}>
-                    {decidingId === t.id ? 'Decidiendo…' : '✓ Aprobar'}
-                  </button>
-                  <ConfirmButton label="✕ Rechazar" confirmMessage={`¿Rechazar este ${t.type === 'ingreso' ? 'ingreso' : 'gasto'} de ${t.amount.toFixed(2)} €?`} onConfirm={() => decide(t.id, false)} />
-                </div>
-              ) : (
-                <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
-              )}
-            </div>
+          {/* PG-PUNTOS-FINANZAS (Parte B7) — Año → Mes → Movimientos, cada nivel plegable por su cuenta
+              (patrón <details>/<summary> ya usado en el resto de la app, nunca un acordeón nuevo). El año
+              y el mes más recientes arrancan abiertos, el resto cerrado — misma fecha real de siempre
+              (`created_at`), nunca inventada; la fila de cada movimiento no cambia de contenido, solo
+              gana el día (el mes y el año ya los da el propio desplegable que lo contiene). */}
+          {groupByYearMonth(categoryTransactions, (t) => t.createdAt).map((yearGroup, yearIdx) => (
+            <details key={yearGroup.year} className="wallet-history-year" open={yearIdx === 0}>
+              <summary>{yearGroup.year}</summary>
+              {yearGroup.months.map((monthGroup, monthIdx) => (
+                <details key={monthGroup.month} className="wallet-history-month" open={yearIdx === 0 && monthIdx === 0}>
+                  <summary>{MONTH_LABELS[monthGroup.month]}</summary>
+                  {monthGroup.items.map((t) => (
+                    <div key={t.id} className="card task-card">
+                      <div className="task-card-main">
+                        <strong>
+                          {new Date(t.createdAt).getDate()} — {t.amount.toFixed(2)} € — {t.description}
+                        </strong>
+                        {t.status === 'pendiente' && <p className="muted">⏳ Pendiente de que un adulto lo apruebe — todavía no cuenta en el saldo.</p>}
+                      </div>
+                      {t.status === 'pendiente' && isAdult ? (
+                        <div className="filter-row">
+                          <button type="button" disabled={decidingId === t.id} onClick={() => decide(t.id, true)}>
+                            {decidingId === t.id ? 'Decidiendo…' : '✓ Aprobar'}
+                          </button>
+                          <ConfirmButton label="✕ Rechazar" confirmMessage={`¿Rechazar este ${t.type === 'ingreso' ? 'ingreso' : 'gasto'} de ${t.amount.toFixed(2)} €?`} onConfirm={() => decide(t.id, false)} />
+                        </div>
+                      ) : (
+                        <ConfirmButton label="Eliminar" onConfirm={() => deleteWalletTransaction(t.id).then(reload)} />
+                      )}
+                    </div>
+                  ))}
+                </details>
+              ))}
+            </details>
           ))}
           {categoryTransactions.length === 0 && <p className="muted">Sin movimientos todavía.</p>}
         </div>
@@ -11656,6 +11672,13 @@ function TaxFundSection({
   const spent = taxFundSpent(expenses)
   const available = taxFundAvailable(transactions, expenses)
   const contributions = transactions.filter((t) => t.type === 'impuesto' && t.status === 'aprobado')
+  // PG-PUNTOS-FINANZAS (Parte B7) — aportaciones y gastos del fondo común son dos tablas distintas
+  // (kid_wallet_transactions/family_tax_fund_expenses); se funden en una sola línea de tiempo (por fecha
+  // real, nunca inventada) para poder agruparlas juntas por Año → Mes con la misma `groupByYearMonth`.
+  const fundMovements = [
+    ...contributions.map((t) => ({ key: `aporte-${t.id}`, createdAt: t.createdAt, kind: 'aporte' as const, description: t.description, amount: t.amount, expenseId: null as string | null })),
+    ...expenses.map((e) => ({ key: `gasto-${e.id}`, createdAt: e.createdAt, kind: 'gasto' as const, description: e.description, amount: e.amount, expenseId: e.id })),
+  ]
 
   return (
     <div style={{ marginTop: 8 }}>
@@ -11664,22 +11687,29 @@ function TaxFundSection({
         Aportado: {contributed.toFixed(2)} € · Gastado: {spent.toFixed(2)} € · Disponible: {available.toFixed(2)} €
       </p>
       <div className="event-list">
-        {contributions.map((t) => (
-          <div key={t.id} className="inline-fields" style={{ fontSize: 13 }}>
-            <span className="muted">{new Date(t.createdAt).toLocaleDateString('es-ES')}</span>
-            <span style={{ flex: 1 }}>+ {t.description}</span>
-            <span>{t.amount.toFixed(2)} €</span>
-          </div>
+        {groupByYearMonth(fundMovements, (m) => m.createdAt).map((yearGroup, yearIdx) => (
+          <details key={yearGroup.year} className="wallet-history-year" open={yearIdx === 0}>
+            <summary>{yearGroup.year}</summary>
+            {yearGroup.months.map((monthGroup, monthIdx) => (
+              <details key={monthGroup.month} className="wallet-history-month" open={yearIdx === 0 && monthIdx === 0}>
+                <summary>{MONTH_LABELS[monthGroup.month]}</summary>
+                {monthGroup.items.map((m) => (
+                  <div key={m.key} className="inline-fields" style={{ fontSize: 13 }}>
+                    <span className="muted">{new Date(m.createdAt).getDate()}</span>
+                    <span style={{ flex: 1 }}>
+                      {m.kind === 'aporte' ? '+' : '−'} {m.description}
+                    </span>
+                    <span>{m.amount.toFixed(2)} €</span>
+                    {m.kind === 'gasto' && isAdult && (
+                      <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar gasto" onConfirm={() => deleteTaxFundExpense(m.expenseId!).then(onChanged)} />
+                    )}
+                  </div>
+                ))}
+              </details>
+            ))}
+          </details>
         ))}
-        {expenses.map((e) => (
-          <div key={e.id} className="inline-fields" style={{ fontSize: 13 }}>
-            <span className="muted">{new Date(e.createdAt).toLocaleDateString('es-ES')}</span>
-            <span style={{ flex: 1 }}>− {e.description}</span>
-            <span>{e.amount.toFixed(2)} €</span>
-            {isAdult && <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar gasto" onConfirm={() => deleteTaxFundExpense(e.id).then(onChanged)} />}
-          </div>
-        ))}
-        {contributions.length === 0 && expenses.length === 0 && <p className="muted">Todavía no hay movimientos en el fondo común.</p>}
+        {fundMovements.length === 0 && <p className="muted">Todavía no hay movimientos en el fondo común.</p>}
       </div>
       {isAdult && (
         <>

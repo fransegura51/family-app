@@ -5,6 +5,7 @@ import {
   categoryColors,
   computeSavingsDestinedByMember,
   stableCategoryColors,
+  groupByYearMonth,
   isComprasExpense,
   isFoodCategory,
   isInternalTransferCategory,
@@ -356,6 +357,33 @@ describe('Fondo común de impuestos (Fase 11)', () => {
     const expenses: FamilyTaxFundExpense[] = [{ id: 'e1', familyId: 'f', amount: 4, description: 'Material escolar', createdBy: null, createdAt: '' }]
     expect(taxFundSpent(expenses)).toBe(4)
     expect(taxFundAvailable(tx, expenses)).toBe(6)
+  })
+})
+
+// PG-PUNTOS-FINANZAS (Parte B7) — "historial Año → Mes → Movimientos". Genérica y pura: nunca inventa
+// fechas (siempre las lee de `getDate`), nunca pierde ni duplica un elemento al agrupar.
+describe('groupByYearMonth — Año → Mes, Parte B7', () => {
+  it('agrupa por año y mes a partir de la fecha real de cada elemento, nunca una fecha inventada', () => {
+    const items = [
+      { id: '1', date: '2026-10-05T10:00:00Z' },
+      { id: '2', date: '2026-10-20T10:00:00Z' },
+      { id: '3', date: '2026-01-02T10:00:00Z' },
+      { id: '4', date: '2025-12-31T10:00:00Z' },
+    ]
+    const groups = groupByYearMonth(items, (i) => i.date)
+    expect(groups.map((g) => g.year)).toEqual([2026, 2025])
+    expect(groups[0].months.map((m) => m.month)).toEqual([9, 0]) // octubre (9), enero (0) — más reciente primero
+    expect(groups[0].months[0].items.map((i) => i.id)).toEqual(['1', '2'])
+    expect(groups[1].months[0].items.map((i) => i.id)).toEqual(['4'])
+  })
+  it('nunca pierde ni duplica elementos: el total agrupado es exactamente el total de entrada', () => {
+    const items = [{ date: '2026-01-01' }, { date: '2026-01-02' }, { date: '2025-06-01' }]
+    const groups = groupByYearMonth(items, (i) => i.date)
+    const total = groups.reduce((sum, g) => sum + g.months.reduce((s, m) => s + m.items.length, 0), 0)
+    expect(total).toBe(items.length)
+  })
+  it('lista vacía da una lista de grupos vacía, nunca un año inventado', () => {
+    expect(groupByYearMonth([], (i: { date: string }) => i.date)).toEqual([])
   })
 })
 

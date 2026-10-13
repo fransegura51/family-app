@@ -121,7 +121,7 @@ describe('TaxFundSection — transparencia para toda la familia, gastar es cosa 
   })
   it('"+ Gasto del fondo común" y borrar un gasto solo están disponibles para isAdult', () => {
     expect(section).toContain('{isAdult && (')
-    expect(section).toContain('{isAdult && <ConfirmIconButton')
+    expect(section).toContain("{m.kind === 'gasto' && isAdult && (")
   })
 })
 

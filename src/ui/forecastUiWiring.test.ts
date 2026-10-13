@@ -241,7 +241,12 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     expect(FS).toContain('buildFinitePlanSubmission(')
     expect(FS).toContain('parseFinitePlanLinesFromSaved(')
     const formIdx = FS.indexOf('function ForecastPaymentForm')
-    const formBody = FS.slice(formIdx, FS.indexOf('\nfunction ', formIdx + 10))
+    const rest = FS.slice(formIdx + 10)
+    // El límite debe ser la SIGUIENTE declaración de función top-level, exportada o no — buscar solo
+    // '\nfunction ' se salta cualquier 'export function ' de por medio (p. ej. KidsFinanceTab) y el
+    // trozo analizado termina tragándose código de otra sección ajena a este formulario.
+    const nextFnOffset = rest.search(/\n(export )?function /)
+    const formBody = nextFnOffset === -1 ? rest : rest.slice(0, nextFnOffset)
     expect(formBody).not.toMatch(/setMonth|setDate|getMonth\(\)|getDate\(\)/) // sin aritmética de fechas manual en el componente
   })
 

@@ -245,6 +245,27 @@ body {
   font-size: 11px;
 }
 
+/* Pequeños Grandes, Educación financiera (Parte B7) — historial Año → Mes, cada nivel plegable por su
+   cuenta (<details>/<summary> nativo, patrón ya usado en el resto de la app). El mes se sangra un poco
+   respecto al año para que la jerarquía se note sin necesitar más color ni iconos. */
+.wallet-history-year {
+  margin-top: 6px;
+}
+
+.wallet-history-year > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wallet-history-month {
+  margin: 4px 0 4px 14px;
+}
+
+.wallet-history-month > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
 /* Pequeños Grandes — los 3 accesos de la pantalla principal (Puntos y recompensas / Educación
    financiera / Lista de deseos). Petición real, segunda ronda: una sola columna también en móvil, más
    pequeñas que la cabecera (~65-70% de su altura — se consigue dándoles el mismo ~66% del ancho de la

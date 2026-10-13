@@ -401,6 +401,35 @@ export function taxFundAvailable(transactions: KidWalletTransaction[], expenses:
   return taxFundContributed(transactions) - taxFundSpent(expenses)
 }
 
+export interface YearMonthGroup<T> {
+  year: number
+  months: { month: number; items: T[] }[]
+}
+
+// PG-PUNTOS-FINANZAS (Parte B7) — "historial Año → Mes → Movimientos, ambos plegables por separado".
+// Genérica (no solo para kid_wallet_transactions) para poder agrupar también el historial combinado de
+// aportaciones + gastos del fondo común (Parte B7, TaxFundSection) con la misma función, sin duplicar la
+// lógica de agrupar/ordenar. La fecha SIEMPRE sale de `getDate` (el campo real `created_at` de cada fila)
+// — nunca se inventa ninguna. Año y mes más recientes primero, igual que cualquier historial financiero.
+export function groupByYearMonth<T>(items: T[], getDate: (item: T) => string): YearMonthGroup<T>[] {
+  const byYear = new Map<number, Map<number, T[]>>()
+  for (const item of items) {
+    const d = new Date(getDate(item))
+    const year = d.getFullYear()
+    const month = d.getMonth()
+    if (!byYear.has(year)) byYear.set(year, new Map())
+    const byMonth = byYear.get(year)!
+    if (!byMonth.has(month)) byMonth.set(month, [])
+    byMonth.get(month)!.push(item)
+  }
+  return [...byYear.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([year, byMonth]) => ({
+      year,
+      months: [...byMonth.entries()].sort(([a], [b]) => b - a).map(([month, items]) => ({ month, items })),
+    }))
+}
+
 // Pequeños Grandes, Fase 7 — reparto automático de un ingreso (vista previa en el cliente; el registro
 // de verdad lo hace el RPC register_kid_income, con exactamente el mismo cálculo). Redondea ahorro e
 // impuesto al céntimo y deja que lo disponible sea SIEMPRE el resto (amount - ahorro - impuesto), nunca

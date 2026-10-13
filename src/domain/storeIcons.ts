@@ -1,5 +1,5 @@
 import superDumboLogo from '@/assets/store-logos/superdumbo.png'
-import charterLogo from '@/assets/store-logos/charter.jpg'
+import charterLogo from '@/assets/store-logos/charter.png'
 import { normalizeStoreName } from '@/domain/storeChains'
 
 // Icono por tienda para que se reconozcan de un vistazo en vez de solo

@@ -13,18 +13,33 @@ export function isGeolocationSupported(): boolean {
   return 'geolocation' in navigator
 }
 
-export function getCurrentPosition(): Promise<Coordinates> {
+function readPositionOnce(options: PositionOptions): Promise<Coordinates> {
   return new Promise((resolve, reject) => {
-    if (!isGeolocationSupported()) {
-      reject(new Error('Este dispositivo no soporta geolocalización'))
-      return
-    }
     navigator.geolocation.getCurrentPosition(
       (pos) => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      (err) => reject(new Error(err.message)),
-      { enableHighAccuracy: true, timeout: 10_000 },
+      (err) => reject(err),
+      options,
     )
   })
+}
+
+// Primero se intenta con GPS (10 s). Dentro de casa o justo al abrir, el GPS puede tardar más: en un Samsung real salía «Timeout expired» (en inglés y
+// sin más intentos). Si no hay GPS a tiempo, se acepta una posición aproximada (wifi/antena) o una de hace menos de 2 minutos, que para «dónde estoy»
+// y «guardar este sitio» sirve de sobra. Los errores salen en español (geolocationErrorMessage).
+export async function getCurrentPosition(): Promise<Coordinates> {
+  if (!isGeolocationSupported()) throw new Error('Este dispositivo no soporta geolocalización')
+  try {
+    return await readPositionOnce({ enableHighAccuracy: true, timeout: 10_000 })
+  } catch (first) {
+    const firstError = first as GeolocationPositionError
+    // Permiso denegado: otro intento no cambia nada.
+    if (firstError.code === firstError.PERMISSION_DENIED) throw new Error(geolocationErrorMessage(firstError))
+    try {
+      return await readPositionOnce({ enableHighAccuracy: false, timeout: 15_000, maximumAge: 120_000 })
+    } catch (second) {
+      throw new Error(geolocationErrorMessage(second as GeolocationPositionError))
+    }
+  }
 }
 
 // Antes cualquier fallo (permiso denegado, GPS apagado, sin respuesta)

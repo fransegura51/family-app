@@ -30,6 +30,9 @@ jobs:
       # también corre solo tras «npm ci» (postinstall); aquí se llama a propósito para que el APK nunca se construya sin el parche.
       - name: Parchear el complemento de dictado por voz
         run: node scripts/patch-speech-plugin.mjs
+      # Ubicación con la app cerrada: el complemento original apaga su servicio al cerrar la app. Se sustituye por la copia de android-patches/.
+      - name: Parchear el complemento de ubicación en segundo plano
+        run: node scripts/patch-background-geolocation.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

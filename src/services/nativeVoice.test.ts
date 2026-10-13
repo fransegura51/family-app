@@ -166,7 +166,7 @@ describe('parche del complemento (la app se cerraba sola al abrirla en el Xiaomi
     expect(patchScript).toContain("src.includes(MARK)") // idempotente
   })
   it('se aplica tras cada npm install y de forma explícita antes de construir el APK', () => {
-    expect(packageJson).toContain('"postinstall": "node scripts/patch-speech-plugin.mjs --soft"')
+    expect(packageJson).toContain('"postinstall": "node scripts/patch-speech-plugin.mjs --soft && node scripts/patch-background-geolocation.mjs --soft"')
     const step = androidWorkflow.indexOf('node scripts/patch-speech-plugin.mjs')
     expect(step).toBeGreaterThan(androidWorkflow.indexOf('npm ci'))
     expect(step).toBeLessThan(androidWorkflow.indexOf('npx cap sync android'))

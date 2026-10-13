@@ -14,7 +14,8 @@ export interface LocationAddPlaceParams {
 
 const KEYS = ['name', 'latitude', 'longitude', 'radiusM'] as const
 // Mismo radio por defecto que el formulario de siempre (ui/LocationScreen.tsx, AddPlaceForm).
-const DEFAULT_RADIUS_M = 150
+// 50 m (petición real, 13/10/2026: «reduce la distancia para los avisos de 150 m a 50 m»).
+const DEFAULT_RADIUS_M = 50
 
 function isFiniteInRange(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max

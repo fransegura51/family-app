@@ -21,6 +21,7 @@ import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
+import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
@@ -205,7 +206,11 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           Paco entrando siempre como Jennifer, lo que confundía su
           ubicación con la de ella) — cierra esta sesión para poder
           entrar con la cuenta nueva creada con el código de invitación. */}
-        <button type="button" className="link-button" onClick={() => supabase.auth.signOut()}>
+        <button type="button" className="link-button" onClick={async () => {
+            // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
+            await disableNativeUpload()
+            await supabase.auth.signOut()
+          }}>
           Cerrar sesión ({profile.displayName})
         </button>
       </div>

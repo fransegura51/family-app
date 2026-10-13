@@ -17,6 +17,7 @@
 // volver a la pantalla de Ubicación y tocarlo cada vez.
 import { appendLocationHistoryPoint, closePlaceVisit, listPlaces, recordPlaceVisit, updateMemberLocation } from '@/data/location'
 import { watchPosition } from '@/services/geolocation'
+import { disableNativeUpload, enableNativeUpload } from '@/services/nativeUpload'
 import { distanceMeters } from '@/domain/geo'
 import { reverseGeocodePlaceName } from '@/services/reverseGeocode'
 
@@ -301,6 +302,8 @@ export function subscribe(listener: Listener): () => void {
 export function stopSharing() {
   currentStop?.()
   currentStop = null
+  // App nativa: se anula la llave de envío con la app cerrada y se borra la configuración del servicio nativo (no hace nada en el navegador).
+  void disableNativeUpload()
   currentMemberId = null
   lastError = null
   lastPosition = null
@@ -340,6 +343,8 @@ export function startSharing(memberId: string, force = false) {
   currentMemberId = memberId
   lastUpdateAt = Date.now()
   persist(memberId)
+  // App nativa: el servicio de Android sigue mandando la ubicación aunque la app se cierre (no hace nada en el navegador; ver services/nativeUpload.ts).
+  void enableNativeUpload(memberId)
   currentStop = watchPosition(
     (coords) => {
       lastError = null

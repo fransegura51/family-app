@@ -189,6 +189,19 @@ export async function setConsent(memberId: string, enabled: boolean): Promise<vo
   }
 }
 
+// Llave propia de ESTE móvil para mandar la ubicación con la app nativa cerrada (migración 0253). Solo vale para mandar la posición de esta persona,
+// mientras tenga «Compartir ubicación» activado. Crear una nueva anula las anteriores de la misma persona.
+export async function createLocationDeviceToken(memberId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('create_location_device_token', { p_member_id: memberId })
+  if (error) throw error
+  return data as string
+}
+
+export async function revokeLocationDeviceTokens(): Promise<void> {
+  const { error } = await supabase.rpc('revoke_location_device_tokens')
+  if (error) throw error
+}
+
 export async function listMemberLocations(): Promise<MemberLocation[]> {
   const { data, error } = await supabase
     .from('member_locations')

@@ -5,14 +5,21 @@ import { registerPlugin } from '@capacitor/core'
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 import { LocalNotifications } from '@capacitor/local-notifications'
 
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+// Métodos que añade el parche scripts/patch-background-geolocation.mjs (android-patches/background-geolocation): el servicio nativo sigue mandando la
+// ubicación al servidor aunque la app esté cerrada, con una llave propia de este móvil (migración 0253).
+interface PepaNativeUploadPlugin {
+  setNativeUpload(options: { url: string; apikey: string; token: string; backgroundTitle: string; backgroundMessage: string; distanceFilter: number }): Promise<void>
+  clearNativeUpload(): Promise<void>
+}
+
+const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin & PepaNativeUploadPlugin>('BackgroundGeolocation')
 
 export interface NativeCoords {
   latitude: number
   longitude: number
 }
 
-// Metros mínimos entre dos posiciones: ahorra batería y envíos; los lugares de PEPA miden 150 m, así que 25 sobra para detectar llegadas y salidas.
+// Metros mínimos entre dos posiciones: ahorra batería y envíos; los lugares de PEPA miden 50 m por defecto (el aviso de salida salta a unos 82 m, ver evaluate_location_rules), así que 25 sobra para detectar llegadas y salidas.
 export const NATIVE_DISTANCE_FILTER_M = 25
 
 export const NATIVE_WATCHER_OPTIONS = {
@@ -21,6 +28,22 @@ export const NATIVE_WATCHER_OPTIONS = {
   requestPermissions: true,
   stale: false,
   distanceFilter: NATIVE_DISTANCE_FILTER_M,
+}
+
+// Deja configurado el envío nativo: con la app cerrada, el servicio de Android manda las posiciones él solo con esta llave.
+export async function configureNativeUpload(token: string): Promise<void> {
+  await BackgroundGeolocation.setNativeUpload({
+    url: import.meta.env.VITE_SUPABASE_URL as string,
+    apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    token,
+    backgroundTitle: NATIVE_WATCHER_OPTIONS.backgroundTitle,
+    backgroundMessage: NATIVE_WATCHER_OPTIONS.backgroundMessage,
+    distanceFilter: NATIVE_DISTANCE_FILTER_M,
+  })
+}
+
+export async function clearNativeUpload(): Promise<void> {
+  await BackgroundGeolocation.clearNativeUpload()
 }
 
 // Android 13+ necesita el permiso de notificaciones para poder enseñar el aviso fijo del servicio de ubicación.

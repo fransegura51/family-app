@@ -989,7 +989,7 @@ function EstoyAquiTab({ onPlaceAdded }: { onPlaceAdded: () => void }) {
     setError(null)
     try {
       const coords = await getCurrentPosition()
-      await addPlace({ name, category: null, latitude: coords.latitude, longitude: coords.longitude, radiusM: 150, notifyArrivals: true })
+      await addPlace({ name, category: null, latitude: coords.latitude, longitude: coords.longitude, radiusM: 50, notifyArrivals: true })
       onPlaceAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -1406,7 +1406,7 @@ function PlaceRow({
 function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
-  const [radiusM, setRadiusM] = useState(150)
+  const [radiusM, setRadiusM] = useState(50)
   const [notifyArrivals, setNotifyArrivals] = useState(false)
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
   const [error, setError] = useState<string | null>(null)

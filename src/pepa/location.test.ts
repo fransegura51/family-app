@@ -91,7 +91,7 @@ describe('locationAction: guardar', () => {
     expect(outcome?.kind).toBe('proposal')
     if (outcome?.kind !== 'proposal') throw new Error('debería ser una propuesta')
     await outcome.proposal.confirm(outcome.proposal.initialSelection)
-    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia Rodríguez', category: null, latitude: 40.41, longitude: -3.69, radiusM: 150 })
+    expect(addPlace).toHaveBeenCalledWith({ name: 'Farmacia Rodríguez', category: null, latitude: 40.41, longitude: -3.69, radiusM: 50 })
   })
 
   it('"guárdalo como..." usa el nombre dicho, no el encontrado', async () => {

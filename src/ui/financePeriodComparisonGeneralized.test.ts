@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest'
 // sin duplicar el componente en uno "PurchasesPeriodComparison"/"EconomyPeriodComparison" aparte. Economía
 // sigue pasando exactamente el mismo filtro (isComparableSpend) y agrupador (groupBy con groupSpending) de
 // siempre — su comportamiento no cambia ni un píxel (verificado también en forecastFase1FReorg.test.ts).
-const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 
 function slice(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)

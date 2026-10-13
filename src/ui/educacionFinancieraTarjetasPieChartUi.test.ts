@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest'
 // título + cifra real + dónut del reparto + botón 'Nuevo X'", reutilizando SvgDonut (ya con el
 // atenuado de porciones no resaltadas) en vez de dibujar un gráfico nuevo.
 const UI = (import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)
-const FS = UI['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FS = UI['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 
 function window_(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)

@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vitest'
 // (mismo patrón que WalletTransactionModal) con los mismos campos que AddGoalForm (título/coste/emoji/
 // foto), sin tocar ningún movimiento de ahorro ya registrado ni el diseño de la tarjeta/barra arcoíris.
 const UI = (import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)
-const FS = UI['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FS = UI['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const DATA_FINANCE = (import.meta.glob('/src/data/finance.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/data/finance.ts']
 
 function window_(src: string, fromMarker: string, toMarker: string): string {

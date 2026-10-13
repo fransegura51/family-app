@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 // (MenuSettingsScreen.tsx) — DateFilterTab (compartido por las 7 pantallas de Economía/Compras) solo
 // SELECCIONA el filtro de la sesión y enseña el favorito como información, nunca como botón. Persistencia
 // movida a `profiles` (por usuario real, mismo patrón que finance_month_start_day).
-const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const SETTINGS_SRC = (import.meta.glob('/src/ui/MenuSettingsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/MenuSettingsScreen.tsx']
 const DATE_RANGES_SRC = (import.meta.glob('/src/domain/dateRanges.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/domain/dateRanges.ts']
 

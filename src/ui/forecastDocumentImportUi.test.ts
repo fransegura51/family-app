@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 // ForecastPaymentForm) — nunca una pantalla nueva, nunca una segunda definición de "propuesta editable".
 // No hay jsdom en este proyecto — se comprueba de forma estructural, leyendo el código fuente real, que
 // las reglas pedidas quedan cableadas tal cual (mismo patrón que forecastUiWiring.test.ts).
-const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 
 function slice(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)

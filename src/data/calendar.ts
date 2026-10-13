@@ -3,6 +3,7 @@ import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import type { CalendarCategory, CalendarEvent } from '@/domain/types'
 import { planReminderChanges, type EventReminder, type ReminderAnchor } from '@/domain/reminders'
+import { buildRecurrenceRule, parseRecurrenceRule } from '@/domain/recurrence'
 
 interface EventRow {
   id: string
@@ -338,6 +339,67 @@ export async function deleteEventOccurrence(id: string, dateStr: string): Promis
   const next = Array.from(new Set([...(data.exception_dates ?? []), dateStr]))
   const { error } = await supabase.from('calendar_events').update({ exception_dates: next }).eq('id', id)
   if (error) throw error
+}
+
+// Un día antes de dateStr, en fechas simples locales (nunca UTC) — para poner el UNTIL de la serie
+// original justo antes de la ocurrencia que se desprende (Parte 6, edición de series).
+function dayBefore(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() - 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Encargo "tareas recurrentes" (Parte 6) — "Solo esta repetición": la fecha editada se excluye de
+// la serie original (misma mecánica que deleteEventOccurrence) y los campos editados se guardan en
+// un registro nuevo, suelto (sin recurrencia), que pasa a representar solo ese día — nunca se toca
+// ninguna otra ocurrencia. Si esa fecha ya tenía una ocurrencia completada (con sus puntos), se
+// reapunta al registro nuevo para no perder ese historial.
+export async function updateEventOccurrenceOnly(
+  id: string,
+  occurrenceDate: string,
+  input: Parameters<typeof createEvent>[0],
+): Promise<void> {
+  await deleteEventOccurrence(id, occurrenceDate)
+  const newId = await createEvent({ ...input, recurrenceRule: null })
+  const { error } = await supabase
+    .from('calendar_event_completions')
+    .update({ event_id: newId })
+    .eq('event_id', id)
+    .eq('occurrence_date', occurrenceDate)
+  if (error) throw error
+}
+
+// Encargo "tareas recurrentes" (Parte 6) — "Esta y las siguientes": el pasado de la serie se queda
+// exactamente como estaba (se le pone un UNTIL el día antes de occurrenceDate, con el patrón de
+// repetición que YA tenía, nunca el editado); un registro nuevo arranca en occurrenceDate con los
+// campos ya editados y continúa la repetición desde ahí. Las ocurrencias ya completadas desde esa
+// fecha en adelante (si las había) se reapuntan al registro nuevo para no perder su historial de
+// puntos — nunca se duplican ni se pierden.
+export async function updateEventFromOccurrenceForward(
+  id: string,
+  occurrenceDate: string,
+  input: Parameters<typeof createEvent>[0],
+): Promise<void> {
+  const { data, error: fetchError } = await supabase
+    .from('calendar_events')
+    .select('recurrence_rule')
+    .eq('id', id)
+    .single()
+  if (fetchError) throw fetchError
+
+  const oldRule = parseRecurrenceRule(data.recurrence_rule)
+  const truncatedRule = buildRecurrenceRule(oldRule.freq, oldRule.byDay, oldRule.skipHolidays, dayBefore(occurrenceDate), oldRule.interval)
+  const { error: truncateError } = await supabase.from('calendar_events').update({ recurrence_rule: truncatedRule }).eq('id', id)
+  if (truncateError) throw truncateError
+
+  const newId = await createEvent(input)
+
+  const { error: repointError } = await supabase
+    .from('calendar_event_completions')
+    .update({ event_id: newId })
+    .eq('event_id', id)
+    .gte('occurrence_date', occurrenceDate)
+  if (repointError) throw repointError
 }
 
 export interface EventCompletion {

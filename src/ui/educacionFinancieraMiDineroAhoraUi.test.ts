@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest'
 // "💰 Mi dinero ahora" (entre el objetivo y las 4 tarjetas): el total (hucha + para gastar) y 3
 // conceptos alineados debajo (🐷 Hucha / 🛒 Para gastar / 💸 Ya gastado, en negativo) — nunca pie charts
 // aquí, compacto, sin scroll horizontal; "Ya gastado" puede enlazar al historial de gastos.
-const UI = (import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const UI = (import.meta.glob('/src/ui/*.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 
 function window_(src: string, fromMarker: string, toMarker: string): string {
   const start = src.indexOf(fromMarker)

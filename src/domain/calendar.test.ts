@@ -14,6 +14,7 @@ import {
   shouldIncludeInPersonal,
   groupEventsAndTasks,
   entryTimeLabel,
+  isTaskOccurrenceMissed,
   shortLocationLabel,
   type ScheduleEvent,
 } from '@/domain/calendar'
@@ -557,6 +558,39 @@ describe('entryTimeLabel — una Tarea nunca es "Todo el día"', () => {
 
   it('sin hora ni allDay (caso borde): null, no una cadena vacía', () => {
     expect(entryTimeLabel({ kind: 'event', allDay: false, startTime: null, endTime: null })).toBeNull()
+  })
+
+  // Encargo "tareas recurrentes" — "No realizada" ocupa el mismo hueco que "Tarea" (nunca un hueco nuevo
+  // aparte); solo para kind="task" con missed=true. Un Evento nunca usa este estado (missed se ignora si
+  // kind no es "task", mismo criterio que toda la función).
+  it('Tarea con missed=true: "No realizada" en vez de "Tarea"', () => {
+    expect(entryTimeLabel({ kind: 'task', allDay: true, startTime: null, endTime: null, missed: true })).toBe('No realizada')
+  })
+  it('Tarea con missed=false (o sin pasarlo): sigue siendo "Tarea", comportamiento de siempre', () => {
+    expect(entryTimeLabel({ kind: 'task', allDay: true, startTime: null, endTime: null, missed: false })).toBe('Tarea')
+    expect(entryTimeLabel({ kind: 'task', allDay: true, startTime: null, endTime: null })).toBe('Tarea')
+  })
+  it('un Evento con missed=true (caso que no debería darse) nunca muestra "No realizada" — solo las Tareas tienen ese estado', () => {
+    expect(entryTimeLabel({ kind: 'event', allDay: true, startTime: null, endTime: null, missed: true })).toBe('Todo el día')
+  })
+})
+
+// Encargo "tareas recurrentes" (Parte 4 — "TAREAS NO REALIZADAS") — estado derivado, NUNCA persistido:
+// se recalcula cada vez comparando contra el día de hoy real de la familia, para que "nadie abrió PEPA a
+// medianoche" nunca lo deje desincronizado (mismo criterio que ReminderWatcher.checkOverdueUndone/
+// claim_overdue_nags, que tampoco guardan ningún estado "vencido").
+describe('isTaskOccurrenceMissed — "no realizada" es siempre derivado del día de hoy, nunca una columna guardada', () => {
+  it('fecha de la ocurrencia anterior a hoy y sin completar: no realizada (true)', () => {
+    expect(isTaskOccurrenceMissed('2026-10-12', false, '2026-10-13')).toBe(true)
+  })
+  it('fecha de la ocurrencia anterior a hoy PERO ya completada: nunca "no realizada" (false) — se puede corregir después sin que vuelva a marcarse', () => {
+    expect(isTaskOccurrenceMissed('2026-10-12', true, '2026-10-13')).toBe(false)
+  })
+  it('la ocurrencia es HOY mismo, sin completar todavía: pendiente, nunca "no realizada" mientras no termine el día', () => {
+    expect(isTaskOccurrenceMissed('2026-10-13', false, '2026-10-13')).toBe(false)
+  })
+  it('la ocurrencia es una fecha futura: nunca "no realizada"', () => {
+    expect(isTaskOccurrenceMissed('2026-10-20', false, '2026-10-13')).toBe(false)
   })
 })
 

@@ -2507,6 +2507,25 @@ select {
   gap: 12px;
 }
 
+/* Encargo "tareas recurrentes" (Parte 6) — "Guardar cambios en" al editar un Evento/Tarea
+   recurrente (solo esta repetición / esta y las siguientes / toda la serie). */
+.edit-scope-fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+}
+
+.edit-scope-fieldset legend {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted, #6b7280);
+  padding: 0 4px;
+}
+
 .section-title {
   margin-top: 28px;
 }
@@ -3738,6 +3757,12 @@ textarea {
   font-weight: 600;
   color: var(--muted);
   line-height: 1.4;
+}
+
+/* Encargo "tareas recurrentes" — "No realizada" ocupa el mismo hueco que "Tarea" (.agenda-row-time), solo
+   cambia el color: informativo, no punitivo (un tono ámbar suave, nunca un rojo de error/alarma). */
+.agenda-row-time-missed {
+  color: #b45309;
 }
 
 /* Marcado como "hecho" pero sin desaparecer del calendario — se queda
@@ -5742,6 +5767,12 @@ textarea {
 .time-grid-task-title-struck {
   color: var(--muted);
   text-decoration: line-through;
+}
+
+/* Encargo "tareas recurrentes" — mismo tono ámbar informativo que .agenda-row-time-missed. */
+.time-grid-task-missed {
+  color: #b45309;
+  font-weight: 600;
 }
 
 .time-grid-body {

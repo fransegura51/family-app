@@ -468,12 +468,23 @@ export function groupEventsAndTasks<T extends { kind?: 'event' | 'task' }>(
 // completo de verdad), aunque internamente siga guardándose con all_day=true por compatibilidad —
 // ver TimeGridView, que ya aplicaba exactamente este mismo criterio para su franja "Tareas".
 export function entryTimeLabel(
-  entry: { kind?: 'event' | 'task'; allDay: boolean; startTime: string | null; endTime: string | null },
+  entry: { kind?: 'event' | 'task'; allDay: boolean; startTime: string | null; endTime: string | null; missed?: boolean },
 ): string | null {
-  if (entry.kind === 'task') return 'Tarea'
+  if (entry.kind === 'task') return entry.missed ? 'No realizada' : 'Tarea'
   if (entry.allDay) return 'Todo el día'
   if (!entry.startTime && !entry.endTime) return null
   return entry.endTime ? `${entry.startTime ?? ''} – ${entry.endTime}` : entry.startTime
+}
+
+// Tareas recurrentes — "no realizada": terminó el día de esa ocurrencia y sigue sin completarse. NUNCA
+// se guarda como columna ni se recalcula por un cron a medianoche (ver auditoría: en toda la app, un
+// estado "vencido"/"overdue" siempre se deriva en el momento de leer, nunca se persiste — mismo criterio
+// que ReminderWatcher.checkOverdueUndone/claim_overdue_nags) — así que "nadie abrió PEPA a medianoche"
+// nunca puede dejarlo desincronizado: se recalcula solo, cada vez, comparando contra el día de hoy real.
+// `todayStr` debe venir siempre de la zona horaria de la familia (Europe/Madrid — ver madridParts,
+// domain/reminderIdentity.ts), nunca de Date() sin zona, para no fallar cerca de medianoche en UTC.
+export function isTaskOccurrenceMissed(occurrenceDate: string, done: boolean, todayStr: string): boolean {
+  return !done && occurrenceDate < todayStr
 }
 
 // Representación compacta de una ubicación guardada (Parte 4.4, vista Familiar) — `locationLabel`

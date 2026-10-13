@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vitest'
 // certificados (nunca reimplementa recurrencia/totales ni escribe Supabase directamente) y los textos
 // obligatorios (importe pendiente nunca 0 €, empty state, ayuda) existen tal cual.
 const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const FS = APP['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FS = APP['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const ECONOMIA_MENU = APP['/src/state/economiaMenu.ts']
 const AYUDA = APP['/src/ui/AyudaScreen.tsx']
 const FS_DOMAIN_FORECAST = APP['/src/domain/forecast.ts']

@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest'
 const PICKER_SRC = (import.meta.glob('/src/ui/FileOrPdfPicker.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
   '/src/ui/FileOrPdfPicker.tsx'
 ]
-const FINANCE_SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FINANCE_SRC = (import.meta.glob('/src/ui/FinanceScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const DOCUMENTS_SRC = (import.meta.glob('/src/ui/DocumentsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
   '/src/ui/DocumentsScreen.tsx'
 ]

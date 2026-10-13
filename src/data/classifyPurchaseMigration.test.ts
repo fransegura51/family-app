@@ -11,7 +11,9 @@ const ROLLBACK = FILES['/supabase/rollbacks/0150_classify_purchase_down.sql']
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')
 const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FUNCTIONS = import.meta.glob('/supabase/functions/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const FORM = APP['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FORM = APP['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 
 describe('classify_purchase: seguridad', () => {
   it('SECURITY INVOKER (RLS de quien llama), nunca DEFINER; search_path fijo', () => {

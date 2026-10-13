@@ -30,6 +30,8 @@ import {
   listUpcomingEvents,
   uncompleteEventOccurrence,
   updateEvent,
+  updateEventFromOccurrenceForward,
+  updateEventOccurrenceOnly,
   uploadEventFile,
   uploadEventPhoto,
   type CalendarColorMode,
@@ -63,6 +65,7 @@ import {
   expandOccurrences,
   getMonthGridDays,
   groupEventsAndTasks,
+  isTaskOccurrenceMissed,
   isWeekend,
   MONTH_LABELS,
   occurrenceAt,
@@ -72,6 +75,7 @@ import {
   WEEKDAY_LABELS,
 } from '@/domain/calendar'
 import { toPastel } from '@/domain/colors'
+import { madridParts } from '@/domain/reminderIdentity'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import {
@@ -254,6 +258,10 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   const [calendarMenuLayout, setCalendarMenuLayout] = useState<CalendarioMenuGroup[]>(() => loadCalendarioMenuLayout())
   const [calendarPlaceholderNotice, setCalendarPlaceholderNotice] = useState(false)
   const today = useMemo(() => new Date(), [])
+  // Encargo "tareas recurrentes" — "no realizada" se decide contra el día de HOY en la zona horaria de la
+  // familia (Europe/Madrid, misma constante ya usada por los recordatorios — madridParts,
+  // domain/reminderIdentity.ts), nunca contra `new Date()` sin zona (ver isTaskOccurrenceMissed).
+  const todayMadrid = useMemo(() => madridParts(new Date()).date, [])
   const [visibleYear, setVisibleYear] = useState(today.getFullYear())
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth())
   const [selectedDate, setSelectedDate] = useState(toDateStr(today))
@@ -686,6 +694,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         return {
           key: `ev-${ev.id}`,
           id: ev.id,
+          date: dateStr,
           title: ev.visibility === 'private' ? `🔒 ${titleWithCategory}` : titleWithCategory,
           subtitle,
           color: colors[0],
@@ -697,6 +706,9 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           recurring: !!ev.recurrenceRule,
           done,
           kind: ev.kind,
+          // Encargo "tareas recurrentes" — solo las Tareas tienen este tercer estado (un Evento
+          // incompleto en el pasado no se llama "no realizado", eso es ajeno a este encargo).
+          missed: ev.kind === 'task' && isTaskOccurrenceMissed(dateStr, done, todayMadrid),
           strikethrough: shouldStrikethroughEntry(ev.kind, done, calendarPrefs.taskCompletion),
           onEdit: () => setEditingId(ev.id),
           onDeleteSeries: () => handleDelete(ev.id),
@@ -721,6 +733,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         return {
           key: `ext-${ev.id}`,
           id: ev.id,
+          date: dateStr,
           title: ev.title,
           subtitle: feed?.name ?? 'Calendario externo',
           color: member?.color ?? '#6b7280',
@@ -741,6 +754,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       ...dayBirthdays.map((b, i) => ({
         key: `bday-${i}`,
         id: `bday-${i}`,
+        date: dateStr,
         title: `🎂 Cumpleaños de ${b.name}`,
         subtitle: '',
         color: b.color,
@@ -1139,6 +1153,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             colorMode={calendarPrefs.colorMode}
             eventCompletions={eventCompletions}
             taskCompletion={calendarPrefs.taskCompletion}
+            todayMadrid={todayMadrid}
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
             onComplete={handleCompleteEvent}
@@ -1156,6 +1171,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             <div className="card" style={{ marginTop: 8 }}>
               <EditEventForm
                 event={events.find((e) => e.id === editingId)!}
+                occurrenceDate={selectedDate}
                 members={members}
                 categories={categories}
                 onDone={() => {
@@ -1269,6 +1285,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               members={members}
               categories={categories}
               defaultDate={selectedDate}
+              defaultMemberId={myMemberId}
               onAdded={() => {
                 reload()
                 setAddingTask(false)
@@ -1434,6 +1451,10 @@ interface AgendaEntry {
   // Ya calculado aquí (shouldStrikethroughEntry) para que AgendaRow/EventCard sean puramente
   // presentacionales — nunca vuelven a mirar kind/preferencias por su cuenta.
   strikethrough: boolean
+  // Encargo "tareas recurrentes" — true cuando (solo para kind="task") terminó el día de esa ocurrencia
+  // sin completarse (isTaskOccurrenceMissed, domain/calendar.ts). Siempre derivado al construir la
+  // entrada, nunca una columna propia — ver esa función para el porqué.
+  missed?: boolean
   onEdit?: () => void
   onDeleteSeries?: () => void
   onDeleteOccurrence?: () => void
@@ -1458,6 +1479,10 @@ interface AgendaEntry {
   locationLatitude?: number | null
   locationLongitude?: number | null
   note?: string | null
+  // Encargo "tareas recurrentes" (Parte 6) — qué día concreto representa este apunte, para poder
+  // ofrecer "solo esta repetición"/"esta y las siguientes" al editar un Evento/Tarea recurrente
+  // (EditEventForm lo necesita; nunca se deriva de ev.startAt, que es el de la PRIMERA ocurrencia).
+  date: string
 }
 
 // Revisión Calendario — "ir directamente a cualquier fecha sin pulsar N veces las flechas": la fecha del
@@ -1608,6 +1633,7 @@ function DayEntriesBody({
         <EditEventForm
           key={entry.key}
           event={ev}
+          occurrenceDate={entry.date}
           members={members}
           categories={categories}
           onDone={onEventChanged}
@@ -1719,6 +1745,7 @@ function FamilyDayView({
         <EditEventForm
           key={ev.id}
           event={ev}
+          occurrenceDate={selectedDate}
           members={members}
           categories={categories}
           onDone={onEventChanged}
@@ -2017,6 +2044,7 @@ function TimeGridView({
   colorMode,
   eventCompletions,
   taskCompletion,
+  todayMadrid,
   selectedDate,
   onSelectDate,
   onComplete,
@@ -2035,6 +2063,10 @@ function TimeGridView({
   colorMode: CalendarColorMode
   eventCompletions: EventCompletion[]
   taskCompletion: CalendarTaskCompletionPrefs
+  // Encargo "tareas recurrentes" — día de hoy en la zona horaria de la familia (Europe/Madrid), para
+  // decidir "no realizada" (isTaskOccurrenceMissed) en tasksForDate — mismo valor que ya usa
+  // buildEntriesForDate, pasado como prop porque TimeGridView es un componente aparte.
+  todayMadrid: string
   selectedDate: string
   onSelectDate: (dateStr: string) => void
   onComplete: (eventId: string, dateStr: string) => void
@@ -2125,8 +2157,9 @@ function TimeGridView({
     colors: string[]
     done: boolean
     strikethrough: boolean
+    missed: boolean
   }[] {
-    const tasks: { key: string; eventId: string; dateStr: string; title: string; color: string; colors: string[]; done: boolean; strikethrough: boolean }[] = []
+    const tasks: { key: string; eventId: string; dateStr: string; title: string; color: string; colors: string[]; done: boolean; strikethrough: boolean; missed: boolean }[] = []
     for (const ev of eventsByDate.get(dateStr) ?? []) {
       if (ev.kind !== 'task') continue
       const done = eventCompletions.some((c) => c.eventId === ev.id && c.occurrenceDate === dateStr)
@@ -2145,6 +2178,7 @@ function TimeGridView({
         colors,
         done,
         strikethrough: shouldStrikethroughEntry(ev.kind, done, taskCompletion),
+        missed: isTaskOccurrenceMissed(dateStr, done, todayMadrid),
       })
     }
     if (!taskCompletion.moveCompletedToEnd) return tasks
@@ -2221,6 +2255,9 @@ function TimeGridView({
                       onClick={() => (canEditInGrid ? onEditEvent!(t.eventId) : onSelectDate(d.dateStr))}
                     >
                       {t.title}
+                      {/* Encargo "tareas recurrentes" — "No realizada": terminó el día sin completarse.
+                          Se puede seguir tocando el circulito para completarla después (nunca se bloquea). */}
+                      {t.missed && <span className="time-grid-task-missed"> · No realizada</span>}
                     </span>
                   </div>
                 </div>
@@ -2724,7 +2761,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
                 real: "pon 'todo el día' donde en los demás viene la hora") en vez de una etiqueta
                 aparte arriba del grupo. RETOQUE (Parte 2): una Tarea nunca se representa como "Todo
                 el día" (entryTimeLabel), aunque siga guardándose con all_day=true por compatibilidad. */}
-            <span className="agenda-row-time">{entryTimeLabel(entry)}</span>
+            <span className={'agenda-row-time' + (entry.missed ? ' agenda-row-time-missed' : '')}>{entryTimeLabel(entry)}</span>
           </span>
         </button>
         {entry.attachmentKind === 'foto' && entry.attachmentStoragePath && (
@@ -3454,9 +3491,29 @@ export interface RecurrenceValue {
 // se abre solo si hace falta algo que ningún preajuste cubre (p. ej.
 // "martes y jueves" sueltos), o si el evento ya tenía guardada una
 // combinación así al editarlo.
-function RecurrenceControl({ value, onChange }: { value: RecurrenceValue; onChange: (v: RecurrenceValue) => void }) {
+function RecurrenceControl({
+  value,
+  onChange,
+  // Tareas recurrentes (encargo "tareas recurrentes") — "no permitir guardar una repetición semanal sin
+  // ningún día seleccionado" cuando el usuario está en modo Personalizado a propósito eligiendo días
+  // concretos (p. ej. "martes y jueves"). Nunca se aplica al preajuste "Cada semana" (que YA tiene un
+  // significado propio y válido: el mismo día de la semana que la fecha de inicio — eso no es "ningún
+  // día", es un día implícito) ni a Eventos (que no pasan esta prop, comportamiento idéntico a siempre).
+  requireWeeklyDays = false,
+  onValidChange,
+}: {
+  value: RecurrenceValue
+  onChange: (v: RecurrenceValue) => void
+  requireWeeklyDays?: boolean
+  onValidChange?: (valid: boolean) => void
+}) {
   const matched = matchRecurrencePreset(value.freq, value.byDay, value.interval)
   const [customMode, setCustomMode] = useState(!!value.freq && !matched)
+  const weeklyDaysMissing = requireWeeklyDays && customMode && value.freq === 'WEEKLY' && value.byDay.length === 0
+
+  useEffect(() => {
+    onValidChange?.(!weeklyDaysMissing)
+  }, [weeklyDaysMissing, onValidChange])
 
   function applyPreset(preset: RecurrencePreset) {
     setCustomMode(false)
@@ -3505,8 +3562,11 @@ function RecurrenceControl({ value, onChange }: { value: RecurrenceValue; onChan
           </label>
           {value.freq === 'WEEKLY' && (
             <div>
-              <p className="muted">¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)</p>
+              <p className="muted">
+                {requireWeeklyDays ? 'Elige uno o varios días' : '¿Qué días? (deja vacío para repetir cada 7 días desde la fecha)'}
+              </p>
               <WeekdayPicker selected={value.byDay} onToggle={toggleDay} />
+              {weeklyDaysMissing && <p className="error">Elige al menos un día de la semana, o usa el preajuste "Cada semana".</p>}
             </div>
           )}
         </div>
@@ -3722,6 +3782,7 @@ async function resolveEventAttachment(
 
 function EditEventForm({
   event,
+  occurrenceDate,
   members,
   categories,
   onDone,
@@ -3729,6 +3790,10 @@ function EditEventForm({
   onManageCategories,
 }: {
   event: CalendarEvent
+  // Encargo "tareas recurrentes" (Parte 6) — qué día concreto se está editando (AgendaEntry.date,
+  // o selectedDate en las vistas de un solo día) — nunca se deriva de event.startAt aquí dentro,
+  // que es la fecha de la PRIMERA ocurrencia de la serie, no la que se está tocando.
+  occurrenceDate: string
   members: FamilyMember[]
   categories: CalendarCategory[]
   onDone: () => void
@@ -3764,6 +3829,7 @@ function EditEventForm({
     skipHolidays: initialRecurrence.skipHolidays,
     until: initialRecurrence.until ?? '',
   })
+  const [recurrenceValid, setRecurrenceValid] = useState(true)
   const [reminders, setReminders] = useState<EventReminder[]>(event.reminders)
   const [selectedMembers, setSelectedMembers] = useState<string[]>(event.memberIds)
   const [points, setPoints] = useState(event.points)
@@ -3780,6 +3846,20 @@ function EditEventForm({
   const [categoryId, setCategoryId] = useState<string | null>(event.categoryId)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Encargo "tareas recurrentes" (Parte 6) — a qué alcance se aplican los cambios al guardar. Solo
+  // tiene sentido (y solo se ofrece en la propia interfaz) cuando el Evento/Tarea YA es recurrente;
+  // "series" es el comportamiento de SIEMPRE (toda la serie, un único registro) y sigue siendo el
+  // valor por defecto, así que un Evento/Tarea suelto guarda exactamente igual que antes.
+  const [editScope, setEditScope] = useState<'series' | 'this' | 'future'>('series')
+
+  function handleScopeChange(next: 'series' | 'this' | 'future') {
+    setEditScope(next)
+    // Al pasar a "solo esta repetición"/"esta y las siguientes" la fecha debe ser la del día
+    // concreto que se está editando (occurrenceDate), nunca la fecha de la PRIMERA ocurrencia de la
+    // serie que muestra el campo por defecto — y viceversa al volver a "toda la serie".
+    if (next === 'series') setDate(`${start.getFullYear()}-${pad(start.getMonth() + 1)}-${pad(start.getDate())}`)
+    else setDate(occurrenceDate)
+  }
 
   function toggleMember(id: string) {
     setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
@@ -3787,6 +3867,7 @@ function EditEventForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    if (!recurrenceValid) return
     setSaving(true)
     setError(null)
     try {
@@ -3806,14 +3887,14 @@ function EditEventForm({
               attachmentKind: event.attachmentKind,
               attachmentOriginalName: event.attachmentOriginalName,
             }
-      await updateEvent(event.id, {
+      const payload = {
         title,
         startAt,
         endAt,
         allDay: effectiveAllDay,
-        recurrenceRule: isTask
-          ? null
-          : buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval),
+        // Encargo "tareas recurrentes" — una Tarea YA puede llevar repetición (antes era null fijo aquí);
+        // nunca hora ni recordatorios, eso sigue reservado solo a Eventos (ver el formulario más abajo).
+        recurrenceRule: buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval),
         reminders: isTask ? [] : reminders,
         memberIds: effectiveMembers,
         points: effectiveMembers.length === 1 ? points : 0,
@@ -3826,8 +3907,18 @@ function EditEventForm({
         // se ofrece y se respeta igual para Evento y para Tarea.
         visibility,
         categoryId,
+        kind: event.kind,
         ...attachment,
-      })
+      }
+      // Encargo "tareas recurrentes" (Parte 6) — un Evento/Tarea suelto (sin recurrencia) siempre
+      // guarda en su único registro de siempre, igual que antes de esta parte del encargo.
+      if (!event.recurrenceRule || editScope === 'series') {
+        await updateEvent(event.id, payload)
+      } else if (editScope === 'this') {
+        await updateEventOccurrenceOnly(event.id, occurrenceDate, payload)
+      } else {
+        await updateEventFromOccurrenceForward(event.id, occurrenceDate, payload)
+      }
       onDone()
     } catch (err) {
       setError(errorMessage(err, isTask ? 'No se pudo guardar la tarea' : 'No se pudo guardar el evento'))
@@ -3880,22 +3971,29 @@ function EditEventForm({
             <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
             Todo el día
           </label>
-          <FieldDropdown
-            label="Repetición"
-            summary={
-              recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
-              'No se repite'
-            }
-          >
-            <RecurrenceControl value={recurrence} onChange={setRecurrence} />
-          </FieldDropdown>
-          <FieldDropdown
-            label="Recordatorio"
-            summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
-          >
-            <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
-          </FieldDropdown>
         </>
+      )}
+      {/* Encargo "tareas recurrentes" — la Repetición SÍ es común a Evento y Tarea (antes solo vivía
+          dentro de {!isTask && ...}); Recordatorio sigue siendo solo de Evento, como pide el encargo
+          explícitamente ("las tareas recurrentes no tendrán campos adicionales de hora ni recordatorios").
+          requireWeeklyDays solo se activa para Tarea — Evento conserva su comportamiento de siempre
+          (un "Cada semana" sin día marcado sigue siendo válido: repite el mismo día que la fecha). */}
+      <FieldDropdown
+        label="Repetición"
+        summary={
+          recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
+          'No se repite'
+        }
+      >
+        <RecurrenceControl value={recurrence} onChange={setRecurrence} requireWeeklyDays={isTask} onValidChange={setRecurrenceValid} />
+      </FieldDropdown>
+      {!isTask && (
+        <FieldDropdown
+          label="Recordatorio"
+          summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
+        >
+          <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
+        </FieldDropdown>
       )}
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
       <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
@@ -3927,9 +4025,28 @@ function EditEventForm({
         note={note}
         onNoteChange={setNote}
       />
+      {/* Encargo "tareas recurrentes" (Parte 6) — solo aparece cuando el Evento/Tarea YA se repite;
+          uno suelto nunca ve esto y guarda exactamente como antes. */}
+      {event.recurrenceRule && (
+        <fieldset className="edit-scope-fieldset">
+          <legend>Guardar cambios en</legend>
+          <label className="checkbox-label">
+            <input type="radio" checked={editScope === 'series'} onChange={() => handleScopeChange('series')} />
+            Toda la serie
+          </label>
+          <label className="checkbox-label">
+            <input type="radio" checked={editScope === 'this'} onChange={() => handleScopeChange('this')} />
+            Solo esta repetición
+          </label>
+          <label className="checkbox-label">
+            <input type="radio" checked={editScope === 'future'} onChange={() => handleScopeChange('future')} />
+            Esta y las siguientes
+          </label>
+        </fieldset>
+      )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving || !recurrenceValid}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
         <button type="button" className="link-button" onClick={onCancel}>
@@ -4175,17 +4292,24 @@ function AddEventForm({
   )
 }
 
-// FASE CALENDARIO — formulario REDUCIDO de Tarea (Parte 2/3): Título + Fecha (obligatorios);
-// ¿Para quién?/Categoría/Ubicación/Adjunto/Nota/Puntos (opcionales, reutilizando EXACTAMENTE los mismos
-// componentes que el Evento completo — WhoDropdown, CategoryDropdown, EventExtrasFields — nunca
-// sistemas paralelos). Sin hora, sin fin, sin repetición, sin recordatorios: allDay:true fijo, nunca una
-// hora inventada. syncToGoogle:false fijo (Parte 25: una Tarea nunca sincroniza por defecto — ver la
-// migración 0184, que reutiliza calendar_events.sync_to_google tal cual, sin columna nueva).
+// FASE CALENDARIO — formulario REDUCIDO de Tarea: Título + Fecha (obligatorios); ¿Para quién?/Categoría/
+// Ubicación/Adjunto/Nota/Puntos (opcionales, reutilizando EXACTAMENTE los mismos componentes que el
+// Evento completo — WhoDropdown, CategoryDropdown, EventExtrasFields — nunca sistemas paralelos). Sin
+// hora, sin fin, sin recordatorios: allDay:true fijo, nunca una hora inventada. syncToGoogle:false fijo
+// (Parte 25: una Tarea nunca sincroniza por defecto — ver la migración 0184, que reutiliza
+// calendar_events.sync_to_google tal cual, sin columna nueva).
+//
+// Encargo "tareas recurrentes" — SÍ repetición (RecurrenceControl, el mismo motor/UI ya usado por
+// Eventos, domain/recurrence.ts — nunca una segunda implementación), con las mismas opciones; nunca hora
+// ni recordatorios, como pide el encargo explícitamente. "¿Para quién?" ahora empieza en el usuario
+// autenticado (defaultMemberId), nunca "Toda la familia" por defecto — requisito ya acordado antes, sin
+// tocar el comportamiento de "Nuevo evento" (que sigue sin preselección propia, fuera de este encargo).
 function AddTaskForm({
   members,
   categories,
   onAdded,
   defaultDate,
+  defaultMemberId,
   onManageCategories,
   defaultVisibility = 'shared',
 }: {
@@ -4193,12 +4317,15 @@ function AddTaskForm({
   categories: CalendarCategory[]
   onAdded: () => void
   defaultDate?: string
+  defaultMemberId?: string | null
   onManageCategories: () => void
   defaultVisibility?: 'shared' | 'private'
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [selectedMembers, setSelectedMembers] = useState<string[]>(defaultMemberId ? [defaultMemberId] : [])
+  const [recurrence, setRecurrence] = useState<RecurrenceValue>({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
+  const [recurrenceValid, setRecurrenceValid] = useState(true)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [points, setPoints] = useState(0)
   const [locationLabel, setLocationLabel] = useState('')
@@ -4217,7 +4344,7 @@ function AddTaskForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (!date) return
+    if (!date || !recurrenceValid) return
     setSaving(true)
     setError(null)
     try {
@@ -4229,7 +4356,7 @@ function AddTaskForm({
         startAt: new Date(`${date}T00:00`).toISOString(),
         endAt: null,
         allDay: true,
-        recurrenceRule: null,
+        recurrenceRule: buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval),
         reminders: [],
         memberIds: effectiveMembers,
         points: effectiveMembers.length === 1 ? points : 0,
@@ -4245,7 +4372,8 @@ function AddTaskForm({
       })
       setTitle('')
       setDate(defaultDate ?? '')
-      setSelectedMembers([])
+      setSelectedMembers(defaultMemberId ? [defaultMemberId] : [])
+      setRecurrence({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
       setCategoryId(null)
       setPoints(0)
       setLocationLabel('')
@@ -4279,6 +4407,15 @@ function AddTaskForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
+      <FieldDropdown
+        label="Repetición"
+        summary={
+          recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
+          'No se repite'
+        }
+      >
+        <RecurrenceControl value={recurrence} onChange={setRecurrence} requireWeeklyDays onValidChange={setRecurrenceValid} />
+      </FieldDropdown>
       <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
       <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {selectedMembers.length === 1 && (
@@ -4300,7 +4437,7 @@ function AddTaskForm({
         onNoteChange={setNote}
       />
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving || !recurrenceValid}>
         {saving ? 'Guardando…' : 'Crear tarea'}
       </button>
     </form>

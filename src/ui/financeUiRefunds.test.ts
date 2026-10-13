@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest'
 // centrales (isRealIncome, isRefund, domain/financeCompute.ts y domain/refunds.ts) en vez de reimplementar la identidad de una
 // devolución — la verificación visual con datos reales se hizo a mano en el navegador (ver informe de la fase).
 const FILES = import.meta.glob(['/src/ui/FinanceScreen.tsx', '/src/ui/EventosScreen.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const FS = FILES['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FS = FILES['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const EVENTOS = FILES['/src/ui/EventosScreen.tsx']
 const APP_DOMAIN = import.meta.glob('/src/domain/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>

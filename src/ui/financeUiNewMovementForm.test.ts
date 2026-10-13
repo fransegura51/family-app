@@ -4,7 +4,9 @@
 import { describe, expect, it } from 'vitest'
 
 const SRC = import.meta.glob(['/src/ui/FinanceScreen.tsx', '/src/data/finance.ts', '/src/ui/AyudaScreen.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const FS = SRC['/src/ui/FinanceScreen.tsx']
+// .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
+// deben seguir encontrándolo igual.
+const FS = SRC['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const DATA = SRC['/src/data/finance.ts']
 
 function slice(source: string, start: string, end: string): string {

@@ -56,7 +56,7 @@ describe('data/calendar.ts — kind y categoría viajan en create/update, nunca 
   })
 })
 
-describe('AddTaskForm — formulario reducido (Parte 2/3): nunca hora/fin/recurrencia/recordatorios, nunca una hora inventada', () => {
+describe('AddTaskForm — formulario reducido: nunca hora/fin/recordatorios, nunca una hora inventada (SÍ repetición, encargo "tareas recurrentes")', () => {
   const FORM = slice(CALENDAR_SRC, 'function AddTaskForm({', 'function OpensFirstBadge(')
 
   it('solo Título y Fecha son obligatorios — ningún input de hora/fin', () => {
@@ -65,11 +65,27 @@ describe('AddTaskForm — formulario reducido (Parte 2/3): nunca hora/fin/recurr
     expect(FORM).not.toMatch(/type="time"/)
   })
 
-  it('allDay:true fijo, endAt:null fijo, recurrenceRule:null fijo, reminders:[] fijo — nunca inventa una hora', () => {
+  it('allDay:true fijo, endAt:null fijo, reminders:[] fijo — nunca inventa una hora ni un recordatorio', () => {
     expect(FORM).toContain('allDay: true')
     expect(FORM).toContain('endAt: null')
-    expect(FORM).toContain('recurrenceRule: null')
     expect(FORM).toContain('reminders: []')
+  })
+
+  // Encargo "tareas recurrentes" — antes recurrenceRule era null fijo; ahora SÍ puede repetirse, mismo
+  // motor/UI que Eventos (RecurrenceControl, domain/recurrence.ts), nunca una hora ni un recordatorio.
+  it('SÍ ofrece repetición (RecurrenceControl, igual que Eventos), pero nunca Recordatorio (eso sigue siendo solo de Evento)', () => {
+    expect(FORM).toContain('recurrenceRule: buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)')
+    expect(FORM).toContain('<RecurrenceControl value={recurrence} onChange={setRecurrence} requireWeeklyDays onValidChange={setRecurrenceValid} />')
+    expect(FORM).not.toContain('<ReminderPicker')
+  })
+
+  it('"¿Para quién?" empieza en el usuario autenticado (defaultMemberId), nunca "Toda la familia" por defecto', () => {
+    expect(FORM).toContain('defaultMemberId?: string | null')
+    expect(FORM).toContain('useState<string[]>(defaultMemberId ? [defaultMemberId] : [])')
+  })
+
+  it('repetición semanal personalizada sin ningún día: no se puede guardar (botón deshabilitado)', () => {
+    expect(FORM).toContain('disabled={saving || !recurrenceValid}')
   })
 
   it("kind: 'task' explícito al crear", () => {
@@ -102,17 +118,76 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
     expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
-  it('EditEventForm: la Tarea se edita con el formulario reducido (isTask oculta hora/repetición/recordatorios/privado), el Evento conserva el completo', () => {
+  // Encargo "tareas recurrentes" — isTask ya NO oculta Repetición (antes sí, `recurrenceRule: null` fijo);
+  // sigue ocultando solo hora/fin/"Todo el día"/Recordatorio, que siguen siendo exclusivos de Evento. El
+  // checkbox "🔒 Privado" tampoco se oculta (eso ya se arregló antes de este encargo, ver RETOQUE).
+  it('EditEventForm: la Tarea se edita con el formulario reducido (isTask oculta solo hora/fin/recordatorios), el Evento conserva el completo', () => {
     const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
     expect(form).toContain("const isTask = event.kind === 'task'")
     expect(form).toContain('{!isTask && (')
     expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
+  it('EditEventForm: Repetición se ofrece para Evento Y Tarea por igual (RecurrenceControl entre los dos bloques {!isTask && ...}, dentro de ninguno)', () => {
+    const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
+    expect(form).toContain('<RecurrenceControl value={recurrence} onChange={setRecurrence} requireWeeklyDays={isTask} onValidChange={setRecurrenceValid} />')
+    const firstGuardIdx = form.indexOf('{!isTask && (')
+    const recurrenceIdx = form.indexOf('<RecurrenceControl value={recurrence}')
+    const secondGuardIdx = form.indexOf('{!isTask && (', firstGuardIdx + 1)
+    expect(firstGuardIdx).toBeGreaterThan(-1)
+    expect(recurrenceIdx).toBeGreaterThan(firstGuardIdx)
+    expect(secondGuardIdx).toBeGreaterThan(recurrenceIdx)
+  })
+
+  it('EditEventForm: Recordatorio sigue siendo solo de Evento (dentro de su propio {!isTask && ...})', () => {
+    const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
+    expect(form).toContain('{!isTask && (\n        <FieldDropdown\n          label="Recordatorio"')
+  })
+
+  it('EditEventForm: recurrenceRule ya no es null fijo para Tarea — se construye igual que para Evento', () => {
+    const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
+    expect(form).toContain('recurrenceRule: buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval),')
+    expect(form).not.toContain('recurrenceRule: isTask\n          ? null')
+  })
+
   it('EditEventForm nunca cambia `kind` al guardar (sin conversión Evento↔Tarea esta fase)', () => {
-    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>')
-    expect(submit).toContain('await updateEvent(event.id, {')
-    expect(submit).not.toMatch(/\n\s*kind:/)
+    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    if (!recurrenceValid) return\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>')
+    // Encargo "tareas recurrentes" (Parte 6) — el guardado "toda la serie" sigue llamando a
+    // updateEvent(event.id, ...) igual que siempre; `kind` solo se LEE de event.kind (nunca hay
+    // ningún control en el formulario que lo cambie), y ahora viaja también dentro de `payload`
+    // porque lo reutilizan los caminos nuevos de "solo esta repetición"/"esta y las siguientes"
+    // (createEvent SÍ necesita kind al crear el registro desprendido).
+    expect(submit).toContain('await updateEvent(event.id, payload)')
+    expect(submit).toContain('kind: event.kind,')
+  })
+})
+
+describe('Encargo "tareas recurrentes" (Parte 6) — EditEventForm ofrece "solo esta repetición"/"esta y las siguientes" SOLO si ya es recurrente', () => {
+  const FORM = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
+
+  it('el selector de alcance vive detrás de `event.recurrenceRule &&` — un Evento/Tarea suelto nunca lo ve', () => {
+    const guardIdx = FORM.indexOf('{event.recurrenceRule && (')
+    const fieldsetIdx = FORM.indexOf('<fieldset className="edit-scope-fieldset">')
+    expect(guardIdx).toBeGreaterThan(-1)
+    expect(fieldsetIdx).toBeGreaterThan(guardIdx)
+    expect(FORM).toContain('Solo esta repetición')
+    expect(FORM).toContain('Esta y las siguientes')
+    expect(FORM).toContain('Toda la serie')
+  })
+
+  it('editScope por defecto es \'series\' — igual que SIEMPRE, sin que haga falta tocar nada para no cambiar de comportamiento', () => {
+    expect(FORM).toContain("useState<'series' | 'this' | 'future'>('series')")
+  })
+
+  it('un Evento/Tarea suelto (sin recurrencia) sigue guardando en su único registro de siempre; solo lo recurrente puede optar por `updateEventOccurrenceOnly`/`updateEventFromOccurrenceForward`', () => {
+    expect(FORM).toContain('if (!event.recurrenceRule || editScope === \'series\')')
+    expect(FORM).toContain('await updateEventOccurrenceOnly(event.id, occurrenceDate, payload)')
+    expect(FORM).toContain('await updateEventFromOccurrenceForward(event.id, occurrenceDate, payload)')
+  })
+
+  it('al cambiar de alcance, la fecha mostrada pasa a ser la de la ocurrencia tocada (occurrenceDate) — nunca la de la PRIMERA ocurrencia de la serie', () => {
+    const scopeFn = slice(FORM, 'function handleScopeChange', 'function toggleMember')
+    expect(scopeFn).toContain('setDate(occurrenceDate)')
   })
 })
 
@@ -250,8 +325,14 @@ describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, sal
   const TIME_GRID = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
   const FAMILY_VIEW = slice(CALENDAR_SRC, 'function FamilyDayView({', 'function PersonalView(')
 
-  it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) nunca filtra por ev.kind', () => {
-    expect(BUILD_ENTRIES).not.toMatch(/ev\.kind\s*===/)
+  // Encargo "tareas recurrentes" — buildEntriesForDate ahora SÍ lee ev.kind (para decidir "no realizada",
+  // solo de Tareas), pero eso no es FILTRAR: dayEvents.map() sigue procesando TODOS los eventos/tareas por
+  // igual, ninguno se excluye ni se salta. El invariante real es que no hay ningún `continue`/`.filter(`
+  // condicionado por kind (eso sí sería filtrar, como SÍ hace TimeGridView a propósito, test siguiente).
+  it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) nunca EXCLUYE por ev.kind (ningún continue/.filter condicionado por kind) — leer kind para otra cosa, como "no realizada", no es filtrar', () => {
+    expect(BUILD_ENTRIES).toContain('dayEvents.map((ev) =>')
+    expect(BUILD_ENTRIES).not.toMatch(/if\s*\(\s*ev\.kind/)
+    expect(BUILD_ENTRIES).not.toMatch(/\.filter\([^)]*kind/)
   })
 
   it('TimeGridView (3 días/Día — Semana ya no la usa, ver calendarWeekListUi.test.ts) separa a propósito las Tareas de "Todo el día" (RETOQUE: una Tarea sin hora nunca es un evento de todo el día) en su propia franja "Tareas", sin inventar una hora', () => {

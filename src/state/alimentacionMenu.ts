@@ -7,7 +7,7 @@
 // está en producción y probada — tocarla para generalizarla es más
 // riesgo que las ~80 líneas que se repiten aquí.
 
-export type FixedAlimentacionMenuItemKey = 'Inicio' | 'Menú' | 'Recetas'
+export type FixedAlimentacionMenuItemKey = 'Inicio' | 'Menú' | 'Recetas' | 'Cocinar'
 export type AlimentacionMenuItemKey = FixedAlimentacionMenuItemKey | `custom:${string}`
 
 export function isCustomAlimentacionMenuKey(key: AlimentacionMenuItemKey): boolean {
@@ -32,6 +32,8 @@ export const ALIMENTACION_MENU_ITEM_META: Record<FixedAlimentacionMenuItemKey, {
   Inicio: { icon: '🏠', label: 'Inicio' },
   Menú: { icon: '📅', label: 'Menú semanal' },
   Recetas: { icon: '📖', label: 'Recetas' },
+  // «¿Qué cocino hoy?»: ideas de platos con los ingredientes que se tienen en casa (IA); ver ui/CocinarTab.tsx.
+  Cocinar: { icon: '🥘', label: '¿Qué cocino hoy?' },
 }
 
 export function alimentacionMenuEntryMeta(entry: AlimentacionMenuEntry): { icon: string; label: string } {
@@ -39,7 +41,7 @@ export function alimentacionMenuEntryMeta(entry: AlimentacionMenuEntry): { icon:
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedAlimentacionMenuItemKey[] = ['Inicio', 'Menú', 'Recetas']
+const DEFAULT_KEYS: FixedAlimentacionMenuItemKey[] = ['Inicio', 'Menú', 'Recetas', 'Cocinar']
 
 // Registro de comidas se eliminó y Peso y medidas tiene su propia sección:
 // se quitan de los menús ya guardados en cada móvil.

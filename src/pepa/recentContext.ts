@@ -12,12 +12,16 @@ export function recentRecipeIds(): string[] {
   return Date.now() - recent.at <= RECENT_MS ? recent.recipeIds : []
 }
 
+import type { RecipeDraftData } from '@/domain/recipeDraft'
+
 // La última petición de receta ("quiero hacer lentejas con chorizo"), para poder
 // decir después solo "somos dos" y cambiar las raciones sin repetir el plato.
 export interface RecipeRequest {
   dish: string
   servings: number
   preferences: string[]
+  // «¿Qué cocino hoy?»: la receta YA preparada por la IA (con los ingredientes que se tienen). Si viene, la tarjeta la enseña directamente, sin volver a pedir nada a la IA.
+  draft?: RecipeDraftData
 }
 
 const RECIPE_REQUEST_MS = 5 * 60 * 1000

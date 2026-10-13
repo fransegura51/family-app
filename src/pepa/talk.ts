@@ -25,6 +25,7 @@ import { autoConfirmProposal } from '@/pepa/autoConfirm'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
 import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
+import type { CookIdeaData } from '@/domain/cookIdeas'
 
 export type TalkOutcome =
   // keepPending: la respuesta aclara algo sobre lo que hay abierto (p. ej. un importe dudoso ante la tarjeta de
@@ -39,6 +40,8 @@ export type TalkOutcome =
   | { kind: 'member-location'; text: string; memberId: string; latitude: number; longitude: number; mapsUrl: string }
   // Receta que no existe: ofrece prepararla (la IA solo se llama si la persona acepta).
   | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
+  // «Tengo pepino, lechuga y tomate, ¿qué cocino?»: ideas de platos con esos ingredientes (se cuentan por voz y se enseñan en La cocina de Pepa).
+  | { kind: 'cook-ideas'; text: string; ingredients: string[]; ideas: CookIdeaData[] }
   // Pregunta de tienda al añadir los ingredientes de una receta.
   | { kind: 'store-question'; text: string; recipe: Recipe; recipes: Recipe[]; stores: string[] }
 

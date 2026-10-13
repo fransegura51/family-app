@@ -919,6 +919,9 @@ export function VoiceCapture() {
     } else if (outcome.kind === 'focus-store') {
       navigate(DESTINATION_INFO.compras.path)
       window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
+    } else if (outcome.kind === 'cook-ideas') {
+      // «Tengo pepino, lechuga y tomate, ¿qué cocino?»: Pepa ya ha contado las ideas; se abren en La cocina de Pepa → «¿Qué cocino hoy?», donde se ven las recetas completas y se guardan.
+      navigate('/alimentacion?tab=Cocinar')
     } else if (outcome.kind === 'focus-place') {
       navigate('/ubicacion')
     } else if (outcome.kind === 'member-location') {

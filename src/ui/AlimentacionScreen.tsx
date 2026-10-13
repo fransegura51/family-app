@@ -30,6 +30,7 @@ import {
   uploadRecipePhoto,
 } from '@/data/food'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { CocinarTab } from '@/ui/CocinarTab'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
@@ -49,7 +50,7 @@ import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
 
-const SUB_TABS = ['Inicio', 'Menú', 'Recetas'] as const
+const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Cocinar'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isAlimentacionSubTab(key: AlimentacionMenuItemKey): key is SubTab {
@@ -201,6 +202,7 @@ export function AlimentacionScreen() {
       {tab === 'Inicio' && <AlimentacionInicioTab onNavigate={setTab} />}
       {tab === 'Menú' && <MenuTab />}
       {tab === 'Recetas' && <RecipesTab />}
+      {tab === 'Cocinar' && <CocinarTab />}
     </div>
   )
 }
@@ -209,6 +211,7 @@ function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => vo
   const shortcuts: { tab: SubTab; body: string }[] = [
     { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.' },
     { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.' },
+    { tab: 'Cocinar', body: 'Dile a Pepa qué ingredientes tienes y te propone qué cocinar, con su receta.' },
   ]
   // Un color pastel por tarjeta, igual que Compras Inicio.
   const cardColors = pastelPalette(shortcuts.length)

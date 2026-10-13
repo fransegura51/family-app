@@ -6,6 +6,7 @@ import { listFamilyMembers } from '@/data/family'
 import { listMenuEntries, listRecipes } from '@/data/food'
 import { listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
+import { describeCookIdeas, parseCookRequest, pickCookIdea, type CookIdeaData } from '@/domain/cookIdeas'
 import { buildMenuAnswer, findRecipeMatches, MEAL_LABELS } from '@/domain/kitchenMenu'
 import { kitchenDateLabel, parseKitchenIntent, type KitchenIntent } from '@/domain/kitchenQuery'
 import { extractTrailingStore } from '@/domain/talkParse'
@@ -13,6 +14,7 @@ import type { MealType, MenuEntry, Recipe } from '@/domain/types'
 import { findKnownStore, normalize } from '@/domain/voiceQuery'
 import { proposeAction } from '@/pepa/actions/registry'
 import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
+import { recentCookIdeasForVoice, rememberCookIdeas } from '@/pepa/cookIdeasStore'
 import { pendingRecipeRequest, recentRecipeIds, rememberRecipeRequest, rememberRecipes, type RecipeRequest } from '@/pepa/recentContext'
 
 export type KitchenOutcome =
@@ -20,6 +22,8 @@ export type KitchenOutcome =
   | { kind: 'proposal'; text: string; proposal: ActionProposal }
   // "No tienes esa receta guardada. ¿Quieres que te prepare una?": abre la tarjeta de receta propuesta.
   | { kind: 'recipe-offer'; text: string; request: RecipeRequest }
+  // «Tengo pepino, lechuga y tomate, ¿qué cocino?»: ideas de platos con la IA (services/whatToCook.ts); se cuentan por voz y se enseñan en la pestaña.
+  | { kind: 'cook-ideas'; text: string; ingredients: string[]; ideas: CookIdeaData[] }
   // "¿En qué tienda quieres añadirlos?": ofrece las tiendas REALES de la familia y "sin tienda".
   | { kind: 'store-question'; text: string; recipe: Recipe; recipes: Recipe[]; stores: string[] }
 
@@ -228,6 +232,44 @@ async function handleRecipeRequest(intent: Extract<KitchenIntent, { kind: 'recip
   return { kind: 'recipe-offer', request, text: 'No tienes esa receta guardada. ¿Quieres que te prepare una?' }
 }
 
+// «Tengo pepino, lechuga y tomate, ¿qué cocino?»: la persona lo pide expresamente, así que se llama a la IA directamente (no hay que confirmar antes) y se
+// cuentan las ideas por voz; las recetas completas se enseñan en La cocina de Pepa → «¿Qué cocino hoy?» y se guardan solo si la persona lo decide.
+async function handleCookIdeas(ingredients: string[]): Promise<KitchenOutcome> {
+  const servings = await defaultServings()
+  // Import dinámico: el cliente de IA (y con él el de Supabase) solo se carga cuando de verdad se pide una idea de cocina.
+  const [{ requestCookIdeas }, { AiUnavailableError }] = await Promise.all([import('@/services/whatToCook'), import('@/services/aiClient')])
+  try {
+    const ideas = await requestCookIdeas({ ingredients, servings, preferences: [] })
+    rememberCookIdeas({ ingredients, servings, ideas })
+    return { kind: 'cook-ideas', ingredients, ideas, text: describeCookIdeas(ingredients, ideas) }
+  } catch (err) {
+    if (err instanceof AiUnavailableError) {
+      if (err.reason === 'not_adult_account') return { kind: 'answer', text: 'Solo las cuentas de adultos pueden pedirme ideas de cocina.' }
+      if (err.reason === 'daily_cap') return { kind: 'answer', text: 'Se ha alcanzado el límite diario de uso de la IA, así que hoy no puedo darte ideas de cocina.' }
+      if (err.reason === 'ai_disabled' || err.reason === 'purpose_disabled' || err.reason === 'family_disabled') {
+        return { kind: 'answer', text: 'La IA está desactivada ahora mismo, así que no puedo darte ideas de cocina.' }
+      }
+    }
+    return { kind: 'answer', text: 'No he podido preparar ideas de cocina ahora mismo. Inténtalo de nuevo en un momento.' }
+  }
+}
+
+// «La primera», «la del gazpacho»… justo después de contar las ideas: se enseña esa receta ya preparada, para revisarla y guardarla.
+// Solo frases cortas y sin verbos de apuntar, para no confundir «añade dos limones» con «la segunda».
+const NOT_A_PICK_RE = /\b(?:anade|apunta|pon|compra|agrega|mete|borra|quita|cuando|donde|cuanto)\b/
+
+function handleCookPick(text: string): KitchenOutcome | null {
+  const recent = recentCookIdeasForVoice()
+  if (!recent) return null
+  const plain = normalize(text).replace(/[¿?¡!.,;:]+/g, ' ').replace(/\s+/g, ' ').trim()
+  if (plain.split(' ').length > 7 || NOT_A_PICK_RE.test(plain)) return null
+  const idea: CookIdeaData | null = pickCookIdea(text, recent.ideas)
+  if (!idea) return null
+  const request: RecipeRequest = { dish: idea.title, servings: idea.recipe.servings, preferences: [], draft: idea.recipe }
+  rememberRecipeRequest(request)
+  return { kind: 'recipe-offer', request, text: `Te enseño la receta de ${idea.title}. Revísala y pulsa Guardar, o dime «guárdala».` }
+}
+
 // "Somos dos": solo cuenta si hay una petición de receta reciente.
 function handleServingsOnly(intent: Extract<KitchenIntent, { kind: 'servings_only' }>): KitchenOutcome | null {
   const pending = pendingRecipeRequest()
@@ -261,6 +303,13 @@ export async function handleKitchenText(
     storeSpec = detected.store
     unknownStore = detected.unknown
     parseText = detected.text
+  }
+  // «¿Qué cocino hoy?» por voz (solo «Hablar con PEPA»): pedir ideas con lo que se tiene, o elegir una de las que Pepa acaba de contar.
+  if (options.recipeRequests) {
+    const cook = parseCookRequest(text)
+    if (cook) return handleCookIdeas(cook.ingredients)
+    const pick = handleCookPick(text)
+    if (pick) return pick
   }
   const intent = parseKitchenIntent(parseText, today)
   if (!intent) return null

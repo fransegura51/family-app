@@ -82,9 +82,10 @@ export function RecipeDraftSheet({
   onFollowUp: (outcome: KitchenOutcome) => void
   onReply: (text: string) => Promise<string | null>
 }) {
-  const [step, setStep] = useState<Step>('offer')
+  // «¿Qué cocino hoy?»: si la petición ya trae la receta preparada, se enseña directamente (sin ofrecer ni volver a pedir nada a la IA).
+  const [step, setStep] = useState<Step>(request.draft ? 'draft' : 'offer')
   const [servings, setServings] = useState(request.servings)
-  const [draft, setDraft] = useState<RecipeDraftData | null>(null)
+  const [draft, setDraft] = useState<RecipeDraftData | null>(request.draft ?? null)
   const [viewServings, setViewServings] = useState(request.servings)
   const [fields, setFields] = useState<EditFields | null>(null)
   const [error, setError] = useState<string | null>(null)

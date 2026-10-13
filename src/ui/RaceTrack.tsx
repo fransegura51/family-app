@@ -4,15 +4,24 @@
 // trasladan TAL CUAL de la demo — ningún cambio de arte ni de animación (encargo, punto 2). Lo que
 // cambia es de dónde sale cada dato: los corredores son los miembros reales que participan (no "Eric"
 // y "Fernando" fijos), su posición en la pista sale de sus puntos reales (domain/race.ts,
-// memberLifetimePoints/monthlyRaceStandings ya calculados por el llamador), las recompensas en la
-// pista son el catálogo real activo (nunca los emojis de ejemplo 10/20/30/50), y encima de cada
-// corredor se superpone (como capa DOM aparte, no dibujado dentro del canvas) su foto circular real
-// con su color identificativo — reutilizando <MemberAvatar>, el mismo componente que ya se usa en el
-// resto de la app, en vez de reinventar la carga de la foto aquí.
+// memberLifetimePoints/monthlyRaceStandings ya calculados por el llamador), y las recompensas en la
+// pista son el catálogo real activo (nunca los emojis de ejemplo 10/20/30/50).
+//
+// Corrección "fotografías integradas como cabezas" — el sprite original de la V6 dibuja su propia
+// cabeza como un círculo con una letra (E/F) pintada en el propio PNG; una insignia flotante aparte
+// (como se hizo en la primera integración) se veía como una segunda cabeza. Ahora la foto real del
+// miembro (o su color de respaldo, igual que <MemberAvatar>) se pinta DENTRO del canvas, recortada en
+// círculo, en las coordenadas EXACTAS de la cabeza de ESE fotograma concreto (raceSpriteHeadAnchors.ts,
+// calculado analizando los píxeles reales de cada uno de los 24 fotogramas) y con la MISMA
+// transformación (x, y, escala k) que ya coloca el cuerpo — así la foto viaja pegada al cuello en toda
+// la animación, sin ningún hueco, y cubre entera la cabeza original dibujada en el sprite. El nombre
+// sigue en una etiqueta aparte, pero ahora solo texto (sin foto duplicada) y bajo los pies, nunca
+// tapando el cuerpo, a otro corredor ni una recompensa.
 import { useEffect, useMemo, useRef } from 'react'
-import { MemberAvatar } from '@/ui/MemberAvatar'
+import { getMemberPhotoUrl } from '@/data/family'
 import { raceCameraRange, raceDistanceStep, raceMilestones, type RaceMilestoneMarker } from '@/domain/race'
 import { raceSpriteSetA, raceSpriteSetB } from '@/ui/raceSpriteData'
+import { raceHeadAnchorsA, raceHeadAnchorsB, type RaceHeadAnchor } from '@/ui/raceSpriteHeadAnchors'
 import type { FamilyMember, Reward } from '@/domain/types'
 
 export interface RaceTrackMember {
@@ -22,6 +31,10 @@ export interface RaceTrackMember {
 
 const FRAME_COUNT = 24
 const SPRITE_SETS = [raceSpriteSetA, raceSpriteSetB]
+const HEAD_ANCHOR_SETS: RaceHeadAnchor[][] = [raceHeadAnchorsA, raceHeadAnchorsB]
+// Un poco más grande que la cabeza original detectada, para cubrirla ENTERA (nunca un aro del dibujo
+// de base asomando alrededor de la foto).
+const HEAD_COVER_FACTOR = 1.2
 
 function loadSpriteFrames(urls: string[]): HTMLImageElement[] {
   return urls.map((src) => {
@@ -39,10 +52,35 @@ function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 }
 
+interface PhotoCacheEntry {
+  img: HTMLImageElement | null
+  requestedPath: string | null
+}
+
 export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; rewards: Reward[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const badgeRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  // Una foto por miembro, cargada una vez y reutilizada en cada fotograma — nunca se vuelve a pedir
+  // la URL firmada mientras no cambie su photoPath (igual criterio que <MemberAvatar>, pero cargada
+  // como Image para poder recortarla dentro del canvas en vez de en el DOM).
+  const photoCache = useRef<Record<string, PhotoCacheEntry>>({})
+  function ensurePhotoLoaded(member: FamilyMember) {
+    const entry = photoCache.current[member.id]
+    if (entry && entry.requestedPath === member.photoPath) return
+    photoCache.current[member.id] = { img: entry?.img ?? null, requestedPath: member.photoPath }
+    if (!member.photoPath) return
+    getMemberPhotoUrl(member.photoPath)
+      .then((url) => {
+        if (!url) return
+        const img = new Image()
+        img.onload = () => {
+          photoCache.current[member.id] = { img, requestedPath: member.photoPath }
+        }
+        img.src = url
+      })
+      .catch(() => {})
+  }
   // Snapshot estable de a qué corredor le toca cada diseño/carril — por ORDEN de llegada a la lista
   // de participantes, nunca recalculado al reordenar la propia lista entre renders (useMemo con la
   // clave real: los ids en el mismo orden que ya decide el llamador).
@@ -244,8 +282,42 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
       return 36 + ((v - camera.min) / (camera.max - camera.min)) * (W - 75)
     }
 
-    function runner(x: number, baseY: number, phase: number, setIndex: number, scale: number) {
-      const frames = SPRITE_FRAMES[setIndex % SPRITE_FRAMES.length]
+    // Pinta la foto real (o el color de respaldo con la inicial, igual que <MemberAvatar>) recortada
+    // en círculo, en el centro (cx,cy) y radio (r) ya convertidos a coordenadas de pantalla.
+    function drawHeadPhoto(cx: number, cy: number, r: number, member: FamilyMember) {
+      const entry = photoCache.current[member.id]
+      ctx!.save()
+      ctx!.beginPath()
+      ctx!.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx!.closePath()
+      ctx!.clip()
+      if (entry?.img && entry.img.complete && entry.img.naturalWidth) {
+        const iw = entry.img.naturalWidth
+        const ih = entry.img.naturalHeight
+        // "object-fit: cover" a mano — llena el círculo entero, recortando el sobrante, nunca
+        // estirado ni con márgenes vacíos.
+        const coverScale = Math.max((r * 2) / iw, (r * 2) / ih)
+        const dw = iw * coverScale
+        const dh = ih * coverScale
+        ctx!.drawImage(entry.img, cx - dw / 2, cy - dh / 2, dw, dh)
+      } else {
+        ctx!.fillStyle = member.color
+        ctx!.fillRect(cx - r, cy - r, r * 2, r * 2)
+        text(member.name.charAt(0).toUpperCase(), cx, cy + r * 0.07, r * 1.1, '#fff', '800')
+      }
+      ctx!.restore()
+      // Borde fino del color identificativo del miembro — igual criterio que <MemberAvatar>.
+      ctx!.beginPath()
+      ctx!.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx!.strokeStyle = member.color
+      ctx!.lineWidth = Math.max(1.5, r * 0.12)
+      ctx!.stroke()
+    }
+
+    function runner(x: number, baseY: number, phase: number, setIndex: number, scale: number, member: FamilyMember) {
+      const lane = setIndex % SPRITE_FRAMES.length
+      const frames = SPRITE_FRAMES[lane]
+      const anchors = HEAD_ANCHOR_SETS[lane]
       const idx = Math.floor((((phase / (Math.PI * 2)) % 1) + 1) % 1 * FRAME_COUNT)
       const im = frames[idx]
       if (!im.complete || !im.naturalWidth) return
@@ -253,7 +325,21 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
       // nunca más pequeño encima por asumir un mínimo de 2 carriles que no existen).
       const laneHeight = (H * 0.93 - H * 0.47) / Math.max(1, runnersRef.current.length)
       const k = Math.min(0.82, (laneHeight - 10) / im.height) * scale
-      ctx!.drawImage(im, x - (im.width * k) / 2, baseY - im.height * k, im.width * k, im.height * k)
+      // Durante los primerísimos fotogramas (antes de que ResizeObserver mida el canvas de verdad),
+      // H puede ser diminuto y dar una escala negativa — ctx.arc() lanza con un radio negativo
+      // (drawImage simplemente lo toleraba antes de esta corrección); se salta el fotograma entero,
+      // el siguiente ya llega con H real.
+      if (k <= 0) return
+      const destX = x - (im.width * k) / 2
+      const destY = baseY - im.height * k
+      ctx!.drawImage(im, destX, destY, im.width * k, im.height * k)
+      // La foto se ancla con la MISMA transformación (destX/destY/k) que acaba de colocar el cuerpo
+      // de ESTE fotograma concreto — nunca se desincroniza de la animación, aunque cambie de pose.
+      const anchor = anchors[idx]
+      const headCx = destX + anchor.cx * im.width * k
+      const headCy = destY + anchor.cy * im.height * k
+      const headR = anchor.r * im.width * k * HEAD_COVER_FACTOR
+      drawHeadPhoto(headCx, headCy, headR, member)
     }
 
     function track() {
@@ -423,6 +509,9 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
       ctx!.restore()
     }
 
+    // Solo el NOMBRE ahora (la foto ya se pinta dentro del canvas, en la propia cabeza) — colocado
+    // bajo los pies del corredor, nunca tapando su cuerpo, a otro corredor ni una recompensa (que
+    // vive por encima de la pista, en track()).
     function positionBadges() {
       const list = runnersRef.current
       for (const r of list) {
@@ -430,8 +519,8 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
         if (!el) continue
         const idx = laneOf[r.member.id] ?? 0
         const x = coord(display[r.member.id] ?? 0)
-        const y = laneY(idx, list.length, x) - (H * 0.93 - H * 0.47) / Math.max(1, list.length) - 6
-        el.style.transform = `translate(${x}px, ${y}px)`
+        const y = laneY(idx, list.length, x) + 2
+        el.style.transform = `translate(${x}px, ${y}px) translate(-50%, 0)`
       }
     }
 
@@ -445,10 +534,11 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
       // todos) — aquí solo se ajusta por el ANCHO real de pantalla, nunca una segunda vez por cantidad.
       const size = Math.max(0.6, Math.min(1.0, W / 570))
       list.forEach((r, i) => {
+        ensurePhotoLoaded(r.member)
         const x = coord(display[r.member.id] ?? 0)
         const y = laneY(i, list.length, x) - 5
         const phase = reduced ? 0 : t * (Math.PI * 2 / 1.44) + i * 1.15
-        runner(x, y, phase, laneOf[r.member.id] ?? i, size)
+        runner(x, y, phase, laneOf[r.member.id] ?? i, size, r.member)
       })
       positionBadges()
     }
@@ -500,7 +590,6 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
             badgeRefs.current[r.member.id] = el
           }}
         >
-          <MemberAvatar member={r.member} size={34} />
           <span className="race-track-badge-name">{r.member.name}</span>
         </div>
       ))}

@@ -3925,14 +3925,12 @@ textarea {
   height: 100%;
 }
 
+/* Corrección "fotografías integradas como cabezas" — la foto ya no vive aquí (se pinta dentro del
+   propio canvas, en la cabeza del corredor); esta insignia es solo el nombre, bajo los pies. */
 .race-track-badge {
   position: absolute;
   top: 0;
   left: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
   pointer-events: none;
   will-change: transform;
 }

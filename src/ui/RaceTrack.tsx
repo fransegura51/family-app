@@ -3,9 +3,15 @@
 // pista con perspectiva, la fauna animada y el ciclo de carrera de cada corredor (24 fotogramas) se
 // trasladan TAL CUAL de la demo — ningún cambio de arte ni de animación (encargo, punto 2). Lo que
 // cambia es de dónde sale cada dato: los corredores son los miembros reales que participan (no "Eric"
-// y "Fernando" fijos), su posición en la pista sale de sus puntos reales (domain/race.ts,
-// memberLifetimePoints/monthlyRaceStandings ya calculados por el llamador), y las recompensas en la
-// pista son el catálogo real activo (nunca los emojis de ejemplo 10/20/30/50).
+// y "Fernando" fijos), y su posición en la pista sale de sus puntos reales del mes
+// (domain/race.ts, memberLifetimePoints/monthlyRaceStandings ya calculados por el llamador).
+//
+// Encargo "Separar puntos de carrera y saldo de recompensas" (COR-1) — la pista YA NO dibuja los
+// emojis del catálogo de recompensas en sus puntos de coste: vincular esas posiciones a la pista daba
+// a entender que gastar puntos podía "retrasar" al corredor, cuando su posición sale de los puntos
+// GANADOS en el mes (nunca de memberPointsBalance) y nunca baja al canjear. Las únicas marcas que
+// quedan en la pista son los números de distancia (cada 5/10/25 según lo ancho que esté el tramo
+// visible, raceDistanceStep) — nunca un hito del catálogo.
 //
 // Corrección "fotografías integradas como cabezas" — el sprite original de la V6 dibuja su propia
 // cabeza como un círculo con una letra (E/F) pintada en el propio PNG; una insignia flotante aparte
@@ -19,10 +25,10 @@
 // tapando el cuerpo, a otro corredor ni una recompensa.
 import { useEffect, useMemo, useRef } from 'react'
 import { getMemberPhotoUrl } from '@/data/family'
-import { raceCameraRange, raceDistanceStep, raceMilestones, type RaceMilestoneMarker } from '@/domain/race'
+import { raceCameraRange, raceDistanceStep } from '@/domain/race'
 import { raceSpriteSetA, raceSpriteSetB } from '@/ui/raceSpriteData'
 import { raceHeadAnchorsA, raceHeadAnchorsB, type RaceHeadAnchor } from '@/ui/raceSpriteHeadAnchors'
-import type { FamilyMember, Reward } from '@/domain/types'
+import type { FamilyMember } from '@/domain/types'
 
 export interface RaceTrackMember {
   member: FamilyMember
@@ -57,7 +63,7 @@ interface PhotoCacheEntry {
   requestedPath: string | null
 }
 
-export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; rewards: Reward[] }) {
+export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const badgeRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -92,16 +98,11 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
     return map
   }, [runners.map((r) => r.member.id).join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const milestones = useMemo(() => raceMilestones(rewards), [rewards])
-
-  // Puntos reales y recompensas viven en refs (no en estado de React): se leen una vez por
-  // fotograma desde dentro del bucle de animación, para no disparar un re-render de React 60
-  // veces por segundo — el propio canvas y la posición de las insignias DOM se actualizan
-  // directamente, sin pasar por React.
+  // Puntos reales viven en un ref (no en estado de React): se leen una vez por fotograma desde
+  // dentro del bucle de animación, para no disparar un re-render de React 60 veces por segundo — el
+  // propio canvas y la posición de las insignias DOM se actualizan directamente, sin pasar por React.
   const runnersRef = useRef(runners)
   runnersRef.current = runners
-  const milestonesRef = useRef(milestones)
-  milestonesRef.current = milestones
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -389,11 +390,6 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
         rounded(x - 17, laneTop(x) + 6, 34, 21, 6, '#a74f3d')
         text(String(v), x, laneTop(x) + 16, 12, '#fff')
       }
-      for (const m of milestonesRef.current) {
-        const x = coord(m.position)
-        if (x < -20 || x > W + 20) continue
-        text(m.emoji, x, laneMid(x) - 18, 23, '#fff')
-      }
       return { mid: laneMid(W / 2), bottom: laneBottom(W / 2) }
     }
 
@@ -574,14 +570,14 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
       if (raf) cancelAnimationFrame(raf)
       resizeObserver.disconnect()
     }
-    // El bucle lee runnersRef/milestonesRef en cada fotograma — no hace falta reiniciarlo cuando
-    // cambian los puntos o el catálogo, solo al montar/desmontar.
+    // El bucle lee runnersRef en cada fotograma — no hace falta reiniciarlo cuando cambian los
+    // puntos, solo al montar/desmontar.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
     <div className="race-track-wrap" ref={wrapRef}>
-      <canvas ref={canvasRef} className="race-track-canvas" aria-label={raceTrackAriaLabel(runners, milestones)} role="img" />
+      <canvas ref={canvasRef} className="race-track-canvas" aria-label={raceTrackAriaLabel(runners)} role="img" />
       {runners.map((r) => (
         <div
           key={r.member.id}
@@ -597,8 +593,7 @@ export function RaceTrack({ runners, rewards }: { runners: RaceTrackMember[]; re
   )
 }
 
-function raceTrackAriaLabel(runners: RaceTrackMember[], milestones: RaceMilestoneMarker[]): string {
-  const names = runners.map((r) => `${r.member.name} (${r.points} puntos)`).join(', ')
-  const rewardsPart = milestones.length > 0 ? `, con premios en ${milestones.map((m) => `${m.position} puntos`).join(', ')}` : ''
-  return `Carrera animada: ${names || 'sin participantes todavía'}${rewardsPart}`
+function raceTrackAriaLabel(runners: RaceTrackMember[]): string {
+  const names = runners.map((r) => `${r.member.name} (${r.points} puntos este mes)`).join(', ')
+  return `Carrera animada: ${names || 'sin participantes todavía'}`
 }

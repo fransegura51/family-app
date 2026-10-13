@@ -7,9 +7,9 @@ import { describe, expect, it } from 'vitest'
 const UI = (import.meta.glob('/src/ui/RewardsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/RewardsScreen.tsx']
 const BODY = UI.slice(UI.indexOf('export function RewardsScreen'), UI.indexOf('\n// PG-PUNTOS-FINANZAS (Parte A2) — "los adultos pueden elegir'))
 
-describe('Carrera animada V6 — una sola pista compartida, con los corredores y recompensas reales', () => {
-  it('RaceTrack se pinta UNA sola vez (no por tarjeta), con los participantes reales y el catálogo activo', () => {
-    expect(BODY).toContain('{raceRunners.length > 0 && <RaceTrack runners={raceRunners} rewards={activeRewards} />}')
+describe('Carrera animada V6 — una sola pista compartida, con los corredores reales', () => {
+  it('RaceTrack se pinta UNA sola vez (no por tarjeta), con los participantes reales', () => {
+    expect(BODY).toContain('<RaceTrack runners={raceRunners} />')
     // Nunca la vieja pista provisional de un carril por tarjeta.
     expect(BODY).not.toContain('<div className="rewards-track">')
     expect(BODY).not.toContain('<div className="rewards-track-marker"')
@@ -23,9 +23,18 @@ describe('Carrera animada V6 — una sola pista compartida, con los corredores y
     expect(BODY).toContain('{raceRunners.map(({ member: m, points: progressPoints }) => {')
   })
 
-  it('las recompensas de la pista son el catálogo real activo (activeRewards), nunca emojis de ejemplo fijos', () => {
-    expect(UI).toContain('const activeRewards = rewards.filter((r) => r.active)')
-    expect(BODY).toContain('rewards={activeRewards}')
+  // Encargo "Separar puntos de carrera y saldo de recompensas" (COR-1) — la pista ya NO recibe el
+  // catálogo de recompensas: vincular sus posiciones a los costes del catálogo sugería que gastar
+  // puntos podía "retrasar" al corredor. RaceTrack ya no acepta esa prop (la línea exacta de arriba,
+  // '<RaceTrack runners={raceRunners} />', ya prueba que no lleva "rewards" — MemberRewardsPanel más
+  // abajo SÍ sigue recibiendo el catálogo, para poder canjear, y no debe confundirse con esto).
+  it('la pista no vuelve a vincular sus posiciones a los costes del catálogo', () => {
+    expect(BODY).not.toContain('RaceTrack runners={raceRunners} rewards')
+  })
+
+  it('un texto breve explica que la carrera (o el Camino) mide lo ganado, aunque luego se gaste', () => {
+    expect(BODY).toContain('La carrera representa los puntos conseguidos durante el mes, aunque después se gasten en recompensas.')
+    expect(BODY).toContain('El Camino representa el total de puntos conseguidos, aunque después se gasten en recompensas.')
   })
 
   it('sin participantes, no se pinta ninguna pista (nunca una carrera vacía o con datos inventados)', () => {

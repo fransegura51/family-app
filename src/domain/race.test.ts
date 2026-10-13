@@ -1,47 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { raceCameraRange, raceDistanceStep, raceMilestones } from './race'
-import type { Reward } from './types'
-
-function reward(overrides: Partial<Reward> = {}): Reward {
-  return {
-    id: 'r1',
-    familyId: 'f1',
-    title: 'Helado',
-    pointsCost: 10,
-    emoji: '🍦',
-    description: null,
-    active: true,
-    ...overrides,
-  }
-}
-
-describe('raceMilestones — recompensas reales en la pista, nunca umbrales inventados', () => {
-  it('coloca cada recompensa activa con emoji en la posición de su propio coste en puntos', () => {
-    const rewards = [reward({ id: 'a', pointsCost: 20, emoji: '🎮', title: 'Videojuego' }), reward({ id: 'b', pointsCost: 10, emoji: '🍦', title: 'Helado' })]
-    expect(raceMilestones(rewards)).toEqual([
-      { position: 10, emoji: '🍦', title: 'Helado' },
-      { position: 20, emoji: '🎮', title: 'Videojuego' },
-    ])
-  })
-
-  it('una recompensa desactivada no aparece en la pista', () => {
-    const rewards = [reward({ active: false })]
-    expect(raceMilestones(rewards)).toEqual([])
-  })
-
-  it('una recompensa sin emoji configurado no se dibuja (no hay nada que pintar)', () => {
-    const rewards = [reward({ emoji: null })]
-    expect(raceMilestones(rewards)).toEqual([])
-  })
-
-  it('sin recompensas configuradas, la pista no muestra ninguna — nunca un marcador de ejemplo', () => {
-    expect(raceMilestones([])).toEqual([])
-  })
-
-  it('un coste de 0 puntos no se pinta (no tiene sentido como marca de distancia)', () => {
-    expect(raceMilestones([reward({ pointsCost: 0 })])).toEqual([])
-  })
-})
+import { raceCameraRange, raceDistanceStep } from './race'
 
 describe('raceCameraRange — cabe cualquier número de corredores, sea cual sea la diferencia', () => {
   it('sin corredores, usa el tramo mínimo desde 0', () => {

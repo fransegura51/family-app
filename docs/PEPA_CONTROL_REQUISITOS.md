@@ -390,6 +390,75 @@ pudo hacer en este entorno (sin dispositivo físico; sin forma segura de subir u
 arriesgar la cuenta real de la familia Hepburn). El usuario debe comprobar ambas cosas personalmente en
 PEPA antes de que cualquier fila de esta tabla pueda pasar a "Aprobado por el usuario".
 
+**Actualización (2026-10-13)**: el usuario confirma en el encargo siguiente ("Separar puntos de carrera
+y saldo de recompensas") que "la carrera V6 ya funciona visualmente en Safari de iPhone. Las cabezas y
+los nombres están corregidos" — queda así verificado en un iPhone físico real lo que antes solo se había
+probado emulado. Se mantiene CARRERA-3/CARRERA-8 sin marcar "Aprobado" en la tabla porque el usuario no
+ha usado esa palabra expresamente; si da su confirmación formal, basta con actualizar la columna.
+
+---
+
+## Separar puntos de carrera y saldo de recompensas (PEPA-COR)
+
+Encargo del usuario (2026-10-13, verbatim resumido): la carrera V6 ya se ve bien en Safari de iPhone,
+pero mezclaba dos cosas que deben ser independientes — los puntos GANADOS en el mes (lo que mueve al
+corredor en la pista) y el SALDO canjeable (lo que se puede gastar en el catálogo). Antes del cambio:
+(1) la pista dibujaba los emojis del catálogo en la posición de su propio coste, dando a entender que
+gastar puntos podía "retrasar" al corredor; (2) la tarjeta no distinguía con claridad ambos números; (3)
+la barra "X/10 hasta el próximo premio de hito" usaba el progreso de Camino/Carrera con un tramo fijo de
+10 en 10, en vez del saldo real y el coste real de la siguiente recompensa del catálogo. Investigado:
+"premio de hito" es un mecanismo YA EXISTENTE y aparte (Parte A5, `newlyReachedMilestones`/
+`milestoneProgress`, confeti cada 10 puntos de SALDO) que no se ha tocado ni debe confundirse con el
+catálogo de recompensas.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| COR-1 | La carrera usa solo los puntos ganados en el mes; los puntos gastados no reducen la distancia; se eliminan de la pista los iconos del catálogo; se mantienen los números de distancia cada 5/10/25; texto breve explicando que la carrera mide lo ganado, aunque se gaste | Sí (2026-10-13) | Sí — `RaceTrack` ya no recibe la prop `rewards` ni conoce el catálogo (se quitó `raceMilestones`/`RaceMilestoneMarker` de `domain/race.ts`, que ponía un emoji en la posición del coste de cada recompensa); los números de distancia (`raceDistanceStep`, sin cambios) siguen intactos; la posición de cada corredor seguía viniendo de `memberMonthlyRacePoints`/`memberLifetimePoints` (nunca de `memberPointsBalance`) desde la integración original, así que gastar puntos nunca movió al corredor — el cambio real es visual (quitar los iconos, que sugerían lo contrario) más un texto nuevo bajo la pista | Sí — 428/428 archivos, 8160/8160 tests (`race.test.ts` sin los tests de `raceMilestones`, ya retirados); verificado en vivo (Familia Prueba Breadcrumb, Eric): tras dar 10 puntos y canjear una recompensa de 5, el `aria-label` y la posición del corredor siguieron en "10 puntos este mes" sin cambiar, sin ningún emoji del catálogo dibujado en la pista | No |
+| COR-2 | La tarjeta muestra dos datos independientes y rotulados sin ambigüedad: puntos del mes (carrera) y saldo disponible (canjeable), sin recalcular el saldo si el modelo ya lo da hecho | Sí (2026-10-13) | Sí — la insignia pasa de "⭐ {balance}" a "⭐ {balance} disponibles"; la etiqueta de progreso en Carrera pasa de "... puntos en octubre" a "... Puntos de octubre: {progressPoints}"; ningún número se recalcula — ambos siguen viniendo tal cual de `memberPointsBalance`/`memberMonthlyRacePoints`/`memberLifetimePoints`, ya calculados antes de este encargo | Sí — verificado en vivo con el ejemplo real del encargo (Eric: 10 puntos de octubre, 5 disponibles tras gastar 5): la tarjeta mostró exactamente "⭐ 5 disponibles" y "🏁 1º esta carrera · Puntos de octubre: 10" a la vez | No |
+| COR-3 | Investigar "premio de hito" y conservar su significado; la barra de progreso hacia la próxima recompensa canjeable usa el saldo real y el coste real del catálogo (no un tramo fijo de 10, no el progreso de carrera); una recompensa ya asequible sigue en "Ya puedes conseguir" | Sí (2026-10-13) | Sí — investigado: "premio de hito" es la Parte A5 (`newlyReachedMilestones`, confeti cada 10 puntos de **saldo**), un mecanismo real y aparte que se deja intacto. Se añadió `nextRewardProgress(balance, rewards)` en `domain/rewards.ts`: busca el coste más bajo del catálogo activo (con emoji) que todavía esté POR ENCIMA del saldo — nunca `milestoneProgress`, nunca `progressPoints`. Se quitó la línea "X/{10} hasta el próximo premio de hito" (mezclaba ambos mecanismos) y se sustituyó por "{saldo}/{coste} para {emoji} {título} (faltan {resto})"; sin ninguna recompensa todavía inalcanzable, no se pinta nada (nunca un "0/10" inventado). "Ya puedes conseguir" (`activeRewards.filter(r => r.pointsCost <= balance)`) no se tocó | Sí — 7 tests nuevos (`nextRewardProgress` en `rewards.test.ts`) + 2 archivos de UI (`rewardsScreenTrackUi.test.ts` actualizado, `rewardsScreenPointsVsBalanceUi.test.ts` nuevo); verificado en vivo con el ejemplo EXACTO del encargo (catálogo 5/10/30, saldo 5 tras gastar): "5/10 para 🎮 Mando (faltan 5)", idéntico al cálculo pedido; con saldo 10 (justo el coste de Mando) el objetivo pasó correctamente a Bici (30) en vez de quedarse en Mando, que ya era asequible | No |
+| COR-4 | Verificación: ganar aumenta saldo y avance; canjear reduce saldo sin tocar la carrera; el progreso de recompensas usa el saldo correcto; sin iconos del catálogo en la pista; el cambio de mes mantiene su comportamiento; no se altera historial/canjes/tareas/permisos | Sí (2026-10-13) | No aplica (es la propia verificación) | Sí — en vivo con Eric (Familia Prueba Breadcrumb): (1) "Dar puntos" +10 subió saldo y avance de 0 a 10 a la vez; (2) solicitar el canje de 5 bajó el saldo a 5 EN EL ACTO (reserva al solicitar, comportamiento ya existente) sin tocar el avance (siguió en 10), y aprobarlo después no lo volvió a descontar (seguía en 5, nunca 0 ni negativo — confirma "no recalcular restando otra vez"); (3) la barra pasó a "5/10 para Mando"; (4) pista sin ningún emoji del catálogo en ningún momento; (5) `memberMonthlyRacePoints`/`monthlyRaceStandings` sin cambios de código, sus tests siguen en verde; (6) ninguna tabla de canjes/tareas/permisos tocada — solo `RaceTrack.tsx`, `domain/race.ts`, `domain/rewards.ts`, `RewardsScreen.tsx` y sus tests. Datos de prueba (3 recompensas, 1 canje, 1 "dar puntos") creados y luego borrados por completo tras verificar | No |
+
+**Pendiente**: verificación visual en Safari de iPhone. **Actualización (2026-10-13)**: el usuario
+confirma en el encargo siguiente ("Reorganización de fichas") que COR-1 a COR-4 "están implementadas y
+verificadas técnicamente", y pide expresamente que no se rehagan ni se altere su funcionamiento — se han
+dejado así, intactas, durante la reorganización (ver PEPA-REORG abajo). Nada de esto se ha desplegado
+todavía — el usuario ha decidido agrupar COR-1/4 y la reorganización en un único despliegue y una única
+revisión conjunta en Safari de iPhone (ver nota de PEPA-REORG).
+
+---
+
+## Reorganización de fichas de Puntos y recompensas (PEPA-REORG)
+
+Encargo del usuario (2026-10-13, resumido): con COR-1 a COR-4 ya implementadas y verificadas
+técnicamente (sin rehacer ni alterar su funcionamiento), reorganizar visualmente la ficha de cada
+niño/a — antes "tocar para expandir" ocultaba TODO (progreso, catálogo, historial, trofeos) detrás de
+un único clic. Ahora: un Resumen SIEMPRE visible (foto, nombre, carrera/camino, saldo, progreso hacia
+la siguiente recompensa) y tres bloques plegables independientes, cada uno con su propio estado por
+defecto. Diseño aprobado por el usuario de antemano.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| REORG-1 | Resumen (foto, nombre, saldo) siempre visible; 🏁 Carrera mensual y ⭐ Puntos disponibles como dos conceptos claramente diferenciados; progreso hacia la siguiente recompensa no asequible, con nombre/coste/restantes | Sí (2026-10-13) | Sí — se retiró `expandedMemberId` (ya no hace falta "tocar para expandir": el Resumen vive siempre fuera de cualquier bloque plegable); la insignia combinada pasa a dos insignias (`.points-badge`) separadas: `{progressChipLabel}: {progressPoints}` (🏁 Carrera mensual/🛤️ Camino, con el puesto cuando aplica) y `⭐ Puntos disponibles: {balance}`; la barra de progreso (`nextRewardProgress`, ya de COR-3) sigue igual, sin tocar su cálculo | Sí — 429/429 archivos, 8170/8170 tests (`rewardsScreenCardReorgUi.test.ts` nuevo); verificado en vivo (Familia Prueba Breadcrumb): con Eric en Camino, "🛤️ Camino: 10" + "⭐ Puntos disponibles: 5" + "5/10 para 🎮 Mando (faltan 5)", todo visible sin tocar nada; en Carrera con 2 participantes, "🏁 Carrera mensual (1º): 10" y "(2º): 0" | No |
+| REORG-2 | Bloque propio "🎁 Catálogo de recompensas" dentro de la ficha: desplegado por defecto, plegable, mismos datos/condiciones/botones Solicitar que antes, sin duplicar ningún registro | Sí (2026-10-13) | Sí — nuevo componente compartido `RewardsSubsection` (mismo patrón ya usado en la app: cabecera "▸/▾ título" + contenido en un `.card` anidado, ver "💰 Ofertas" en EventosScreen) envuelve exactamente la misma lista de recompensas y el mismo `handleRequest`/`canAfford` de siempre — ningún dato nuevo, solo el envoltorio visual, abierto por defecto (`defaultOpen`) | Sí — verificado en vivo: catálogo abierto nada más cargar la ficha, con los 3 botones "Solicitar" (uno habilitado según saldo, dos deshabilitados), se puede plegar/desplegar tocando la cabecera de forma independiente del resto de bloques | No |
+| REORG-3 | Bloque propio "📜 Historial": plegado por defecto, plegable, mismos registros y mismo funcionamiento que antes | Sí (2026-10-13) | Sí — mismo `RewardsSubsection`, `defaultOpen={false}`; contenido (lista de canjes + "dar puntos") sin ningún cambio de datos ni de lógica, solo el envoltorio | Sí — verificado en vivo: plegado al cargar, al desplegarlo muestra el canje de Chuche y el "+10 · Test reorg" dados antes, exactamente igual que con el código anterior | No |
+| REORG-4 | Bloque propio "🏆 Trofeos": plegado por defecto, plegable, mismos trofeos/años/meses/resultados, sin tocar su cálculo ni asignación | Sí (2026-10-13) | Sí — mismo `RewardsSubsection`, `defaultOpen={false}`; se conserva intacta la condición ya existente de solo mostrar el bloque si `trophies.length > 0` (nunca se ha pedido mostrarlo vacío); `assignTrophies`/`annualCupStandings`/`monthlyRaceStandings` sin tocar | Sí — sin cambios de código en el cálculo (sus tests, ya existentes, siguen en verde); no se pudo generar un trofeo real en esta sesión (hace falta cerrar un mes de Carrera) para una captura con contenido, pero el código que lo pinta es literalmente el mismo que ya estaba, solo reenvuelto | No |
+| REORG-5 | El catálogo general (crear/editar/administrar, para los padres) se conserva debajo de las fichas, mismos datos que el catálogo de cada niño/a | Sí (2026-10-13) | Sí — cero cambios en esa sección (`<h2>Catálogo de recompensas</h2>` + `AddRewardForm` + edición/activar/desactivar/borrar); ambos catálogos leen el mismo array `rewards`/`activeRewards`, nunca una copia aparte | Sí — ya cubierto por `rewardsScreenCompactCatalogUi.test.ts` (sin tocar, sigue en verde); verificado en vivo que sigue debajo de las fichas, funcionando igual | No |
+| REORG-6 | Diseño: colores identificativos conservados; bloques con fondo/bordes suaves/espacios; pantalla no excesivamente larga; nombres completos y botones legibles; adaptado a Safari de iPhone y escritorio; sin rediseñar la carrera V6 ni tocar otras secciones | Sí (2026-10-13) | Sí — la tarjeta de cada niño/a sigue con `toPastel(m.color)` de fondo (sin cambios); cada bloque usa `.card` (fondo sólido + `border-radius` + sombra, mismo componente que el resto de la app) anidado dentro, creando la separación pedida sin CSS nuevo; nombre completo (`m.name`) sin truncar; `RaceTrack`/`domain/race.ts` sin tocar en este encargo (ya se tocaron en COR-1, no otra vez) | Sí — verificado en vivo a 375px (ancho de iPhone) y en escritorio: insignias, botones y texto legibles sin desbordar, catálogo con tarjetas apiladas sin cortes, pista de carrera intacta | No |
+| REORG-7 | Verificación conjunta (10 puntos: ganar/avance, canje sin retroceso, saldo, progreso, solicitud, plegables, historial/trofeos, 1 y varios participantes, Carrera/Camino, móvil/escritorio) | Sí (2026-10-13) | No aplica (es la propia verificación) | Sí — typecheck/lint/429 archivos/8170 tests/build en verde; en vivo con Eric (Familia Prueba Breadcrumb) y Ana como segundo participante: (1) "Dar puntos" +10 subió avance y saldo a la vez; (2) canjear 5 bajó el saldo a 5 sin tocar el avance (siguió en 10); (3) saldo correcto en todo momento; (4) progreso "5/10 para Mando (faltan 5)"; (5) Chuche solicitable, Mando/Bici no, con saldo 5; (6) Catálogo/Historial/Trofeos se abren y cierran de forma independiente; (7) historial mostró el canje y el "dar puntos" sin pérdida; (8)(9) probado con 1 y 2 participantes, en Camino y en Carrera; (10) probado a 375px y en escritorio. Datos de prueba (3 recompensas, 1 "dar puntos", 1 canje, Ana reactivada) creados y borrados/restaurados por completo al terminar | No |
+
+**Actualización (2026-10-13)**: el usuario revisó las capturas en su iPhone y autoriza cerrar este
+trabajo — commit, push y despliegue de COR-1/4 y de esta reorganización (ver commit más abajo). Ninguna
+fila pasa a "Aprobado" todavía: el usuario confirmó visualmente por capturas, no mediante la frase
+expresa de aprobación que exige este documento: queda a la espera de esa confirmación final.
+
+**Importante — "Mi camino" (selector Camino/Carrera), pendiente A PROPÓSITO, no implementar todavía**:
+el usuario confirma que, hoy, elegir "Camino" o "Carrera" muestra la MISMA pista animada V6 — lo sabe y
+lo deja así intencionadamente. Hay una animación nueva e independiente para "Camino" (sendero compartido,
+sin competición) todavía en diseño fuera de esta sesión; cuando esté aprobada, el usuario la entregará
+para conectarla. Instrucción expresa: **no desarrollar ni improvisar ese diseño todavía**, y no tocar
+`RaceTrack.tsx`/`domain/race.ts` para intentar "convertir" la carrera en un camino — Carrera debe seguir
+mostrando la pista V6 tal cual, sin modificarla, hasta que llegue el nuevo diseño aprobado.
+
 ---
 
 ## Procedimiento obligatorio desde ahora

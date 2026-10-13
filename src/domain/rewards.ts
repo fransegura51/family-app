@@ -184,6 +184,39 @@ export function annualCupStandings(results: { memberId: string; yearMonth: strin
   }))
 }
 
+// Encargo "Separar puntos de carrera y saldo de recompensas" (COR-3) — progreso hacia la PRÓXIMA
+// recompensa del catálogo que todavía no se puede pedir, a partir del saldo canjeable REAL
+// (memberPointsBalance) — nunca del progreso de Camino/Carrera ni de milestoneProgress (ese es un
+// mecanismo aparte: celebra cada 10 puntos de saldo con confeti, "premio de hito" en newlyReachedMilestones,
+// y no tiene nada que ver con el catálogo). El objetivo es el coste MÁS BAJO que todavía esté por
+// encima del saldo (nunca uno ya alcanzado, que debe pasar a "ya puedes conseguir" en vez de aquí). Sin
+// ningún coste por encima del saldo (ya se puede pedir todo, o no hay catálogo) no hay "próxima", null.
+export interface NextRewardProgress {
+  targetCost: number
+  targetTitle: string
+  targetEmoji: string | null
+  progress: number
+  remaining: number
+  pct: number
+}
+
+export function nextRewardProgress(
+  balance: number,
+  rewards: { title: string; emoji: string | null; pointsCost: number }[],
+): NextRewardProgress | null {
+  const safeBalance = Math.max(0, balance)
+  const target = [...rewards].filter((r) => r.pointsCost > safeBalance).sort((a, b) => a.pointsCost - b.pointsCost)[0]
+  if (!target) return null
+  return {
+    targetCost: target.pointsCost,
+    targetTitle: target.title,
+    targetEmoji: target.emoji,
+    progress: safeBalance,
+    remaining: target.pointsCost - safeBalance,
+    pct: Math.round((safeBalance / target.pointsCost) * 100),
+  }
+}
+
 // PG-PUNTOS-FINANZAS (Parte A6) — el mes de Carrera anterior al indicado, mismo formato "YYYY-MM" —
 // sirve para saber qué mes cerrar en cuanto termina (nunca el mes en curso, que sigue cambiando).
 export function previousYearMonth(yearMonth: string): string {

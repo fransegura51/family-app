@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones, assignTrophies, previousYearMonth, annualCupStandings } from '@/domain/rewards'
+import { memberPointsBalance, isMemberRewardsEnabled, memberLifetimePoints, memberMonthlyRacePoints, monthlyRaceStandings, milestoneProgress, newlyReachedMilestones, nextRewardProgress, assignTrophies, previousYearMonth, annualCupStandings } from '@/domain/rewards'
 
 describe('memberPointsBalance', () => {
   const completions = [
@@ -326,5 +326,49 @@ describe('newlyReachedMilestones — Parte A5, qué celebrar (y qué no repetir)
 
   it('saldo por debajo del primer hito: nada que celebrar todavía', () => {
     expect(newlyReachedMilestones(7, 0)).toEqual([])
+  })
+})
+
+// Encargo "Separar puntos de carrera y saldo de recompensas" (COR-3) — un mecanismo totalmente
+// aparte de milestoneProgress/newlyReachedMilestones (A5, hito cada 10 puntos de saldo, con confeti):
+// aquí el "próximo objetivo" es la recompensa concreta del catálogo, con su propio coste real, no un
+// tramo fijo de 10 en 10.
+describe('nextRewardProgress — próxima recompensa del catálogo todavía no alcanzable, sobre el saldo real', () => {
+  const catalogo = [
+    { title: 'Chuche', emoji: '🍬', pointsCost: 5 },
+    { title: 'Mando', emoji: '🎮', pointsCost: 10 },
+    { title: 'Bici', emoji: '🚲', pointsCost: 30 },
+  ]
+
+  it('ejemplo real de Eric: saldo 5 con catálogo 5/10/30 → próximo objetivo 10, progreso 5/10, faltan 5', () => {
+    expect(nextRewardProgress(5, catalogo)).toEqual({ targetCost: 10, targetTitle: 'Mando', targetEmoji: '🎮', progress: 5, remaining: 5, pct: 50 })
+  })
+
+  it('un coste IGUAL al saldo ya es alcanzable, no es el "próximo objetivo" — pasa al siguiente por encima', () => {
+    expect(nextRewardProgress(10, catalogo)).toEqual({ targetCost: 30, targetTitle: 'Bici', targetEmoji: '🚲', progress: 10, remaining: 20, pct: 33 })
+  })
+
+  it('saldo que ya cubre toda la recompensa más cara: no hay "próxima", null (no un tramo inventado)', () => {
+    expect(nextRewardProgress(30, catalogo)).toBeNull()
+    expect(nextRewardProgress(999, catalogo)).toBeNull()
+  })
+
+  it('sin catálogo configurado: null, nunca un objetivo de ejemplo', () => {
+    expect(nextRewardProgress(5, [])).toBeNull()
+  })
+
+  it('saldo 0: el objetivo es la recompensa más barata del catálogo', () => {
+    expect(nextRewardProgress(0, catalogo)).toEqual({ targetCost: 5, targetTitle: 'Chuche', targetEmoji: '🍬', progress: 0, remaining: 5, pct: 0 })
+  })
+
+  it('saldo negativo (no debería pasar, pero por seguridad): se trata como 0', () => {
+    expect(nextRewardProgress(-3, catalogo)).toEqual({ targetCost: 5, targetTitle: 'Chuche', targetEmoji: '🍬', progress: 0, remaining: 5, pct: 0 })
+  })
+
+  it('con varias recompensas al mismo coste por encima del saldo, elige la más barata disponible (la primera en orden de coste)', () => {
+    const empatadas = [{ title: 'A', emoji: '🅰️', pointsCost: 10 }, { title: 'B', emoji: '🅱️', pointsCost: 10 }]
+    const resultado = nextRewardProgress(3, empatadas)
+    expect(resultado?.targetCost).toBe(10)
+    expect(['A', 'B']).toContain(resultado?.targetTitle)
   })
 })

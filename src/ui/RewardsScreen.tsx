@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useState } from 'react'
 import {
   createReward,
   updateReward,
@@ -31,8 +31,8 @@ import {
   isMemberRewardsEnabled,
   memberLifetimePoints,
   monthlyRaceStandings,
-  milestoneProgress,
   newlyReachedMilestones,
+  nextRewardProgress,
   assignTrophies,
   previousYearMonth,
   annualCupStandings,
@@ -80,7 +80,6 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [grants, setGrants] = useState<PointGrant[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [participants, setParticipants] = useState<RewardParticipant[]>([])
-  const [expandedMemberId, setExpandedMemberId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showAddReward, setShowAddReward] = useState(false)
@@ -264,50 +263,71 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
         })
         return (
           <>
-            {raceRunners.length > 0 && <RaceTrack runners={raceRunners} rewards={activeRewards} />}
+            {raceRunners.length > 0 && (
+              <>
+                <RaceTrack runners={raceRunners} />
+                {/* COR-1 — la pista mide los puntos GANADOS en el mes (o en total, en Camino), nunca
+                    el saldo canjeable: gastar puntos en un canje no la hace retroceder. */}
+                <p className="muted" style={{ fontSize: 11, margin: '4px 0 10px' }}>
+                  {mode === 'carrera'
+                    ? 'La carrera representa los puntos conseguidos durante el mes, aunque después se gasten en recompensas.'
+                    : 'El Camino representa el total de puntos conseguidos, aunque después se gasten en recompensas.'}
+                </p>
+              </>
+            )}
             <div className="event-list">
               {raceRunners.map(({ member: m, points: progressPoints }) => {
                 const balance = memberPointsBalance(m.id, completions, redemptions, grants)
-                const open = expandedMemberId === m.id
                 const standing = mode === 'carrera' ? standings.find((s) => s.memberId === m.id) : undefined
-                const progressLabel =
-                  mode === 'camino'
-                    ? `🛤️ Camino: ${progressPoints} puntos en total`
-                    : `🏁 ${standing?.rank ?? 1}º esta carrera · ${progressPoints} puntos en ${MONTHS[new Date().getMonth()]}`
-                const milestone = milestoneProgress(progressPoints)
+                // COR-2 — dos datos independientes y rotulados sin ambigüedad: cuánto se ha GANADO
+                // este mes/en total (progressPoints, nunca baja al canjear) y cuánto saldo queda para
+                // canjear ahora mismo (balance). Ninguno se recalcula aquí — los dos ya vienen hechos
+                // de domain/rewards.ts. Encargo "Reorganización de fichas" (punto 1) — se muestran como
+                // dos conceptos separados y rotulados, no mezclados en una sola frase.
+                const progressChipLabel =
+                  mode === 'camino' ? '🛤️ Camino' : `🏁 Carrera mensual${standing ? ` (${standing.rank}º)` : ''}`
                 // PG-PUNTOS-FINANZAS (Parte A5) — "emojis de recompensa... calculados del saldo canjeable
                 // REAL": a propósito usa `balance` (memberPointsBalance), nunca progressPoints — solo lo que
                 // de verdad se puede solicitar ahora mismo, nunca el progreso de Camino/Carrera.
                 const affordableRewards = activeRewards.filter((r) => r.emoji && r.pointsCost <= balance).sort((a, b) => a.pointsCost - b.pointsCost)
+                // COR-3 — "premio de hito" (más abajo, confeti cada 10 puntos de SALDO) es un mecanismo
+                // aparte de esto: aquí el objetivo es la recompensa concreta del catálogo más barata que
+                // todavía no se puede pedir, nunca un tramo fijo de 10 en 10 ni el resto de una división.
+                const nextReward = nextRewardProgress(balance, activeRewards.filter((r) => r.emoji && r.pointsCost > 0))
                 return (
                   <div key={m.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', background: toPastel(m.color) }}>
-                    <div className="inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setExpandedMemberId(open ? null : m.id)}>
+                    {/* Resumen — encargo "Reorganización de fichas" (punto 1): SIEMPRE visible, nunca
+                        detrás de un "tocar para expandir" como antes (el estado de ficha abierta que
+                        lo controlaba se ha retirado por completo). */}
+                    <div className="inline-fields" style={{ alignItems: 'center' }}>
                       <MemberAvatar member={m} size={32} />
                       <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
-                      <span className="points-badge">⭐ {balance}</span>
                     </div>
-                    <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>{progressLabel}</p>
-                    <p className="muted" style={{ margin: '2px 0 0', fontSize: 11 }}>
-                      {milestone.pointsIntoSegment}/{milestone.milestoneSize} hasta el próximo premio de hito
-                    </p>
+                    <div className="inline-fields" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                      <span className="points-badge">{progressChipLabel}: {progressPoints}</span>
+                      <span className="points-badge">⭐ Puntos disponibles: {balance}</span>
+                    </div>
+                    {nextReward && (
+                      <p className="muted" style={{ margin: '4px 0 0', fontSize: 11 }}>
+                        {nextReward.progress}/{nextReward.targetCost} para {nextReward.targetEmoji ? `${nextReward.targetEmoji} ` : ''}{nextReward.targetTitle} (faltan {nextReward.remaining})
+                      </p>
+                    )}
                     {affordableRewards.length > 0 && (
                       <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
                         🎁 Ya puedes conseguir: {affordableRewards.map((r) => r.emoji).join(' ')}
                       </p>
                     )}
-                    {open && (
-                      <MemberRewardsPanel
-                        member={m}
-                        balance={balance}
-                        rewards={activeRewards}
-                        redemptions={redemptions.filter((r) => r.memberId === m.id)}
-                        grants={grants.filter((g) => g.memberId === m.id)}
-                        monthlyResults={monthlyResults}
-                        isAdult={isAdult}
-                        onChanged={reload}
-                        setError={setError}
-                      />
-                    )}
+                    <MemberRewardsPanel
+                      member={m}
+                      balance={balance}
+                      rewards={activeRewards}
+                      redemptions={redemptions.filter((r) => r.memberId === m.id)}
+                      grants={grants.filter((g) => g.memberId === m.id)}
+                      monthlyResults={monthlyResults}
+                      isAdult={isAdult}
+                      onChanged={reload}
+                      setError={setError}
+                    />
                   </div>
                 )
               })}
@@ -519,6 +539,22 @@ const TROPHY_EMOJI: Record<RewardMonthlyResult['trophy'], string> = {
   participacion: '🎖️',
 }
 
+// Encargo "Reorganización de fichas" (punto 2/3/4) — los tres bloques de la ficha (Catálogo,
+// Historial, Trofeos) comparten el mismo patrón ya usado en el resto de la app (cabecera
+// "▸/▾ título" + contenido en un `.card` anidado, ver EventosScreen "💰 Ofertas"): un único
+// componente evita repetir ese patrón tres veces con el riesgo de que uno se desincronice del resto.
+function RewardsSubsection({ title, defaultOpen, children }: { title: string; defaultOpen: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)}>
+        {open ? '▾' : '▸'} {title}
+      </button>
+      {open && <div className="card" style={{ padding: 8, marginTop: 4 }}>{children}</div>}
+    </div>
+  )
+}
+
 function MemberRewardsPanel({
   member,
   balance,
@@ -542,8 +578,6 @@ function MemberRewardsPanel({
 }) {
   const [requestingId, setRequestingId] = useState<string | null>(null)
   const [showGivePoints, setShowGivePoints] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
-  const [showTrophies, setShowTrophies] = useState(false)
   const trophies = monthlyResults.filter((t) => t.memberId === member.id)
   // PG-PUNTOS-FINANZAS (Parte A7) — "vitrina por niño/a, por defecto el año en curso, con acceso a años
   // anteriores, nunca una lista mezclada" — los años disponibles salen de los trofeos reales de toda la
@@ -582,100 +616,98 @@ function MemberRewardsPanel({
       )}
       {showGivePoints && <GivePointsForm member={member} onClose={() => setShowGivePoints(false)} onGiven={onChanged} setError={setError} />}
 
-      {rewards.length === 0 ? (
-        <p className="muted" style={{ fontSize: 12 }}>
-          Todavía no hay recompensas en el catálogo.
-        </p>
-      ) : (
-        <div className="event-list">
-          {rewards.map((reward) => {
-            const canAfford = balance >= reward.pointsCost
-            return (
-              <div key={reward.id} className="card" style={{ padding: 8 }}>
-                <div className="inline-fields" style={{ alignItems: 'center' }}>
-                  <span style={{ flex: 1 }}>
-                    {reward.emoji ? `${reward.emoji} ` : ''}
-                    <strong>{reward.title}</strong>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {' '}
-                      · ⭐ {reward.pointsCost}
+      {/* Encargo "Reorganización de fichas" (punto 2) — bloque propio, desplegado por defecto (a
+          diferencia de Historial/Trofeos): son las recompensas que este niño/a puede consultar y
+          solicitar AHORA MISMO, mismos datos que el catálogo general de abajo (rewards, sin duplicar
+          ningún registro), mismas condiciones de disponibilidad/permisos/solicitud de siempre. */}
+      <RewardsSubsection title="🎁 Catálogo de recompensas" defaultOpen>
+        {rewards.length === 0 ? (
+          <p className="muted" style={{ fontSize: 12 }}>
+            Todavía no hay recompensas en el catálogo.
+          </p>
+        ) : (
+          <div className="event-list">
+            {rewards.map((reward) => {
+              const canAfford = balance >= reward.pointsCost
+              return (
+                <div key={reward.id} className="card" style={{ padding: 8 }}>
+                  <div className="inline-fields" style={{ alignItems: 'center' }}>
+                    <span style={{ flex: 1 }}>
+                      {reward.emoji ? `${reward.emoji} ` : ''}
+                      <strong>{reward.title}</strong>
+                      <span className="muted" style={{ fontSize: 12 }}>
+                        {' '}
+                        · ⭐ {reward.pointsCost}
+                      </span>
                     </span>
-                  </span>
-                  <button type="button" className="task-toggle" disabled={!canAfford || requestingId === reward.id} onClick={() => void handleRequest(reward)}>
-                    {requestingId === reward.id ? 'Solicitando…' : 'Solicitar'}
-                  </button>
+                    <button type="button" className="task-toggle" disabled={!canAfford || requestingId === reward.id} onClick={() => void handleRequest(reward)}>
+                      {requestingId === reward.id ? 'Solicitando…' : 'Solicitar'}
+                    </button>
+                  </div>
+                  {reward.description && (
+                    <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
+                      {reward.description}
+                    </p>
+                  )}
                 </div>
-                {reward.description && (
-                  <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-                    {reward.description}
-                  </p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+              )
+            })}
+          </div>
+        )}
+      </RewardsSubsection>
 
-      <button type="button" className="link-button" onClick={() => setShowHistory((v) => !v)} style={{ marginTop: 6 }}>
-        {showHistory ? '▾' : '▸'} Historial
-      </button>
-      {showHistory && (
-        <div style={{ marginTop: 4 }}>
-          {history.length === 0 && grants.length === 0 ? (
-            <p className="muted" style={{ fontSize: 12 }}>
-              Todavía no hay movimientos.
-            </p>
+      {/* Encargo "Reorganización de fichas" (punto 3) — plegado por defecto, mismos datos e igual
+          funcionamiento que antes (solo cambia el envoltorio visual). */}
+      <RewardsSubsection title="📜 Historial" defaultOpen={false}>
+        {history.length === 0 && grants.length === 0 ? (
+          <p className="muted" style={{ fontSize: 12 }}>
+            Todavía no hay movimientos.
+          </p>
+        ) : (
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+            {history.map((r) => (
+              <li key={r.id}>
+                {r.rewardEmoji ? `${r.rewardEmoji} ` : ''}
+                {r.rewardTitle} · ⭐ {r.pointsSpent} · {REDEMPTION_STATUS_LABELS[r.status]}
+              </li>
+            ))}
+            {grants.map((g) => (
+              <li key={g.id}>
+                ⭐ {g.amount > 0 ? `+${g.amount}` : g.amount} {g.reason ? `· ${g.reason}` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+      </RewardsSubsection>
+
+      {/* Encargo "Reorganización de fichas" (punto 4) — plegado por defecto; se mantiene oculto por
+          completo sin trofeos todavía (igual que antes), nunca el cálculo ni la asignación tocados. */}
+      {trophies.length > 0 && (
+        <RewardsSubsection title="🏆 Trofeos" defaultOpen={false}>
+          <div className="filter-row" style={{ alignItems: 'center', marginBottom: 4 }}>
+            {availableYears.map((year) => (
+              <button key={year} type="button" className={'chip' + (year === selectedYear ? ' chip-active' : '')} onClick={() => setSelectedYear(year)}>
+                {year}
+              </button>
+            ))}
+          </div>
+          {isCupWinner && (
+            <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600 }}>🏆 ¡Gran Copa {selectedYear}! (más carreras mensuales ganadas)</p>
+          )}
+          {trophiesForYear.length === 0 ? (
+            <p className="muted" style={{ fontSize: 12 }}>Sin trofeos en {selectedYear}.</p>
           ) : (
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-              {history.map((r) => (
-                <li key={r.id}>
-                  {r.rewardEmoji ? `${r.rewardEmoji} ` : ''}
-                  {r.rewardTitle} · ⭐ {r.pointsSpent} · {REDEMPTION_STATUS_LABELS[r.status]}
-                </li>
-              ))}
-              {grants.map((g) => (
-                <li key={g.id}>
-                  ⭐ {g.amount > 0 ? `+${g.amount}` : g.amount} {g.reason ? `· ${g.reason}` : ''}
-                </li>
-              ))}
+              {[...trophiesForYear]
+                .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
+                .map((t) => (
+                  <li key={t.id}>
+                    {TROPHY_EMOJI[t.trophy]} {formatYearMonth(t.yearMonth)} · ⭐ {t.points}
+                  </li>
+                ))}
             </ul>
           )}
-        </div>
-      )}
-
-      {trophies.length > 0 && (
-        <>
-          <button type="button" className="link-button" onClick={() => setShowTrophies((v) => !v)} style={{ marginTop: 6 }}>
-            {showTrophies ? '▾' : '▸'} 🏆 Trofeos
-          </button>
-          {showTrophies && (
-            <div style={{ marginTop: 4 }}>
-              <div className="filter-row" style={{ alignItems: 'center', marginBottom: 4 }}>
-                {availableYears.map((year) => (
-                  <button key={year} type="button" className={'chip' + (year === selectedYear ? ' chip-active' : '')} onClick={() => setSelectedYear(year)}>
-                    {year}
-                  </button>
-                ))}
-              </div>
-              {isCupWinner && (
-                <p style={{ margin: '0 0 4px', fontSize: 12, fontWeight: 600 }}>🏆 ¡Gran Copa {selectedYear}! (más carreras mensuales ganadas)</p>
-              )}
-              {trophiesForYear.length === 0 ? (
-                <p className="muted" style={{ fontSize: 12 }}>Sin trofeos en {selectedYear}.</p>
-              ) : (
-                <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
-                  {[...trophiesForYear]
-                    .sort((a, b) => b.yearMonth.localeCompare(a.yearMonth))
-                    .map((t) => (
-                      <li key={t.id}>
-                        {TROPHY_EMOJI[t.trophy]} {formatYearMonth(t.yearMonth)} · ⭐ {t.points}
-                      </li>
-                    ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </>
+        </RewardsSubsection>
       )}
     </div>
   )

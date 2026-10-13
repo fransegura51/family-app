@@ -385,6 +385,18 @@ describe('locationAction: «¿dónde está Eric?» (solo gente de la misma famil
     expect(outcome).not.toMatchObject({ kind: 'member-location' })
   })
 
+  it('un nombre suelto que no es de nadie de la familia avisa de que lo busca como un sitio (caso real: «Jennifer» en una familia con «Jenny»)', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('C. Pere Joan Perpiña, Elx', 38.26, -0.7))
+    const outcome = await locationAction('dónde está Jennifer', familyDeps({ searchFirstPlace }))
+    expect(outcome).toMatchObject({ kind: 'focus-place', text: expect.stringContaining('No hay nadie llamado «jennifer» en tu familia, así que lo he buscado como un sitio.') })
+  })
+
+  it('«dónde está la farmacia» no lleva ese aviso: es claramente un sitio', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Farmacia Rodríguez, Calle Mayor 3', 40.41, -3.69))
+    const outcome = await locationAction('dónde está la farmacia', familyDeps({ searchFirstPlace }))
+    expect(outcome).toMatchObject({ kind: 'focus-place', text: expect.not.stringContaining('No hay nadie llamado') })
+  })
+
   it('«dónde está la farmacia» sigue buscando un sitio, como siempre', async () => {
     const searchFirstPlace = vi.fn().mockResolvedValue(found('Farmacia Rodríguez, Calle Mayor 3', 40.41, -3.69))
     const outcome = await locationAction('dónde está la farmacia', familyDeps({ searchFirstPlace }))

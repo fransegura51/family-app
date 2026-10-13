@@ -204,12 +204,17 @@ async function handleNearest(spokenPlace: string, deps: LocationDeps): Promise<T
 // está, por voz y/o mandándole la ubicación. Solo entre los miembros de la MISMA familia». La voz la pone la propia respuesta (Pepa habla lo que contesta);
 // «mandar la ubicación» es abrir el mapa centrado en esa persona (resultado 'member-location', ver ui/VoiceCapture.tsx) con su botón de Google Maps.
 // La separación entre familias no depende de este código: memberLocations() / members() / places() solo devuelven lo de la familia de quien pregunta (RLS).
-async function handleWhere(subject: string, fallbackTerm: string | null, deps: LocationDeps): Promise<TalkOutcome | null> {
+async function handleWhere(subject: string, fallbackTerm: string | null, deps: LocationDeps, bareName = false): Promise<TalkOutcome | null> {
   const members = await deps.members()
   const member = findMemberByName(subject, members)
   if (!member) {
     // No es de la familia: «dónde está la farmacia» sigue siendo buscar un sitio; si no era una búsqueda, esto no es cosa de Ubicación.
-    return fallbackTerm ? handleSearch(fallbackTerm, deps) : null
+    if (!fallbackTerm) return null
+    const outcome = await handleSearch(fallbackTerm, deps)
+    // «¿Dónde está Jennifer?» sin nadie con ese nombre en la familia (caso real: la cuenta de prueba tenía «Jenny»): se avisa antes de contestar con una
+    // dirección, que si no parecería que Pepa ha localizado a la persona.
+    if (bareName && outcome && 'text' in outcome) return { ...outcome, text: `No hay nadie llamado «${subject}» en tu familia, así que lo he buscado como un sitio. ${outcome.text}` }
+    return outcome
   }
   if (deps.canSeeLocation) {
     let allowed: boolean
@@ -252,7 +257,9 @@ export async function locationAction(text: string, deps: LocationDeps): Promise<
   // llamado Eric en Google Maps). Si no lo es, sigue todo como siempre: «dónde está la farmacia» busca la farmacia.
   const where = parseWhereIs(text)
   if (where) {
-    const outcome = await handleWhere(where.subject, intent?.type === 'search' ? intent.term : null, deps)
+    // Un nombre suelto («dónde está Jennifer», sin «la farmacia», «el cole»…) puede ser una persona.
+    const bareName = !where.subject.includes(' ') && !/(?:^|\s)(?:la|el|los|las|un|una)\s/.test(normalize(text))
+    const outcome = await handleWhere(where.subject, intent?.type === 'search' ? intent.term : null, deps, bareName)
     if (outcome) return outcome
   }
   if (!intent) return null

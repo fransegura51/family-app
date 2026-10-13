@@ -103,18 +103,18 @@ describe('Objetivos de ahorro — en la pantalla principal, entre el grid y la t
   const grid = window_(body, '{standalone && <SectionBreadcrumb subsection="Educación financiera" />}', '\nfunction GoalCard(')
 
   it('el listado de objetivos vive en el grid principal, nunca dentro del detalle de la tarjeta Ahorrar', () => {
-    expect(grid).toContain('{memberGoals.map((goal, i) => (')
+    expect(grid).toContain('{memberGoals.map((goal) => (')
     expect(body).not.toContain("openCard === 'ahorro' && (")
   })
   it('"+ Nuevo objetivo de ahorro" aparece antes de la lista de objetivos, nunca siempre visible', () => {
     const addIdx = grid.indexOf('+ Nuevo objetivo de ahorro')
-    const listIdx = grid.indexOf('{memberGoals.map((goal, i) => (')
+    const listIdx = grid.indexOf('{memberGoals.map((goal) => (')
     expect(addIdx).toBeGreaterThan(-1)
     expect(listIdx).toBeGreaterThan(-1)
     expect(addIdx).toBeLessThan(listIdx)
   })
   it('los objetivos aparecen ANTES de "Mi dinero ahora", que a su vez va antes de las 4 tarjetas', () => {
-    const goalsIdx = grid.indexOf('{memberGoals.map((goal, i) => (')
+    const goalsIdx = grid.indexOf('{memberGoals.map((goal) => (')
     const moneyIdx = grid.indexOf('💰 Mi dinero ahora')
     const cardsIdx = grid.indexOf('className="card-grid"')
     expect(goalsIdx).toBeLessThan(moneyIdx)

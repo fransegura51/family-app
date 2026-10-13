@@ -244,6 +244,27 @@ tres apartados.
 
 ---
 
+## Rediseño de "Objetivos de ahorro" (PEPA-OBJ-REDISEÑO)
+
+Encargo independiente («PEPA — Finalizar trabajo actual y rediseñar Objetivos de ahorro», 2026-10-13),
+con orden de ejecución explícito: terminar y verificar primero la Parte B6 (formularios emergentes, ya
+implementada en el commit `a72a81d`), y solo después empezar este rediseño sin esperar nueva autorización.
+No se mezcla con PG-PUNTOS-FINANZAS — estado de revisión propio, nunca marcado "Aprobado" hasta que el
+usuario lo confirme personalmente en PEPA.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| OBJ-R1 | Fondo de la tarjeta con el color pastel del AVATAR del niño/a dueño/a (nunca un color fijo por índice/nombre), esquinas redondeadas, borde discreto, adaptado a móvil/escritorio | Sí (2026-10-13) | Sí — `toPastel(owner.color)` (`domain/colors.ts`, ya existía, mismo criterio que las tarjetas de cuenta de Banco), `owner` resuelto por `goal.memberId` contra la lista real de miembros; sin owner, gris fijo `COMMON_ACCOUNT_COLOR` (mismo fallback ya usado en Banco) | Sí — verificado en vivo con dos objetivos del mismo niño/a (mismo pastel en los dos, coherente con su avatar); build y typecheck limpios | No |
+| OBJ-R2 | Distribución superior en dos columnas: imagen cuadrada ~105-110px con esquinas redondeadas a la izquierda (foto real > emoji guardado > icono fijo si no hay ninguno, nunca generado); a la derecha, título+%, texto motivador, importe acumulado destacado + importe objetivo en menor tamaño; sin enlace "Ver detalles" | Sí (2026-10-13) | Sí — `goal-card-top`/`goal-card-image`/`goal-card-info` (`FinanceScreen.tsx`/`styles.css`); icono fijo `🎯` cuando no hay foto ni emoji | Sí — verificado con foto, con emoji y sin ninguno de los dos (icono fijo); título largo trunca con "…" en la fila, pero se ve completo (envuelto en dos líneas) en el mensaje de abajo; decimales grandes (1234,56 €) sin desbordar | No |
+| OBJ-R3 | Barra arcoíris de ancho completo que se DESCUBRE (nunca redimensiona el degradado) según el % real — extremos redondeados, fondo gris para lo pendiente, `clip-path` sobre una variable CSS `--progress`, respeta `prefers-reduced-motion` | Sí (2026-10-13) | Sí — `.goal-progress`/`.goal-progress-rainbow` (`styles.css`), colores exactos pedidos (#ff696b/#ffa65d/#ffe16c/#78dca0/#69b8fa/#b28af4); el componente solo pasa `--progress`, nunca `width` ni `transform` | Sí — verificado en vivo en 0%/19%/50%/100% con cifras reales (9/47=19%, 23,50/47=50%, 47/47=100%) — el degradado coincide EXACTAMENTE con los ejemplos del propio encargo (19% solo rojo, 50% hasta amarillo/verde, 100% arcoíris completo hasta violeta); CSS no verificable por test automático en este proyecto (Vite deja en blanco los imports de `.css`, mismo límite ya documentado en `calendarTimeGridOverflowUi.test.ts`) | No |
+| OBJ-R4 | Debajo de la barra: "0 €" a la izquierda / importe objetivo + 🏆 a la derecha; frase motivadora con trofeo y el importe pendiente real; mensaje de enhorabuena al 100%; sin mensajes incorrectos si se supera o si no hay ahorro todavía | Sí (2026-10-13) | Sí — `remaining = Math.max(0, goal.targetAmount - categoryTotal)` (ya existía, sin tocar), mensaje condicional `pct >= 100 ? …Enhorabuena… : …Te faltan…` | Sí — verificado en vivo en los 4 estados de progreso | No |
+| OBJ-R5 | Mantener intactas la lógica financiera (categoryTotal/goal.targetAmount, nunca repartido entre objetivos), los permisos y la confirmación de borrado ya existentes; mismo diseño en todos los objetivos; nada ficticio | Sí (2026-10-13) | Sí — `pct`/`remaining` son los mismos cálculos de siempre, `ConfirmButton` de "Eliminar" sin cambios | Sí — verificado en vivo: "¿Seguro? Confirmar/Cancelar" sigue apareciendo; dato de prueba (objetivos "Mi robot"/bicicleta y sus movimientos de ahorro) creado y borrado por completo (UI + SQL) en la familia de pruebas, confirmado 0 filas restantes | No |
+
+**Pendiente**: ninguno técnico conocido. El usuario debe comprobarlo personalmente en PEPA antes de que
+cualquier fila de esta tabla pueda pasar a "Aprobado por el usuario".
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

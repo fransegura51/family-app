@@ -104,11 +104,14 @@ describe('Migración 0241 — objetivos con emoji/foto (Fase 10) y fondo común 
   })
 })
 
-describe('GoalCard — emoji o foto, nunca los dos esperados a la vez pero ambos opcionales', () => {
+// Rediseño de la tarjeta: ya no se queda "igual que siempre, solo título" sin foto ni emoji — ahora
+// siempre hay algo en el hueco de imagen (foto > emoji > icono representativo fijo), tal y como pide el
+// encargo del rediseño ("si no hay imagen, mostrar un icono representativo. No generar imágenes
+// automáticamente" — el icono es siempre el mismo 🎯, nunca generado).
+describe('GoalCard — foto, emoji o icono representativo fijo, nunca un hueco vacío', () => {
   const card = window_(FS, 'function GoalCard({', '\n// Pequeños Grandes, Fase 11')
-  it('la foto manda si existe; si no, el emoji; si no hay ninguno, la tarjeta se ve igual que siempre (solo título)', () => {
-    expect(card).toContain('photoUrl ? (')
-    expect(card).toContain(': goal.emoji ? (')
+  it('la foto manda si existe; si no, el emoji guardado; si no hay ninguno, un icono fijo (🎯), nunca generado', () => {
+    expect(card).toContain('photoUrl ? <img src={photoUrl} alt="" /> : <span>{goal.emoji || \'🎯\'}</span>')
   })
 })
 

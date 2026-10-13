@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
@@ -11520,8 +11520,8 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
         </button>
       )}
       <div className="event-list">
-        {memberGoals.map((goal, i) => (
-          <GoalCard key={goal.id} goal={goal} categoryTotal={savedTotal} colorIndex={i} total={memberGoals.length} onChanged={reload} />
+        {memberGoals.map((goal) => (
+          <GoalCard key={goal.id} goal={goal} categoryTotal={savedTotal} members={members} onChanged={reload} />
         ))}
         {memberGoals.length === 0 && <p className="muted">Sin objetivos todavía.</p>}
       </div>
@@ -11601,25 +11601,29 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   )
 }
 
-// Pequeños Grandes, Fase 10 — emoji y/o foto por objetivo, ambos opcionales (si no hay ninguno, la
-// tarjeta se ve exactamente igual que antes: solo el título).
+// PG-PUNTOS-FINANZAS (rediseño "Objetivos de ahorro") — tarjeta compacta: fondo pastel del AVATAR del
+// niño/a dueño/a del objetivo (nunca un color fijo por índice/nombre — mismo criterio ya usado en las
+// tarjetas de cuenta de Banco, toPastel(owner.color)), imagen/emoji del objetivo a la izquierda, cifras a
+// la derecha, y debajo una barra arcoíris de ancho completo que se DESCUBRE según el % real (el degradado
+// en sí nunca se redimensiona — clip-path, no width). Nunca cambia la lógica financiera: categoryTotal y
+// goal.targetAmount son los mismos de siempre (domain/finance.ts), sin ningún cálculo nuevo.
 function GoalCard({
   goal,
   categoryTotal,
-  colorIndex,
-  total,
+  members,
   onChanged,
 }: {
   goal: KidGoal
   categoryTotal: number
-  colorIndex: number
-  total: number
+  members: FamilyMember[]
   onChanged: () => void
 }) {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const pct = Math.min(100, Math.round((categoryTotal / goal.targetAmount) * 100))
   // PG-PUNTOS-FINANZAS (Parte B2) — "importe restante", nunca negativo una vez cumplido el objetivo.
   const remaining = Math.max(0, goal.targetAmount - categoryTotal)
+  const owner = members.find((m) => m.id === goal.memberId)
+  const cardBg = owner ? toPastel(owner.color) : COMMON_ACCOUNT_COLOR
 
   useEffect(() => {
     if (goal.photoStoragePath) getGoalPhotoUrl(goal.photoStoragePath).then(setPhotoUrl).catch(() => setPhotoUrl(null))
@@ -11627,26 +11631,33 @@ function GoalCard({
   }, [goal.photoStoragePath])
 
   return (
-    <div className="card task-card" style={{ background: pastelPalette(total)[colorIndex] }}>
-      <div className="task-card-main inline-fields" style={{ alignItems: 'flex-start' }}>
-        {photoUrl ? (
-          <img src={photoUrl} alt="" style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }} />
-        ) : goal.emoji ? (
-          <span style={{ fontSize: 28 }}>{goal.emoji}</span>
-        ) : null}
-        <span style={{ flex: 1 }}>
-          <strong>{goal.title}</strong>
-          <p className="muted">
-            {categoryTotal.toFixed(2)} € de {goal.targetAmount.toFixed(2)} € ({pct}%)
-          </p>
-          <div className="progress-bar">
-            <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+    <div className="card goal-card" style={{ background: cardBg }}>
+      <div className="goal-card-top">
+        <div className="goal-card-image">
+          {photoUrl ? <img src={photoUrl} alt="" /> : <span>{goal.emoji || '🎯'}</span>}
+        </div>
+        <div className="goal-card-info">
+          <div className="goal-card-row">
+            <strong>{goal.title}</strong>
+            <span>{pct}%</span>
           </div>
-          <p className="muted" style={{ fontSize: 12, margin: '2px 0 0' }}>
-            {remaining > 0 ? `Faltan ${remaining.toFixed(2)} €` : '¡Objetivo cumplido!'}
-          </p>
-        </span>
+          <p className="goal-card-motivation">{pct >= 100 ? '¡Lo has conseguido!' : '¡Sigue ahorrando!'}</p>
+          <div className="goal-card-row">
+            <span className="goal-card-amount">{categoryTotal.toFixed(2)} €</span>
+            <span className="goal-card-target">de {goal.targetAmount.toFixed(2)} €</span>
+          </div>
+        </div>
       </div>
+      <div className="goal-progress" style={{ '--progress': `${pct}%` } as CSSProperties}>
+        <div className="goal-progress-rainbow" />
+      </div>
+      <div className="goal-card-range">
+        <span>0 €</span>
+        <span>{goal.targetAmount.toFixed(2)} € 🏆</span>
+      </div>
+      <p className="goal-card-trophy-msg">
+        {pct >= 100 ? '🏆 ¡Enhorabuena! Has conseguido tu objetivo.' : `🏆 Te faltan ${remaining.toFixed(2)} € para «${goal.title}».`}
+      </p>
       <ConfirmButton label="Eliminar" onConfirm={() => deleteGoal(goal.id).then(onChanged)} />
     </div>
   )

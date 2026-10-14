@@ -159,7 +159,7 @@ describe('lo que esta fase NO toca', () => {
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(269) // 0260-0269: centro de avisos, destinatarios familiares, resumen diario y funciones de Comunidad (tablas y funciones nuevas; no tocan esto); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(273) // 0260-0273: centro de avisos, destinatarios familiares, resumen diario y Comunidad (tablas y funciones nuevas; no tocan esto); la numeración la sube quien añada la siguiente
   })
 
   it('el sync bancario sigue con la regla /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {

@@ -1,0 +1,39 @@
+name: iOS build
+
+# Comprueba que la app de iPhone de PEPA COMPILA (en el simulador, sin firmar): no necesita la cuenta de Apple. Se lanza a mano
+# (Actions → iOS build → Run workflow). Cuando la cuenta de Apple esté activa se añadirán la firma y el envío a TestFlight (ver docs/APP_IOS.md).
+# La app es una cáscara que abre la PEPA publicada (ver capacitor.config.ts), igual que la de Android. Los servidores de GitHub con macOS son gratis
+# para repositorios públicos como este.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sincronizar el proyecto de iPhone
+        run: npx cap sync ios
+      - name: Instalar las piezas nativas (CocoaPods)
+        working-directory: ios/App
+        run: pod install
+      - name: Compilar para el simulador (sin firmar)
+        working-directory: ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build | tail -60

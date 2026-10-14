@@ -119,7 +119,7 @@ Apple pide al menos las de **iPhone 6,9"** (1320 × 2868 px). Propuesta de 6 pan
 Hay que hacerlas con la «Familia prueba» (datos inventados, sin nombres reales). Se pueden sacar con el navegador a 440 × 956 px y reescalar, o con la propia app en el iPhone.
 
 ## Qué falta decidir
-- Correo de contacto público: ahora `jenniferhepburn@live.com` (sale en la política). ¿Uno propio de PEPA?
+- Correo de contacto público: `pepafamily8@gmail.com` (decidido el 14/10/2026; ya está en la política de privacidad y en los términos).
 - Página de soporte (URL obligatoria).
 - Teléfono público: Apple lo muestra a vendedores («traders») en la UE.
 - Si en el futuro se cobra: precios y compras dentro de la app (Apple se queda 15-30 %).

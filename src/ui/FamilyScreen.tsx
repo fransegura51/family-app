@@ -22,6 +22,7 @@ import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
+import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
@@ -307,6 +308,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             + Añadir miembro
           </button>
         ))}
+      <DeleteAccountCard isAdmin={isAdmin} />
         </>
       )}
     </div>

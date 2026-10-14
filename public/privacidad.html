@@ -24,25 +24,26 @@
 <body>
   <!--
     Esta es la ÚNICA política de privacidad de la app (esta URL es la que
-    conocen Google —verificación de Google Calendar— y Enable Banking).
-    Los huecos <span class="hueco">[…]</span> son datos de la empresa
-    que aún no existen: mientras haya huecos, no cobrar a nadie.
+    conocen Google —verificación de Google Calendar—, Enable Banking y las
+    tiendas de aplicaciones). Los datos del responsable están completos.
   -->
   <div class="volver"><a href="./">Volver a la app</a></div>
   <h1>Política de privacidad de Family App</h1>
-  <p class="muted">Versión: 11 de septiembre de 2026</p>
+  <p class="muted">Versión: 14 de octubre de 2026</p>
   <p>Family App es una aplicación para organizar una familia (calendario, lista de la compra, tareas, alimentación, economía, documentos y fotos). Esta página explica qué datos trata, para qué, y qué derechos tienes.</p>
 
   <h2>1. Quién es el responsable</h2>
-  <p><span class="hueco">[Nombre o razón social del responsable]</span>, con NIF <span class="hueco">[NIF/CIF]</span> y domicilio en <span class="hueco">[Dirección postal completa]</span>. Para cualquier cuestión sobre tus datos: <a href="mailto:jenniferhepburn@live.com">jenniferhepburn@live.com</a>.</p>
+  <p>Francisco José Segura Hortelano, con NIF 77566036P y domicilio en Calle Hermanos Rodríguez 52, 03369 Rafal (Alicante), España. Para cualquier cuestión sobre tus datos: <a href="mailto:jenniferhepburn@live.com">jenniferhepburn@live.com</a>.</p>
 
   <h2>2. Qué datos se guardan</h2>
   <ul>
     <li><strong>Cuenta:</strong> email y contraseña (cifrada), el nombre que eliges mostrar, y las cuentas de tu familia que tú invites.</li>
     <li><strong>Lo que tu familia apunta en la app:</strong> eventos y tareas del calendario, listas y tickets de la compra (foto y líneas), productos y precios, recetas y menús, contactos, documentos, fotos, puntos y recompensas de los niños, notas.</li>
     <li><strong>Economía:</strong> los gastos e ingresos que apuntas a mano o desde tickets y, solo si tú lo activas, los movimientos y saldos de las cuentas bancarias que enlaces (ver punto 6).</li>
-    <li><strong>Ubicación (opcional):</strong> solo de los miembros que la activen expresamente; el rastro detallado se borra automáticamente a las 24 horas, y las visitas a lugares a los 90 días.</li>
-    <li><strong>Voz:</strong> lo que le dictas a Pepa se convierte en texto en tu propio dispositivo (reconocimiento de voz del navegador o del sistema); se guarda solo el resultado (la cita, la lista…), nunca el audio.</li>
+    <li><strong>Ubicación (opcional):</strong> solo de los miembros que la activen expresamente; el rastro detallado se borra automáticamente a las 24 horas, y las visitas a lugares a los 90 días. En las aplicaciones de Android e iPhone, quien la active puede seguir compartiéndola con la aplicación cerrada o el móvil bloqueado, para avisar a su familia cuando llega a un sitio o se va; cada móvil usa una llave propia que solo sirve para enviar la posición de esa persona, y se anula al dejar de compartir o al cerrar sesión. Cada persona puede desactivarlo cuando quiera y entonces se borra su última posición y su rastro.</li>
+    <li><strong>Voz:</strong> lo que le dictas a Pepa se convierte en texto con el reconocimiento de voz de tu navegador o de tu móvil (Android o iPhone); se guarda solo el resultado (la cita, la lista…), nunca el audio. Pepa también puede responderte hablando (síntesis de voz de tu dispositivo).</li>
+    <li><strong>Avisos en el móvil:</strong> si activas los avisos, guardamos un identificador de tu dispositivo (no tu nombre ni tu número) para poder enviarte recordatorios y avisos de llegada y salida. Se borra al desactivar los avisos o al borrar la cuenta.</li>
+    <li><strong>Inteligencia artificial:</strong> algunas funciones usan IA de Google (Gemini) cuando las pides: leer una foto de un ticket o un documento, entender una frase que las reglas de la app no entienden, o proponerte recetas con los ingredientes que escribes o dictas. A la IA solo viaja lo imprescindible para esa tarea (por ejemplo, la lista de ingredientes) y, si hay nombres de familiares, se sustituyen antes por alias. No se guarda ninguna frase, foto ni respuesta en la IA con fines de entrenamiento por nuestra parte: solo contamos cuántas consultas se hacen.</li>
     <li><strong>Datos técnicos:</strong> si la app falla, registramos el error, la pantalla en la que estabas y el tipo de navegador, para arreglarlo. Nunca el contenido de lo que estabas escribiendo.</li>
   </ul>
 
@@ -71,7 +72,11 @@
   <h2>7. Otros servicios externos (encargados de tratamiento)</h2>
   <ul>
     <li><strong>Supabase</strong>: base de datos, autenticación y almacenamiento de archivos, en servidores de la Unión Europea.</li>
-    <li><strong>Google Gemini</strong>: analiza fotos de tickets y correos reenviados para extraer productos, precios o eventos, solo cuando la familia sube esas fotos o reenvía esos correos.</li>
+    <li><strong>Google Firebase Cloud Messaging</strong>: entrega los avisos a los móviles con la aplicación de Android o iPhone (recibe el identificador del dispositivo y el texto del aviso).</li>
+    <li><strong>Google Maps Platform</strong>: mapas, direcciones, rutas y tiempos de viaje en la pantalla de Ubicación y en los eventos.</li>
+    <li><strong>Open-Meteo</strong>: el tiempo en un sitio (se le envían solo las coordenadas del sitio consultado).</li>
+    <li><strong>Buscadores de recetas (Cookpad, FatSecret, Wikibooks)</strong>: cuando buscas una receta en internet, se les envía solo el texto de la búsqueda.</li>
+    <li><strong>Google Gemini</strong>: analiza fotos de tickets, documentos y correos reenviados para extraer productos, precios o eventos, y propone ideas de recetas o entiende frases dichas a Pepa, solo cuando la familia lo pide (ver punto 2).</li>
     <li><strong>OpenStreetMap / Nominatim</strong>: búsqueda de direcciones al añadir una ubicación a un evento.</li>
     <li><strong>Servicios de notificaciones push</strong> del navegador o del sistema, solo si las activas.</li>
   </ul>
@@ -81,10 +86,10 @@
   <p>Todo se guarda en la base de datos privada de la familia (Supabase), protegida para que solo los miembros de esa familia puedan verla (aislamiento en la propia base de datos). Toda la comunicación va cifrada. Los permisos de conexión (Google, banco…) se guardan cifrados y no son accesibles desde la propia aplicación web. Puedes proteger además la app con un PIN o huella/cara desde Configuración.</p>
 
   <h2>9. Cuánto tiempo se guardan</h2>
-  <p>Mientras tengas cuenta. Si la borras, eliminamos tus datos y los de tu familia en un plazo máximo de 30 días, salvo lo que debamos conservar por obligación legal (por ejemplo, facturas). La ubicación detallada se borra a las 24 horas y las visitas a lugares a los 90 días de forma automática.</p>
+  <p>Mientras tengas cuenta. Si la borras desde la app (Familia → Borrar mi cuenta), los datos se eliminan al momento: con «Borrar solo mi cuenta» desaparece tu acceso, tu perfil, tus avisos y tu ubicación y la familia conserva lo suyo; con «Borrar toda la familia» (solo administradoras) se elimina todo, incluidas las fotos y los documentos. Si lo pides por correo, lo eliminamos en un plazo máximo de 30 días, salvo lo que debamos conservar por obligación legal (por ejemplo, facturas). La ubicación detallada se borra a las 24 horas y las visitas a lugares a los 90 días de forma automática.</p>
 
   <h2>10. Tus derechos</h2>
-  <p>Puedes acceder, rectificar, borrar, limitar u oponerte al tratamiento y pedir la portabilidad de tus datos escribiendo a <a href="mailto:jenniferhepburn@live.com">jenniferhepburn@live.com</a>. Casi todo puedes hacerlo tú mismo/a desde la app: cualquier miembro puede borrar sus propios datos, desenlazar una cuenta bancaria o un calendario externo, y desactivar el compartir ubicación en cualquier momento. Si crees que no te hemos atendido bien, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es">www.aepd.es</a>).</p>
+  <p>Puedes acceder, rectificar, borrar, limitar u oponerte al tratamiento y pedir la portabilidad de tus datos escribiendo a <a href="mailto:jenniferhepburn@live.com">jenniferhepburn@live.com</a>. Casi todo puedes hacerlo tú mismo/a desde la app: cualquier miembro puede borrar su propia cuenta (Familia → Borrar mi cuenta), desenlazar una cuenta bancaria o un calendario externo, y desactivar el compartir ubicación en cualquier momento. Si crees que no te hemos atendido bien, puedes reclamar ante la Agencia Española de Protección de Datos (<a href="https://www.aepd.es">www.aepd.es</a>).</p>
 
   <h2>11. Cambios</h2>
   <p>Si cambiamos esta política te lo diremos dentro de la app antes de que entre en vigor.</p>

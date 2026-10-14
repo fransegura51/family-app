@@ -269,6 +269,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(255) // 0255: elimina la fila "Bebidas" genérica de family_food_types (COM-03; no toca esto) tras 0254 suggestions_owner_by_profile; la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(256) // 0256: account_deletion (borrar la cuenta desde dentro de la app; solo funciones del servidor, no toca esto) tras 0255: elimina la fila "Bebidas" genérica de family_food_types (COM-03; no toca esto) tras 0254 suggestions_owner_by_profile; la numeración la sube quien añada la siguiente
   })
 })

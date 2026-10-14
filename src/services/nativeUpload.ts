@@ -4,12 +4,12 @@
 //
 // Una sola llave por persona: pedir una nueva (otro móvil nativo) anula la anterior. Se pide UNA vez por arranque de la app (no en cada reinicio del
 // vigilante), para no gastar llamadas.
-import { isNativeApp } from '@/services/nativeApp'
+import { isIosApp, isNativeApp } from '@/services/nativeApp'
 
 let enabledFor: string | null = null
 
 export async function enableNativeUpload(memberId: string): Promise<void> {
-  if (!isNativeApp() || enabledFor === memberId) return
+  if (!isNativeApp() || isIosApp() || enabledFor === memberId) return
   enabledFor = memberId
   let token: string
   try {
@@ -30,7 +30,7 @@ export async function enableNativeUpload(memberId: string): Promise<void> {
 }
 
 export async function disableNativeUpload(): Promise<void> {
-  if (!isNativeApp()) return
+  if (!isNativeApp() || isIosApp()) return
   enabledFor = null
   try {
     const { clearNativeUpload } = await import('@/services/nativeLocation')

@@ -1,7 +1,7 @@
 // Avisos nativos por Firebase (FCM): firma real del acceso de Google, forma del mensaje, borrado de móviles caducados y que las dos Edge
 // Functions usan el mismo código. Se prueba con una llave RSA generada aquí, sin tocar Firebase.
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildFcmPayload, FCM_PREFIX, getFcmAccessToken, resetFcmTokenCacheForTests, sendFcm, type FcmServiceAccount } from '../../supabase/functions/send-due-reminders/fcm'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { apnsCollapseId, buildFcmPayload, FCM_PREFIX, getFcmAccessToken, resetFcmTokenCacheForTests, sendFcm, type FcmServiceAccount } from '../../supabase/functions/send-due-reminders/fcm'
 import dueReminderFcm from '../../supabase/functions/send-due-reminders/fcm.ts?raw'
 import familyPushFcm from '../../supabase/functions/send-family-push/fcm.ts?raw'
 import dueReminderIndex from '../../supabase/functions/send-due-reminders/index.ts?raw'
@@ -73,6 +73,10 @@ describe('acceso a Firebase (OAuth con la cuenta de servicio)', () => {
 })
 
 describe('mensaje de aviso', () => {
+  beforeEach(() => vi.useFakeTimers({ now: new Date('2026-10-05T10:00:00Z') }))
+  afterEach(() => vi.useRealTimers())
+  const NOW_S = Math.floor(new Date('2026-10-05T10:00:00Z').getTime() / 1000)
+
   it('lleva título, texto, prioridad alta, caducidad, y la etiqueta y la pantalla de destino cuando las hay', () => {
     const p = buildFcmPayload('TOKEN', { title: 'Reunión', body: 'Empieza a las 16:30', tag: 'reminder:e1:2026-10-05:start:60', url: '/calendario', ttlSeconds: 3600 })
     expect(p).toEqual({
@@ -81,8 +85,25 @@ describe('mensaje de aviso', () => {
         notification: { title: 'Reunión', body: 'Empieza a las 16:30' },
         data: { url: '/calendario', tag: 'reminder:e1:2026-10-05:start:60' },
         android: { priority: 'HIGH', ttl: '3600s', notification: { channel_id: 'pepa-avisos', tag: 'reminder:e1:2026-10-05:start:60' } },
+        apns: {
+          headers: { 'apns-priority': '10', 'apns-expiration': String(NOW_S + 3600), 'apns-collapse-id': 'reminder:e1:2026-10-05:start:60' },
+          payload: { aps: { sound: 'default' } },
+        },
       },
     })
+  })
+  it('iPhone: el aviso se entrega al momento, con sonido, y sin etiqueta no sustituye a ninguno', () => {
+    const p = buildFcmPayload('T', { title: 'a', body: 'b', ttlSeconds: 600 })
+    expect(p.message.apns).toEqual({ headers: { 'apns-priority': '10', 'apns-expiration': String(NOW_S + 600) }, payload: { aps: { sound: 'default' } } })
+  })
+  it('iPhone: las etiquetas de más de 64 bytes (recordatorios con identificador largo) se resumen, y siempre igual', () => {
+    const long = 'reminder:0b3f2a6e-1c1d-4e53-9a64-8f6c2d1a7b90:2026-10-05:start:60'
+    expect(new TextEncoder().encode(long).length).toBeGreaterThan(64)
+    const id = apnsCollapseId(long)
+    expect(id).toMatch(/^h[0-9a-f]{16}$/)
+    expect(apnsCollapseId(long)).toBe(id)
+    expect(apnsCollapseId(long.replace(':60', ':30'))).not.toBe(id)
+    expect(apnsCollapseId('corta')).toBe('corta')
   })
   it('sin etiqueta ni destino no lleva esos campos', () => {
     const p = buildFcmPayload('T', { title: 'a', body: 'b' })

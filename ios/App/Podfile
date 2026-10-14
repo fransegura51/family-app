@@ -23,6 +23,9 @@ end
 target 'App' do
   capacitor_pods
   # Add your Pods here
+  # Avisos: Firebase Cloud Messaging convierte el identificador de Apple (APNs) en el token «fcm:…» que ya usa el servidor. Va aquí y no en
+  # capacitor_pods porque `npx cap sync` reescribe esa lista.
+  pod 'FirebaseMessaging'
 end
 
 post_install do |installer|

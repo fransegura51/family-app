@@ -1,11 +1,11 @@
 // Ubicación con la app nativa cerrada: la llave propia del móvil se pide una vez, se entrega al servicio nativo y se anula al dejar de compartir.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const native = vi.hoisted(() => ({ value: true }))
+const native = vi.hoisted(() => ({ value: true, ios: false }))
 const data = vi.hoisted(() => ({ createLocationDeviceToken: vi.fn(), revokeLocationDeviceTokens: vi.fn() }))
 const location = vi.hoisted(() => ({ configureNativeUpload: vi.fn(), clearNativeUpload: vi.fn() }))
 
-vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value }))
+vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value, isIosApp: () => native.ios }))
 vi.mock('@/data/location', () => data)
 vi.mock('@/services/nativeLocation', () => location)
 
@@ -14,6 +14,7 @@ import { disableNativeUpload, enableNativeUpload } from '@/services/nativeUpload
 beforeEach(async () => {
   vi.clearAllMocks()
   native.value = true
+  native.ios = false
   data.createLocationDeviceToken.mockResolvedValue('t'.repeat(64))
   data.revokeLocationDeviceTokens.mockResolvedValue(undefined)
   location.configureNativeUpload.mockResolvedValue(undefined)
@@ -23,6 +24,15 @@ beforeEach(async () => {
 })
 
 describe('envío nativo de la ubicación (app cerrada)', () => {
+  it('en iPhone no existe ese servicio: no se pide ninguna llave ni se llama al servidor', async () => {
+    native.ios = true
+    await enableNativeUpload('m1')
+    await disableNativeUpload()
+    expect(data.createLocationDeviceToken).not.toHaveBeenCalled()
+    expect(location.configureNativeUpload).not.toHaveBeenCalled()
+    expect(data.revokeLocationDeviceTokens).not.toHaveBeenCalled()
+  })
+
   it('pide la llave de ESA persona y se la da al servicio nativo', async () => {
     await enableNativeUpload('m1')
     expect(data.createLocationDeviceToken).toHaveBeenCalledWith('m1')

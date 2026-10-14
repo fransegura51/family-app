@@ -1,5 +1,6 @@
-// Envío de avisos por Firebase Cloud Messaging (FCM, API HTTP v1) a los móviles de la APP NATIVA de Android: su dirección en push_subscriptions es
-// «fcm:<token>» (ver src/services/nativePush.ts). Los demás móviles siguen por Web Push, sin cambios.
+// Envío de avisos por Firebase Cloud Messaging (FCM, API HTTP v1) a los móviles de la APP NATIVA (Android e iPhone): su dirección en push_subscriptions
+// es «fcm:<token>» (ver src/services/nativePush.ts). En iPhone, FCM reenvía el aviso a Apple (APNs) con el bloque `apns` del mensaje. Los demás
+// móviles siguen por Web Push, sin cambios.
 //
 // COPIA IDÉNTICA en supabase/functions/send-due-reminders/fcm.ts y supabase/functions/send-family-push/fcm.ts (las Edge Functions no comparten
 // carpetas); un test compara las dos. Los errores llevan `statusCode` con la misma forma que los de web-push, para que el código que borra
@@ -79,6 +80,19 @@ export async function getFcmAccessToken(sa: FcmServiceAccount, deps: FcmDeps = {
   return json.access_token
 }
 
+// Identificador para que Apple sustituya el aviso anterior del mismo recordatorio (apns-collapse-id, máximo 64 bytes). Las etiquetas largas
+// (recordatorios: «reminder:<uuid>:<fecha>:…») se resumen con un hash estable de 16 caracteres.
+export function apnsCollapseId(tag: string): string {
+  if (new TextEncoder().encode(tag).length <= 64) return tag
+  let h1 = 0x811c9dc5
+  let h2 = 0x01000193
+  for (let i = 0; i < tag.length; i++) {
+    h1 = Math.imul(h1 ^ tag.charCodeAt(i), 0x01000193) >>> 0
+    h2 = Math.imul(h2 + tag.charCodeAt(i), 0x85ebca6b) >>> 0
+  }
+  return `h${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`
+}
+
 export function buildFcmPayload(deviceToken: string, msg: FcmMessage) {
   const data: Record<string, string> = {}
   if (msg.url) data.url = msg.url
@@ -95,6 +109,16 @@ export function buildFcmPayload(deviceToken: string, msg: FcmMessage) {
         // un móvil no lo tiene aún (app vieja), FCM usa su canal de reserva: el aviso llega igual, solo que sin ventana emergente.
         // Con etiqueta, Android sustituye el aviso anterior de ese mismo recordatorio en vez de acumularlos.
         notification: { channel_id: FCM_CHANNEL_ID, ...(msg.tag ? { tag: msg.tag } : {}) },
+      },
+      // iPhone: prioridad 10 = se entrega al momento y se enseña (los avisos de «ha llegado»), con sonido, y caduca a la vez que en Android.
+      // La caducidad es una fecha absoluta en segundos (apns-expiration).
+      apns: {
+        headers: {
+          "apns-priority": "10",
+          "apns-expiration": String(Math.floor(Date.now() / 1000) + (msg.ttlSeconds ?? 3600)),
+          ...(msg.tag ? { "apns-collapse-id": apnsCollapseId(msg.tag) } : {}),
+        },
+        payload: { aps: { sound: "default" } },
       },
     },
   }

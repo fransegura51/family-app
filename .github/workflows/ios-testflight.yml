@@ -1,0 +1,111 @@
+name: iOS TestFlight
+
+# Firma la app de iPhone y la sube a TestFlight desde un Mac de GitHub, sin Mac propio. Se lanza a mano (Actions → iOS TestFlight → Run workflow).
+# SIN PROBAR hasta que la cuenta de Apple Developer (titular: Paco) esté activa y se hayan creado los secretos de abajo: es un borrador preparado.
+# Pasos y explicación para tontos: docs/APP_IOS.md. El repositorio es público: NADA secreto en el código, todo en Settings → Secrets and variables → Actions.
+#
+# Secretos que necesita (todos salen de la web de Apple o de Firebase; se pegan en GitHub, nunca en el chat ni en el código):
+#   APPLE_TEAM_ID              Identificador del equipo (10 caracteres, en developer.apple.com → Membership details).
+#   ASC_KEY_ID                 ID de la llave de la API de App Store Connect (rol «Admin», para que Apple cree y gestione los certificados de firma).
+#   ASC_ISSUER_ID              Issuer ID de esa misma pantalla (App Store Connect → Usuarios y acceso → Integraciones → App Store Connect API).
+#   ASC_KEY_P8_B64             El archivo .p8 de esa llave, en base64 (Apple solo deja descargarlo UNA vez).
+#   GOOGLE_SERVICE_INFO_PLIST_B64  GoogleService-Info.plist de la app de iPhone en Firebase (proyecto pepa-d9315), en base64.
+# La firma es automática en la nube de Apple (certificado de distribución y perfil se crean solos con la llave de la API).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Sincronizar el proyecto de iPhone
+        run: npx cap sync ios
+      - name: Instalar las piezas nativas (CocoaPods)
+        working-directory: ios/App
+        run: pod install
+
+      # Firebase (avisos): el archivo de configuración se escribe aquí y se añade al proyecto SOLO en esta construcción.
+      - name: Añadir GoogleService-Info.plist
+        working-directory: ios/App
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_B64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_B64 }}
+        run: |
+          test -n "$GOOGLE_SERVICE_INFO_PLIST_B64" || { echo "Falta el secreto GOOGLE_SERVICE_INFO_PLIST_B64"; exit 1; }
+          echo "$GOOGLE_SERVICE_INFO_PLIST_B64" | base64 --decode > App/GoogleService-Info.plist
+          sudo gem install xcodeproj --no-document
+          ruby -rxcodeproj -e '
+            project = Xcodeproj::Project.open("App.xcodeproj")
+            target = project.targets.find { |t| t.name == "App" }
+            group = project.main_group.find_subpath("App", true)
+            ref = group.new_file("GoogleService-Info.plist")
+            target.resources_build_phase.add_file_reference(ref)
+            project.save'
+
+      - name: Llave de la API de App Store Connect
+        env:
+          ASC_KEY_P8_B64: ${{ secrets.ASC_KEY_P8_B64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+        run: |
+          test -n "$ASC_KEY_P8_B64" && test -n "$ASC_KEY_ID" || { echo "Faltan los secretos ASC_KEY_P8_B64 / ASC_KEY_ID"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/keys"
+          echo "$ASC_KEY_P8_B64" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Crear el archivo firmado (archive)
+        working-directory: ios/App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          # El número de compilación tiene que subir en cada envío a TestFlight: se usa el número de ejecución de GitHub.
+          xcodebuild archive \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/PEPA.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}" | tail -60
+
+      - name: Subir a TestFlight
+        working-directory: ios/App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${APPLE_TEAM_ID}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/PEPA.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40

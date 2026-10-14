@@ -5,3 +5,9 @@ import { Capacitor } from '@capacitor/core'
 export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform()
 }
+
+// ¿Es la app de iPhone? iOS no tiene el servicio de Android que sigue mandando la ubicación con la app cerrada (ver services/nativeUpload.ts):
+// allí la ubicación llega por el camino de siempre, mientras iOS mantiene viva la app en segundo plano.
+export function isIosApp(): boolean {
+  return Capacitor.getPlatform() === 'ios'
+}

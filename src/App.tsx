@@ -137,7 +137,7 @@ function AuthedApp() {
           esa subruta y la app se queda en blanco tras el login, sin ningún
           error visible (bug real encontrado probando el despliegue). */}
       <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <ReminderWatcher />
+        <ReminderWatcher profile={profile} />
         <UsageTracker />
         <NativeDeepLinks />
         <PushSubscriptionKeeper />

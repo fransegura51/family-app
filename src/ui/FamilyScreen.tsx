@@ -25,6 +25,8 @@ import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
+import { NotificationPrefsCard } from '@/ui/NotificationPrefsCard'
+import { TaskNotifyModeCard } from '@/ui/TaskNotifyModeCard'
 import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
@@ -218,6 +220,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         </button>
       </div>
       <NotificationsCard />
+      <NotificationPrefsCard />
+      <TaskNotifyModeCard familyId={profile.familyId} isAdmin={isAdmin} />
       <PepaPreferencesCard />
       <BatteryGuideCard />
       {error && <p className="error">{error}</p>}

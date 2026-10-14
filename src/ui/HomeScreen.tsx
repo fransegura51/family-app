@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
+import { NotificationBell } from '@/ui/NotificationBell'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
@@ -121,6 +122,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
           círculo, el logo de Pepa, la foto de Pepa". "¿Qué tenemos
           hoy?" + "Hola, Paco" se sustituyen por "Hola, Paco" como
           título y "¿Cómo te puedo ayudar?" debajo (petición real). */}
+      {/* Campana de avisos: solo en Inicio, arriba a la derecha, por encima del saludo. */}
+      <NotificationBell />
       <div className="home-header">
         <img src={pepaAvatar} alt="Pepa" className="home-pepa-avatar" />
         <div>

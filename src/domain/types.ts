@@ -643,6 +643,8 @@ export interface CalendarEvent {
   // los demás usuarios aunque sean de la familia no lo puedan ver" —
   // 'private' se filtra ya en el propio servidor (RLS), no aquí.
   visibility: 'shared' | 'private'
+  // «Aviso a toda la familia» (0261): solo tiene efecto con el ajuste familiar «Solo los miembros asignados».
+  notifyFamily?: boolean
   // FASE CALENDARIO — UN único motor, dos tipos (nunca una tabla "tasks" aparte: la fusión de dos
   // motores en uno ya se hizo una vez, migración 0040, y no se repite). Una Tarea es un calendar_events
   // más, sin hora propia inicialmente (ver allDay) — nunca se le inventa una hora ficticia.

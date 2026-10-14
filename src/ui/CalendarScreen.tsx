@@ -106,6 +106,7 @@ import {
   type RecurrencePreset,
 } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
+import { NotifyFamilyCheckbox } from '@/ui/NotifyFamilyCheckbox'
 import { errorMessage } from '@/domain/errorMessage'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
@@ -3844,6 +3845,7 @@ function EditEventForm({
   const [attachmentRemoved, setAttachmentRemoved] = useState(false)
   const [note, setNote] = useState(event.note ?? '')
   const [visibility, setVisibility] = useState<'shared' | 'private'>(event.visibility)
+  const [notifyFamily, setNotifyFamily] = useState(event.notifyFamily === true)
   const [categoryId, setCategoryId] = useState<string | null>(event.categoryId)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -3907,6 +3909,7 @@ function EditEventForm({
         // Tarea no podía ser privada ni aunque el usuario lo pidiera) — ahora el checkbox "🔒 Solo yo"
         // se ofrece y se respeta igual para Evento y para Tarea.
         visibility,
+        notifyFamily: visibility === 'private' ? false : notifyFamily,
         categoryId,
         kind: event.kind,
         ...attachment,
@@ -3954,6 +3957,7 @@ function EditEventForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
+      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       {!isTask && (
         <>
           {!allDay && (
@@ -4102,6 +4106,7 @@ function AddEventForm({
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
   const [note, setNote] = useState('')
   const [visibility, setVisibility] = useState<'shared' | 'private'>(defaultVisibility)
+  const [notifyFamily, setNotifyFamily] = useState(false)
   const [categoryId, setCategoryId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -4179,6 +4184,7 @@ function AddEventForm({
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
         visibility,
+        notifyFamily: visibility === 'private' ? false : notifyFamily,
         categoryId,
         ...attachment,
       })
@@ -4250,6 +4256,7 @@ function AddEventForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
+      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
         label="Repetición"
         summary={
@@ -4336,6 +4343,7 @@ function AddTaskForm({
   // RETOQUE — una Tarea también puede ser privada (antes no había ningún control: createEvent siempre
   // recibía 'shared' sin que el usuario pudiera elegir, bug real confirmado en pruebas con Personal).
   const [visibility, setVisibility] = useState<'shared' | 'private'>(defaultVisibility)
+  const [notifyFamily, setNotifyFamily] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -4366,6 +4374,7 @@ function AddTaskForm({
         locationLongitude: coords?.longitude ?? null,
         note: note.trim() || null,
         visibility,
+        notifyFamily: visibility === 'private' ? false : notifyFamily,
         kind: 'task',
         categoryId,
         syncToGoogle: false,
@@ -4408,6 +4417,7 @@ function AddTaskForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
+      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
         label="Repetición"
         summary={

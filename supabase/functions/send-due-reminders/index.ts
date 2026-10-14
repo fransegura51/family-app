@@ -375,6 +375,35 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
   let sent = 0
   let expired = 0
 
+  // Historial de la campana: un aviso por persona, evento y ocurrencia (aunque tenga varios móviles). Es independiente del envío y nunca lo bloquea; la
+  // clave anti-repeticiones (la misma etiqueta del recordatorio) evita duplicados. record_notifications solo la puede llamar el servidor (migración 0260).
+  const history = new Map<string, Record<string, unknown>>()
+  for (const r of reminders ?? []) {
+    if (!r.out_profile_id) continue
+    const tag = `reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`
+    const key = `${r.out_profile_id}|${tag}`
+    if (history.has(key)) continue
+    history.set(key, {
+      profile_id: r.out_profile_id,
+      bucket: "other",
+      category: "calendar_reminder",
+      title: r.out_event_title,
+      body: reminderBody({
+        anchor: r.out_anchor === "end" ? "end" : "start",
+        allDay: r.out_all_day === true,
+        localDate: r.out_local_date,
+        localTime: r.out_local_time,
+        dayOffset: r.out_day_offset ?? 0,
+      }),
+      url: "/calendario",
+      dedupe_key: tag,
+    })
+  }
+  if (history.size > 0) {
+    const { error: historyError } = await supabaseAdmin.rpc("record_notifications", { p_items: [...history.values()] })
+    if (historyError) console.error("record_notifications failed (calendar)", historyError)
+  }
+
   for (const r of reminders ?? []) {
     // La hora y la fecha vienen ya calculadas en Europe/Madrid por la base (claim_due_reminders, migración 0197).
     // Deno corre en UTC: formatear aquí con toLocaleTimeString sin zona daba la hora UTC (16:30 de verano → «14:30»).

@@ -1,0 +1,4 @@
+-- Deshace 0263: vuelve send_family_push (0243) y claim_due_forecast_reminders (0155) a su versión anterior sin historial.
+-- Reponer: volver a ejecutar el bloque «create or replace function private.send_family_push ... revoke» de 0243_location_alerts_reliability.sql
+-- y el bloque «create or replace function public.claim_due_forecast_reminders ... grant» de 0155_forecast_payments.sql.
+-- (El historial ya anotado en user_notifications no se toca: caduca solo a los 30 días.)

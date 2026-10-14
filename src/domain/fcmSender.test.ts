@@ -4,6 +4,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { apnsCollapseId, buildFcmPayload, FCM_PREFIX, getFcmAccessToken, resetFcmTokenCacheForTests, sendFcm, type FcmServiceAccount } from '../../supabase/functions/send-due-reminders/fcm'
 import dueReminderFcm from '../../supabase/functions/send-due-reminders/fcm.ts?raw'
 import familyPushFcm from '../../supabase/functions/send-family-push/fcm.ts?raw'
+import userPushFcm from '../../supabase/functions/send-user-push/fcm.ts?raw'
+import userPushIndex from '../../supabase/functions/send-user-push/index.ts?raw'
 import dueReminderIndex from '../../supabase/functions/send-due-reminders/index.ts?raw'
 import familyPushIndex from '../../supabase/functions/send-family-push/index.ts?raw'
 
@@ -142,12 +144,13 @@ describe('envío y móviles caducados', () => {
 })
 
 describe('las dos Edge Functions usan el mismo código', () => {
-  it('fcm.ts es idéntico en send-due-reminders y en send-family-push', () => {
+  it('fcm.ts es idéntico en send-due-reminders, send-family-push y send-user-push', () => {
     expect(dueReminderFcm).toBe(familyPushFcm)
+    expect(userPushFcm).toBe(familyPushFcm)
   })
   it('la dirección «fcm:» decide el camino y el resto sigue por Web Push', () => {
     expect(FCM_PREFIX).toBe('fcm:')
-    for (const src of [dueReminderIndex, familyPushIndex]) {
+    for (const src of [dueReminderIndex, familyPushIndex, userPushIndex]) {
       expect(src).toContain('sub.endpoint.startsWith(FCM_PREFIX)')
       expect(src).toContain('await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload), options)')
       // Todo envío pasa por deliverPush: el único webpush.sendNotification directo es el de dentro del propio helper.
@@ -155,7 +158,7 @@ describe('las dos Edge Functions usan el mismo código', () => {
     }
   })
   it('la cuenta de servicio sale del Vault (secreto fcm_service_account) y, si falta, solo fallan los móviles nativos', () => {
-    for (const src of [dueReminderIndex, familyPushIndex]) {
+    for (const src of [dueReminderIndex, familyPushIndex, userPushIndex]) {
       expect(src).toContain('"fcm_service_account"')
       expect(src).toContain('FCM sin configurar')
     }
@@ -163,5 +166,33 @@ describe('las dos Edge Functions usan el mismo código', () => {
   it('el servidor sigue borrando suscripciones caducadas (404/410) para los dos caminos', () => {
     expect(dueReminderIndex).toContain('status === 404 || status === 410')
     expect(familyPushIndex).toContain('status === 404 || status === 410')
+    expect(userPushIndex).toContain('status === 404 || status === 410')
+  })
+})
+
+describe('send-user-push (aviso a UNA persona)', () => {
+  it('solo lee las suscripciones de la persona indicada (nunca las de toda la familia)', () => {
+    expect(userPushIndex).toContain('.eq("profile_id", input.profile_id)')
+    expect(userPushIndex).not.toContain('family_id')
+  })
+  it('exige el secreto compartido y un id de persona válido', () => {
+    expect(userPushIndex).toContain('x-cron-secret')
+    expect(userPushIndex).toContain('return new Response("unauthorized", { status: 401 })')
+    expect(userPushIndex).toContain('return new Response("bad profile_id", { status: 400 })')
+  })
+  it('responde 502 si había a quién avisar y falló todo, para que el buzón reintente', () => {
+    expect(userPushIndex).toContain('if (failed > 0 && sent === 0)')
+    expect(userPushIndex).toContain('{ status: 502 }')
+  })
+  it('solo acepta rutas internas como destino del aviso', () => {
+    expect(userPushIndex).toContain('input.url.startsWith("/") && !input.url.startsWith("//")')
+  })
+})
+
+describe('send-due-reminders anota los avisos en el historial', () => {
+  it('una vez por persona y recordatorio, con la misma etiqueta anti-repeticiones, y sin bloquear el envío', () => {
+    expect(dueReminderIndex).toContain('rpc("record_notifications"')
+    expect(dueReminderIndex).toContain('dedupe_key: tag')
+    expect(dueReminderIndex).toContain('if (historyError) console.error("record_notifications failed (calendar)", historyError)')
   })
 })

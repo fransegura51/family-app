@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { listActiveReminders, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
+import { getTaskNotifyModeCached } from '@/data/notifications'
+import { listFamilyMembers } from '@/data/family'
+import { isEventRecipient, type RecipientMember } from '@/domain/eventRecipients'
+import type { Profile } from '@/domain/types'
 import { expandOccurrences } from '@/domain/calendar'
 import { daysBetweenDates, localReminderAction, madridParts, reminderBody, reminderTag } from '@/domain/reminderIdentity'
 import { hasPushSubscription, showNotification } from '@/services/notifications'
@@ -74,7 +78,24 @@ function todayStr(): string {
 // dispositivo NO tiene alta, o si en un margen de 2 minutos no ha llegado el aviso del servidor (recibo del
 // service worker). Ver localReminderAction en domain/reminderIdentity.ts para el porqué (iOS no reemplaza por
 // etiqueta de forma fiable).
-export function ReminderWatcher() {
+// Ajuste familiar de destinatarios + miembros de la familia, para filtrar los avisos locales igual que el servidor. Se pide como mucho cada 5 minutos
+// (no en cada comprobación de 30 s). Con el ajuste sin elegir no se filtra nada (sigue todo como antes).
+let recipientContext: { at: number; mode: 'all' | 'assigned' | null; members: RecipientMember[] } | null = null
+async function loadRecipientContext(): Promise<NonNullable<typeof recipientContext>> {
+  const now = Date.now()
+  if (recipientContext && now - recipientContext.at < 5 * 60 * 1000) return recipientContext
+  const mode = await getTaskNotifyModeCached().catch(() => null)
+  // Sin ajuste elegido no hace falta la lista de miembros.
+  const members = mode === null ? [] : await listFamilyMembers().catch(() => [])
+  recipientContext = {
+    at: now,
+    mode,
+    members: members.map((m) => ({ id: m.id, linkedProfileId: m.linkedProfileId, memberType: m.memberType })),
+  }
+  return recipientContext
+}
+
+export function ReminderWatcher({ profile }: { profile: Profile }) {
   const shownRef = useRef<Set<string>>(loadShown())
   const nagTimesRef = useRef<Record<string, number>>(loadNagTimes())
 
@@ -85,8 +106,11 @@ export function ReminderWatcher() {
       // App nativa ya registrada en Firebase: el servidor es el único que avisa de los recordatorios (no hay recibo del service worker que
       // permita saber si ya llegó), así que no se avisa por duplicado desde aquí ni se gastan consultas.
       if (isNativeApp() && (await hasPushSubscription())) return
-      const reminders = await listActiveReminders()
+      const allReminders = await listActiveReminders()
       if (cancelled) return
+      const ctx = await loadRecipientContext()
+      if (cancelled) return
+      const reminders = allReminders.filter((r) => isEventRecipient(r, profile, ctx.members, ctx.mode))
       const now = Date.now()
       const subscribed = await hasPushSubscription()
       if (cancelled) return
@@ -130,6 +154,8 @@ export function ReminderWatcher() {
 
       const [events, eventCompletions] = await Promise.all([listUpcomingEvents(), listEventCompletions()])
       if (cancelled) return
+      const ctx = await loadRecipientContext()
+      if (cancelled) return
 
       function shouldNag(key: string): boolean {
         const last = nagTimesRef.current[key]
@@ -143,6 +169,7 @@ export function ReminderWatcher() {
 
       for (const ev of events) {
         if (ev.allDay) continue
+        if (!isEventRecipient(ev, profile, ctx.members, ctx.mode)) continue
         if (!expandOccurrences(ev, today, today).includes(today)) continue
         const evMinutes = new Date(ev.startAt).getHours() * 60 + new Date(ev.startAt).getMinutes()
         if (evMinutes >= nowMinutes) continue
@@ -174,6 +201,8 @@ export function ReminderWatcher() {
       cancelled = true
       clearInterval(interval)
     }
+    // El perfil solo cambia al cambiar de cuenta; se vuelve a montar entonces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return null

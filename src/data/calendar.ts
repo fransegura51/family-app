@@ -25,6 +25,7 @@ interface EventRow {
   attachment_original_name: string | null
   note: string | null
   visibility: string
+  notify_family: boolean | null
   kind: string
   category_id: string | null
   calendar_event_members: { member_id: string }[]
@@ -33,7 +34,7 @@ interface EventRow {
 
 const EVENT_COLUMNS =
   'id, family_id, title, description, start_at, end_at, all_day, color, recurrence_rule, exception_dates, points, ' +
-  'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, visibility, ' +
+  'location_label, location_latitude, location_longitude, attachment_storage_path, attachment_kind, attachment_original_name, note, visibility, notify_family, ' +
   'kind, category_id, calendar_event_members(member_id), calendar_event_reminders(minutes_before, anchor)'
 
 function toEvent(row: EventRow): CalendarEvent {
@@ -62,6 +63,7 @@ function toEvent(row: EventRow): CalendarEvent {
     attachmentOriginalName: row.attachment_original_name,
     note: row.note,
     visibility: row.visibility === 'private' ? 'private' : 'shared',
+    notifyFamily: row.notify_family === true,
     kind: row.kind === 'task' ? 'task' : 'event',
     categoryId: row.category_id,
   }
@@ -193,6 +195,8 @@ export async function createEvent(input: {
   attachmentOriginalName?: string | null
   note?: string | null
   visibility?: 'shared' | 'private'
+  // Casilla «Aviso a toda la familia» (solo tiene efecto con el ajuste familiar «Solo los miembros asignados»).
+  notifyFamily?: boolean
   // Previsión de pagos: su evento derivado es puramente visual y nunca debe salir hacia el Google
   // Calendar personal de nadie. Sin indicar, se sincroniza igual que siempre (comportamiento idéntico
   // para todo lo que ya existía antes de esta columna).
@@ -230,6 +234,7 @@ export async function createEvent(input: {
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
+      notify_family: input.notifyFamily ?? false,
       sync_to_google: input.syncToGoogle ?? true,
       kind: input.kind ?? 'event',
       category_id: input.categoryId ?? null,
@@ -274,6 +279,8 @@ export async function updateEvent(
     attachmentOriginalName?: string | null
     note?: string | null
     visibility?: 'shared' | 'private'
+    // Si no se indica, la casilla «Aviso a toda la familia» queda como estaba (los cambios que no pasan por el formulario no la borran).
+    notifyFamily?: boolean
     syncToGoogle?: boolean
     categoryId?: string | null
   },
@@ -296,6 +303,7 @@ export async function updateEvent(
       attachment_original_name: input.attachmentOriginalName ?? null,
       note: input.note ?? null,
       visibility: input.visibility ?? 'shared',
+      ...(input.notifyFamily !== undefined ? { notify_family: input.notifyFamily } : {}),
       sync_to_google: input.syncToGoogle ?? true,
       category_id: input.categoryId ?? null,
     })
@@ -602,6 +610,10 @@ export interface ReminderEvent {
   allDay: boolean // evento de todo el día: su hora interna no es una hora real, el aviso no la dice
   anchor: ReminderAnchor
   reminderMinutes: number
+  // Para saber si el aviso LOCAL me corresponde según el ajuste familiar de destinatarios (domain/eventRecipients.ts).
+  visibility: 'shared' | 'private'
+  memberIds: string[]
+  notifyFamily: boolean
 }
 
 // Recordatorios activos (evento futuro, o su fin todavía por llegar si
@@ -612,7 +624,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('calendar_event_reminders')
-    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at, all_day)')
+    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at, all_day, visibility, notify_family, calendar_event_members(member_id))')
     .gte('calendar_events.start_at', weekAgo)
 
   if (error) throw error
@@ -620,7 +632,16 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
     data as unknown as {
       minutes_before: number
       anchor: string
-      calendar_events: { id: string; title: string; start_at: string; end_at: string | null; all_day: boolean | null }
+      calendar_events: {
+        id: string
+        title: string
+        start_at: string
+        end_at: string | null
+        all_day: boolean | null
+        visibility: string | null
+        notify_family: boolean | null
+        calendar_event_members: { member_id: string }[] | null
+      }
     }[]
   )
     .map((row) => {
@@ -635,6 +656,9 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
             allDay: row.calendar_events.all_day === true,
             anchor,
             reminderMinutes: row.minutes_before,
+            visibility: row.calendar_events.visibility === 'private' ? ('private' as const) : ('shared' as const),
+            memberIds: (row.calendar_events.calendar_event_members ?? []).map((m) => m.member_id),
+            notifyFamily: row.calendar_events.notify_family === true,
           }
         : null
     })

@@ -40,8 +40,9 @@ const SUMMARIES: Record<string, string> = {
 // Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan
 // tráfico de la base de datos y la app solo guarda el enlace. El <video> no se crea hasta que se toca «Ver vídeo» (nada se descarga antes).
 const HELP_VIDEO_BASE = 'https://pepafamilyapp.es/ayuda/'
-const HELP_VIDEOS: Record<string, { src: string; poster: string }> = {
-  '/calendario': { src: `${HELP_VIDEO_BASE}calendario.mp4`, poster: `${HELP_VIDEO_BASE}calendario.jpg` },
+const HELP_VIDEOS: Record<string, { src: string; poster: string; dur: string }> = {
+  '/calendario': { src: `${HELP_VIDEO_BASE}calendario.mp4`, poster: `${HELP_VIDEO_BASE}calendario.jpg`, dur: '1 min 27 s' },
+  '/compras': { src: `${HELP_VIDEO_BASE}compras.mp4`, poster: `${HELP_VIDEO_BASE}compras.jpg`, dur: '1 min 35 s' },
 }
 
 interface HelpItem {
@@ -395,7 +396,7 @@ function HelpCard({
   onToggle: () => void
   highlightedItem?: string | null
   cardRef?: (el: HTMLDivElement | null) => void
-  video?: { src: string; poster: string }
+  video?: { src: string; poster: string; dur: string }
 }) {
   const [showVideo, setShowVideo] = useState(false)
   return (
@@ -428,7 +429,7 @@ function HelpCard({
               </video>
             ) : (
               <button type="button" style={{ margin: '4px 0 12px', width: '100%' }} onClick={() => setShowVideo(true)}>
-                ▶ Ver vídeo explicativo (1 min 27 s, con la voz de Pepa)
+                ▶ Ver vídeo explicativo ({video.dur}, con la voz de Pepa)
               </button>
             ))}
           {details.map((item) => (

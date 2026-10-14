@@ -14,7 +14,7 @@ Textos listos para copiar en App Store Connect cuando la cuenta de Apple (titula
 | Categoría secundaria | Productividad | |
 | URL de privacidad | https://fransegura51.github.io/family-app/privacidad.html | |
 | URL de marketing | https://fransegura51.github.io/family-app/ | |
-| URL de soporte | **pendiente**: Apple exige una página de contacto (puede ser una sección «Contacto» de la web) | |
+| URL de soporte | https://fransegura51.github.io/family-app/soporte.html (creada el 14/10/2026) | |
 | Derechos de autor | `2026 Francisco José Segura Hortelano` | |
 
 Si «PEPA» ya está cogido por otra app, Apple lo dirá al crear la ficha. Plan B para el nombre: `PEPA Familia`, `PEPA: Agenda familiar`.
@@ -120,6 +120,5 @@ Hay que hacerlas con la «Familia prueba» (datos inventados, sin nombres reales
 
 ## Qué falta decidir
 - Correo de contacto público: `pepafamily8@gmail.com` (decidido el 14/10/2026; ya está en la política de privacidad y en los términos).
-- Página de soporte (URL obligatoria).
-- Teléfono público: Apple lo muestra a vendedores («traders») en la UE.
+- Teléfono público: el de Jennifer (decidido). Se escribe SOLO en App Store Connect, nunca en este repositorio (es público). Apple lo muestra en la ficha a los vendedores («traders») de la UE.
 - Si en el futuro se cobra: precios y compras dentro de la app (Apple se queda 15-30 %).

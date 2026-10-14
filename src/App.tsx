@@ -45,6 +45,7 @@ const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m)
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
 const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
 const AdminUsageScreen = lazy(() => import('@/ui/AdminUsageScreen').then((m) => ({ default: m.AdminUsageScreen })))
+const CommunityRoutes = lazy(() => import('@/ui/community/CommunityRoutes').then((m) => ({ default: m.CommunityRoutes })))
 
 // Bug real reportado varias veces ("se queda la pantalla en gris/
 // blanco al volver del banco"): enable-banking-auth-callback volvía
@@ -164,6 +165,7 @@ function AuthedApp() {
             <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />
+            <Route path="/comunidad/*" element={<CommunityRoutes />} />
           </Route>
         </Routes>
         </Suspense>

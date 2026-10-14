@@ -1,0 +1,251 @@
+/* Comunidad PEPA — estilos base compartidos (marco, cabecera, menú, migas, diálogos, tarjetas). Cada pantalla puede añadir los suyos en su propio archivo .css. */
+
+.community-screen {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* Cabecera oficial COMUNIDAD_MASTER_v1: se ve ENTERA (sin recortar a Pepa ni el rótulo). En móvil no ocupa más de ~150 px de alto; en ordenador, más grande. */
+.community-header {
+  display: flex;
+  justify-content: center;
+  margin: 0 -4px 6px;
+}
+
+.community-header-img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 150px;
+  object-fit: contain;
+  border-radius: 14px;
+}
+
+@media (min-width: 700px) {
+  .community-header-img {
+    max-height: 280px;
+  }
+}
+
+.community-nav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+}
+
+.community-nav-link {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  color: inherit;
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.community-nav-link.active {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+}
+
+.community-preview-banner,
+.community-closed {
+  background: #fff7e0;
+  border: 1px solid #f0d58c;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.community-crumbs ol {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 4px 0 8px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.community-crumbs li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.community-crumbs a {
+  color: var(--primary, #4c6ef5);
+}
+
+.community-avatar-picker {
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.community-avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 6px;
+}
+
+.community-avatar-option {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.community-avatar-option.selected {
+  outline: 3px solid var(--primary, #4c6ef5);
+}
+
+.community-rules {
+  padding-left: 20px;
+}
+
+.community-rules li {
+  margin-bottom: 6px;
+}
+
+.community-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0;
+}
+
+/* Tarjeta compacta de publicación (toda la tarjeta se toca). */
+.community-card {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border, #e3e7ef);
+  background: var(--card-bg, #fff);
+  color: inherit;
+  text-decoration: none;
+}
+
+.community-card:hover {
+  border-color: var(--primary, #4c6ef5);
+}
+
+.community-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.community-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+.community-card-title {
+  margin: 2px 0;
+  font-size: 16px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.community-card-excerpt {
+  margin: 0;
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.community-card-thumb {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.community-card-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
+.community-blocked-card {
+  position: relative;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px dashed var(--border, #cbd2e0);
+  background: repeating-linear-gradient(45deg, #f3f4f7, #f3f4f7 8px, #eceef3 8px, #eceef3 16px);
+  filter: blur(0);
+  text-align: center;
+  font-size: 14px;
+}
+
+.community-tag-official {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e7f0ff;
+  color: #1c4ea8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.community-tag-featured {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff1cc;
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.community-tag-unanswered {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #ffe9e6;
+  color: #a23a2a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.community-richtext p,
+.community-richtext ul,
+.community-richtext ol {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+
+.community-richtext ul,
+.community-richtext ol {
+  padding-left: 22px;
+}
+
+.community-external-link {
+  color: var(--primary, #4c6ef5);
+  text-decoration: underline;
+}
+
+.community-external-hint {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  white-space: nowrap;
+}

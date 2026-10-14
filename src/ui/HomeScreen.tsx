@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
 import { NotificationBell } from '@/ui/NotificationBell'
+import { CommunityHomeEntry } from '@/ui/community/CommunityHomeEntry'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
@@ -138,6 +139,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <AttentionCard items={attentionItems} />
 
       <PhotoBanner />
+
+      <CommunityHomeEntry />
 
       <NotificationsOnboarding />
 

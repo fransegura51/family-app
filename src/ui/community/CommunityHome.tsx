@@ -10,6 +10,7 @@ import { homeCrumbs, paths } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
 import '@/ui/community/communityHome.css'
 import '@/ui/community/communityLists.css'
+import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 
 // Portada de Comunidad (la cabecera oficial y el menú ya los pone CommunityLayout). Accesos a las dos secciones, buscador, «Crear publicación» y bloques
 // dinámicos: Más recientes, Más comentados, Preguntas sin responder y Para mí.
@@ -98,6 +99,7 @@ export function CommunityHome() {
   return (
     <>
       <Breadcrumbs crumbs={homeCrumbs} />
+      <InviteFriendsButton />
 
       <nav className="community-home-sections" aria-label="Secciones de Comunidad">
         {SECTIONS.map((s) => (

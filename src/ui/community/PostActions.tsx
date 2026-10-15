@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { blockUser, deletePost, followUser, toggleFollowConversation, toggleLike, toggleSave, unfollowUser } from '@/data/community'
+import { blockUser, deletePost, followUser, listFollowing, toggleFollowConversation, toggleLike, toggleSave, unfollowUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import type { FollowMode, PostDetail } from '@/domain/community'
 import { toggleCount } from '@/domain/communityPost'
@@ -36,8 +36,23 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
 
   const interactive = detail.canInteract
   const authorAlias = detail.authorDeleted ? 'Usuario eliminado' : (detail.authorAlias ?? 'esta persona')
-  const canFollowAuthor = !detail.isMine && !detail.authorDeleted
+  // El servidor no permite seguir ni bloquear a las cuentas oficiales (Pepa / Equipo PEPA): esos botones ni se enseñan.
+  const canFollowAuthor = !detail.isMine && !detail.authorDeleted && !detail.authorIsOfficial
   const canBlockAuthor = !detail.isMine && !detail.authorDeleted && !detail.authorIsOfficial
+
+  // El modo de seguimiento actual no viene en el detalle: solo si YA se sigue al autor se pide la lista (una llamada, una vez) para preseleccionarlo.
+  const modeLoaded = useRef(false)
+  const wantsMode = interactive && canFollowAuthor && detail.followingAuthor
+  useEffect(() => {
+    if (!wantsMode || modeLoaded.current) return
+    modeLoaded.current = true
+    listFollowing()
+      .then((list) => {
+        const mine = list.find((f) => f.id === detail.authorId)
+        if (mine) setFollowMode((cur) => cur || mine.notifyMode)
+      })
+      .catch(() => undefined) // Sin el dato el selector queda en «Cambiar avisos…»: no es grave.
+  }, [wantsMode, detail.authorId])
 
   // Plantilla común: pide participación, evita dobles toques y deja el mensaje de error si algo falla.
   async function run(key: string, work: () => Promise<void>) {

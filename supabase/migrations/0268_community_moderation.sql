@@ -103,6 +103,9 @@ begin
   if v_author is null then
     raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
   end if;
+  if p_type = 'comment' and p_status <> 'published' then
+    delete from public.community_post_summaries where post_id = (select c.post_id from public.community_comments c where c.id = p_id);
+  end if;
   return v_author;
 end;
 $$;
@@ -601,21 +604,35 @@ begin
 end;
 $$;
 
+-- Solo se pueden cambiar a mano los parámetros TÉCNICOS de uso y antispam. Las reglas cerradas por la especificación (15 comentarios, 10 para actualizar el
+-- resumen, 6 horas, 3 por hora, 30 días de borrador y de expulsión, 5 fotos, 10 búsquedas, años de retención del historial, solo adultos) NO se pueden
+-- tocar desde el Centro de Mando: la apertura se cambia con community_admin_set_launch y lo demás solo con una migración.
 create or replace function public.community_admin_set_setting(p_key text, p_value integer)
 returns void
 language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_min integer;
+  v_max integer;
 begin
   perform private.community_require_admin();
-  if p_value is null or p_value < 0 or p_value > 100000 then
-    raise exception 'BAD_KIND' using errcode = 'P0001';
-  end if;
-  update public.community_settings set value = to_jsonb(p_value), updated_at = now() where key = p_key and jsonb_typeof(value) = 'number';
-  if not found then
+  select r.lo, r.hi into v_min, v_max from (values
+    ('rate_posts_per_hour', 1, 100),
+    ('rate_comments_per_10min', 1, 200),
+    ('rate_reports_per_day', 1, 200),
+    ('report_autohide_distinct_reporters', 1, 10),
+    ('max_links_per_post', 1, 50),
+    ('ai_daily_cap', 0, 5000)
+  ) as r(k, lo, hi) where r.k = p_key;
+  if v_min is null then
     raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
   end if;
+  if p_value is null or p_value < v_min or p_value > v_max then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  update public.community_settings set value = to_jsonb(p_value), updated_at = now() where key = p_key;
   perform private.community_log('setting', 'setting', null, p_key || '=' || p_value);
 end;
 $$;
@@ -735,8 +752,13 @@ begin
   update public.community_comments set status = 'deleted', body = '', photo_path = null where author_id = p_cp and status <> 'deleted';
   get diagnostics v_k = row_count;
   v_n := v_n + v_k;
+  -- Recetas públicas del autor: se vacían (ingredientes, pasos, versiones antiguas y foto), no solo se oculta la publicación.
+  perform private.community_blank_recipe(r.id) from public.community_recipes r where r.author_id = p_cp;
   delete from public.community_recipe_ratings where profile_id = p_cp;
-  delete from public.community_drafts where profile_id = p_cp;
+  -- Datos privados ligados al perfil seudónimo: borradores (con sus fotos), búsquedas, lectura, avisos pendientes, me gusta, guardados y seguimientos.
+  perform private.community_purge_private_data(p_cp);
+  delete from public.community_post_likes where profile_id = p_cp;
+  delete from public.community_comment_likes where profile_id = p_cp;
   return v_n;
 end;
 $$;
@@ -774,6 +796,9 @@ begin
   end if;
   if p_scope not in ('all_my_content', 'specific') or (p_scope = 'specific' and (p_target_type not in ('post', 'comment') or p_target_id is null)) then
     raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  if (select count(*) from public.community_removal_requests q where q.profile_id = v_cp and q.created_at > now() - interval '1 day') >= 5 then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
   end if;
   insert into public.community_removal_requests (profile_id, scope, target_type, target_id, detail)
   values (v_cp, p_scope, p_target_type, p_target_id, left(btrim(coalesce(p_detail, '')), 2000))

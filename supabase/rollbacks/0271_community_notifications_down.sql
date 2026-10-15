@@ -8,6 +8,7 @@ drop function if exists private.community_followed_post();
 drop function if exists public.community_news_breakdown();
 drop function if exists private.community_run_notices();
 drop function if exists private.community_comment_events();
+drop function if exists private.community_purge_private_data(uuid);
 drop function if exists private.community_in_general_window(uuid);
 drop function if exists private.community_in_personal_window(uuid);
 drop function if exists private.community_local_time(uuid);

@@ -679,3 +679,32 @@
     height: 200px;
   }
 }
+
+.community-article-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.community-article-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.community-article-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+
+.community-article-table th,
+.community-article-table td {
+  border-bottom: 1px solid var(--border, #d9dee8);
+  padding: 6px 8px;
+  text-align: right;
+}
+
+.community-article-table th[scope='row'],
+.community-article-table th:first-child {
+  text-align: left;
+}

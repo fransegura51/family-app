@@ -4,6 +4,7 @@ import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
 import { NotificationBell } from '@/ui/NotificationBell'
 import { CommunityHomeEntry } from '@/ui/community/CommunityHomeEntry'
+import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
 import { listFamilyMembers } from '@/data/family'
@@ -141,6 +142,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <PhotoBanner />
 
       <CommunityHomeEntry />
+      <InviteFriendsButton />
 
       <NotificationsOnboarding />
 

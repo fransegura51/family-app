@@ -32,6 +32,29 @@ export function ArticleSources({ raw }: { raw: unknown }) {
       ) : (
         <p className="muted">Este artículo no indica fuentes.</p>
       )}
+      {info.table && (
+        <div className="community-article-table-wrap">
+          <table className="community-article-table">
+            <caption>Datos usados{info.table.unit ? ` (${info.table.unit})` : ''}</caption>
+            <thead>
+              <tr>
+                {info.table.columns.map((c, i) => (
+                  <th key={i} scope="col">
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {info.table.rows.map((r, i) => (
+                <tr key={i}>
+                  {r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j}>{c}</td>))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       {info.methodology && (
         <>
           <h3>Cómo se ha hecho</h3>

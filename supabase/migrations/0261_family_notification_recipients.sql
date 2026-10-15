@@ -175,7 +175,7 @@ begin
   -- (families.task_notify_mode). Con el modo sin elegir (null) da exactamente lo de siempre: asignados + administradores; los privados,
   -- solo quien los creó.
   candidates as (
-    select dr.reminder_id, dr.event_id, dr.title, dr.all_day, dr.anchor, dr.minutes_before, dr.occ_date, dr.anchor_at,
+    select distinct dr.reminder_id, dr.event_id, dr.title, dr.all_day, dr.anchor, dr.minutes_before, dr.occ_date, dr.anchor_at,
            ps.id as sub_id, ps.endpoint as ep, ps.p256dh as p256dh_key, ps.auth as auth_key, rc.profile_id as recipient_profile_id
     from due_reminders dr
     cross join lateral private.event_notification_recipients(dr.event_id) rc

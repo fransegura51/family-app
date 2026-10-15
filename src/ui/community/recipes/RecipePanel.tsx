@@ -26,7 +26,7 @@ export function RecipePanel({ detail, onChanged }: { detail: PostDetail; onChang
   const base = isValidServings(recipe.servings) ? recipe.servings : null
   const diners = target ?? base
   const steps = splitSteps(recipe.steps)
-  const summary: RatingSummary = rating ?? { avgRating: detail.avgRating, ratingCount: detail.ratingCount, myRating: recipe.myRating }
+  const summary: RatingSummary = rating ?? { avgRating: detail.avgRating, ratingCount: detail.ratingCount, myRating: recipe.myRating, myReview: recipe.myReview ?? null }
   const families = detail.importCount
   const author = authorLabel(detail.authorAlias, detail.authorDeleted)
   const canRate = detail.canInteract && !detail.isMine

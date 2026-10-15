@@ -105,34 +105,9 @@ begin
 end;
 $$;
 
-create or replace function public.community_public_recent(p_section text default null, p_limit integer default 20)
-returns jsonb
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-begin
-  if not private.community_launched() then
-    return '[]'::jsonb;
-  end if;
-  return coalesce((
-    select jsonb_agg(jsonb_build_object('id', p.id, 'kind', p.kind, 'section', p.section,
-      'topic_label', (select t.label from public.community_topics t where t.id = p.topic_id), 'title', p.title, 'excerpt', private.community_plain_excerpt(p.body),
-      'author_alias', case when a.deleted_at is not null then 'Usuario eliminado' else a.alias end, 'created_at', p.created_at,
-      'thumb_path', (select ph.storage_path from public.community_post_photos ph where ph.post_id = p.id order by ph.position limit 1)) order by p.created_at desc)
-    from (select * from public.community_posts x where x.status = 'published' and (p_section is null or x.section = p_section) order by x.created_at desc
-          limit least(greatest(coalesce(p_limit, 20), 1), 50)) p
-    join public.community_profiles a on a.id = p.author_id
-  ), '[]'::jsonb);
-end;
-$$;
-
 revoke all on function public.community_public_get_post(uuid) from public;
 revoke all on function public.community_public_get_comments(uuid, integer) from public;
 revoke all on function public.community_public_sitemap(integer, integer) from public;
-revoke all on function public.community_public_recent(text, integer) from public;
 grant execute on function public.community_public_get_post(uuid) to anon, authenticated;
 grant execute on function public.community_public_get_comments(uuid, integer) to anon, authenticated;
 grant execute on function public.community_public_sitemap(integer, integer) to anon, authenticated;
-grant execute on function public.community_public_recent(text, integer) to anon, authenticated;

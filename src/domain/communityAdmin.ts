@@ -872,26 +872,35 @@ export const LAUNCH_KEY = 'launch_enabled'
 export interface SettingMeta {
   label: string
   unit?: string
+  // Solo se pueden cambiar los parámetros autorizados (lista blanca que impone también el servidor); el resto lo fija la especificación aprobada.
+  editable: boolean
+  min?: number
+  max?: number
 }
+
+export const FIXED_SETTING_LABEL = 'Fijado por las reglas aprobadas'
 
 // Nombre corto en español de cada parámetro conocido (la descripción larga la manda el servidor).
 export const SETTING_META: Record<string, SettingMeta> = {
-  summary_comment_threshold: { label: 'Comentarios para el resumen de Pepa', unit: 'comentarios' },
-  summary_refresh_every: { label: 'Comentarios nuevos para renovar el resumen', unit: 'comentarios' },
-  pepa_unanswered_hours: { label: 'Horas sin respuesta para que Pepa conteste', unit: 'horas' },
-  pepa_max_per_hour: { label: 'Intervenciones de Pepa por hora', unit: 'por hora' },
-  report_autohide_distinct_reporters: { label: 'Denunciantes distintos para ocultar provisionalmente', unit: 'personas' },
-  rate_posts_per_hour: { label: 'Publicaciones por persona y hora', unit: 'por hora' },
-  rate_comments_per_10min: { label: 'Comentarios por persona cada 10 minutos', unit: 'cada 10 min' },
-  rate_reports_per_day: { label: 'Denuncias por persona y día', unit: 'por día' },
-  draft_days: { label: 'Días que se guarda un borrador', unit: 'días' },
-  first_ban_days: { label: 'Duración de la primera expulsión', unit: 'días' },
-  max_photos_per_post: { label: 'Fotos por publicación', unit: 'fotos' },
-  max_links_per_post: { label: 'Enlaces por publicación o comentario', unit: 'enlaces' },
-  search_history_size: { label: 'Búsquedas recientes que se guardan', unit: 'búsquedas' },
-  admin_log_retention_years: { label: 'Años que se conserva el historial de administración', unit: 'años' },
-  ai_daily_cap: { label: 'Tope diario de llamadas de IA (0 = sin tope)', unit: 'al día' },
-  [LAUNCH_KEY]: { label: 'Comunidad abierta a todos' },
+  // Editables (lista blanca).
+  rate_posts_per_hour: { label: 'Publicaciones por persona y hora', unit: 'por hora', editable: true, min: 1, max: 100 },
+  rate_comments_per_10min: { label: 'Comentarios por persona cada 10 minutos', unit: 'cada 10 min', editable: true, min: 1, max: 200 },
+  rate_reports_per_day: { label: 'Denuncias por persona y día', unit: 'por día', editable: true, min: 1, max: 200 },
+  report_autohide_distinct_reporters: { label: 'Denunciantes distintos para ocultar provisionalmente', unit: 'personas', editable: true, min: 1, max: 10 },
+  max_links_per_post: { label: 'Enlaces por publicación o comentario', unit: 'enlaces', editable: true, min: 1, max: 50 },
+  ai_daily_cap: { label: 'Tope diario de llamadas de IA (0 = sin tope)', unit: 'al día', editable: true, min: 0, max: 5000 },
+  // Fijados por la especificación aprobada: solo lectura.
+  summary_comment_threshold: { label: 'Comentarios para el resumen de Pepa', unit: 'comentarios', editable: false },
+  summary_refresh_every: { label: 'Comentarios nuevos para renovar el resumen', unit: 'comentarios', editable: false },
+  pepa_unanswered_hours: { label: 'Horas sin respuesta para que Pepa conteste', unit: 'horas', editable: false },
+  pepa_max_per_hour: { label: 'Intervenciones de Pepa por hora', unit: 'por hora', editable: false },
+  draft_days: { label: 'Días que se guarda un borrador', unit: 'días', editable: false },
+  first_ban_days: { label: 'Duración de la primera expulsión', unit: 'días', editable: false },
+  max_photos_per_post: { label: 'Fotos por publicación', unit: 'fotos', editable: false },
+  search_history_size: { label: 'Búsquedas recientes que se guardan', unit: 'búsquedas', editable: false },
+  admin_log_retention_years: { label: 'Años que se conserva el historial de administración', unit: 'años', editable: false },
+  participants_adults_only: { label: 'Solo participan personas adultas', editable: false },
+  [LAUNCH_KEY]: { label: 'Comunidad abierta a todos', editable: false },
 }
 
 export type SettingKind = 'number' | 'switch' | 'other'
@@ -903,6 +912,10 @@ export interface AdminSetting {
   description: string
   value: number | null
   kind: SettingKind
+  // false = solo lectura («Fijado por las reglas aprobadas»). Un parámetro desconocido NUNCA es editable.
+  editable: boolean
+  min: number
+  max: number
 }
 
 // Los interruptores son los parámetros que solo valen 0 o 1 (por ahora, la apertura de Comunidad).
@@ -929,6 +942,9 @@ export function toAdminSettings(raw: unknown): AdminSettings {
           description: str(s.description),
           value,
           kind: value === null ? 'other' : SWITCH_KEYS.includes(key) ? 'switch' : 'number',
+          editable: meta?.editable === true && value !== null && !SWITCH_KEYS.includes(key),
+          min: meta?.min ?? 0,
+          max: meta?.max ?? 0,
         }
       }),
     blockedDomains: rows(r.blockedDomains)
@@ -937,12 +953,12 @@ export function toAdminSettings(raw: unknown): AdminSettings {
   }
 }
 
-// Mismo rango que acepta el servidor (entero de 0 a 100000).
-export function validateSettingValue(raw: string): { value: number | null; error: string | null } {
+// Entero dentro del rango autorizado de ese parámetro (el servidor lo vuelve a comprobar con su lista blanca).
+export function validateSettingValue(raw: string, min = 0, max = 100000): { value: number | null; error: string | null } {
   const t = raw.trim()
   if (!/^\d+$/.test(t)) return { value: null, error: 'Escribe un número entero, sin decimales ni signos.' }
   const n = Number(t)
-  if (n > 100000) return { value: null, error: 'El número es demasiado grande (máximo 100000).' }
+  if (n < min || n > max) return { value: null, error: `El valor tiene que estar entre ${min} y ${max}.` }
   return { value: n, error: null }
 }
 

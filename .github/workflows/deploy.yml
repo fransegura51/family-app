@@ -35,6 +35,8 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+          # Dirección pública de los enlaces de Comunidad (Worker de Cloudflare), p. ej. https://pepafamilyapp.es/c. Variable (no secreto) del repositorio.
+          VITE_COMMUNITY_PUBLIC_BASE: ${{ vars.COMMUNITY_PUBLIC_BASE }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

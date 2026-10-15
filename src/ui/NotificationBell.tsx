@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchUnreadNotificationCount } from '@/data/notifications'
 import { badgeText } from '@/domain/notificationsCenter'
 import { NotificationPanel } from '@/ui/NotificationPanel'
@@ -9,7 +9,13 @@ export function NotificationBell() {
   const [unread, setUnread] = useState(0)
   const [open, setOpen] = useState(false)
 
+  const lastFetch = useRef(0)
+
+  // Al volver a la app saltan a la vez «focus» y «visibilitychange»: una sola consulta (no más de una cada 3 segundos).
   const refresh = useCallback(() => {
+    const now = Date.now()
+    if (now - lastFetch.current < 3000) return
+    lastFetch.current = now
     fetchUnreadNotificationCount().then(setUnread, () => undefined)
   }, [])
 

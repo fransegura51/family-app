@@ -8,6 +8,8 @@ import {
   listBlocks,
   listCommunityTopics,
   listFollowing,
+  listMyComments,
+  listMyRemovalRequests,
   listPosts,
   requestContentRemoval,
   requestReadmission,
@@ -16,6 +18,8 @@ import {
   unblockUser,
   unfollowUser,
   type CommunityUserPrefs,
+  type MyCommentItem,
+  type MyRemovalRequest,
 } from '@/data/community'
 import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notifications'
 import { COMMENT_ORDER_LABELS, SECTIONS, type CommentOrder, type CommunityCardItem, type CommunityTopic, type FollowMode } from '@/domain/community'
@@ -23,25 +27,19 @@ import { communityErrorText } from '@/domain/communityErrors'
 import {
   FOLLOW_MODES,
   REMOVAL_SENT_TEXT,
-  SUGGESTION_WINDOW_TEXT,
   banNotice,
+  commentOptionLabel,
   followModeLabel,
-  parseSuggestionHours,
-  suggestionEveryLabel,
+  removalRequestTitle,
+  removalStatusLabel,
   validateRemovalRequest,
-  validateWindow,
-  windowSummary,
   type RemovalScope,
+  type RemovalTargetKind,
 } from '@/domain/communityProfile'
-import {
-  COMMUNITY_SUGGESTION_MAX_HOURS,
-  COMMUNITY_SUGGESTION_MIN_HOURS,
-  DEFAULT_NOTIFICATION_PREFS,
-  timezoneLabel,
-  type NotificationPrefs,
-} from '@/domain/notificationPrefs'
+import type { NotificationPrefs } from '@/domain/notificationPrefs'
 import { AliasDialog } from '@/ui/community/AliasDialog'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
+import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { pageCrumbs, paths } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
@@ -523,25 +521,14 @@ function ReadingPrefs() {
   )
 }
 
-// ---- Avisos de Comunidad (COM-144): personales (franja a elección) y sugerencias (cadencia propia, siempre 08:00-21:00)
+// ---- Avisos de Comunidad (COM-144): el bloque de ajustes es el componente compartido CommunityNoticePrefs (también está en Familia → Horarios de tus avisos)
 function CommunityNotices() {
   const [prefs, setPrefs] = useState<NotificationPrefs | null>(null)
-  const [start, setStart] = useState(DEFAULT_NOTIFICATION_PREFS.personalWindowStart)
-  const [end, setEnd] = useState(DEFAULT_NOTIFICATION_PREFS.personalWindowEnd)
-  const [hours, setHours] = useState(String(DEFAULT_NOTIFICATION_PREFS.communitySuggestionEveryHours))
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getNotificationPrefs().then(
-      (p) => {
-        setPrefs(p)
-        setStart(p.personalWindowStart)
-        setEnd(p.personalWindowEnd)
-        setHours(String(p.communitySuggestionEveryHours))
-      },
-      () => setError('No he podido cargar tus ajustes de avisos.'),
-    )
+    getNotificationPrefs().then(setPrefs, () => setError('No he podido cargar tus ajustes de avisos.'))
   }, [])
 
   async function save(patch: Partial<NotificationPrefs>) {
@@ -559,97 +546,10 @@ function CommunityNotices() {
     }
   }
 
-  function saveWindow() {
-    const problem = validateWindow(start, end)
-    if (problem) {
-      setError(problem)
-      setMessage(null)
-      return
-    }
-    void save({ personalCommunityMode: 'window', personalWindowStart: start, personalWindowEnd: end })
-  }
-
-  function saveHours() {
-    const n = parseSuggestionHours(hours)
-    if (n === null) {
-      setError(`Escribe un número de horas entre ${COMMUNITY_SUGGESTION_MIN_HOURS} y ${COMMUNITY_SUGGESTION_MAX_HOURS}.`)
-      setMessage(null)
-      return
-    }
-    void save({ communitySuggestionEveryHours: n })
-  }
-
-  const hoursNumber = parseSuggestionHours(hours)
-
   return (
     <>
       {!prefs && !error && <p className="muted">Cargando…</p>}
-      {prefs && (
-        <>
-          <fieldset className="community-notice-group">
-            <legend>Avisos personales</legend>
-            <p className="muted">Son los avisos sobre conversaciones que sigues, comentarios en tus publicaciones y respuestas a tus comentarios.</p>
-            <label className="checkbox-label">
-              <input type="radio" name="personal-mode" checked={prefs.personalCommunityMode === 'any'} onChange={() => void save({ personalCommunityMode: 'any' })} />
-              A cualquier hora
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="radio"
-                name="personal-mode"
-                checked={prefs.personalCommunityMode === 'window'}
-                onChange={saveWindow}
-              />
-              Establecer franja horaria
-            </label>
-            {prefs.personalCommunityMode === 'window' && (
-              <div className="community-window-fields">
-                <label>
-                  Desde
-                  <input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
-                </label>
-                <label>
-                  Hasta
-                  <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
-                </label>
-                <button type="button" onClick={saveWindow}>
-                  Guardar franja
-                </button>
-              </div>
-            )}
-            <p className="muted" aria-live="polite">
-              Ahora: {windowSummary(prefs.personalCommunityMode, prefs.personalWindowStart, prefs.personalWindowEnd)}. Las horas son las de tu zona horaria ({timezoneLabel(prefs.timezone)}); si
-              quieres cambiarla, hazlo en <Link to="/familia">Familia</Link>, en «Horarios de tus avisos».
-            </p>
-          </fieldset>
-
-          <fieldset className="community-notice-group">
-            <legend>Sugerencias de Comunidad</legend>
-            <label className="checkbox-label">
-              <input type="checkbox" checked={prefs.communitySuggestionsEnabled} onChange={(e) => void save({ communitySuggestionsEnabled: e.target.checked })} />
-              Recibir sugerencias de Comunidad («Para ti en Comunidad»)
-            </label>
-            {prefs.communitySuggestionsEnabled && (
-              <div className="community-window-fields">
-                <label>
-                  Una sugerencia cada (horas)
-                  <input type="number" inputMode="numeric" min={COMMUNITY_SUGGESTION_MIN_HOURS} max={COMMUNITY_SUGGESTION_MAX_HOURS} value={hours} onChange={(e) => setHours(e.target.value)} />
-                </label>
-                <button type="button" onClick={saveHours}>
-                  Guardar
-                </button>
-              </div>
-            )}
-            {prefs.communitySuggestionsEnabled && (
-              <p className="muted">
-                Ahora: {suggestionEveryLabel(prefs.communitySuggestionEveryHours)}. Puedes elegir entre {COMMUNITY_SUGGESTION_MIN_HOURS} y {COMMUNITY_SUGGESTION_MAX_HOURS} horas
-                {hoursNumber !== null && hoursNumber !== prefs.communitySuggestionEveryHours ? ` (sin guardar: ${suggestionEveryLabel(hoursNumber)})` : ''}.
-              </p>
-            )}
-            <p className="muted">{SUGGESTION_WINDOW_TEXT} No se acumulan: si pasa la hora, simplemente se salta.</p>
-          </fieldset>
-        </>
-      )}
+      {prefs && <CommunityNoticePrefs prefs={prefs} onSave={save} showZoneHint />}
       {message && <p role="status">{message}</p>}
       {error && (
         <p className="error" role="alert">
@@ -676,7 +576,48 @@ function RemovalTools({ profileId }: { profileId: string }) {
   const [myPosts, setMyPosts] = useState<{ id: string; title: string }[] | null>(null)
   const [sending, setSending] = useState(false)
   const [requestError, setRequestError] = useState<string | null>(null)
-  const [requests, setRequests] = useState<{ key: number; label: string }[]>([])
+  const [requests, setRequests] = useState<MyRemovalRequest[] | null>(null)
+  const [justSent, setJustSent] = useState(false)
+  const [targetKind, setTargetKind] = useState<RemovalTargetKind>('post')
+  const [myComments, setMyComments] = useState<MyCommentItem[] | null>(null)
+  const [commentsDone, setCommentsDone] = useState(false)
+  const [loadingComments, setLoadingComments] = useState(false)
+
+  // El estado de mis solicitudes viene del servidor (persistente) y se pide solo cuando se abre este bloque (el bloque se monta al abrirlo).
+  const loadRequests = useCallback(async () => {
+    try {
+      setRequests(await listMyRemovalRequests())
+    } catch (e) {
+      setRequestError(communityErrorText(e))
+      setRequests((prev) => prev ?? [])
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadRequests()
+  }, [loadRequests])
+
+  // Mis comentarios, de 30 en 30 y solo cuando se necesitan.
+  async function loadComments(offset: number) {
+    setLoadingComments(true)
+    try {
+      const page = await listMyComments(30, offset)
+      setMyComments((prev) => (offset === 0 ? page : [...(prev ?? []), ...page]))
+      setCommentsDone(page.length < 30)
+    } catch (e) {
+      setRequestError(communityErrorText(e))
+      setMyComments((prev) => prev ?? [])
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  async function chooseKind(next: RemovalTargetKind) {
+    setTargetKind(next)
+    setTarget('')
+    setRequestError(null)
+    if (next === 'comment' && myComments === null) await loadComments(0)
+  }
 
   async function eraseAll() {
     setPhase('working')
@@ -693,6 +634,7 @@ function RemovalTools({ profileId }: { profileId: string }) {
 
   async function chooseScope(next: RemovalScope) {
     setScope(next)
+    setJustSent(false)
     setRequestError(null)
     // La lista de publicaciones propias se pide solo la primera vez que se necesita.
     if (next === 'specific' && myPosts === null) {
@@ -706,7 +648,7 @@ function RemovalTools({ profileId }: { profileId: string }) {
   }
 
   async function send() {
-    const problem = validateRemovalRequest(scope, target || null, detail)
+    const problem = validateRemovalRequest(scope, target || null, detail, targetKind)
     if (problem) {
       setRequestError(problem)
       return
@@ -714,11 +656,11 @@ function RemovalTools({ profileId }: { profileId: string }) {
     setSending(true)
     setRequestError(null)
     try {
-      await requestContentRemoval(scope, scope === 'specific' ? 'post' : null, scope === 'specific' ? target : null, detail.trim())
-      const label = scope === 'all_my_content' ? 'Todo lo que he publicado' : (myPosts?.find((p) => p.id === target)?.title ?? 'Una publicación')
-      setRequests((prev) => [...prev, { key: Date.now(), label }])
+      await requestContentRemoval(scope, scope === 'specific' ? targetKind : null, scope === 'specific' ? target : null, detail.trim())
+      setJustSent(true)
       setDetail('')
       setTarget('')
+      await loadRequests()
     } catch (e) {
       setRequestError(communityErrorText(e))
     } finally {
@@ -772,17 +714,51 @@ function RemovalTools({ profileId }: { profileId: string }) {
         </label>
       </fieldset>
       {scope === 'specific' && (
-        <label>
-          Publicación
-          <select value={target} onChange={(e) => setTarget(e.target.value)}>
-            <option value="">{myPosts === null ? 'Cargando…' : myPosts.length === 0 ? 'No tienes publicaciones' : 'Elige una publicación'}</option>
-            {myPosts?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </label>
+        <>
+          <fieldset className="community-notice-group">
+            <legend>¿Es una publicación o un comentario?</legend>
+            <label className="checkbox-label">
+              <input type="radio" name="removal-kind" checked={targetKind === 'post'} onChange={() => void chooseKind('post')} />
+              Una publicación
+            </label>
+            <label className="checkbox-label">
+              <input type="radio" name="removal-kind" checked={targetKind === 'comment'} onChange={() => void chooseKind('comment')} />
+              Un comentario
+            </label>
+          </fieldset>
+          {targetKind === 'post' ? (
+            <label>
+              Publicación
+              <select value={target} onChange={(e) => setTarget(e.target.value)}>
+                <option value="">{myPosts === null ? 'Cargando…' : myPosts.length === 0 ? 'No tienes publicaciones' : 'Elige una publicación'}</option>
+                {myPosts?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <>
+              <label>
+                Comentario
+                <select value={target} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="">{myComments === null ? 'Cargando…' : myComments.length === 0 ? 'No tienes comentarios' : 'Elige un comentario'}</option>
+                  {myComments?.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {commentOptionLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {myComments !== null && !commentsDone && (
+                <button type="button" className="link-button" disabled={loadingComments} onClick={() => void loadComments(myComments.length)}>
+                  {loadingComments ? 'Cargando…' : 'Ver más comentarios'}
+                </button>
+              )}
+            </>
+          )}
+        </>
       )}
       <label>
         {scope === 'specific' ? 'Cuéntanos por qué y qué debemos quitar' : 'Detalle (opcional)'}
@@ -796,18 +772,22 @@ function RemovalTools({ profileId }: { profileId: string }) {
           {requestError}
         </p>
       )}
-      {requests.length > 0 && (
-        <>
-          <p role="status">{REMOVAL_SENT_TEXT}</p>
-          <ul className="community-people-list" aria-label="Solicitudes enviadas">
-            {requests.map((r) => (
-              <li key={r.key}>
-                <span>{r.label}</span>
-                <span className="community-tag-unanswered">Pendiente de revisión</span>
-              </li>
-            ))}
-          </ul>
-        </>
+      {justSent && <p role="status">{REMOVAL_SENT_TEXT}</p>}
+      <h3>Mis solicitudes</h3>
+      {requests === null && <p className="muted">Cargando…</p>}
+      {requests && requests.length === 0 && <p className="muted">Todavía no has enviado ninguna solicitud.</p>}
+      {requests && requests.length > 0 && (
+        <ul className="community-people-list" aria-label="Mis solicitudes de eliminación">
+          {requests.map((r) => (
+            <li key={r.id}>
+              <span>
+                {removalRequestTitle(r)} · {new Date(r.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+              </span>
+              <span className={r.status === 'done' ? 'community-tag-official' : r.status === 'rejected' ? 'community-tag-unanswered' : 'community-tag-featured'}>{removalStatusLabel(r.status)}</span>
+              {r.handledNote && <span className="muted">Nota de la administración: {r.handledNote}</span>}
+            </li>
+          ))}
+        </ul>
       )}
     </>
   )

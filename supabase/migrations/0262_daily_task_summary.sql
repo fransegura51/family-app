@@ -13,7 +13,7 @@
 --  · Ventana de envío: desde la hora elegida hasta 60 minutos después (el trabajo corre cada 5 minutos). Así un retraso o el «salto» de hora de primavera no
 --    pierden el aviso, y cambiar la hora a una anterior a «ahora» no dispara un aviso inmediato fuera de ventana. Con el cambio de hora de otoño (la misma
 --    hora local ocurre dos veces) solo se envía una vez: delivery única por persona y fecha local.
---  · Las ocurrencias de una serie se miran hasta 60 días atrás; una tarea suelta sin completar se considera atrasada sin límite.
+--  · Las ocurrencias de una serie se miran hasta 365 días atrás; una tarea suelta sin completar se considera atrasada sin límite.
 --  · Las fechas de las tareas son fechas de calendario (Europe/Madrid, como el resto del calendario); «hoy» es la fecha local de la persona.
 --  · Destinatarios: private.event_notification_recipients(tarea, true) (0261): en el modo sin elegir (null) del ajuste familiar, solo las personas asignadas.
 
@@ -80,7 +80,7 @@ begin
         union all
         select c.id, c.title, g::date
         from cand c
-        cross join lateral generate_series((v_date - 60)::timestamp, v_date::timestamp, interval '1 day') g
+        cross join lateral generate_series((v_date - 365)::timestamp, v_date::timestamp, interval '1 day') g
         where c.recurrence_rule is not null
           and private.event_occurs_on_date(c.start_date, c.recurrence_rule, c.exception_dates, g::date)
       ),

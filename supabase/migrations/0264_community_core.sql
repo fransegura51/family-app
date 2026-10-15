@@ -106,6 +106,8 @@ begin
     new.alias := null;
     new.avatar_emoji := null;
     new.deleted_at := coalesce(new.deleted_at, now());
+    -- Al borrar la cuenta se borran también los datos privados ligados al perfil (borradores, búsquedas, lectura, guardados, seguimientos...).
+    perform private.community_purge_private_data(old.id);
   end if;
   return new;
 end;
@@ -439,9 +441,13 @@ declare
   v_years integer;
 begin
   select coalesce((s.value #>> '{}')::integer, 5) into v_years from public.community_settings s where s.key = 'admin_log_retention_years';
+  -- Suelo de seguridad: aunque alguien cambiara el parámetro, el historial se conserva SIEMPRE al menos 2 años.
+  v_years := greatest(coalesce(v_years, 5), 2);
   perform set_config('app.allow_admin_log_purge', 'on', true);
-  delete from public.community_admin_log where created_at < now() - make_interval(years => coalesce(v_years, 5));
+  delete from public.community_admin_log where created_at < now() - make_interval(years => v_years);
   perform set_config('app.allow_admin_log_purge', 'off', true);
+  -- Misma retención para las solicitudes de eliminación ya resueltas (contienen un contacto opcional).
+  delete from public.community_removal_requests where status <> 'open' and created_at < now() - make_interval(years => v_years);
 end;
 $$;
 revoke execute on function private.purge_community_admin_log() from public, anon, authenticated;

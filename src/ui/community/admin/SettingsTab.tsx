@@ -1,6 +1,6 @@
 import { useCallback, useId, useState, type FormEvent } from 'react'
 import { adminBlockDomain, adminGetSettings, adminSetSetting } from '@/data/community'
-import { ADMIN_TEXT, LAUNCH_KEY, normalizeDomain, toAdminSettings, validateSettingValue, type AdminSetting } from '@/domain/communityAdmin'
+import { ADMIN_TEXT, FIXED_SETTING_LABEL, LAUNCH_KEY, normalizeDomain, toAdminSettings, validateSettingValue, type AdminSetting } from '@/domain/communityAdmin'
 import { ActionNotice, AdminError, AdminLoading, InfoBox, TwoTapButton } from '@/ui/community/admin/AdminShared'
 import { LaunchSwitch } from '@/ui/community/admin/LaunchSwitch'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
@@ -97,7 +97,8 @@ export function SettingRow({ setting: s, onSaved }: { setting: AdminSetting; onS
 
   const save = (e: FormEvent) => {
     e.preventDefault()
-    const v = validateSettingValue(raw)
+    if (!s.editable) return
+    const v = validateSettingValue(raw, s.min, s.max)
     setProblem(v.error)
     if (v.value === null) return
     const value = v.value
@@ -109,12 +110,19 @@ export function SettingRow({ setting: s, onSaved }: { setting: AdminSetting; onS
 
   return (
     <form className="cadm-card cadm-setting" onSubmit={save} aria-label={s.label}>
-      <label htmlFor={`${id}-v`} className="cadm-setting-label">
-        {s.label}
-      </label>
+      {s.editable ? (
+        <label htmlFor={`${id}-v`} className="cadm-setting-label">
+          {s.label}
+        </label>
+      ) : (
+        <p className="cadm-setting-label">{s.label}</p>
+      )}
       {s.description && <p className="muted cadm-small">{s.description}</p>}
-      {s.value === null ? (
-        <p className="muted cadm-small">Este parámetro no se puede cambiar desde aquí.</p>
+      {!s.editable ? (
+        <p className="cadm-small">
+          <strong>{s.value === null ? '—' : s.value}</strong>
+          {s.unit ? ` ${s.unit}` : ''} · <span className="cadm-chip">{FIXED_SETTING_LABEL}</span>
+        </p>
       ) : (
         <div className="cadm-search-row">
           <input
@@ -129,6 +137,9 @@ export function SettingRow({ setting: s, onSaved }: { setting: AdminSetting; onS
             }}
           />
           {s.unit && <span className="muted cadm-small">{s.unit}</span>}
+          <span className="muted cadm-small">
+            (de {s.min} a {s.max})
+          </span>
           <button type="submit" className="cadm-btn cadm-btn-primary" disabled={!changed || action.busy}>
             {action.busy ? 'Guardando…' : 'Guardar'}
           </button>

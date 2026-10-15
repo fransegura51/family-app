@@ -378,12 +378,27 @@ describe('Configuración', () => {
     const html = page('configuracion')
     expect(html).toContain('Solo se pueden cambiar los parámetros autorizados')
     expect(html).toContain('Cargando la configuración')
-    const [s] = dom.toAdminSettings({ settings: [{ key: 'first_ban_days', value: 30, description: 'Duración de la primera expulsión (a la tercera advertencia).' }], blockedDomains: [] }).settings
-    const row = render(createElement(SettingRow, { setting: s, onSaved: noop }))
+    const [fixed, editable] = dom.toAdminSettings({
+      settings: [
+        { key: 'first_ban_days', value: 30, description: 'Duración de la primera expulsión (a la tercera advertencia).' },
+        { key: 'max_links_per_post', value: 10, description: 'Enlaces por publicación o comentario.' },
+      ],
+      blockedDomains: [],
+    }).settings
+    // Fijado por la especificación: se ve el valor y la etiqueta, sin campo ni botón.
+    const row = render(createElement(SettingRow, { setting: fixed, onSaved: noop }))
     expect(row).toContain('Duración de la primera expulsión')
-    expect(row).toContain('value="30"')
+    expect(row).toContain('<strong>30</strong>')
     expect(row).toContain('días')
-    expect(row).toContain('Guardar')
+    expect(row).toContain('Fijado por las reglas aprobadas')
+    expect(row).not.toContain('<input')
+    expect(row).not.toContain('Guardar')
+    // Autorizado: campo, rango y botón.
+    const ed = render(createElement(SettingRow, { setting: editable, onSaved: noop }))
+    expect(ed).toContain('value="10"')
+    expect(ed).toContain('(de 1 a 50)')
+    expect(ed).toContain('Guardar')
+    expect(ed).not.toContain('Fijado por las reglas aprobadas')
     for (const f of ['adminGetSettings', 'adminSetSetting', 'adminBlockDomain']) expect(settingsSource).toContain(f)
     expect(settingsSource).toContain('Dominios bloqueados')
     expect(settingsSource).toContain('LaunchSwitch')

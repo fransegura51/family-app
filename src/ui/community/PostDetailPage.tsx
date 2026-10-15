@@ -3,7 +3,7 @@ import { Link, useNavigationType, useParams, useSearchParams } from 'react-route
 import { communityPhotoUrl, getPost, unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { KIND_ICONS, KIND_LABELS, type BlockedCard, type HiddenPostNotice, type PostDetail } from '@/domain/community'
-import { formatLongDate, sortPhotos } from '@/domain/communityPost'
+import { formatLongDate, isBlockedLayer, isHiddenNotice, sortPhotos, type PostLookup } from '@/domain/communityPost'
 import { ArticleSources } from '@/ui/community/ArticleSources'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { CommentComposer, type ReplyTarget } from '@/ui/community/CommentComposer'
@@ -40,12 +40,14 @@ export function PostDetailPage() {
   useEffect(() => {
     let cancelled = false
     getPost(id)
-      .then((r) => {
+      .then((found) => {
         if (cancelled) return
+        // El servidor puede devolver también la capa neutra de bloqueado, que el contrato de datos no tipa: se amplía aquí.
+        const r: PostLookup = found
         if (!r) setState({ status: 'gone' })
-        else if ('status' in r && r.status === 'hidden') setState({ status: 'hidden', notice: r })
-        else if ((r as { blockedByMe?: boolean }).blockedByMe === true) setState({ status: 'blocked', card: r as unknown as BlockedCard })
-        else setState({ status: 'ok', detail: r as PostDetail })
+        else if (isHiddenNotice(r)) setState({ status: 'hidden', notice: r })
+        else if (isBlockedLayer(r)) setState({ status: 'blocked', card: r })
+        else setState({ status: 'ok', detail: r })
       })
       .catch((e) => {
         if (!cancelled) setState({ status: 'error', message: communityErrorText(e) })

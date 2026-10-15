@@ -2,10 +2,10 @@
 -- Sin rankings, sin tablas competitivas, sin recompensas económicas. No cuentan autointeracciones, spam, contenido invalidado ni repeticiones artificiales.
 --
 -- Cómo se calcula (función pura del estado ACTUAL, por eso se recalcula sola):
---  · Solo cuenta contenido PUBLICADO (lo oculto por moderación, eliminado o de una persona expulsada pendiente de readmisión no suma).
+--  · Solo cuenta contenido PUBLICADO (lo oculto por moderación o eliminado no suma). Una expulsión NO retira por sí sola las medallas: solo afecta al contenido que se oculte.
 --    Si una aportación que sostenía una medalla queda invalidada, la medalla se retira si ya no se cumplen los requisitos (las demás se mantienen);
 --    si se restaura el contenido o se revoca la sanción, la medalla se restituye sola (CMN-145).
---  · Autointeracciones fuera: no se cuentan los me gusta, guardados, valoraciones ni importaciones de la propia persona ni de su propia familia.
+--  · Autointeracciones fuera: no se cuentan los me gusta, guardados ni valoraciones de la propia persona; en las importaciones tampoco cuentan las de su propia familia.
 --  · Para no hacer cálculos en cada «me gusta», las acciones solo marcan a la persona como «pendiente de recalcular»; un trabajo programado cada 5 minutos
 --    recalcula a las pendientes y avisa de las medallas nuevas.
 
@@ -62,7 +62,6 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_ban text := private.community_ban_state(p_cp);
   v_family uuid;
   v_recipes integer;
   v_recipes_distinct integer;
@@ -77,10 +76,6 @@ declare
   v_answered_authors integer;
   v_referent_likers integer;
 begin
-  -- Una persona expulsada (o pendiente de readmisión) no tiene medallas activas mientras dure la sanción.
-  if v_ban <> 'ok' then
-    return jsonb_build_object('suspended', true);
-  end if;
   select pr.family_id into v_family from public.community_profiles cp join public.profiles pr on pr.id = cp.user_id where cp.id = p_cp;
 
   select count(*), count(distinct lower(btrim(p.title))) into v_recipes, v_recipes_distinct
@@ -240,6 +235,9 @@ declare
   v_level integer;
   v_names text[] := array['De vuelta por PEPA', 'Visitante habitual', 'Siempre por aquí', 'Colaborador habitual'];
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if v_cp is null or not exists (select 1 from public.community_profiles x where x.id = v_cp and x.deleted_at is null) then
     return null;
   end if;
@@ -254,7 +252,7 @@ begin
                from jsonb_array_elements(private.community_medal_catalog()) with ordinality as c(item, ord)
                left join public.community_medals m on m.profile_id = v_cp and m.medal_key = c.item ->> 'key'),
     'constancy', case when v_level between 1 and 4 then jsonb_build_object('level', v_level, 'name', v_names[v_level], 'weeks_active', v_level) else null end,
-    'suspended', coalesce((v_status ->> 'suspended')::boolean, false));
+    'suspended', (private.community_ban_state(v_cp) <> 'ok' and (v_cp = private.community_cp() or private.community_is_admin())));
 end;
 $$;
 

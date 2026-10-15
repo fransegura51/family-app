@@ -115,6 +115,16 @@ create table public.community_blocked_domains (
 alter table public.community_blocked_domains enable row level security;
 revoke all on public.community_blocked_domains from anon, authenticated;
 
+-- Lista inicial (conservadora) de servicios conocidos de rastreo de direcciones IP. La administración puede añadir más desde el Centro de Mando.
+insert into public.community_blocked_domains (domain, reason) values
+  ('iplogger.org', 'servicio de rastreo de direcciones IP'),
+  ('iplogger.com', 'servicio de rastreo de direcciones IP'),
+  ('iplogger.ru', 'servicio de rastreo de direcciones IP'),
+  ('grabify.link', 'servicio de rastreo de direcciones IP'),
+  ('yip.su', 'servicio de rastreo de direcciones IP'),
+  ('2no.co', 'servicio de rastreo de direcciones IP')
+on conflict (domain) do nothing;
+
 create or replace function private.community_clean_text(p_text text, p_max integer, p_required boolean default true)
 returns text
 language plpgsql
@@ -147,6 +157,7 @@ begin
       raise exception 'UNSAFE_LINK' using errcode = 'P0001';
     end if;
     v_host := lower(substring(v_url from '^https?://([^/:?#]+)'));
+    v_host := rtrim(regexp_replace(coalesce(v_host, ''), '^.*@', ''), '.');
     if v_host is null or v_host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' or v_host !~ '\.' then
       raise exception 'UNSAFE_LINK' using errcode = 'P0001';
     end if;
@@ -277,10 +288,21 @@ begin
     raise exception 'ALIAS_INVALID' using errcode = 'P0001';
   end if;
   -- Nada que suplante a Pepa, al equipo o a la administración.
-  if lower(v_alias) ~ '(pepa|equipo|admin|moderad|soporte|oficial)' then
+  -- (se comparan palabras sueltas sin acentos ni signos: «Pepa Fan», «Equipo X» o «P.e.p.a» no; «FanDePepa» sí)
+  if translate(lower(v_alias), 'áàäâéèëêíìïîóòöôúùüû', 'aaaaeeeeiiiioooouuuu') ~ '(^|[ ._-])(pepa|equipo|admin|administrador|administradora|administracion|moderador|moderadora|soporte|oficial)([ ._-]|$)'
+     or regexp_replace(translate(lower(v_alias), 'áàäâéèëêíìïîóòöôúùüû', 'aaaaeeeeiiiioooouuuu'), '[ ._-]', '', 'g')
+        ~ '^(pepa|equipopepa|pepaoficial|equipo|admin|administrador|administradora|moderador|moderadora|soporte|oficial|soportepepa|adminpepa)$' then
     raise exception 'ALIAS_RESERVED' using errcode = 'P0001';
   end if;
+  -- El avatar solo puede ser un emoji o símbolo: ni letras ni dígitos (para que nadie escriba «Pepa oficial» como avatar).
+  if v_emoji is not null and v_emoji ~ '[A-Za-z0-9À-ÿ]' then
+    raise exception 'ALIAS_INVALID' using errcode = 'P0001';
+  end if;
   select * into v_existing from public.community_profiles p where p.user_id = (select auth.uid());
+  -- Durante una expulsión no se puede cambiar el alias.
+  if found and private.community_ban_state(v_existing.id) <> 'ok' then
+    raise exception 'BANNED' using errcode = 'P0001';
+  end if;
   if not found then
     if not p_accept_rules then
       raise exception 'RULES_REQUIRED' using errcode = 'P0001';
@@ -516,6 +538,33 @@ begin
 end;
 $$;
 
+-- Vacía una receta pública (la fila se conserva porque la publicación eliminada la referencia, pero sin ingredientes, pasos, etiquetas ni foto) y borra sus
+-- versiones antiguas. La foto de portada se encola para su borrado físico.
+create or replace function private.community_blank_recipe(p_recipe uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_photo text;
+begin
+  if p_recipe is null then
+    return;
+  end if;
+  select r.photo_path into v_photo from public.community_recipes r where r.id = p_recipe;
+  update public.community_recipes
+    set title = 'Receta eliminada', servings = null, ingredients = '[]'::jsonb, steps = '', tags = '{}', photo_path = null, updated_at = now()
+    where id = p_recipe;
+  delete from public.community_recipe_versions where recipe_id = p_recipe;
+  delete from public.community_recipe_ratings where recipe_id = p_recipe;
+  if v_photo is not null then
+    perform private.community_queue_media_deletion(array[v_photo]);
+  end if;
+end;
+$$;
+revoke execute on function private.community_blank_recipe(uuid) from public, anon, authenticated;
+
 create or replace function public.community_delete_post(p_id uuid)
 returns void
 language plpgsql
@@ -538,6 +587,7 @@ begin
   perform private.community_queue_media_deletion(v_paths);
   delete from public.community_post_photos where post_id = p_id;
   update public.community_posts set status = 'deleted', title = 'Publicación eliminada', body = '', hidden_reason = null where id = p_id;
+  perform private.community_blank_recipe(v_post.recipe_id);
 end;
 $$;
 
@@ -639,6 +689,9 @@ declare
   v_tsq tsquery;
   v_result jsonb;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if p_order not in ('recientes', 'comentados', 'valoradas', 'sin_respuesta', 'para_mi') then
     p_order := 'recientes';
   end if;
@@ -694,6 +747,9 @@ declare
   v_viewer uuid := private.community_cp();
   v_tsq tsquery;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if p_title is null or char_length(btrim(p_title)) < 4 then
     return '[]'::jsonb;
   end if;
@@ -728,6 +784,9 @@ declare
   v_prefix text := btrim(coalesce(p_prefix, ''));
   v_like text;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if char_length(v_prefix) < 2 then
     return '[]'::jsonb;
   end if;
@@ -825,6 +884,9 @@ declare
   v_viewer uuid := private.community_cp();
   p public.community_posts%rowtype;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   select * into p from public.community_posts x where x.id = p_id;
   if not found or p.status = 'deleted' then
     return null;

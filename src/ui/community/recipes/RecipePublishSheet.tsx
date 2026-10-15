@@ -20,6 +20,7 @@ import { RecipeConsentCheckbox } from '@/ui/community/recipes/RecipeConsentCheck
 import { RecipeFields } from '@/ui/community/recipes/RecipeFields'
 import { copyPrivatePhotoToCommunity } from '@/ui/community/recipes/recipePhotoCopy'
 import { browserStore, rememberShared, sharedPostFor } from '@/ui/community/recipes/recipeUpdateCache'
+import { useSimilarRecipes } from '@/ui/community/recipes/useSimilarRecipes'
 import '@/ui/community/recipes/communityRecipes.css'
 
 // «Compartir en Comunidad» (CMN-§5.1, recorrido D): publica una receta de la Cocina como copia PÚBLICA e INDEPENDIENTE.
@@ -136,6 +137,8 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
   const clean = useMemo(() => cleanRecipeDraft(draft), [draft])
   const problems = recipePublishProblems(title, draft)
   const closed = status !== null && !status.visible
+  // «¿Es lo mismo que…?»: hasta 3 parecidas, solo una ayuda (nunca bloquea «Publicar»).
+  const similar = useSimilarRecipes(title, !closed && !publishedId)
   const canPublish = !closed && !publishedId && canPublishRecipe({ consent, topicId: topicId || null, title, draft })
 
   async function publish() {
@@ -225,6 +228,25 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
               <p className="community-notice" role="status">
                 Ya compartiste esta receta desde este dispositivo. <Link to={paths.post(alreadySharedId)}>Ver la publicada</Link>. Si publicas otra vez se creará una copia más.
               </p>
+            )}
+
+            {similar.length > 0 && (
+              <div className="community-similar" role="region" aria-label="Publicaciones parecidas">
+                <p>
+                  <strong>¿Es lo mismo que…?</strong>
+                </p>
+                <p className="muted">Quizá ya se ha publicado algo parecido. Es solo una ayuda: puedes seguir y publicar igualmente.</p>
+                <ul>
+                  {similar.map((p) => (
+                    // Se abren en otra pestaña para no perder esta hoja.
+                    <li key={p.id}>
+                      <Link to={paths.post(p.id)} target="_blank" rel="noopener noreferrer">
+                        {p.title} <span className="muted">(se abre en otra pestaña)</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
             {editing ? (

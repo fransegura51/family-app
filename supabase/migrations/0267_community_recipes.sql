@@ -44,6 +44,9 @@ as $$
 declare
   v_viewer uuid := private.community_cp();
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if not exists (select 1 from public.community_posts p where p.recipe_id = p_recipe and p.status = 'published') then
     return '[]'::jsonb;
   end if;

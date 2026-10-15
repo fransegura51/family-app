@@ -49,6 +49,8 @@ import {
   validateProposalForm,
   validateSettingValue,
   warnResultText,
+  FIXED_SETTING_LABEL,
+  SETTING_META,
 } from '@/domain/communityAdmin'
 
 describe('pestañas', () => {
@@ -389,13 +391,47 @@ describe('configuración', () => {
     expect(s.blockedDomains).toEqual([{ domain: 'malo.com', reason: 'spam' }, { domain: 'otro.es', reason: null }])
     expect(toAdminSettings(null)).toEqual({ settings: [], blockedDomains: [] })
   })
-  it('valida números enteros de 0 a 100000', () => {
+  it('solo los 6 parámetros autorizados son editables; el resto es solo lectura', () => {
+    const editables = ['rate_posts_per_hour', 'rate_comments_per_10min', 'rate_reports_per_day', 'report_autohide_distinct_reporters', 'max_links_per_post', 'ai_daily_cap']
+    const fijos = [
+      'summary_comment_threshold',
+      'summary_refresh_every',
+      'pepa_unanswered_hours',
+      'pepa_max_per_hour',
+      'draft_days',
+      'first_ban_days',
+      'max_photos_per_post',
+      'search_history_size',
+      'admin_log_retention_years',
+      'participants_adults_only',
+      LAUNCH_KEY,
+    ]
+    const s = toAdminSettings({ settings: [...editables, ...fijos, 'clave_nueva'].map((key) => ({ key, value: 5, description: '' })), blockedDomains: [] }).settings
+    for (const k of editables) expect(s.find((x) => x.key === k)?.editable, k).toBe(true)
+    for (const k of fijos) expect(s.find((x) => x.key === k)?.editable, k).toBe(false)
+    expect(s.find((x) => x.key === 'clave_nueva')?.editable).toBe(false) // una clave desconocida nunca se puede cambiar
+    expect(Object.values(SETTING_META).filter((m) => m.editable)).toHaveLength(6)
+    expect(FIXED_SETTING_LABEL).toBe('Fijado por las reglas aprobadas')
+  })
+  it('cada parámetro editable lleva su rango', () => {
+    const s = toAdminSettings({ settings: ['report_autohide_distinct_reporters', 'max_links_per_post', 'ai_daily_cap'].map((key) => ({ key, value: 3, description: '' })), blockedDomains: [] }).settings
+    const r = (k: string) => s.find((x) => x.key === k)
+    expect([r('report_autohide_distinct_reporters')?.min, r('report_autohide_distinct_reporters')?.max]).toEqual([1, 10])
+    expect([r('max_links_per_post')?.min, r('max_links_per_post')?.max]).toEqual([1, 50])
+    expect([r('ai_daily_cap')?.min, r('ai_daily_cap')?.max]).toEqual([0, 5000])
+  })
+  it('valida enteros dentro del rango de cada parámetro', () => {
     expect(validateSettingValue('30')).toEqual({ value: 30, error: null })
     expect(validateSettingValue(' 0 ').value).toBe(0)
     expect(validateSettingValue('-1').error).not.toBeNull()
     expect(validateSettingValue('3,5').error).not.toBeNull()
     expect(validateSettingValue('').error).not.toBeNull()
-    expect(validateSettingValue('100001').error).toContain('grande')
+    expect(validateSettingValue('100001').error).toContain('entre 0 y 100000')
+    expect(validateSettingValue('0', 1, 10).error).toContain('entre 1 y 10')
+    expect(validateSettingValue('11', 1, 10).error).not.toBeNull()
+    expect(validateSettingValue('10', 1, 10).value).toBe(10)
+    expect(validateSettingValue('5000', 0, 5000).value).toBe(5000)
+    expect(validateSettingValue('5001', 0, 5000).error).not.toBeNull()
   })
   it('normaliza dominios', () => {
     expect(normalizeDomain('https://www.Malo.com/ruta?x=1').domain).toBe('malo.com')

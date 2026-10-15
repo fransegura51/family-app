@@ -18,6 +18,9 @@ import {
   medalStatusText,
   newsSummary,
   parseSuggestionHours,
+  commentOptionLabel,
+  removalRequestTitle,
+  removalStatusLabel,
   suggestionEveryLabel,
   validateRemovalRequest,
   validateWindow,
@@ -162,4 +165,26 @@ describe('solicitud de eliminación de contenido', () => {
     expect(validateRemovalRequest('specific', 'p1', 'Contiene un dato mío')).toBeNull()
   })
   it('el detalle tiene tope', () => expect(validateRemovalRequest('all_my_content', null, 'x'.repeat(2001))).toMatch(/demasiado largo/))
+})
+
+describe('estado persistente de las solicitudes y comentarios a eliminar', () => {
+  it('etiquetas de estado', () => {
+    expect(removalStatusLabel('open')).toBe('Pendiente de revisión')
+    expect(removalStatusLabel('done')).toBe('Hecha')
+    expect(removalStatusLabel('rejected')).toBe('Rechazada')
+  })
+  it('título de lo pedido', () => {
+    expect(removalRequestTitle({ scope: 'all_my_content', targetType: null })).toBe('Todo lo que he publicado')
+    expect(removalRequestTitle({ scope: 'specific', targetType: 'comment' })).toBe('Un comentario')
+    expect(removalRequestTitle({ scope: 'specific', targetType: 'post' })).toBe('Una publicación')
+  })
+  it('opción de comentario: extracto recortado y título de la publicación', () => {
+    expect(commentOptionLabel({ excerpt: 'Me encantó\n  la receta', postTitle: 'Paella' })).toBe('Me encantó la receta — en «Paella»')
+    expect(commentOptionLabel({ excerpt: 'x'.repeat(100), postTitle: null })).toBe(`${'x'.repeat(57)}…`)
+    expect(commentOptionLabel({ excerpt: '', postTitle: 'T' })).toBe('(comentario con foto) — en «T»')
+  })
+  it('elegir un comentario es obligatorio y el mensaje lo nombra', () => {
+    expect(validateRemovalRequest('specific', null, 'motivo claro', 'comment')).toMatch(/comentario/)
+    expect(validateRemovalRequest('specific', 'c1', 'motivo claro', 'comment')).toBeNull()
+  })
 })

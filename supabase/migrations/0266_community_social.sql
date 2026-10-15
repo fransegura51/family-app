@@ -86,9 +86,22 @@ on conflict (id) do nothing;
 
 grant execute on function private.community_cp() to authenticated;
 
+-- Quien está expulsado no puede subir fotos (puede borrar las suyas).
+create or replace function private.community_can_upload()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.community_cp() is not null and private.community_ban_state(private.community_cp()) = 'ok'
+$$;
+revoke execute on function private.community_can_upload() from public, anon;
+grant execute on function private.community_can_upload() to authenticated;
+
 create policy "community media: insert own folder" on storage.objects
   for insert to authenticated
-  with check (bucket_id = 'community-media' and (storage.foldername(name))[1] = (select private.community_cp()::text));
+  with check (bucket_id = 'community-media' and (storage.foldername(name))[1] = (select private.community_cp()::text) and (select private.community_can_upload()));
 create policy "community media: delete own folder" on storage.objects
   for delete to authenticated
   using (bucket_id = 'community-media' and (storage.foldername(name))[1] = (select private.community_cp()::text));
@@ -182,6 +195,7 @@ begin
     perform private.community_queue_media_deletion(array[c.photo_path]);
   end if;
   update public.community_comments set status = 'deleted', body = '', photo_path = null where id = p_id;
+  delete from public.community_post_summaries where post_id = c.post_id;
 end;
 $$;
 
@@ -255,6 +269,9 @@ declare
   v_total integer;
   v_new integer := 0;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   select p.status into v_status from public.community_posts p where p.id = p_post;
   if v_status is distinct from 'published' then
     return null;
@@ -555,6 +572,9 @@ declare
   v_viewer uuid := private.community_cp();
   cp public.community_profiles%rowtype;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   select * into cp from public.community_profiles x where x.id = p_cp;
   if not found or cp.deleted_at is not null then
     return null;
@@ -609,8 +629,12 @@ begin
   end if;
   select coalesce(array_agg(x), '{}') into v_paths from jsonb_array_elements_text(coalesce(p_photos, '[]'::jsonb)) x;
   perform private.community_check_photo_paths(v_cp, v_paths);
-  if char_length(coalesce(p_title, '')) > 140 or char_length(coalesce(p_body, '')) > 10000 then
+  if char_length(coalesce(p_title, '')) > 140 or char_length(coalesce(p_body, '')) > 10000 or octet_length(coalesce(p_recipe::text, '')) > 50000 then
     raise exception 'TEXT_TOO_LONG' using errcode = 'P0001';
+  end if;
+  -- Tope de borradores por persona (evita llenar la base de datos).
+  if p_id is null and (select count(*) from public.community_drafts d where d.profile_id = v_cp) >= 20 then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
   end if;
   if p_id is not null then
     -- Las fotos que se quitan del borrador y no usa ninguna publicación se encolan para borrar del almacenamiento.
@@ -732,6 +756,9 @@ begin
     return;
   end if;
   v_q := left(v_q, 120);
+  if octet_length(coalesce(p_filters, '{}'::jsonb)::text) > 2000 then
+    return;
+  end if;
   delete from public.community_search_history where profile_id = v_cp and lower(query) = lower(v_q) and filters = coalesce(p_filters, '{}'::jsonb);
   insert into public.community_search_history (profile_id, query, filters) values (v_cp, v_q, coalesce(p_filters, '{}'::jsonb));
   delete from public.community_search_history h

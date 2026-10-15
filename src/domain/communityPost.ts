@@ -1,8 +1,21 @@
 // Comunidad PEPA — lógica pura de la página de una publicación (sin red ni React): fuentes de un artículo oficial, textos de la encuesta con la hora de Madrid,
 // porcentajes, fechas legibles y contadores optimistas.
-import type { PollView, PostPhoto } from '@/domain/community'
+import type { BlockedCard, HiddenPostNotice, PollView, PostDetail, PostPhoto } from '@/domain/community'
 import { MADRID_TZ } from '@/domain/communityComments'
 import { safeLink } from '@/domain/communityRichText'
+
+// ---- Lo que puede devolver el servidor al pedir una publicación ---------------------------------------------------------------------------------
+// null (no disponible), el aviso mínimo de «oculta» (solo para su autor), la capa neutra de alguien bloqueado ({id, blockedByMe: true, authorId}, sin
+// contenido) o la publicación completa. El contrato de datos solo tipa dos de ellas, así que aquí se completa y se distingue sin conversiones forzadas.
+export type PostLookup = PostDetail | HiddenPostNotice | BlockedCard | null
+
+export function isBlockedLayer(r: PostLookup | undefined): r is BlockedCard {
+  return !!r && (r as { blockedByMe?: unknown }).blockedByMe === true && typeof (r as { authorId?: unknown }).authorId === 'string'
+}
+
+export function isHiddenNotice(r: PostLookup | undefined): r is HiddenPostNotice {
+  return !!r && (r as { status?: unknown }).status === 'hidden'
+}
 
 // ---- Contadores optimistas (me gusta, guardados) ---------------------------------------------------------------------------------------------------
 
@@ -98,6 +111,30 @@ export interface ArticleSourcesInfo {
   sources: ArticleSource[]
   methodology: string | null
   comparison: string | null
+  // Tabla de los datos usados (artículos de investigación): unidad, columnas y filas de texto. Opcional.
+  table?: ArticleTable
+}
+
+export interface ArticleTable {
+  unit: string | null
+  columns: string[]
+  rows: string[][]
+}
+
+// Tabla del artículo: solo texto y números (nunca HTML), máximo 6 columnas y 30 filas; las filas se recortan al número de columnas.
+export function parseArticleTable(raw: unknown): ArticleTable | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const t = raw as Record<string, unknown>
+  if (!Array.isArray(t.columns) || !Array.isArray(t.rows)) return undefined
+  const cell = (v: unknown): string => (typeof v === 'number' && Number.isFinite(v) ? String(v).replace('.', ',') : typeof v === 'string' ? v.trim().slice(0, 60) : '')
+  const columns = t.columns.slice(0, 6).map(cell)
+  if (columns.length === 0 || columns.every((c) => !c)) return undefined
+  const rows = t.rows
+    .slice(0, 30)
+    .filter((r): r is unknown[] => Array.isArray(r))
+    .map((r) => columns.map((_, i) => cell(r[i])))
+  if (rows.length === 0) return undefined
+  return { unit: text(t.unit, 60), columns, rows }
 }
 
 function text(v: unknown, max = 400): string | null {
@@ -129,7 +166,7 @@ export function parseArticleSources(raw: unknown): ArticleSourcesInfo {
     const link = typeof s.url === 'string' ? safeLink(s.url) : null
     sources.push({ title, publisher: text(s.publisher ?? s.editorial, 120), date: formatSourceDate(text(s.date, 40)), href: link?.href ?? null, host: link?.host ?? null })
   }
-  return { sources, methodology: text(obj.methodology, 1500), comparison: text(obj.comparison, 1500) }
+  return { sources, methodology: text(obj.methodology, 1500), comparison: text(obj.comparison, 1500), table: parseArticleTable(obj.table) }
 }
 
 export const POLL_NOT_REPRESENTATIVE_NOTE = 'Las encuestas de PEPA no son muestras representativas.'

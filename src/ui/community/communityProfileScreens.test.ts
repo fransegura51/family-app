@@ -9,6 +9,9 @@ import settingsSrc from '@/ui/community/MySettingsPage.tsx?raw'
 import medalsSrc from '@/ui/community/MedalsPage.tsx?raw'
 import newsSrc from '@/ui/community/NewsPage.tsx?raw'
 import partsSrc from '@/ui/community/ProfileParts.tsx?raw'
+import noticeSrc from '@/ui/community/CommunityNoticePrefs.tsx?raw'
+import cardSrc from '@/ui/NotificationPrefsCard.tsx?raw'
+import { DEFAULT_NOTIFICATION_PREFS } from '@/domain/notificationPrefs'
 import notificationsDataSrc from '@/data/notifications.ts?raw'
 import type { MedalInfo, MedalsView, NewsBreakdownItem } from '@/domain/community'
 
@@ -16,6 +19,7 @@ vi.mock('@/data/supabaseClient', () => ({ supabase: {} }))
 
 const { MedalsContent } = await import('@/ui/community/MedalsPage')
 const { NewsList } = await import('@/ui/community/NewsPage')
+const { CommunityNoticePrefs } = await import('@/ui/community/CommunityNoticePrefs')
 
 function render(node: ReturnType<typeof createElement>): string {
   return renderToStaticMarkup(createElement(MemoryRouter, null, node))
@@ -61,7 +65,9 @@ describe('Medallas: render', () => {
   it('enseña solo el nivel de constancia actual como logro y explica la regla de las últimas 4 semanas', () => {
     expect(html).toContain('Visitante habitual · 2 semanas activas de las últimas 4')
     expect(html).toContain('últimas 4 semanas')
-    expect((html.match(/aria-current="true"/g) ?? []).length).toBe(1)
+    // SOLO el nivel actual: no se enseña la lista de los otros niveles.
+    for (const other of ['De vuelta por PEPA', 'Siempre por aquí', 'Colaborador habitual']) expect(html).not.toContain(other)
+    expect(html).not.toContain('community-constancy-rule')
   })
   it('sin rankings, clasificaciones competitivas ni recompensas', () => {
     expect(html).not.toMatch(/ranking|clasificación:|puntos|premio:|recompensa:/i)
@@ -69,7 +75,12 @@ describe('Medallas: render', () => {
   it('suspendida: aviso claro y sin nivel', () => {
     const s = render(createElement(MedalsContent, { view: { ...view, suspended: true } }))
     expect(s).toContain('Tus medallas no se muestran mientras tu acceso a Comunidad esté en pausa')
-    expect(s).not.toContain('aria-current="true"')
+    expect(s).toContain('En pausa')
+  })
+  it('sin nivel: dice que aparece al participar', () => {
+    const n = render(createElement(MedalsContent, { view: { ...view, constancy: null } }))
+    expect(n).toContain('no tienes nivel de constancia')
+    expect(n).toContain('Participa una vez')
   })
   it('la página explica que no hay clasificaciones ni premios', () => {
     expect(medalsSrc).toContain('no hay clasificaciones ni premios')
@@ -165,11 +176,13 @@ describe('Mi perfil y ajustes', () => {
   it('los avisos usan getNotificationPrefs/saveNotificationPrefs (franja y sugerencias)', () => {
     expect(settingsSrc).toContain('getNotificationPrefs()')
     expect(settingsSrc).toContain('saveNotificationPrefs(patch)')
-    expect(settingsSrc).toContain('A cualquier hora')
-    expect(settingsSrc).toContain('Establecer franja horaria')
-    expect(settingsSrc).toContain('communitySuggestionEveryHours')
-    expect(settingsSrc).toContain('communitySuggestionsEnabled')
-    expect(settingsSrc).toContain('SUGGESTION_WINDOW_TEXT')
+    expect(noticeSrc).toContain('A cualquier hora')
+    expect(noticeSrc).toContain('Establecer franja horaria')
+    // El bloque es un componente compartido (Mi perfil y Familia).
+    expect(settingsSrc).toContain('<CommunityNoticePrefs prefs={prefs} onSave={save} showZoneHint />')
+    expect(noticeSrc).toContain('communitySuggestionEveryHours')
+    expect(noticeSrc).toContain('communitySuggestionsEnabled')
+    expect(noticeSrc).toContain('SUGGESTION_WINDOW_TEXT')
   })
   it('orden de comentarios y plegado son preferencias INDEPENDIENTES (solo se manda la que cambia)', () => {
     expect(settingsSrc).toContain('change({ commentOrder:')
@@ -179,6 +192,14 @@ describe('Mi perfil y ajustes', () => {
     expect(settingsSrc).toContain("setPhase('armed')")
     expect(settingsSrc).toContain('Toca otra vez para confirmar')
     expect(settingsSrc.indexOf('Toca otra vez para confirmar')).toBeLessThan(settingsSrc.indexOf('void eraseAll()'))
+  })
+  it('las solicitudes de eliminación muestran su estado persistente y permiten elegir un comentario propio', () => {
+    expect(settingsSrc).toContain('listMyRemovalRequests()')
+    expect(settingsSrc).toContain('listMyComments(30, offset)')
+    expect(settingsSrc).toContain('removalStatusLabel(r.status)')
+    expect(settingsSrc).toContain('r.handledNote')
+    expect(settingsSrc).toContain("scope === 'specific' ? targetKind : null")
+    expect(settingsSrc).toContain('Ver más comentarios')
   })
   it('cada bloque pide sus datos solo al abrirse (coste de Supabase)', () => {
     expect(settingsSrc).toContain('{seen && children}')
@@ -192,5 +213,28 @@ describe('Ajustes de avisos (datos): sugerencias de Comunidad', () => {
     expect(notificationsDataSrc).toContain('community_suggestion_every_hours')
     expect(notificationsDataSrc).toContain('communitySuggestionsEnabled: row.community_suggestions_enabled')
     expect(notificationsDataSrc).toContain('row.community_suggestion_every_hours = patch.communitySuggestionEveryHours')
+  })
+})
+
+describe('COM-144 en Familia → Horarios de tus avisos', () => {
+  it('la tarjeta de Familia monta el bloque compartido solo si Comunidad es visible, preguntándolo una vez', () => {
+    expect(cardSrc).toContain('<CommunityNoticePrefs prefs={prefs} onSave={save} />')
+    expect(cardSrc).toContain('{communityVisible && (')
+    expect(cardSrc).toContain('setCommunityVisible(st.visible)')
+    expect(cardSrc.split('communityStatus().then(').length - 1).toBe(1)
+    expect(cardSrc).not.toMatch(/setInterval|setTimeout/)
+  })
+  it('el componente compartido enseña franja, sugerencias y la regla 08:00-21:00', () => {
+    const html = render(createElement(CommunityNoticePrefs, { prefs: { ...DEFAULT_NOTIFICATION_PREFS, personalCommunityMode: 'window' }, onSave: () => undefined }))
+    expect(html).toContain('A cualquier hora')
+    expect(html).toContain('Establecer franja horaria')
+    expect(html).toContain('type="time"')
+    expect(html).toContain('Una sugerencia cada (horas)')
+    expect(html).toContain('entre las 08:00 y las 21:00')
+    expect(html).not.toContain('href="/familia"')
+  })
+  it('en Mi perfil sí se explica dónde cambiar la zona horaria', () => {
+    const html = render(createElement(CommunityNoticePrefs, { prefs: { ...DEFAULT_NOTIFICATION_PREFS }, onSave: () => undefined, showZoneHint: true }))
+    expect(html).toContain('href="/familia"')
   })
 })

@@ -26,10 +26,12 @@ export interface RatingSummary {
   avgRating: number | null
   ratingCount: number
   myRating: number | null
+  // Reseña propia que ya devuelve el servidor con la ficha (PublicRecipe.myReview): se precarga para que cambiar las estrellas no la borre sin querer.
+  myReview?: string | null
 }
 
 // Valoración con estrellas y reseña opcional (CMN-§5.4). Antes de enviar se pide participar (alias y normas la primera vez). Una persona = una valoración por
-// receta; puede cambiarla. OJO: al cambiarla se sustituye también su reseña (el servidor no devuelve la reseña propia a la ficha), y se avisa de ello.
+// receta; puede cambiarla. Al abrir se precargan sus estrellas Y su reseña.
 export function RecipeRatingBox({
   recipeId,
   summary,
@@ -46,7 +48,7 @@ export function RecipeRatingBox({
   const { requireParticipation } = useCommunity()
   const [editing, setEditing] = useState(summary.myRating === null)
   const [stars, setStars] = useState<number>(summary.myRating ?? 0)
-  const [review, setReview] = useState('')
+  const [review, setReview] = useState(summary.myReview ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -58,7 +60,7 @@ export function RecipeRatingBox({
     try {
       if (!(await requireParticipation())) return
       const r = await rateRecipe(recipeId, stars, review.trim() === '' ? null : review.trim())
-      onChanged({ avgRating: r.avgRating, ratingCount: r.ratingCount, myRating: stars })
+      onChanged({ avgRating: r.avgRating, ratingCount: r.ratingCount, myRating: stars, myReview: review.trim() === '' ? null : review.trim() })
       setSaved(true)
       setEditing(false)
     } catch (e) {
@@ -140,7 +142,6 @@ export function RecipeRatingBox({
             />
           </label>
           <p className="muted" style={{ margin: '4px 0 8px', fontSize: 13 }}>
-            {summary.myRating !== null ? 'Al guardar se sustituye tu reseña anterior: si quieres conservarla, vuelve a escribirla. ' : ''}
             Tu reseña la podrá leer cualquier persona con tu alias, nunca tu nombre.
           </p>
           {error && <p className="error">{error}</p>}
@@ -149,7 +150,14 @@ export function RecipeRatingBox({
               {busy ? 'Enviando…' : 'Enviar valoración'}
             </button>
             {summary.myRating !== null && (
-              <button type="button" className="link-button" style={{ minHeight: 44 }} onClick={() => setEditing(false)} disabled={busy}>
+              <button type="button" className="link-button" style={{ minHeight: 44 }} onClick={() => {
+                  // Cancelar deja las estrellas y la reseña como estaban guardadas.
+                  setStars(summary.myRating ?? 0)
+                  setReview(summary.myReview ?? '')
+                  setEditing(false)
+                }}
+                disabled={busy}
+              >
                 Cancelar
               </button>
             )}

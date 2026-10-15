@@ -38,6 +38,7 @@ vi.mock('@/data/community', () => ({
   toggleFollowConversation: vi.fn(),
   followUser: vi.fn(),
   unfollowUser: vi.fn(),
+  listFollowing: vi.fn(),
   blockUser: vi.fn(),
   unblockUser: vi.fn(),
   getMyCommunityProfile: vi.fn(),
@@ -194,6 +195,26 @@ describe('acciones', () => {
     expect(html).not.toContain('Denunciar')
     expect(html.toLowerCase()).not.toContain('bloque')
     expect(html).toContain('Compartir')
+  })
+
+  it('con autor oficial (Pepa / Equipo PEPA) no se ofrece seguir ni bloquear: el servidor no lo permite', () => {
+    const html = render(<PostActions detail={post({ authorIsOfficial: true, isOfficial: true })} onPatch={noop} onReload={noop} />)
+    expect(html).not.toContain('Seguir a ')
+    expect(html).toContain('Me gusta (3)')
+    expect(actionsSrc).toMatch(/canFollowAuthor = [^\n]*!detail\.authorIsOfficial/)
+    expect(actionsSrc).toMatch(/canBlockAuthor = [^\n]*!detail\.authorIsOfficial/)
+  })
+
+  it('el modo de seguimiento actual se pide con listFollowing SOLO si ya se sigue al autor (una vez)', () => {
+    expect(actionsSrc).toContain('listFollowing()')
+    expect(actionsSrc).toContain('const wantsMode = interactive && canFollowAuthor && detail.followingAuthor')
+    expect(actionsSrc).toContain('modeLoaded.current')
+  })
+
+  it('la página distingue la capa de bloqueado con guardas tipadas, sin conversiones forzadas', () => {
+    expect(pageSrc).toContain('isBlockedLayer(r)')
+    expect(pageSrc).toContain('isHiddenNotice(r)')
+    expect(pageSrc).not.toContain('as unknown as')
   })
 
   it('en una publicación mía no se puede seguir al autor y el menú es editar y eliminar', () => {

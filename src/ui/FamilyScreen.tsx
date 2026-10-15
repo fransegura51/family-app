@@ -32,6 +32,7 @@ import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/type
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -219,6 +220,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           Cerrar sesión ({profile.displayName})
         </button>
       </div>
+      <InviteFriendsButton />
       <NotificationsCard />
       <NotificationPrefsCard />
       <TaskNotifyModeCard familyId={profile.familyId} isAdmin={isAdmin} />

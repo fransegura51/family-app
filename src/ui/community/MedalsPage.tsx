@@ -4,7 +4,6 @@ import { getMedals } from '@/data/community'
 import type { MedalInfo, MedalsView } from '@/domain/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import {
-  CONSTANCY_LEVELS,
   CONSTANCY_RULE_TEXT,
   constancyText,
   groupMedals,
@@ -82,17 +81,6 @@ export function MedalsContent({ view }: { view: MedalsView }) {
         <h2 id="constancy-title">Tu constancia</h2>
         <p className="community-constancy-line">{view.suspended ? 'En pausa' : `🔥 ${constancyText(view.constancy)}`}</p>
         <p className="muted">{CONSTANCY_RULE_TEXT}</p>
-        <ul className="community-constancy-rule" aria-label="Niveles de constancia">
-          {CONSTANCY_LEVELS.map((l) => {
-            const current = !view.suspended && view.constancy?.level === l.level
-            return (
-              <li key={l.level} className={current ? 'current' : ''} aria-current={current ? 'true' : undefined}>
-                <span>{l.weeks === 1 ? '1 semana activa' : `${l.weeks} semanas activas`}</span>
-                <strong>{l.name}</strong>
-              </li>
-            )
-          })}
-        </ul>
         <p className="muted">Si pasas cuatro semanas sin participar, no tendrás nivel. Puedes volver cuando quieras: el nivel se recupera solo.</p>
       </section>
 

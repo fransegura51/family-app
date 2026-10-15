@@ -6,6 +6,7 @@ drop function if exists public.community_similar_posts(text, text, text);
 drop function if exists public.community_list_posts(text, text, text, text, integer, integer, text, uuid, boolean, boolean);
 drop function if exists private.community_card(public.community_posts, uuid);
 drop function if exists public.community_delete_post(uuid);
+drop function if exists private.community_blank_recipe(uuid);
 drop function if exists public.community_update_post(uuid, text, text, text, text[], jsonb);
 drop function if exists public.community_create_post(text, text, text, text, text, text[], jsonb, uuid);
 drop function if exists private.community_clean_recipe(jsonb);

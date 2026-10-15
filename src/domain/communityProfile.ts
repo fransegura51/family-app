@@ -177,11 +177,35 @@ export function banNotice(me: MyCommunityProfile | null): BanNotice | null {
 // ---- Derecho de supresión: «Pedir que se elimine un contenido»
 export type RemovalScope = 'all_my_content' | 'specific'
 
-export function validateRemovalRequest(scope: RemovalScope, targetId: string | null, detail: string): string | null {
-  if (scope === 'specific' && !targetId) return 'Elige qué publicación quieres que se elimine.'
+export type RemovalTargetKind = 'post' | 'comment'
+
+export function validateRemovalRequest(scope: RemovalScope, targetId: string | null, detail: string, targetKind: RemovalTargetKind = 'post'): string | null {
+  if (scope === 'specific' && !targetId) return targetKind === 'comment' ? 'Elige qué comentario quieres que se elimine.' : 'Elige qué publicación quieres que se elimine.'
   if (scope === 'specific' && detail.trim().length < 5) return 'Cuéntanos en pocas palabras por qué (mínimo 5 letras).'
   if (detail.length > 2000) return 'El detalle es demasiado largo (máximo 2000 caracteres).'
   return null
 }
 
 export const REMOVAL_SENT_TEXT = 'Solicitud enviada: está pendiente de revisión. La administración la revisará y, cuando la resuelva, te llegará un aviso en la campana de Inicio.'
+
+// Estado PERSISTENTE de una solicitud (lo que guarda el servidor): pendiente, hecha o rechazada.
+export type RemovalStatus = 'open' | 'done' | 'rejected'
+
+export function removalStatusLabel(status: RemovalStatus): string {
+  if (status === 'done') return 'Hecha'
+  if (status === 'rejected') return 'Rechazada'
+  return 'Pendiente de revisión'
+}
+
+// Qué pedí, en una frase: «Todo lo que he publicado», «Un comentario» o «Una publicación».
+export function removalRequestTitle(r: { scope: RemovalScope; targetType: 'post' | 'comment' | null }): string {
+  if (r.scope === 'all_my_content') return 'Todo lo que he publicado'
+  return r.targetType === 'comment' ? 'Un comentario' : 'Una publicación'
+}
+
+// Texto de una opción del selector de comentarios: extracto corto y publicación donde está.
+export function commentOptionLabel(c: { excerpt: string; postTitle: string | null }): string {
+  const text = c.excerpt.replace(/\s+/g, ' ').trim()
+  const short = text.length > 60 ? `${text.slice(0, 57)}…` : text || '(comentario con foto)'
+  return c.postTitle ? `${short} — en «${c.postTitle.length > 40 ? `${c.postTitle.slice(0, 37)}…` : c.postTitle}»` : short
+}

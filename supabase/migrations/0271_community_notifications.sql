@@ -167,6 +167,30 @@ create index idx_community_notification_events_pending on public.community_notif
 alter table public.community_notification_events enable row level security;
 revoke all on public.community_notification_events from anon, authenticated;
 
+-- Datos PRIVADOS ligados a un perfil seudónimo (no son contenido público): borradores (y sus fotos), búsquedas, visitas, progreso de lectura, temas favoritos,
+-- avisos pendientes, guardados, seguimientos y bloqueos. Se borran al eliminar la cuenta y al «borrar todo lo mío».
+create or replace function private.community_purge_private_data(p_cp uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.community_queue_media_deletion(array(select jsonb_array_elements_text(d.photos) from public.community_drafts d where d.profile_id = p_cp));
+  delete from public.community_drafts where profile_id = p_cp;
+  delete from public.community_search_history where profile_id = p_cp;
+  delete from public.community_post_visits where profile_id = p_cp;
+  delete from public.community_comment_seen where profile_id = p_cp;
+  delete from public.community_favorite_topics where profile_id = p_cp;
+  delete from public.community_notification_events where profile_id = p_cp;
+  delete from public.community_conversation_follows where profile_id = p_cp;
+  delete from public.community_saves where profile_id = p_cp;
+  delete from public.community_user_follows where follower_id = p_cp;
+  delete from public.community_blocks where blocker_id = p_cp;
+end;
+$$;
+revoke execute on function private.community_purge_private_data(uuid) from public, anon, authenticated;
+
 create table public.community_notice_state (
   profile_id uuid primary key references public.community_profiles(id) on delete cascade,
   last_notice_at timestamptz,
@@ -306,6 +330,9 @@ as $$
 declare
   v_cp uuid := private.community_cp();
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   if v_cp is null then
     return '[]'::jsonb;
   end if;

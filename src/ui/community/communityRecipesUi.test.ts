@@ -13,6 +13,7 @@ import ratingBox from '@/ui/community/recipes/RecipeRatingBox.tsx?raw'
 import panel from '@/ui/community/recipes/RecipePanel.tsx?raw'
 import fields from '@/ui/community/recipes/RecipeFields.tsx?raw'
 import consent from '@/ui/community/recipes/RecipeConsentCheckbox.tsx?raw'
+import similarHook from '@/ui/community/recipes/useSimilarRecipes.ts?raw'
 import photoCopy from '@/ui/community/recipes/recipePhotoCopy.ts?raw'
 import seedHook from '@/ui/community/useRecipeSeed.ts?raw'
 import alimentacion from '@/ui/AlimentacionScreen.tsx?raw'
@@ -153,6 +154,34 @@ describe('consentimiento para publicar (CMN-§5.1)', () => {
   })
 })
 
+describe('publicaciones parecidas antes de publicar (§4)', () => {
+  it('pide similarPosts(título, receta, recetas) con pausa de 600 ms, al menos 4 letras y una sola petición por cambio de título', () => {
+    expect(similarHook).toContain("similarPosts(clean, 'receta', 'recetas')")
+    expect(similarHook).toContain('SIMILAR_DELAY_MS = 600')
+    expect(similarHook).toContain('SIMILAR_MIN_LETTERS = 4')
+    expect(similarHook).toContain('SIMILAR_MAX = 3')
+    expect(similarHook.match(/similarPosts\(/g)?.length).toBe(1)
+    // Al cambiar el título se anula la espera y se descarta la respuesta anterior.
+    expect(similarHook).toContain('window.clearTimeout(t)')
+    expect(similarHook).toContain('if (cancelled) return')
+    expect(similarHook).toContain('[clean, eligible]')
+    expect(similarHook).not.toMatch(/setInterval/)
+  })
+
+  it('la hoja las enseña bajo el título como «¿Es lo mismo que…?», con enlaces que abren otra pestaña, y no condicionan «Publicar»', () => {
+    expect(publishSheet).toContain('useSimilarRecipes(title, !closed && !publishedId)')
+    expect(publishSheet).toContain('¿Es lo mismo que…?')
+    expect(publishSheet).toContain('<Link to={paths.post(p.id)} target="_blank" rel="noopener noreferrer">')
+    // Se ven antes que la vista previa y el editor.
+    expect(publishSheet.indexOf('community-similar')).toBeLessThan(publishSheet.indexOf('{editing ? ('))
+    // Las sugerencias no entran en la regla de publicar.
+    const rule = publishSheet.slice(publishSheet.indexOf('const canPublish ='), publishSheet.indexOf('async function publish'))
+    expect(rule).not.toContain('similar')
+    const publishFn = publishSheet.slice(publishSheet.indexOf('async function publish'), publishSheet.indexOf('return (\n    <div className="modal-overlay"'))
+    expect(publishFn).not.toContain('similar')
+  })
+})
+
 describe('importar a mi Cocina (CMN-§5.2)', () => {
   it('usa createRecipe de la Cocina y registra la importación con el id de la copia', () => {
     expect(importButton).toContain('createRecipe(publicRecipeToKitchenInput(')
@@ -252,6 +281,26 @@ describe('valoración y reseñas (CMN-§5.4)', () => {
     expect(ratingBox).toContain('const PAGE = 20')
     expect(ratingBox).toContain('Contenido de usuario bloqueado por ti')
     expect(ratingBox).not.toContain('useEffect')
+  })
+
+  it('precarga estrellas Y reseña propia, y ya no avisa de que se sustituye la reseña', () => {
+    expect(ratingBox).toContain('useState<number>(summary.myRating ?? 0)')
+    expect(ratingBox).toContain("useState(summary.myReview ?? '')")
+    expect(ratingBox).not.toContain('se sustituye tu reseña')
+    // Cancelar devuelve estrellas y reseña a lo guardado.
+    expect(ratingBox).toContain("setReview(summary.myReview ?? '')")
+    // La ficha pasa la reseña propia que manda el servidor y, tras valorar, la nueva.
+    expect(panel).toContain('myReview: recipe.myReview ?? null')
+    expect(ratingBox).toContain('myReview: review.trim() === ')
+  })
+
+  it('el autor de la receta (isMine) o quien no puede interactuar NO ve las estrellas ni el formulario', () => {
+    expect(panel).toContain('const canRate = detail.canInteract && !detail.isMine')
+    expect(panel).toContain('canRate={canRate}')
+    // Las estrellas solo se pintan dentro de «canRate && editing».
+    const starsAt = ratingBox.indexOf('role="radiogroup"')
+    expect(ratingBox.lastIndexOf('{canRate && editing && (', starsAt)).toBeGreaterThan(-1)
+    expect(ratingBox.lastIndexOf('{canRate && editing && (', starsAt)).toBeLessThan(starsAt)
   })
 
   it('las estrellas de solo lectura dicen el valor en palabras', () => {

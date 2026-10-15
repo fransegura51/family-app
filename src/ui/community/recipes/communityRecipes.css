@@ -368,3 +368,31 @@
 .community-recipe-fields .recipe-ing-name {
   flex: 1 1 140px;
 }
+
+/* ---- «¿Es lo mismo que…?» (publicaciones parecidas, solo una ayuda) */
+.community-similar {
+  background: #f4f8ff;
+  border: 1px solid #b7cdf5;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.community-similar p {
+  margin: 0 0 4px;
+}
+
+.community-similar ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.community-similar li {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.community-similar a {
+  display: inline-block;
+  min-height: 44px;
+  line-height: 44px;
+}

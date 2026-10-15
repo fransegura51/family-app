@@ -1,6 +1,6 @@
 // Lógica pura de la página de una publicación: contadores, fechas, encuesta con hora de Madrid, fuentes de un artículo.
 import { describe, expect, it } from 'vitest'
-import { formatMadridMoment, formatSourceDate, parseArticleSources, pollPercents, pollPhase, pollTimeMessage, relativeTimeEs, sortPhotos, toggleCount } from '@/domain/communityPost'
+import { isBlockedLayer, isHiddenNotice, formatMadridMoment, formatSourceDate, parseArticleSources, pollPercents, pollPhase, pollTimeMessage, relativeTimeEs, sortPhotos, toggleCount } from '@/domain/communityPost'
 
 describe('contadores optimistas', () => {
   it('suben y bajan de uno en uno sin pasar de cero', () => {
@@ -11,6 +11,16 @@ describe('contadores optimistas', () => {
   it('las fotos se ordenan por posición', () => {
     expect(sortPhotos([{ path: 'b', position: 2 }, { path: 'a', position: 0 }]).map((p) => p.path)).toEqual(['a', 'b'])
     expect(sortPhotos(null)).toEqual([])
+  })
+})
+
+describe('qué devuelve el servidor al pedir una publicación', () => {
+  it('distingue la capa de bloqueado y el aviso de oculta', () => {
+    expect(isBlockedLayer({ id: 'p', blockedByMe: true, authorId: 'u' })).toBe(true)
+    expect(isBlockedLayer({ id: 'p', blockedByMe: true } as never)).toBe(false)
+    expect(isBlockedLayer(null)).toBe(false)
+    expect(isHiddenNotice({ id: 'p', status: 'hidden', isMine: true, title: 'T' })).toBe(true)
+    expect(isHiddenNotice(null)).toBe(false)
   })
 })
 
@@ -83,5 +93,17 @@ describe('fuentes de un artículo oficial', () => {
     expect(formatSourceDate('2026-03')).toBe('marzo de 2026')
     expect(formatSourceDate('primavera 2026')).toBe('primavera 2026')
     expect(formatSourceDate(null)).toBeNull()
+  })
+})
+
+describe('tabla del artículo', () => {
+  it('lee columnas y filas de texto y números, recortadas', () => {
+    const info = parseArticleSources({ sources: [], table: { unit: '%', columns: ['Año', 'España', 'UE'], rows: [['2024', 10.5, 9], ['2023', '11,2', null, 'sobra']] } })
+    expect(info.table).toEqual({ unit: '%', columns: ['Año', 'España', 'UE'], rows: [['2024', '10,5', '9'], ['2023', '11,2', '']] })
+  })
+  it('sin tabla válida no hay tabla', () => {
+    expect(parseArticleSources({ table: 'x' }).table).toBeUndefined()
+    expect(parseArticleSources({ table: { columns: [], rows: [[1]] } }).table).toBeUndefined()
+    expect(parseArticleSources({ table: { columns: ['a'], rows: [] } }).table).toBeUndefined()
   })
 })

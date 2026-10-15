@@ -7254,3 +7254,17 @@ textarea {
   margin-top: 24px;
   text-align: center;
 }
+
+.invite-friends {
+  margin: 12px 0;
+}
+
+.invite-friends-btn {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px dashed var(--border, #c9d0dc);
+  background: transparent;
+  color: var(--muted, #6b7280);
+  font-size: 15px;
+}

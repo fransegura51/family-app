@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { communityStatus } from '@/data/community'
 import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notifications'
 import {
   DEFAULT_NOTIFICATION_PREFS,
@@ -8,15 +9,18 @@ import {
   timezoneLabel,
   type NotificationPrefs,
 } from '@/domain/notificationPrefs'
+import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 
 // Ajustes de avisos de CADA persona (se guardan en el servidor, así que valen en todos sus dispositivos):
 //  · Zona horaria propia (quien ya existía empieza en Europe/Madrid; si el móvil está en otra, se ofrece cambiarla, nunca se cambia sola).
 //  · Resumen diario de tareas pendientes y atrasadas: activado por defecto a las 08:00, con hora propia.
+//  · Avisos de Comunidad (COM-144: franja de avisos personales y sugerencias): solo si Comunidad es visible; se pregunta UNA vez al abrir la pantalla.
 export function NotificationPrefsCard() {
   const [prefs, setPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS })
   const [loaded, setLoaded] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [communityVisible, setCommunityVisible] = useState(false)
   const device = detectDeviceTimezone()
 
   useEffect(() => {
@@ -34,6 +38,19 @@ export function NotificationPrefsCard() {
           setLoaded(true)
         }
       },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    communityStatus().then(
+      (st) => {
+        if (!cancelled) setCommunityVisible(st.visible)
+      },
+      () => undefined, // sin respuesta: el bloque de Comunidad simplemente no sale
     )
     return () => {
       cancelled = true
@@ -100,6 +117,12 @@ export function NotificationPrefsCard() {
           <p className="muted">
             Solo recibes el resumen si tienes tareas pendientes. La hora es la de tu zona horaria y se ajusta sola con los cambios de hora.
           </p>
+          {communityVisible && (
+            <>
+              <h4>Avisos de Comunidad</h4>
+              <CommunityNoticePrefs prefs={prefs} onSave={save} />
+            </>
+          )}
           {message && <p className="muted">{message}</p>}
           {error && <p className="error">{error}</p>}
         </>

@@ -32,6 +32,7 @@ drop function if exists private.community_comment_json(public.community_comments
 drop function if exists public.community_delete_comment(uuid);
 drop function if exists public.community_edit_comment(uuid, text);
 drop function if exists public.community_add_comment(uuid, text, text, uuid);
+drop function if exists private.community_can_upload();
 drop function if exists private.community_counters_saves();
 drop function if exists private.community_counters_comment_likes();
 drop function if exists private.community_counters_post_likes();

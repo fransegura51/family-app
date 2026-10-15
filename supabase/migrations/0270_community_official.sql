@@ -374,6 +374,9 @@ as $$
 declare
   p public.community_polls%rowtype;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   select pl.* into p from public.community_polls pl join public.community_posts po on po.id = pl.post_id where pl.post_id = p_post and po.status = 'published';
   if not found then
     return null;
@@ -454,6 +457,9 @@ declare
   v_count integer;
   s public.community_post_summaries%rowtype;
 begin
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
   select p.comment_count into v_count from public.community_posts p where p.id = p_post and p.status = 'published';
   if v_count is null then
     return null;
@@ -658,7 +664,8 @@ declare
 begin
   select count(*)::integer into v_total from public.community_pepa_activity a where a.kind = 'mention' and a.created_at > now() - interval '1 hour';
   for r in select m.*, c.post_id, c.body from public.community_pepa_mentions m join public.community_comments c on c.id = m.comment_id
-           where m.handled_at is null and not m.skipped and m.created_at > now() - interval '2 hours' order by m.created_at limit 20 loop
+           join public.community_posts po on po.id = c.post_id
+           where c.status = 'published' and po.status = 'published' and m.handled_at is null and not m.skipped and m.created_at > now() - interval '2 hours' order by m.created_at limit 20 loop
     select count(*)::integer into v_mine from public.community_pepa_activity a where a.kind = 'mention' and a.requester_id = r.requester_id and a.created_at > now() - interval '1 hour';
     if v_total >= 20 or v_mine >= 3 then
       update public.community_pepa_mentions set skipped = true where comment_id = r.comment_id;

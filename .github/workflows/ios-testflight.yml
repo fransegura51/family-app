@@ -58,25 +58,27 @@ jobs:
             project.save'
 
       # Firma con el certificado Apple Distribution y el perfil App Store de PEPA, creados una vez con la API de App Store Connect
-      # y guardados como secretos (IOS_DIST_CERT_P12_B64, IOS_DIST_CERT_PASSWORD, IOS_APPSTORE_PROFILE_B64, IOS_APPSTORE_PROFILE_NAME).
+      # y guardados como secretos (IOS_DIST_KEY_B64, IOS_DIST_CERT_PEM_B64, IOS_APPSTORE_PROFILE_B64, IOS_APPSTORE_PROFILE_NAME).
       # La firma automática en la nube (xcodebuild con la llave de la API) falla con «Cannot verify client's JWT headers», por eso es manual.
       - name: Instalar certificado y perfil de distribución
         env:
-          IOS_DIST_CERT_P12_B64: ${{ secrets.IOS_DIST_CERT_P12_B64 }}
-          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_DIST_KEY_B64: ${{ secrets.IOS_DIST_KEY_B64 }}
+          IOS_DIST_CERT_PEM_B64: ${{ secrets.IOS_DIST_CERT_PEM_B64 }}
           IOS_APPSTORE_PROFILE_B64: ${{ secrets.IOS_APPSTORE_PROFILE_B64 }}
         run: |
           set -e
-          test -n "$IOS_DIST_CERT_P12_B64" && test -n "$IOS_APPSTORE_PROFILE_B64" || { echo "Faltan los secretos de firma"; exit 1; }
+          test -n "$IOS_DIST_KEY_B64" && test -n "$IOS_DIST_CERT_PEM_B64" && test -n "$IOS_APPSTORE_PROFILE_B64" || { echo "Faltan los secretos de firma"; exit 1; }
           KC="$RUNNER_TEMP/firma.keychain-db"
           KCPASS="$(uuidgen)"
           security create-keychain -p "$KCPASS" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KCPASS" "$KC"
-          echo "$IOS_DIST_CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/dist.p12"
-          echo "Largo de la contraseña del .p12: $(printf '%s' "$IOS_DIST_CERT_PASSWORD" | wc -c | tr -d ' ') ; tamaño del .p12: $(wc -c < "$RUNNER_TEMP/dist.p12" | tr -d ' ') bytes"
-          if P12CHECK="$IOS_DIST_CERT_PASSWORD" openssl pkcs12 -in "$RUNNER_TEMP/dist.p12" -passin env:P12CHECK -noout 2>&1; then echo "openssl abre el .p12 con esa contraseña"; else echo "openssl NO abre el .p12 con esa contraseña"; fi
-          security import "$RUNNER_TEMP/dist.p12" -k "$KC" -P "$IOS_DIST_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          echo "$IOS_DIST_KEY_B64" | base64 --decode > "$RUNNER_TEMP/dist.key"
+          echo "$IOS_DIST_CERT_PEM_B64" | base64 --decode > "$RUNNER_TEMP/dist.pem"
+          # El .p12 se arma aquí con el openssl del sistema (LibreSSL), cuyo formato sí entiende macOS.
+          P12PASS="$(uuidgen)"
+          /usr/bin/openssl pkcs12 -export -inkey "$RUNNER_TEMP/dist.key" -in "$RUNNER_TEMP/dist.pem" -out "$RUNNER_TEMP/dist.p12" -passout pass:"$P12PASS"
+          security import "$RUNNER_TEMP/dist.p12" -k "$KC" -P "$P12PASS" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCPASS" "$KC"
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"

@@ -16,8 +16,11 @@ import { formatServingsValue } from '@/domain/servingsSourceNote'
 import type { Recipe } from '@/domain/types'
 import { paths } from '@/ui/community/communityNav'
 import { CommunityProvider, useCommunity } from '@/ui/community/CommunityProvider'
+import { participationBlockedText } from '@/domain/communityAccess'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { RecipeConsentCheckbox } from '@/ui/community/recipes/RecipeConsentCheckbox'
 import { RecipeFields } from '@/ui/community/recipes/RecipeFields'
+import { RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
 import { copyPrivatePhotoToCommunity } from '@/ui/community/recipes/recipePhotoCopy'
 import { browserStore, rememberShared, sharedPostFor } from '@/ui/community/recipes/recipeUpdateCache'
 import { useSimilarRecipes } from '@/ui/community/recipes/useSimilarRecipes'
@@ -136,7 +139,10 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
 
   const clean = useMemo(() => cleanRecipeDraft(draft), [draft])
   const problems = recipePublishProblems(title, draft)
-  const closed = status !== null && !status.visible
+  // Cerrada = Comunidad no abierta, sin acceso por edad/permisos, o permiso solo de lectura (no se puede publicar): se explica el motivo exacto.
+  const { canParticipate } = useCommunityAccess()
+  const blockedText = participationBlockedText(status)
+  const closed = (status !== null && !status.visible) || !canParticipate
   // «¿Es lo mismo que…?»: hasta 3 parecidas, solo una ayuda (nunca bloquea «Publicar»).
   const similar = useSimilarRecipes(title, !closed && !publishedId)
   const canPublish = !closed && !publishedId && canPublishRecipe({ consent, topicId: topicId || null, title, draft })
@@ -217,7 +223,7 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
             </div>
           </div>
         ) : closed ? (
-          <p className="community-notice">Comunidad todavía no está abierta. Cuando se abra podrás compartir tus recetas.</p>
+          <p className="community-notice">{blockedText ?? 'Comunidad todavía no está abierta. Cuando se abra podrás compartir tus recetas.'}</p>
         ) : (
           <>
             <p className="muted" style={{ margin: 0 }}>
@@ -251,10 +257,7 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
 
             {editing ? (
               <div className="community-recipe-sheet">
-                <label className="community-field">
-                  <span>Nombre de la receta</span>
-                  <input type="text" value={title} maxLength={MAX_TITLE} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
-                </label>
+                <RecipeTitleField label="Nombre de la receta" value={title} onChange={setTitle} maxLength={MAX_TITLE} large={false} disabled={busy} />
                 <RecipeFields value={draft} onChange={setDraft} disabled={busy} />
                 <button type="button" className="link-button" style={{ minHeight: 44, alignSelf: 'flex-start' }} onClick={() => setEditing(false)}>
                   Listo, ver cómo queda

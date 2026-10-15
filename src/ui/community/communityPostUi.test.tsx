@@ -18,7 +18,7 @@ import { join } from 'node:path'
 const css = readFileSync(join(process.cwd(), 'src/ui/community/communityPost.css'), 'utf8')
 
 vi.mock('@/data/community', () => ({
-  communityPhotoUrl: (p: string) => `https://fotos.test/${p}`,
+  createCommunityPhotoSignedUrls: vi.fn(async () => ({})),
   getPoll: vi.fn(),
   votePoll: vi.fn(),
   getPost: vi.fn(),
@@ -164,7 +164,9 @@ describe('página de la publicación (estructura)', () => {
 
   it('el campo de comentar va el último, sin explicar nada si no se puede interactuar', () => {
     expect(pageSrc.indexOf('<CommentsSection')).toBeLessThan(pageSrc.indexOf('<CommentComposer'))
-    expect(pageSrc).toContain('{detail.canInteract && (')
+    // `canInteract` = lo que dice el servidor Y poder participar (permiso solo de lectura, regla de 0277).
+    expect(pageSrc).toContain('const canInteract = detail.canInteract && canParticipate')
+    expect(pageSrc).toContain('{canInteract && (')
   })
 
   it('al cargar muestra un aviso accesible', () => {
@@ -388,18 +390,22 @@ describe('comentarios', () => {
     expect(html).not.toContain('NO DEBE SALIR')
   })
 
-  it('sin interacción: ni me gusta ni responder ni menú (y sin explicar el motivo)', () => {
+  it('sin interacción: ni me gusta ni responder; el menú solo sirve para denunciar (y sin explicar el motivo)', () => {
     const html = render(<CommentItem comment={comment({ canInteract: false })} isReply={false} actions={actions} />)
     expect(html).not.toContain('Me gusta (')
     expect(html).not.toContain('Responder')
-    expect(html).not.toContain('Más opciones')
+    expect(html).toContain('Más opciones del comentario')
     expect(render(<CommentItem comment={comment()} readOnly isReply={false} actions={actions} />)).not.toContain('Responder')
   })
 
-  it('foto de comentario: miniatura que se amplía al tocarla (botón accesible)', () => {
-    const html = render(<CommentItem comment={comment({ photoPath: 'u1/foto.jpg' })} isReply={false} actions={actions} />)
+  it('foto de comentario: miniatura (por el Worker, nunca por Supabase) que se amplía al tocarla (botón accesible)', () => {
+    vi.stubEnv('VITE_COMMUNITY_PUBLIC_BASE', 'https://pepafamilyapp.es/c/')
+    const path = 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb/11111111-aaaa-4bbb-8ccc-000000000001.jpg'
+    const html = render(<CommentItem comment={comment({ photoPath: path })} isReply={false} actions={actions} />)
+    vi.unstubAllEnvs()
     expect(html).toContain('aria-label="Ampliar la foto del comentario"')
-    expect(html).toContain('https://fotos.test/u1/foto.jpg')
+    expect(html).toContain(`src="https://pepafamilyapp.es/c/img/${path}"`)
+    expect(html).not.toContain('supabase.co')
     expect(html).toContain('alt="Foto del comentario"')
   })
 

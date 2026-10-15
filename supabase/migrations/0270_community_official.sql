@@ -374,9 +374,7 @@ as $$
 declare
   p public.community_polls%rowtype;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   select pl.* into p from public.community_polls pl join public.community_posts po on po.id = pl.post_id where pl.post_id = p_post and po.status = 'published';
   if not found then
     return null;
@@ -444,7 +442,7 @@ create table public.community_post_summaries (
 alter table public.community_post_summaries enable row level security;
 revoke all on public.community_post_summaries from anon, authenticated;
 
-create or replace function public.community_get_summary(p_post uuid)
+create or replace function private.community_summary_state(p_post uuid)
 returns jsonb
 language plpgsql
 stable
@@ -457,9 +455,6 @@ declare
   v_count integer;
   s public.community_post_summaries%rowtype;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
   select p.comment_count into v_count from public.community_posts p where p.id = p_post and p.status = 'published';
   if v_count is null then
     return null;
@@ -475,6 +470,20 @@ begin
     'stale', v_count >= v_threshold and (not found or v_count - s.comment_count_at >= v_every or s.refresh_requested_at is not null));
 end;
 $$;
+revoke execute on function private.community_summary_state(uuid) from public, anon, authenticated;
+
+create or replace function public.community_get_summary(p_post uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.community_require_reader();
+  return private.community_summary_state(p_post);
+end;
+$$;
 
 -- La función de servidor pide los comentarios a resumir (solo si hace falta o se pide). Sin nombres: solo texto y orden.
 create or replace function public.community_service_summary_input(p_post uuid, p_force boolean default false)
@@ -485,9 +494,10 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_state jsonb := public.community_get_summary(p_post);
+  v_state jsonb := private.community_summary_state(p_post);
 begin
-  if v_state is null or not (v_state ->> 'eligible')::boolean then
+  -- Contenido de personas menores de edad: NO se envía a la IA (las condiciones de Gemini prohíben su uso con menores de 18).
+  if v_state is null or not (v_state ->> 'eligible')::boolean or exists (select 1 from public.community_posts x where x.id = p_post and x.ai_excluded) then
     return jsonb_build_object('needed', false, 'reason', 'not_eligible');
   end if;
   if not p_force and not (v_state ->> 'stale')::boolean then
@@ -501,9 +511,9 @@ begin
     'comments', (select coalesce(jsonb_agg(jsonb_build_object('n', x.rn, 'reply_to', x.reply_n, 'text', left(x.body, 600)) order by x.rn), '[]'::jsonb)
                  from (select row_number() over (order by c.created_at) as rn,
                               (select r.rn2 from (select c2.id, row_number() over (order by c2.created_at) as rn2 from public.community_comments c2
-                                                  where c2.post_id = p_post and c2.status = 'published') r where r.id = c.reply_to_id) as reply_n,
+                                                  where c2.post_id = p_post and c2.status = 'published' and not c2.ai_excluded) r where r.id = c.reply_to_id) as reply_n,
                               c.body
-                       from public.community_comments c where c.post_id = p_post and c.status = 'published' and c.body <> '' limit 300) x));
+                       from public.community_comments c where c.post_id = p_post and c.status = 'published' and not c.ai_excluded and c.body <> '' limit 300) x));
 end;
 $$;
 revoke all on function public.community_service_summary_input(uuid, boolean) from public, anon, authenticated;
@@ -600,7 +610,7 @@ begin
     select row_number() over (order by p.created_at) as rn,
            jsonb_build_object('post_id', p.id, 'title', p.title, 'body', left(p.body, 3000), 'topic_id', p.topic_id) as j
     from public.community_posts p
-    where p.kind = 'pregunta' and p.status = 'published' and not p.is_official
+    where p.kind = 'pregunta' and p.status = 'published' and not p.is_official and not p.ai_excluded
       and p.created_at <= now() - make_interval(hours => v_hours)
       and not exists (select 1 from public.community_comments c join public.community_profiles ca on ca.id = c.author_id
                       where c.post_id = p.id and c.status = 'published' and c.author_id <> p.author_id and not ca.is_official)
@@ -665,7 +675,7 @@ begin
   select count(*)::integer into v_total from public.community_pepa_activity a where a.kind = 'mention' and a.created_at > now() - interval '1 hour';
   for r in select m.*, c.post_id, c.body from public.community_pepa_mentions m join public.community_comments c on c.id = m.comment_id
            join public.community_posts po on po.id = c.post_id
-           where c.status = 'published' and po.status = 'published' and m.handled_at is null and not m.skipped and m.created_at > now() - interval '2 hours' order by m.created_at limit 20 loop
+           where c.status = 'published' and po.status = 'published' and not c.ai_excluded and not po.ai_excluded and m.handled_at is null and not m.skipped and m.created_at > now() - interval '2 hours' order by m.created_at limit 20 loop
     select count(*)::integer into v_mine from public.community_pepa_activity a where a.kind = 'mention' and a.requester_id = r.requester_id and a.created_at > now() - interval '1 hour';
     if v_total >= 20 or v_mine >= 3 then
       update public.community_pepa_mentions set skipped = true where comment_id = r.comment_id;

@@ -26,7 +26,7 @@ export function HiddenPanel({ onChanged }: { onChanged: () => void }) {
   return (
     <div className="cadm-stack">
       <InfoBox>
-        Aquí están las publicaciones y comentarios ocultos. Lo que se oculta solo (varias denuncias graves) es provisional y espera tu revisión: para confirmarlo, resuelve su
+        Aquí están las publicaciones, comentarios y reseñas de recetas ocultos. Lo que se oculta solo (varias denuncias graves) es provisional y espera tu revisión: para confirmarlo, resuelve su
         denuncia con «Ocultar»; para devolverlo, usa «Restaurar». Lo restaurado vuelve a verse para todos y queda en el historial.
       </InfoBox>
       <ActionNotice message={notice} />

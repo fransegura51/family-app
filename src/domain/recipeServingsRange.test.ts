@@ -5,6 +5,7 @@ import { scaleIngredientQuantity } from '@/domain/recipeScaling'
 
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const ALIM = src('src/ui/AlimentacionScreen.tsx')
+const EDITOR = src('src/ui/recipeEditor/RecipeEditorFields.tsx') // El editor de campos de receta (Raciones incluidas) es compartido con Comunidad.
 const FOOD = src('src/data/food.ts')
 const URL_CLIENT = src('src/services/recipeUrlImport.ts')
 const PEPA_ACTIONS = src('src/pepa/actions/recipeActions.ts')
@@ -114,8 +115,9 @@ describe('URL — recipeYield se interpreta con el mismo parser', () => {
 
 describe('revisión: corregible, con la fuente visible y sin presentar 6,5 como dato de la fuente', () => {
   it('16. el campo Raciones acepta medios puntos (step 0,5) y se puede modificar antes de guardar', () => {
-    expect(ALIM).toContain('step={0.5}')
-    expect(ALIM).toContain('onChange={(e) => setServingsText(e.target.value)}')
+    expect(EDITOR).toContain('step={0.5}')
+    expect(EDITOR).toContain('onChange={(e) => onServingsTextChange(e.target.value)}')
+    expect(ALIM).toContain('onServingsTextChange={setServingsText}')
   })
   it('la revisión muestra «Fuente» con el texto original y explica que PEPA usa el punto medio', () => {
     expect(ALIM).toContain('servingsSourceNote(servingsSource, sourceValue')
@@ -123,8 +125,9 @@ describe('revisión: corregible, con la fuente visible y sin presentar 6,5 como 
   })
   it('si el usuario corrige el valor, la revisión lo indica y el texto de la fuente no cambia', () => {
     expect(ALIM).toContain('servingsNow')
-    const onChange = ALIM.slice(ALIM.indexOf('onChange={(e) => setServingsText'), ALIM.indexOf('onChange={(e) => setServingsText') + 60)
-    expect(onChange).not.toContain('setServingsSource')
+    // El campo está conectado directamente a setServingsText (no a ninguna función que toque la fuente) y el editor compartido no sabe nada de la fuente.
+    expect(ALIM).toContain('onServingsTextChange={setServingsText}')
+    expect(EDITOR).not.toContain('Source')
   })
   it('nunca se recalculan las raciones desde la fuente tras una edición: solo al importar', () => {
     const calls = ALIM.match(/setServingsText\(/g) ?? []

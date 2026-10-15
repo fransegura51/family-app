@@ -4,6 +4,7 @@ import { parseWikibooksRecipe } from '@/domain/wikibooksRecipeParser'
 // Importación de raciones (2.ª tanda de Recetas): lo inequívoco se propone; lo demás queda en null.
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const ALIM = src('src/ui/AlimentacionScreen.tsx')
+const EDITOR = src('src/ui/recipeEditor/RecipeEditorFields.tsx') // El editor de campos de receta (Raciones incluidas) es compartido con Comunidad.
 const FOOD = src('src/data/food.ts')
 const PEPA_ACTIONS = src('src/pepa/actions/recipeActions.ts')
 const URL_CLIENT = src('src/services/recipeUrlImport.ts')
@@ -43,9 +44,11 @@ describe('revisión antes de guardar — las raciones se rellenan y son editable
   })
 
   it('el campo Raciones es editable (onChange) y se muestra antes de guardar', () => {
-    expect(ALIM).toContain('aria-label="Raciones"')
-    expect(ALIM).toMatch(/aria-label="Raciones"[^>]*/)
-    expect(ALIM).toContain('onChange={(e) => setServingsText(e.target.value)}')
+    // La caja vive en el editor compartido (con etiqueta visible «Raciones (opcional)»); la Cocina le pasa su estado tal cual.
+    expect(EDITOR).toContain('Raciones (opcional)')
+    expect(EDITOR).toContain('onChange={(e) => onServingsTextChange(e.target.value)}')
+    expect(ALIM).toContain('servingsText={servingsText}')
+    expect(ALIM).toContain('onServingsTextChange={setServingsText}')
   })
 
   it('cada importador pasa servings al resultado: URL, candidato de búsqueda, Wikibooks y FatSecret/Cookpad', () => {

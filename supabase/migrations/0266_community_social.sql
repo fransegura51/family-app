@@ -76,12 +76,14 @@ create trigger community_saves_counters after insert or delete on public.communi
   for each row execute function private.community_counters_saves();
 
 -- ---------------------------------------------------------------------------------------------
--- Fotos: bucket PÚBLICO (los enlaces públicos las necesitan y se sirven por CDN), nombres imposibles de adivinar (carpeta = id del perfil público +
--- uuid), solo imágenes de hasta 3 MB, y solo se puede subir/borrar dentro de la propia carpeta. Al borrar una publicación o foto, el archivo físico
--- se borra con la cola community_media_deletions.
+-- Fotos: bucket PRIVADO. Nadie puede abrir una foto por su dirección de Supabase: la lectura la autorizan las políticas de 0277 (solo fotos de contenido
+-- PUBLICADO, o las propias, o a la administración) y las páginas públicas y las vistas previas las sirve el Worker de Cloudflare (ruta /c/img) con la
+-- clave anónima, de modo que una publicación o comentario ocultado por moderación deja de servir su foto (y los enlaces antiguos también) en cuanto caduca
+-- la caché de unos minutos. Nombres imposibles de adivinar (carpeta = id del perfil público + uuid), solo imágenes de hasta 3 MB, y solo se puede subir/borrar
+-- dentro de la propia carpeta. Al borrar una publicación o foto, el archivo físico se borra con la cola community_media_deletions.
 -- ---------------------------------------------------------------------------------------------
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('community-media', 'community-media', true, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
+values ('community-media', 'community-media', false, 3145728, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do nothing;
 
 grant execute on function private.community_cp() to authenticated;
@@ -269,9 +271,7 @@ declare
   v_total integer;
   v_new integer := 0;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   select p.status into v_status from public.community_posts p where p.id = p_post;
   if v_status is distinct from 'published' then
     return null;
@@ -328,6 +328,7 @@ declare
   v_cp uuid := private.community_cp();
   v_n integer;
 begin
+  perform private.community_require_reader();
   if v_cp is null or p_ids is null then
     return 0;
   end if;
@@ -477,6 +478,7 @@ as $$
 declare
   v_cp uuid := private.community_cp();
 begin
+  perform private.community_require_participation_access();
   if v_cp is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
@@ -539,6 +541,7 @@ as $$
 declare
   v_cp uuid := private.community_cp();
 begin
+  perform private.community_require_participation_access();
   if v_cp is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
@@ -572,9 +575,7 @@ declare
   v_viewer uuid := private.community_cp();
   cp public.community_profiles%rowtype;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   select * into cp from public.community_profiles x where x.id = p_cp;
   if not found or cp.deleted_at is not null then
     return null;
@@ -752,6 +753,7 @@ declare
   v_q text := btrim(coalesce(p_query, ''));
   v_keep integer := private.community_setting_int('search_history_size', 10);
 begin
+  perform private.community_require_reader();
   if v_cp is null or char_length(v_q) = 0 then
     return;
   end if;

@@ -12,6 +12,7 @@ import updateBanner from '@/ui/community/recipes/RecipeUpdateBanner.tsx?raw'
 import ratingBox from '@/ui/community/recipes/RecipeRatingBox.tsx?raw'
 import panel from '@/ui/community/recipes/RecipePanel.tsx?raw'
 import fields from '@/ui/community/recipes/RecipeFields.tsx?raw'
+import editorSrc from '@/ui/recipeEditor/RecipeEditorFields.tsx?raw'
 import consent from '@/ui/community/recipes/RecipeConsentCheckbox.tsx?raw'
 import similarHook from '@/ui/community/recipes/useSimilarRecipes.ts?raw'
 import photoCopy from '@/ui/community/recipes/recipePhotoCopy.ts?raw'
@@ -61,9 +62,13 @@ describe('RecipeFields (campos de receta del editor, los mismos que los de la Co
 
   it('reutiliza las clases y los ayudantes de la Cocina (no es un editor nuevo)', () => {
     for (const cls of ['recipe-form', 'recipe-field', 'recipe-ing-row', 'recipe-step-row', 'recipe-row-remove']) expect(html).toContain(cls)
-    expect(fields).toContain("from '@/domain/recipeDraft'")
-    expect(fields).toContain("from '@/domain/recipeServings'")
-    expect(fields).toContain('isValidServings')
+    // RecipeFields es solo un adaptador: pinta EL editor compartido con la Cocina y no trae sus propios campos (ver recipeEditorShared.test.tsx).
+    expect(fields).toContain("from '@/ui/recipeEditor/RecipeEditorFields'")
+    expect(fields).toContain('<RecipeEditorFields')
+    expect(fields).not.toContain('<input')
+    expect(fields).not.toContain('<textarea')
+    expect(editorSrc).toContain("from '@/domain/recipeDraft'")
+    expect(editorSrc).toContain('servingsTextInvalid')
   })
 
   it('desactivado: no se puede tocar nada', () => {

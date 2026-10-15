@@ -4,8 +4,10 @@ import { listRecipeReviews, rateRecipe, unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import type { RecipeReview } from '@/domain/community'
 import { formatRecipeDate } from '@/domain/communityRecipeBridge'
+import { MY_REVIEW_HIDDEN_TEXT, isReviewReportable } from '@/domain/communityReports'
 import { paths } from '@/ui/community/communityNav'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { ReportContentDialog } from '@/ui/community/ReportContentDialog'
 import '@/ui/community/recipes/communityRecipes.css'
 
 // Estrellas del 1 al 5 de solo lectura («★★★★☆»), con el valor dicho en palabras para lectores de pantalla.
@@ -28,6 +30,8 @@ export interface RatingSummary {
   myRating: number | null
   // Reseña propia que ya devuelve el servidor con la ficha (PublicRecipe.myReview): se precarga para que cambiar las estrellas no la borre sin querer.
   myReview?: string | null
+  // true = la administración ha ocultado mi reseña (mis estrellas siguen contando). Solo lo ve su autora.
+  myReviewHidden?: boolean
 }
 
 // Valoración con estrellas y reseña opcional (CMN-§5.4). Antes de enviar se pide participar (alias y normas la primera vez). Una persona = una valoración por
@@ -60,7 +64,7 @@ export function RecipeRatingBox({
     try {
       if (!(await requireParticipation())) return
       const r = await rateRecipe(recipeId, stars, review.trim() === '' ? null : review.trim())
-      onChanged({ avgRating: r.avgRating, ratingCount: r.ratingCount, myRating: stars, myReview: review.trim() === '' ? null : review.trim() })
+      onChanged({ avgRating: r.avgRating, ratingCount: r.ratingCount, myRating: stars, myReview: review.trim() === '' ? null : review.trim(), myReviewHidden: summary.myReviewHidden === true })
       setSaved(true)
       setEditing(false)
     } catch (e) {
@@ -88,6 +92,13 @@ export function RecipeRatingBox({
       </div>
 
       {!canRate && <p className="muted">{cannotRateReason ?? 'No puedes valorar esta receta.'}</p>}
+
+      {/* Reseña ocultada por la administración: solo la ve su autora, y sus estrellas siguen contando en la media. */}
+      {summary.myReviewHidden === true && summary.myReview && (
+        <p className="community-review-hidden-note" role="note">
+          {MY_REVIEW_HIDDEN_TEXT}
+        </p>
+      )}
 
       {canRate && !editing && summary.myRating !== null && (
         <div>
@@ -170,6 +181,24 @@ export function RecipeRatingBox({
 
 const PAGE = 20
 
+// Denunciar una reseña concreta (orden 2.2): solo las ajenas y con texto. No exige participar ni tener alias (el diálogo elige el camino del servidor).
+export function ReviewReportControl({ review, reported, onReport }: { review: RecipeReview; reported: boolean; onReport: (reviewId: string) => void }) {
+  if (!isReviewReportable(review) || !review.id) return null
+  if (reported) {
+    return (
+      <p className="muted community-review-reported" role="status">
+        Denunciada. La administración la revisará.
+      </p>
+    )
+  }
+  const id = review.id
+  return (
+    <button type="button" className="link-button community-review-report" aria-label={`Denunciar la reseña de ${review.authorAlias ?? 'esta persona'}`} onClick={() => onReport(id)}>
+      Denunciar
+    </button>
+  )
+}
+
 // Reseñas de la receta (con alias, nunca nombres reales). Se piden SOLO cuando la persona pulsa «Ver reseñas», de 20 en 20. Las de alguien bloqueado salen
 // como una capa neutra (el servidor ni manda su contenido) con «Desbloquear».
 export function RecipeReviewsList({ recipeId, ratingCount }: { recipeId: string; ratingCount: number }) {
@@ -177,6 +206,9 @@ export function RecipeReviewsList({ recipeId, ratingCount }: { recipeId: string;
   const [more, setMore] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Reseña que se está denunciando (un solo diálogo para toda la lista) y reseñas ya denunciadas en esta sesión (no se vuelve a ofrecer el botón).
+  const [reporting, setReporting] = useState<string | null>(null)
+  const [reported, setReported] = useState<string[]>([])
 
   async function load(offset: number) {
     setBusy(true)
@@ -240,6 +272,7 @@ export function RecipeReviewsList({ recipeId, ratingCount }: { recipeId: string;
                   {r.createdAt && <span className="muted">{formatRecipeDate(r.createdAt)}</span>}
                 </div>
                 {r.review && <p>{r.review}</p>}
+                <ReviewReportControl review={r} reported={!!r.id && reported.includes(r.id)} onReport={(id) => setReporting(id)} />
               </>
             )}
           </li>
@@ -250,6 +283,18 @@ export function RecipeReviewsList({ recipeId, ratingCount }: { recipeId: string;
         <button type="button" className="link-button" style={{ minHeight: 44 }} onClick={() => load(items.length)} disabled={busy}>
           {busy ? 'Cargando…' : 'Ver más reseñas'}
         </button>
+      )}
+      {reporting && (
+        <ReportContentDialog
+          type="review"
+          id={reporting}
+          onClose={() => setReporting(null)}
+          onReported={(result) => {
+            setReported((prev) => [...prev, reporting])
+            // Si el servidor la ocultó a la vez (varias denuncias graves), desaparece de la lista sin recargar (el diálogo sigue abierto con su «Gracias»).
+            if (result.hidden) setItems((prev) => (prev ? prev.filter((x) => x.id !== reporting) : prev))
+          }}
+        />
       )}
     </div>
   )

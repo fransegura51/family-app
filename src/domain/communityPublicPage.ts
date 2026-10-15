@@ -12,6 +12,7 @@
 //    Solo se leen campos concretos del JSON (lista blanca), así que un campo extra que algún día se colara en la respuesta no llegaría a la página.
 import { KIND_ICONS, KIND_LABELS, SECTIONS } from './community'
 import type { AnyPostKind } from './community'
+import { isCommunityPhotoPath } from './communityPhotoPath'
 import { parseRichText, richTextToPlain, safeLink } from './communityRichText'
 import type { Inline } from './communityRichText'
 
@@ -59,6 +60,7 @@ export interface PublicPostJson {
 }
 
 export interface PublicCommentJson {
+  id?: unknown
   body?: unknown
   photo_path?: unknown
   created_at?: unknown
@@ -92,7 +94,7 @@ export interface PublicPageConfig {
   publicBase: string
   /** Dirección de la aplicación, sin barra final. Ej.: https://fransegura51.github.io/family-app */
   appBase: string
-  /** Dirección pública del almacenamiento de fotos, sin barra final. Ej.: https://xxxx.supabase.co/storage/v1/object/public/community-media */
+  /** Dirección de las fotos, sin barra final: la ruta `/img` DEL PROPIO Worker (el almacenamiento de Supabase es privado). Ej.: https://pepafamilyapp.es/c/img */
   mediaBase: string
   /** Imagen para las vistas previas cuando la publicación no tiene fotos. */
   defaultImage?: string
@@ -190,13 +192,13 @@ function avatarOf(avatar: unknown): string {
   return text
 }
 
-// Ruta de foto del almacenamiento público: solo letras, números, guion, punto, barra y guion bajo; sin «..» ni barras dobles.
-const PHOTO_PATH_RE = /^[A-Za-z0-9][A-Za-z0-9/_.-]{0,300}$/
+// Foto de una página pública: siempre por la ruta `/img/<ruta>` del Worker (que pide el archivo a Supabase y solo lo sirve si cuelga de contenido PUBLICADO).
+// La ruta debe tener la forma exacta `<id perfil>/<uuid>.<jpg|jpeg|png|webp>` (ver communityPhotoPath.ts); cualquier otra cosa no genera dirección.
 export function photoUrl(path: unknown, config: PublicPageConfig): string | null {
-  if (typeof path !== 'string' || !PHOTO_PATH_RE.test(path) || path.includes('..') || path.includes('//')) return null
+  if (!isCommunityPhotoPath(path)) return null
   const base = trimSlash(config.mediaBase)
   if (!/^https?:\/\//i.test(base)) return null
-  return `${base}/${path.split('/').map(encodeURIComponent).join('/')}`
+  return `${base}/${path}`
 }
 
 function trimSlash(url: string): string {
@@ -220,10 +222,14 @@ function originOf(url: string): string {
 export function postUrl(id: string, config: PublicPageConfig): string {
   return `${baseUrl(config.publicBase)}/p/${id.toLowerCase()}`
 }
+// Enlace «Denunciar contenido» de las páginas públicas: lleva al formulario del propio Worker (`/c/report`, sin cuenta ni JavaScript). El id debe ser un uuid.
+export function reportUrl(type: 'post' | 'comment', id: string, config: PublicPageConfig): string {
+  return `${baseUrl(config.publicBase)}/report?type=${type}&id=${id.toLowerCase()}`
+}
 const appPostUrl = (id: string, config: PublicPageConfig) => `${baseUrl(config.appBase)}/comunidad/p/${id.toLowerCase()}`
 const appHomeUrl = (config: PublicPageConfig) => `${baseUrl(config.appBase)}/comunidad`
 
-// Política de seguridad de contenido para el Worker: sin scripts, solo imágenes de nuestro almacenamiento y de la imagen por defecto.
+// Política de seguridad de contenido para el Worker: sin scripts, solo imágenes de este mismo Worker (`/img`) y de la imagen por defecto.
 export function publicPageCsp(config: PublicPageConfig): string {
   const img = ["'self'", originOf(baseUrl(config.mediaBase)), originOf(baseUrl(config.defaultImage ?? DEFAULT_OG_IMAGE))].filter(Boolean)
   return [
@@ -279,6 +285,8 @@ interface Person {
 }
 
 interface NormComment {
+  // uuid del comentario (solo si es válido): sirve para el enlace «Denunciar este comentario».
+  id: string | null
   person: Person
   html: string
   plain: string
@@ -297,6 +305,7 @@ function normComment(raw: unknown, config: PublicPageConfig, depth: number): Nor
   const c = asRecord(raw) as PublicCommentJson
   const removed = c.removed === true
   return {
+    id: isUuid(c.id) ? c.id.toLowerCase() : null,
     person: personOf(c.author_alias, c.author_avatar, c.author_is_official),
     html: removed ? '' : richTextToHtml(c.body, 4000),
     plain: removed ? '' : plainOf(c.body, 4000),
@@ -441,13 +450,14 @@ function personHtml(p: Person): string {
   return `${avatar}<strong>${escapeHtml(p.alias)}</strong>${official}`
 }
 
-function commentHtml(c: NormComment): string {
-  const replies = c.replies.length > 0 ? `<ul class="replies">${c.replies.map((r) => `<li>${commentHtml(r)}</li>`).join('')}</ul>` : ''
+function commentHtml(c: NormComment, config: PublicPageConfig): string {
+  const replies = c.replies.length > 0 ? `<ul class="replies">${c.replies.map((r) => `<li>${commentHtml(r, config)}</li>`).join('')}</ul>` : ''
   if (c.removed) return `<p class="removed">Este comentario ya no está disponible.</p>${replies}`
   const date = c.createdAt ? ` <span class="small">· ${escapeHtml(longDate(c.createdAt))}</span>` : ''
   const photo = c.photo ? `<img class="cphoto" src="${escapeHtml(c.photo)}" alt="Foto del comentario de ${escapeHtml(c.person.alias)}" loading="lazy" decoding="async">` : ''
   const likes = c.likes > 0 ? `<p class="small">❤️ ${plural(c.likes, 'me gusta', 'me gusta')}</p>` : ''
-  return `<p class="byline">${personHtml(c.person)}${date}</p>${c.html}${photo}${likes}${replies}`
+  const report = c.id ? `<p class="small"><a href="${escapeHtml(reportUrl('comment', c.id, config))}" rel="nofollow">Denunciar este comentario</a></p>` : ''
+  return `<p class="byline">${personHtml(c.person)}${date}</p>${c.html}${photo}${likes}${report}${replies}`
 }
 
 function pollHtml(raw: unknown): string {
@@ -680,7 +690,7 @@ export function renderPostPage({ post: rawPost, comments: rawComments, poll: raw
   const cta = `<section class="card" aria-labelledby="participa"><h2 id="participa" style="margin-top:0">¿Quieres participar?</h2><p>Puedes leer esta publicación sin registrarte. Para comentar, dar me gusta, guardar o publicar necesitas una cuenta gratuita en PEPA.</p><div class="cta"><a class="btn" href="${escapeHtml(appUrl)}">Abrir en la aplicación</a><a class="btn alt" href="${escapeHtml(appUrl)}">Regístrate para participar</a></div></section>`
   const commentsHtml =
     comments.length > 0
-      ? `<section aria-labelledby="comentarios"><h2 id="comentarios">Comentarios (${commentCount})</h2><ul class="comments">${comments.map((c) => `<li>${commentHtml(c)}</li>`).join('')}</ul><p class="small">Para ver toda la conversación y responder, <a href="${escapeHtml(appUrl)}">abre la publicación en la aplicación</a>.</p></section>`
+      ? `<section aria-labelledby="comentarios"><h2 id="comentarios">Comentarios (${commentCount})</h2><ul class="comments">${comments.map((c) => `<li>${commentHtml(c, config)}</li>`).join('')}</ul><p class="small">Para ver toda la conversación y responder, <a href="${escapeHtml(appUrl)}">abre la publicación en la aplicación</a>.</p></section>`
       : `<section aria-labelledby="comentarios"><h2 id="comentarios">Comentarios (${commentCount})</h2><p class="small">${commentCount > 0 ? 'Abre la publicación en la aplicación para leer la conversación.' : 'Todavía no hay comentarios.'}</p></section>`
 
   const page = `${topBar(config)}
@@ -701,7 +711,7 @@ ${cta}
 ${commentsHtml}
 </article>
 </main>
-<footer><p>${SITE_NAME} es un espacio de la aplicación PEPA donde las familias comparten recetas, preguntas, consejos y anécdotas. Los enlaces a otros sitios se abren fuera de PEPA; PEPA no se responsabiliza de su contenido.</p></footer>
+<footer><p>${SITE_NAME} es un espacio de la aplicación PEPA donde las familias comparten recetas, preguntas, consejos y anécdotas. Los enlaces a otros sitios se abren fuera de PEPA; PEPA no se responsabiliza de su contenido.</p><p><a href="${escapeHtml(reportUrl('post', id, config))}" rel="nofollow">Denunciar contenido</a> · Sin cuenta ni datos personales: lo revisa la administración.</p></footer>
 </div>`
 
   return documentHtml(head, page)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { communityStatus } from '@/data/community'
+import { accessFromStatus } from '@/domain/communityAccess'
 import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notifications'
 import {
   DEFAULT_NOTIFICATION_PREFS,
@@ -48,7 +49,8 @@ export function NotificationPrefsCard() {
     let cancelled = false
     communityStatus().then(
       (st) => {
-        if (!cancelled) setCommunityVisible(st.visible)
+        // Los avisos de Comunidad solo se ajustan si se puede participar (con permiso solo de lectura no hay conversaciones propias que avisar).
+        if (!cancelled) setCommunityVisible(st.visible && accessFromStatus(st).level === 'participate')
       },
       () => undefined, // sin respuesta: el bloque de Comunidad simplemente no sale
     )

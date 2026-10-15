@@ -6,6 +6,7 @@ import { SECTIONS, type CommunityCardItem } from '@/domain/community'
 import { dedupeBlocks, HOME_BLOCK_FETCH, HOME_BLOCK_SHOW, HOME_BLOCKS, MAX_QUERY_CHARS, normalizeQuery, type HomeBlockId } from '@/domain/communityDiscovery'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { homeCrumbs, paths } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
 import '@/ui/community/communityHome.css'
@@ -23,6 +24,8 @@ const LOADING: BlockState = { status: 'loading', items: [] }
 
 export function CommunityHome() {
   const { me, loading: meLoading, requireParticipation } = useCommunity()
+  // Con permiso solo de lectura no se enseñan los botones de crear (el aviso fijo de Comunidad lo explica).
+  const { canParticipate } = useCommunityAccess()
   const navigate = useNavigate()
   const [text, setText] = useState('')
   const [blocks, setBlocks] = useState<Record<HomeBlockId, BlockState>>({
@@ -133,9 +136,11 @@ export function CommunityHome() {
       </form>
 
       <div className="community-home-actions">
-        <button type="button" className="primary community-home-create" onClick={() => void onCreate()}>
-          ✍️ Crear publicación
-        </button>
+        {canParticipate && (
+          <button type="button" className="primary community-home-create" onClick={() => void onCreate()}>
+            ✍️ Crear publicación
+          </button>
+        )}
         <Link to={paths.rules} className="link-button">
           Normas
         </Link>
@@ -161,10 +166,12 @@ export function CommunityHome() {
           <p>
             <strong>Todavía no hay publicaciones.</strong>
           </p>
-          <p className="muted">¡Anímate a ser la primera persona! Comparte una receta, haz una pregunta o cuenta un truco.</p>
-          <button type="button" className="primary" onClick={() => void onCreate()}>
-            Crear la primera publicación
-          </button>
+          {canParticipate && <p className="muted">¡Anímate a ser la primera persona! Comparte una receta, haz una pregunta o cuenta un truco.</p>}
+          {canParticipate && (
+            <button type="button" className="primary" onClick={() => void onCreate()}>
+              Crear la primera publicación
+            </button>
+          )}
         </div>
       )}
 

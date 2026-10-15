@@ -111,6 +111,7 @@ export function NoteForm({
   danger,
   busy,
   error,
+  extra,
   onSubmit,
   onCancel,
 }: {
@@ -122,6 +123,8 @@ export function NoteForm({
   danger?: boolean
   busy?: boolean
   error?: string | null
+  // Campo adicional (por ejemplo, una casilla) que se enseña entre el motivo y los botones; su estado lo lleva quien lo pone.
+  extra?: ReactNode
   onSubmit: (note: string) => void
   onCancel: () => void
 }) {
@@ -168,6 +171,7 @@ export function NoteForm({
           {error}
         </p>
       )}
+      {extra}
       <div className="cadm-actions">
         <button type="submit" className={`cadm-btn ${danger ? 'cadm-btn-danger' : 'cadm-btn-primary'}`} disabled={busy}>
           {busy ? 'Un momento…' : confirmLabel}

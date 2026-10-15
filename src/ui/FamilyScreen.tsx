@@ -22,6 +22,7 @@ import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
+import { CommunityPermissionsCard } from '@/ui/CommunityPermissionsCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
@@ -221,6 +222,9 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         </button>
       </div>
       <InviteFriendsButton />
+      {/* Permisos de Comunidad de las personas de 15 a 17 años: solo para administradores de la familia. Va ANTES de NotificationsCard (el orden
+          NotificationsCard … BatteryGuideCard lo exige batteryGuide.test.ts) y consulta solo al abrirla. */}
+      {isAdmin && <CommunityPermissionsCard />}
       <NotificationsCard />
       <NotificationPrefsCard />
       <TaskNotifyModeCard familyId={profile.familyId} isAdmin={isAdmin} />

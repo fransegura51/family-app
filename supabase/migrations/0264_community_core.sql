@@ -152,6 +152,13 @@ create table public.community_recipe_ratings (
   review text check (review is null or char_length(review) <= 1000),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
+  -- Identificador propio de la reseña: es lo que se denuncia (community_reports.target_type = 'review'). La clave primaria sigue siendo (receta, persona).
+  id uuid not null default gen_random_uuid() unique,
+  -- Una reseña OCULTA deja de enseñar su TEXTO (el voto de estrellas se conserva en la media de la receta). Solo la administración la oculta o restaura.
+  status text not null default 'published' check (status in ('published', 'hidden')),
+  hidden_reason text,
+  hidden_at timestamptz,
+  hidden_by uuid,
   primary key (recipe_id, profile_id)
 );
 alter table public.community_recipe_ratings enable row level security;
@@ -344,7 +351,7 @@ revoke all on public.community_post_likes, public.community_comment_likes, publi
 create table public.community_reports (
   id uuid primary key default gen_random_uuid(),
   reporter_id uuid not null references public.community_profiles(id) on delete cascade,
-  target_type text not null check (target_type in ('post', 'comment', 'user')),
+  target_type text not null check (target_type in ('post', 'comment', 'user', 'review')),
   target_id uuid not null,
   reason text not null check (reason in ('spam', 'acoso', 'violencia', 'sexual', 'ilegal', 'datos_privados', 'enganoso', 'otro')),
   detail text check (detail is null or char_length(detail) <= 1000),
@@ -360,6 +367,33 @@ create index idx_community_reports_target on public.community_reports (target_ty
 create index idx_community_reports_open on public.community_reports (created_at) where status = 'open';
 alter table public.community_reports enable row level security;
 revoke all on public.community_reports from anon, authenticated;
+
+-- Avisos de contenido inapropiado de VISITANTES (sin cuenta, o con sesión pero sin alias: p. ej. un menor con permiso solo de lectura), al estilo del aviso
+-- de contenido ilegal de la normativa europea. NO guardan quién es la persona: solo una huella técnica opcional (client_hash) que calcula el servidor de
+-- Cloudflare a partir de IP + día y que por sí sola no identifica a nadie, más un contacto opcional que la propia persona escribe para que le respondamos.
+-- Nunca ocultan nada solos (para que no se puedan usar como arma): los revisa la administración. El único acceso es la función community_visitor_report.
+create table public.community_visitor_reports (
+  id uuid primary key default gen_random_uuid(),
+  target_type text not null check (target_type in ('post', 'comment', 'review')),
+  target_id uuid not null,
+  reason text not null check (reason in ('spam', 'acoso', 'violencia', 'sexual', 'ilegal', 'datos_privados', 'enganoso', 'otro')),
+  detail text check (detail is null or char_length(detail) <= 1000),
+  contact text check (contact is null or char_length(contact) <= 200),
+  source text not null check (source in ('visitor', 'reader')),
+  client_hash text check (client_hash is null or char_length(client_hash) <= 128),
+  status text not null default 'open' check (status in ('open', 'resolved')),
+  resolution text check (resolution is null or resolution in ('sin_accion', 'oculto', 'advertencia', 'expulsion', 'otro')),
+  resolved_by uuid,
+  resolved_at timestamptz,
+  resolution_note text,
+  created_at timestamptz not null default now()
+);
+create index idx_community_visitor_reports_target on public.community_visitor_reports (target_type, target_id, created_at desc);
+create index idx_community_visitor_reports_hash on public.community_visitor_reports (client_hash, created_at desc) where client_hash is not null;
+create index idx_community_visitor_reports_created on public.community_visitor_reports (created_at desc);
+create index idx_community_visitor_reports_open on public.community_visitor_reports (created_at) where status = 'open';
+alter table public.community_visitor_reports enable row level security;
+revoke all on public.community_visitor_reports from anon, authenticated;
 
 create table public.community_warnings (
   id uuid primary key default gen_random_uuid(),
@@ -448,6 +482,8 @@ begin
   perform set_config('app.allow_admin_log_purge', 'off', true);
   -- Misma retención para las solicitudes de eliminación ya resueltas (contienen un contacto opcional).
   delete from public.community_removal_requests where status <> 'open' and created_at < now() - make_interval(years => v_years);
+  -- Avisos de visitantes ya resueltos con más de 2 años: el contacto que dejó la persona puede ser un dato personal y deja de hacer falta.
+  delete from public.community_visitor_reports where status = 'resolved' and coalesce(resolved_at, created_at) < now() - interval '2 years';
 end;
 $$;
 revoke execute on function private.purge_community_admin_log() from public, anon, authenticated;

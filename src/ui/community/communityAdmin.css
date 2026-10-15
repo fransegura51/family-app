@@ -172,6 +172,24 @@
   margin: 8px 0 0;
 }
 
+/* Texto escrito por una persona (detalle, contacto, notas): respeta los saltos de línea y nunca desborda. */
+.cadm-plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Contacto de un visitante: texto normal (nunca enlace), en negrita para localizarlo. */
+.cadm-contact {
+  font-weight: 600;
+}
+
+.cadm-hidealso {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
 .cadm-approval {
   font-weight: 600;
 }

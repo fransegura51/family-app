@@ -31,6 +31,7 @@ security definer
 set search_path = ''
 as $$
 begin
+  perform private.community_require_participation_access();
   if (select auth.uid()) is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;

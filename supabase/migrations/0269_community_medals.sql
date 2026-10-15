@@ -216,7 +216,7 @@ as $$
             and c.created_at >= now() - make_interval(days => 7 * (w + 1)) and c.created_at < now() - make_interval(days => 7 * w))
      or exists (
           select 1 from public.community_recipe_ratings r
-          where r.profile_id = p_cp
+          where r.profile_id = p_cp and r.status = 'published'
             and r.created_at >= now() - make_interval(days => 7 * (w + 1)) and r.created_at < now() - make_interval(days => 7 * w))
 $$;
 revoke execute on function private.community_constancy_level(uuid) from public, anon, authenticated;
@@ -235,9 +235,7 @@ declare
   v_level integer;
   v_names text[] := array['De vuelta por PEPA', 'Visitante habitual', 'Siempre por aquí', 'Colaborador habitual'];
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if v_cp is null or not exists (select 1 from public.community_profiles x where x.id = v_cp and x.deleted_at is null) then
     return null;
   end if;

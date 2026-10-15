@@ -7,6 +7,7 @@ import { scaleIngredientQuantity } from '@/domain/recipeScaling'
 import { isValidServings } from '@/domain/recipeServings'
 import { formatServingsValue } from '@/domain/servingsSourceNote'
 import { paths } from '@/ui/community/communityNav'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { RecipeImportButton } from '@/ui/community/recipes/RecipeImportButton'
 import { RecipeRatingBox, RecipeReviewsList, type RatingSummary } from '@/ui/community/recipes/RecipeRatingBox'
 import '@/ui/community/recipes/communityRecipes.css'
@@ -20,17 +21,23 @@ export function RecipePanel({ detail, onChanged }: { detail: PostDetail; onChang
   const [target, setTarget] = useState<number | null>(null)
   // Valoración al día tras valorar (la ficha trae la de cuando se abrió).
   const [rating, setRating] = useState<RatingSummary | null>(null)
+  // Valorar e importar a la Cocina son participar: con permiso solo de lectura se lee la receta pero no se valora ni se importa.
+  const { canParticipate } = useCommunityAccess()
 
   if (!recipe) return <p className="muted">Esta receta no está disponible.</p>
 
   const base = isValidServings(recipe.servings) ? recipe.servings : null
   const diners = target ?? base
   const steps = splitSteps(recipe.steps)
-  const summary: RatingSummary = rating ?? { avgRating: detail.avgRating, ratingCount: detail.ratingCount, myRating: recipe.myRating, myReview: recipe.myReview ?? null }
+  const summary: RatingSummary = rating ?? { avgRating: detail.avgRating, ratingCount: detail.ratingCount, myRating: recipe.myRating, myReview: recipe.myReview ?? null, myReviewHidden: recipe.myReviewHidden === true }
   const families = detail.importCount
   const author = authorLabel(detail.authorAlias, detail.authorDeleted)
-  const canRate = detail.canInteract && !detail.isMine
-  const cannotRateReason = detail.isMine ? 'Es tu receta: las valoraciones las ponen otras familias.' : 'No puedes valorar esta receta.'
+  const canRate = detail.canInteract && !detail.isMine && canParticipate
+  const cannotRateReason = detail.isMine
+    ? 'Es tu receta: las valoraciones las ponen otras familias.'
+    : !canParticipate
+      ? 'Tienes permiso solo de lectura: no puedes valorar recetas.'
+      : 'No puedes valorar esta receta.'
 
   function setDiners(n: number) {
     if (n < 1 || n > 50) return
@@ -133,7 +140,7 @@ export function RecipePanel({ detail, onChanged }: { detail: PostDetail; onChang
         )}
       </section>
 
-      <RecipeImportButton detail={detail} onImported={() => onChanged?.()} />
+      {canParticipate && <RecipeImportButton detail={detail} onImported={() => onChanged?.()} />}
 
       <RecipeRatingBox
         recipeId={recipe.id}

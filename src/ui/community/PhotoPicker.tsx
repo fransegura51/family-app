@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { communityPhotoUrl, removeCommunityPhoto, uploadCommunityPhoto } from '@/data/community'
+import { removeCommunityPhoto, uploadCommunityPhoto } from '@/data/community'
 import { MAX_POST_PHOTOS } from '@/domain/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { prepareCommunityPhoto } from '@/services/communityPhoto'
+import { forgetLocalPhotoPreview, rememberLocalPhotoPreview, useCommunityPhotoUrls } from '@/ui/community/communityPhotoUrl'
 import '@/ui/community/communityEditor.css'
 
 interface UploadItem {
@@ -37,6 +38,10 @@ export function PhotoPicker({
   const valueRef = useRef(value)
   const nextId = useRef(1)
   const busy = items.some((i) => i.step !== 'error')
+  // Fotos del editor: aún no tienen por qué estar publicadas, así que NUNCA van por el Worker: la recién subida se ve con el archivo local (sin red) y las ya
+  // guardadas (borrador abierto de nuevo) con una dirección firmada temporal, pedida en lote.
+  const { urls, onError: onPhotoError } = useCommunityPhotoUrls(value, 'private')
+  const previewPaths = useRef(new Set<string>())
 
   useEffect(() => {
     valueRef.current = value
@@ -45,6 +50,15 @@ export function PhotoPicker({
   useEffect(() => {
     onBusyChange?.(busy)
   }, [busy, onBusyChange])
+
+  // Al salir del editor se sueltan los archivos locales de las vistas previas.
+  useEffect(() => {
+    const created = previewPaths.current
+    return () => {
+      created.forEach(forgetLocalPhotoPreview)
+      created.clear()
+    }
+  }, [])
 
   function patch(id: number, p: Partial<UploadItem>) {
     setItems((list) => list.map((i) => (i.id === id ? { ...i, ...p } : i)))
@@ -74,6 +88,8 @@ export function PhotoPicker({
           setItems((list) => list.filter((i) => i.id !== id))
           continue
         }
+        rememberLocalPhotoPreview(path, blob)
+        previewPaths.current.add(path)
         const next = [...valueRef.current, path]
         valueRef.current = next
         onChange(next)
@@ -90,6 +106,10 @@ export function PhotoPicker({
     valueRef.current = next
     onChange(next)
     setNotice(null)
+    if (path) {
+      forgetLocalPhotoPreview(path)
+      previewPaths.current.delete(path)
+    }
     if (path && !persisted.has(path)) void removeCommunityPhoto(path)
   }
 
@@ -118,7 +138,7 @@ export function PhotoPicker({
         <ul className="ce-photo-list">
           {value.map((path, i) => (
             <li key={path} className="ce-photo">
-              <img src={communityPhotoUrl(path)} alt={`Foto ${i + 1} de ${value.length}`} loading="lazy" decoding="async" />
+              {urls[i] && <img src={urls[i] as string} alt={`Foto ${i + 1} de ${value.length}`} loading="lazy" decoding="async" onError={() => onPhotoError(path)} />}
               {i === 0 && <span className="ce-photo-cover">Portada</span>}
               <div className="ce-photo-actions">
                 <button type="button" className="ce-icon-btn" aria-label={`Mover la foto ${i + 1} a la izquierda`} disabled={i === 0} onClick={() => move(i, -1)}>

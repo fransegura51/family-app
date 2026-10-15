@@ -9,7 +9,8 @@ export type CommunityErrorCode =
   | 'RULES_REQUIRED'
   | 'BANNED'
   | 'NOT_LAUNCHED'
-  | 'ADULT_REQUIRED'
+  | 'COMMUNITY_ACCESS_DENIED'
+  | 'PARTICIPATION_NOT_ALLOWED'
   | 'RATE_LIMIT'
   | 'NOT_AVAILABLE'
   | 'NOT_ADMIN'
@@ -39,7 +40,9 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   RULES_REQUIRED: 'Tienes que aceptar las normas de Comunidad para participar.',
   BANNED: 'Ahora mismo no puedes participar en Comunidad. Puedes seguir leyendo.',
   NOT_LAUNCHED: 'Comunidad todavía no está abierta. ¡Pronto!',
-  ADULT_REQUIRED: 'Para participar en Comunidad hace falta una cuenta de adulto. Puedes leer todo lo que quieras.',
+  // Regla de edad y permisos (migración 0277): sustituye a la antigua «solo adultos» (ADULT_REQUIRED ya no existe en el servidor).
+  COMMUNITY_ACCESS_DENIED: 'Ahora mismo no tienes acceso a Comunidad con esta cuenta. Si crees que es un error, pregunta a quien administra tu familia.',
+  PARTICIPATION_NOT_ALLOWED: 'Tienes permiso solo de lectura: puedes leer Comunidad, pero no participar. Quien administra tu familia puede cambiarlo.',
   RATE_LIMIT: 'Vas muy rápido. Espera un poco y vuelve a intentarlo.',
   NOT_AVAILABLE: 'Esto ya no está disponible.',
   NOT_ADMIN: 'Esta acción es solo para la administración de Comunidad.',
@@ -71,13 +74,31 @@ export class CommunityError extends Error {
 }
 
 const KNOWN = new Set<string>(Object.keys(COMMUNITY_ERROR_MESSAGES))
+// Códigos que un servidor anterior a 0277 aún podía devolver: se tratan como «solo lectura» en vez de caer en «Algo ha fallado».
+const LEGACY_CODES: Record<string, CommunityErrorCode> = { ADULT_REQUIRED: 'PARTICIPATION_NOT_ALLOWED' }
+
+// Aviso de «el acceso ha cambiado»: el servidor recalcula el acceso en cada llamada, así que una sesión ya abierta puede recibir estos dos errores si la
+// familia retira un permiso. CommunityProvider se suscribe aquí (un único punto común) para refrescar el acceso y avisar con amabilidad, sin pantallas rotas.
+export type CommunityAccessErrorCode = 'COMMUNITY_ACCESS_DENIED' | 'PARTICIPATION_NOT_ALLOWED'
+const accessErrorListeners = new Set<(code: CommunityAccessErrorCode) => void>()
+
+export function onCommunityAccessError(listener: (code: CommunityAccessErrorCode) => void): () => void {
+  accessErrorListeners.add(listener)
+  return () => {
+    accessErrorListeners.delete(listener)
+  }
+}
 
 // Saca el código del mensaje de error de Supabase («ALIAS_REQUIRED», «Error: BANNED»…). Cualquier otra cosa → UNKNOWN con frase genérica.
 export function toCommunityError(error: unknown): CommunityError {
   const raw = typeof error === 'object' && error !== null ? String((error as { message?: unknown }).message ?? '') : String(error ?? '')
   const match = /\b([A-Z][A-Z_]{3,})\b/.exec(raw)
-  if (match && KNOWN.has(match[1])) return new CommunityError(match[1] as CommunityErrorCode)
-  return new CommunityError('UNKNOWN')
+  const found = match ? (KNOWN.has(match[1]) ? (match[1] as CommunityErrorCode) : LEGACY_CODES[match[1]]) : undefined
+  const result = new CommunityError(found ?? 'UNKNOWN')
+  if (result.code === 'COMMUNITY_ACCESS_DENIED' || result.code === 'PARTICIPATION_NOT_ALLOWED') {
+    for (const listener of [...accessErrorListeners]) listener(result.code)
+  }
+  return result
 }
 
 export function communityErrorText(error: unknown): string {

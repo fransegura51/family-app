@@ -7,6 +7,7 @@ const PROPOSED = servingsFromSource(SOURCE)!.servings // 6,5
 
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const ALIM = src('src/ui/AlimentacionScreen.tsx')
+const EDITOR = src('src/ui/recipeEditor/RecipeEditorFields.tsx') // El editor de campos de receta (Raciones incluidas) es compartido con Comunidad.
 
 describe('texto de la revisión según el valor ACTUAL de Raciones', () => {
   it('1. sin editar: 6,5 con «punto medio del rango»', () => {
@@ -58,7 +59,8 @@ describe('el valor guardado es el valor ACTUAL del campo, no el punto medio orig
   })
 
   it('ninguna edición escribe en servingsSource', () => {
-    const onChange = ALIM.slice(ALIM.indexOf('onChange={(e) => setServingsText'), ALIM.indexOf('onChange={(e) => setServingsText') + 60)
-    expect(onChange).not.toContain('setServingsSource')
+    // El campo está conectado directamente a setServingsText (no a ninguna función que toque la fuente) y el editor compartido no sabe nada de la fuente.
+    expect(ALIM).toContain('onServingsTextChange={setServingsText}')
+    expect(EDITOR).not.toContain('Source')
   })
 })

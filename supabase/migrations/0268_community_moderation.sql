@@ -97,6 +97,16 @@ begin
         hidden_at = case when p_status = 'hidden' then now() end, hidden_by = case when p_status = 'hidden' then (select auth.uid()) end
     where id = p_id and status <> 'deleted'
     returning author_id into v_author;
+  elsif p_type = 'review' then
+    -- Reseñas de recetas: solo se pueden ocultar o restaurar (no hay estado «eliminado»: si su autora se va, la reseña se borra de verdad).
+    if p_status not in ('published', 'hidden') then
+      raise exception 'BAD_KIND' using errcode = 'P0001';
+    end if;
+    update public.community_recipe_ratings
+    set status = p_status, hidden_reason = case when p_status = 'hidden' then p_reason end,
+        hidden_at = case when p_status = 'hidden' then now() end, hidden_by = case when p_status = 'hidden' then (select auth.uid()) end
+    where id = p_id
+    returning profile_id into v_author;
   else
     raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
@@ -139,6 +149,12 @@ begin
     select p.author_id into v_author from public.community_posts p where p.id = p_id and p.status = 'published';
   elsif p_type = 'comment' then
     select c.author_id into v_author from public.community_comments c where c.id = p_id and c.status = 'published';
+  elsif p_type = 'review' then
+    -- Reseña de receta (p_id = community_recipe_ratings.id): solo si está publicada, tiene texto y la publicación de su receta sigue publicada.
+    select x.profile_id into v_author
+    from public.community_recipe_ratings x
+    join public.community_posts p on p.recipe_id = x.recipe_id and p.status = 'published'
+    where x.id = p_id and x.status = 'published' and nullif(btrim(coalesce(x.review, '')), '') is not null;
   elsif p_type = 'user' then
     select cp.id into v_author from public.community_profiles cp where cp.id = p_id and cp.deleted_at is null and not cp.is_official;
   else
@@ -363,7 +379,9 @@ begin
     'comments_7d', (select count(*) from public.community_comments c where c.status = 'published' and c.created_at > now() - interval '7 days'),
     'members', (select count(*) from public.community_profiles cp where not cp.is_official and cp.deleted_at is null),
     'open_reports', (select count(distinct (r.target_type, r.target_id)) from public.community_reports r where r.status = 'open'),
-    'hidden_content', (select (select count(*) from public.community_posts p where p.status = 'hidden') + (select count(*) from public.community_comments c where c.status = 'hidden')),
+    'hidden_content', (select (select count(*) from public.community_posts p where p.status = 'hidden') + (select count(*) from public.community_comments c where c.status = 'hidden')
+                       + (select count(*) from public.community_recipe_ratings x where x.status = 'hidden')),
+    'open_visitor_reports', (select count(*) from public.community_visitor_reports v where v.status = 'open'),
     'active_bans', (select count(*) from public.community_bans b where b.lifted_at is null and b.readmission_status <> 'approved'),
     'readmission_requests', (select count(*) from public.community_bans b where b.readmission_status = 'requested'),
     'removal_requests', (select count(*) from public.community_removal_requests q where q.status = 'open'),
@@ -396,6 +414,9 @@ begin
                               'author_alias', ca.alias) from public.community_posts p join public.community_profiles ca on ca.id = p.author_id where p.id = r.target_id)
             when 'comment' then (select jsonb_build_object('excerpt', left(c.body, 240), 'status', c.status, 'author_id', c.author_id, 'author_alias', ca.alias, 'post_id', c.post_id)
                                  from public.community_comments c join public.community_profiles ca on ca.id = c.author_id where c.id = r.target_id)
+            when 'review' then (select jsonb_build_object('excerpt', left(coalesce(x.review, ''), 240), 'stars', x.stars, 'status', x.status, 'author_id', x.profile_id, 'author_alias', ca.alias,
+                                                          'post_id', (select p.id from public.community_posts p where p.recipe_id = x.recipe_id))
+                                from public.community_recipe_ratings x join public.community_profiles ca on ca.id = x.profile_id where x.id = r.target_id)
             else (select jsonb_build_object('author_id', cp.id, 'author_alias', cp.alias) from public.community_profiles cp where cp.id = r.target_id) end) as j
       from public.community_reports r
       where (p_status = 'open' and r.status = 'open') or (p_status = 'resolved' and r.status = 'resolved')
@@ -429,6 +450,10 @@ begin
     select jsonb_build_object('type', 'comment', 'id', c.id, 'post_id', c.post_id, 'body', c.body, 'photo_path', c.photo_path, 'status', c.status,
       'hidden_reason', c.hidden_reason, 'author_id', c.author_id, 'author_alias', ca.alias, 'created_at', c.created_at)
     into v_row from public.community_comments c join public.community_profiles ca on ca.id = c.author_id where c.id = p_id;
+  elsif p_type = 'review' then
+    select jsonb_build_object('type', 'review', 'id', x.id, 'post_id', (select p.id from public.community_posts p where p.recipe_id = x.recipe_id), 'stars', x.stars,
+      'body', x.review, 'status', x.status, 'hidden_reason', x.hidden_reason, 'author_id', x.profile_id, 'author_alias', ca.alias, 'created_at', x.created_at)
+    into v_row from public.community_recipe_ratings x join public.community_profiles ca on ca.id = x.profile_id where x.id = p_id;
   end if;
   if v_row is null then
     return null;
@@ -453,13 +478,15 @@ declare
   v_res text;
 begin
   perform private.community_require_admin();
-  if p_action not in ('sin_accion', 'ocultar', 'advertir', 'expulsar') or p_type not in ('post', 'comment', 'user') then
+  if p_action not in ('sin_accion', 'ocultar', 'advertir', 'expulsar') or p_type not in ('post', 'comment', 'user', 'review') then
     raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
   if p_type = 'user' then
     v_author := p_id;
   elsif p_type = 'post' then
     select author_id into v_author from public.community_posts where id = p_id;
+  elsif p_type = 'review' then
+    select x.profile_id into v_author from public.community_recipe_ratings x where x.id = p_id;
   else
     select author_id into v_author from public.community_comments where id = p_id;
   end if;
@@ -520,6 +547,9 @@ begin
       union all
       select c.hidden_at, jsonb_build_object('type', 'comment', 'id', c.id, 'title', left(c.body, 80), 'reason', c.hidden_reason, 'hidden_at', c.hidden_at, 'author_alias', ca.alias)
       from public.community_comments c join public.community_profiles ca on ca.id = c.author_id where c.status = 'hidden'
+      union all
+      select x.hidden_at, jsonb_build_object('type', 'review', 'id', x.id, 'title', left(coalesce(x.review, ''), 80), 'reason', x.hidden_reason, 'hidden_at', x.hidden_at, 'author_alias', ca.alias)
+      from public.community_recipe_ratings x join public.community_profiles ca on ca.id = x.profile_id where x.status = 'hidden'
       order by 1 desc limit least(greatest(coalesce(p_limit, 50), 1), 200)
     ) x
   ), '[]'::jsonb);
@@ -861,6 +891,194 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------------------------
+-- Avisos de VISITANTES (sin cuenta, o con sesión pero sin alias): contenido público inapropiado o ilegal.
+--
+-- Reglas: solo contenido PUBLICADO y público (con Comunidad lanzada). No se guarda quién es la persona: solo una huella técnica opcional que calcula el
+-- servidor de Cloudflare (IP + día; por sí sola no identifica a nadie) y un contacto opcional que la propia persona escribe. NUNCA oculta nada solo (para
+-- que nadie pueda usarlo como arma): avisa a los administradores y ellos deciden. Toda la protección contra abusos está AQUÍ, en SQL, porque el cliente
+-- (la web o el Worker) no es de fiar: topes por huella, por contenido y globales, y deduplicación. Solo devuelve {ok:true}: ningún dato privado.
+-- ---------------------------------------------------------------------------------------------
+create or replace function public.community_visitor_report(
+  p_type text, p_id uuid, p_reason text, p_detail text default null, p_contact text default null, p_client_hash text default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_detail text;
+  v_contact text;
+  v_hash text := left(nullif(btrim(coalesce(p_client_hash, '')), ''), 128);
+  v_source text := case when (select auth.uid()) is null then 'visitor' else 'reader' end;
+  v_published boolean := false;
+begin
+  if p_type is null or p_type not in ('post', 'comment', 'review') or p_id is null
+     or p_reason is null or p_reason not in ('spam', 'acoso', 'violencia', 'sexual', 'ilegal', 'datos_privados', 'enganoso', 'otro') then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  -- Antes del lanzamiento no hay nada público: la respuesta es la misma que para un contenido que no existe.
+  if not private.community_launched() then
+    raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+  -- Tope barato antes de limpiar el texto (un anónimo podría mandar textos enormes).
+  if char_length(coalesce(p_detail, '')) > 4000 or char_length(coalesce(p_contact, '')) > 800 then
+    raise exception 'TEXT_TOO_LONG' using errcode = 'P0001';
+  end if;
+  v_detail := nullif(private.community_clean_text(coalesce(p_detail, ''), 1000, false), '');
+  v_contact := nullif(private.community_clean_text(coalesce(p_contact, ''), 200, false), '');
+
+  if p_type = 'post' then
+    v_published := exists (select 1 from public.community_posts p where p.id = p_id and p.status = 'published');
+  elsif p_type = 'comment' then
+    v_published := exists (select 1 from public.community_comments c join public.community_posts p on p.id = c.post_id
+                           where c.id = p_id and c.status = 'published' and p.status = 'published');
+  else
+    v_published := exists (select 1 from public.community_recipe_ratings x join public.community_posts p on p.recipe_id = x.recipe_id and p.status = 'published'
+                           where x.id = p_id and x.status = 'published' and nullif(btrim(coalesce(x.review, '')), '') is not null);
+  end if;
+  if not v_published then
+    raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+
+  -- Los topes se comprueban dentro de un bloqueo para que dos avisos simultáneos no se los salten.
+  perform pg_advisory_xact_lock(hashtext('community_visitor_report'));
+  -- Misma huella + mismo contenido + mismo motivo en 24 h: ya está avisado (sin error).
+  if v_hash is not null and exists (select 1 from public.community_visitor_reports v
+       where v.client_hash = v_hash and v.target_type = p_type and v.target_id = p_id and v.reason = p_reason and v.created_at > now() - interval '24 hours') then
+    return jsonb_build_object('ok', true, 'already_reported', true);
+  end if;
+  if v_hash is not null and (select count(*) from public.community_visitor_reports v where v.client_hash = v_hash and v.created_at > now() - interval '1 day') >= 5 then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
+  end if;
+  -- Ya hay 5 avisos abiertos sobre este contenido en el último día: la administración lo va a ver igualmente.
+  if (select count(*) from public.community_visitor_reports v
+      where v.target_type = p_type and v.target_id = p_id and v.status = 'open' and v.created_at > now() - interval '1 day') >= 5 then
+    return jsonb_build_object('ok', true, 'already_reported', true);
+  end if;
+  -- Topes globales (60 por hora y 300 por día): frenan una avalancha aunque cambie de huella a cada aviso.
+  if (select count(*) from public.community_visitor_reports v where v.created_at > now() - interval '1 hour') >= 60
+     or (select count(*) from public.community_visitor_reports v where v.created_at > now() - interval '1 day') >= 300 then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
+  end if;
+
+  insert into public.community_visitor_reports (target_type, target_id, reason, detail, contact, source, client_hash)
+  values (p_type, p_id, p_reason, v_detail, v_contact, v_source, v_hash);
+  perform private.community_notify_admins('Aviso de un visitante en Comunidad', 'Un visitante ha avisado de un contenido. Revísalo en el Centro de Mando.', '/comunidad/admin',
+    'visitor:' || p_type || ':' || p_id || ':' || to_char(now(), 'YYYY-MM-DD'));
+  return jsonb_build_object('ok', true);
+end;
+$$;
+
+-- Autoría (perfil público seudónimo) de un contenido avisado; null si ya no existe.
+create or replace function private.community_visitor_target_author(p_type text, p_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select case p_type
+    when 'post' then (select p.author_id from public.community_posts p where p.id = p_id)
+    when 'comment' then (select c.author_id from public.community_comments c where c.id = p_id)
+    when 'review' then (select x.profile_id from public.community_recipe_ratings x where x.id = p_id)
+  end
+$$;
+revoke execute on function private.community_visitor_target_author(text, uuid) from public, anon, authenticated;
+
+-- Avisos de visitantes para la administración. p_status: open | resolved. Sin datos privados: no sale la huella técnica.
+create or replace function public.community_admin_list_visitor_reports(p_status text default 'open', p_limit integer default 20, p_offset integer default 0)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.community_require_admin();
+  if p_status is null or p_status not in ('open', 'resolved') then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', v.id, 'target_type', v.target_type, 'target_id', v.target_id, 'reason', v.reason, 'detail', v.detail, 'contact', v.contact, 'source', v.source,
+      'status', v.status, 'resolution', v.resolution, 'resolution_note', v.resolution_note, 'resolved_at', v.resolved_at, 'created_at', v.created_at,
+      'content', case v.target_type
+        when 'post' then (select jsonb_build_object('title', p.title, 'excerpt', private.community_plain_excerpt(p.body), 'status', p.status, 'hidden', p.status = 'hidden',
+                            'author_id', p.author_id, 'author_alias', ca.alias, 'post_id', p.id)
+                          from public.community_posts p join public.community_profiles ca on ca.id = p.author_id where p.id = v.target_id)
+        when 'comment' then (select jsonb_build_object('excerpt', left(c.body, 240), 'status', c.status, 'hidden', c.status = 'hidden',
+                            'author_id', c.author_id, 'author_alias', ca.alias, 'post_id', c.post_id)
+                          from public.community_comments c join public.community_profiles ca on ca.id = c.author_id where c.id = v.target_id)
+        else (select jsonb_build_object('excerpt', left(coalesce(x.review, ''), 240), 'stars', x.stars, 'status', x.status, 'hidden', x.status = 'hidden',
+                            'author_id', x.profile_id, 'author_alias', ca.alias, 'post_id', (select p.id from public.community_posts p where p.recipe_id = x.recipe_id))
+                          from public.community_recipe_ratings x join public.community_profiles ca on ca.id = x.profile_id where x.id = v.target_id)
+      end) order by v.created_at desc, v.id)
+    from (select * from public.community_visitor_reports r where r.status = p_status order by r.created_at desc, r.id
+          limit least(greatest(coalesce(p_limit, 20), 1), 100) offset greatest(coalesce(p_offset, 0), 0)) v
+  ), '[]'::jsonb);
+end;
+$$;
+
+-- Resolver un aviso de visitante. p_resolution: sin_accion | oculto | advertencia | expulsion | otro. La nota es obligatoria salvo en sin_accion.
+-- «oculto» oculta siempre el contenido; con las demás se oculta solo si p_hide es true. «advertencia» y «expulsion» actúan sobre su autor/a.
+create or replace function public.community_admin_resolve_visitor_report(p_id uuid, p_resolution text, p_note text, p_hide boolean default false)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v public.community_visitor_reports%rowtype;
+  v_note text := nullif(btrim(coalesce(p_note, '')), '');
+  v_author uuid;
+  v_hide boolean := coalesce(p_hide, false) or p_resolution = 'oculto';
+  v_result jsonb := '{}'::jsonb;
+begin
+  perform private.community_require_admin();
+  if p_resolution is null or p_resolution not in ('sin_accion', 'oculto', 'advertencia', 'expulsion', 'otro') then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  if v_note is null and p_resolution <> 'sin_accion' then
+    raise exception 'TEXT_REQUIRED' using errcode = 'P0001';
+  end if;
+  v_note := left(v_note, 500);
+  select * into v from public.community_visitor_reports r where r.id = p_id and r.status = 'open' for update;
+  if not found then
+    raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+  v_author := private.community_visitor_target_author(v.target_type, v.target_id);
+  if (v_hide or p_resolution in ('advertencia', 'expulsion')) and v_author is null then
+    raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+  if p_resolution in ('advertencia', 'expulsion') and not exists (
+       select 1 from public.community_profiles cp where cp.id = v_author and not cp.is_official and cp.deleted_at is null) then
+    raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+  if v_hide then
+    perform private.community_set_content_status(v.target_type, v.target_id, 'hidden', coalesce(v_note, 'Aviso de un visitante'));
+    perform private.community_notify_cp(v_author, 'community_moderation', 'Contenido retirado por moderación',
+      'Hemos ocultado una de tus aportaciones por no cumplir las normas de Comunidad.', '/comunidad', null);
+  end if;
+  if p_resolution = 'advertencia' then
+    v_result := private.community_issue_warning(v_author, coalesce(v_note, 'Incumplimiento de las normas'), null, v.target_type, v.target_id);
+  elsif p_resolution = 'expulsion' then
+    perform private.community_ban(v_author, coalesce(v_note, 'Incumplimiento grave de las normas'));
+    v_result := jsonb_build_object('banned', true);
+  end if;
+  update public.community_visitor_reports
+  set status = 'resolved', resolution = p_resolution, resolved_by = (select auth.uid()), resolved_at = now(), resolution_note = v_note
+  where id = p_id;
+  -- El historial guarda qué se decidió y sobre qué contenido, nunca el contacto de la persona que avisó.
+  perform private.community_log('resolve_visitor_' || p_resolution, v.target_type, v.target_id, v_note,
+    v_result || jsonb_build_object('visitor_report_id', p_id, 'hidden', v_hide));
+  if v_author is not null then
+    perform private.community_recompute_medals(v_author);
+  end if;
+  return v_result || jsonb_build_object('hidden', v_hide);
+end;
+$$;
+
 -- Retención del historial de administración (diaria, no editable desde la app).
 do $$
 begin
@@ -928,6 +1146,14 @@ grant execute on function public.community_admin_set_featured(uuid, boolean) to 
 grant execute on function public.community_admin_list_featured() to authenticated;
 grant execute on function public.community_admin_list_removal_requests(text) to authenticated;
 grant execute on function public.community_admin_handle_removal(uuid, boolean, text) to authenticated;
+
+-- Avisos de visitantes: quien avisa puede NO tener cuenta (anon) o tener sesión sin alias (authenticated). La administración, solo authenticated.
+revoke all on function public.community_visitor_report(text, uuid, text, text, text, text) from public, anon, authenticated;
+revoke all on function public.community_admin_list_visitor_reports(text, integer, integer) from public, anon;
+revoke all on function public.community_admin_resolve_visitor_report(uuid, text, text, boolean) from public, anon;
+grant execute on function public.community_visitor_report(text, uuid, text, text, text, text) to anon, authenticated;
+grant execute on function public.community_admin_list_visitor_reports(text, integer, integer) to authenticated;
+grant execute on function public.community_admin_resolve_visitor_report(uuid, text, text, boolean) to authenticated;
 
 -- Mis solicitudes de eliminación de contenido (para enseñar su estado) y mis comentarios (para poder pedir la eliminación de uno concreto).
 create or replace function public.community_list_my_removal_requests()

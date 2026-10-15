@@ -42,7 +42,7 @@ import { CommentItem, type CommentActions } from '@/ui/community/CommentItem'
 import type { ReplyTarget } from '@/ui/community/CommentComposer'
 import { ConfirmDialog } from '@/ui/community/ContentMenu'
 import { PhotoLightbox } from '@/ui/community/PhotoLightbox'
-import { ReportDialog } from '@/ui/community/ReportDialog'
+import { ReportContentDialog } from '@/ui/community/ReportContentDialog'
 import { SummaryBox } from '@/ui/community/SummaryBox'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommentExposure } from '@/ui/community/useCommentExposure'
@@ -332,8 +332,9 @@ export function CommentsSection({
           setActionError(communityErrorText(e))
         }
       },
-      onReport: async (c) => {
-        if (await requireParticipation()) setReportId(c.id)
+      // Denunciar no exige participar: `ReportContentDialog` elige el camino del servidor (miembro o lector) según el acceso.
+      onReport: (c) => {
+        setReportId(c.id)
       },
       onBlock: async (c) => {
         if (!(await requireParticipation())) return
@@ -513,7 +514,7 @@ export function CommentsSection({
         <p className="muted">Todavía no hay comentarios.{canInteract ? ' ¡Sé la primera persona en comentar!' : ''}</p>
       ) : null}
 
-      {reportId && <ReportDialog type="comment" id={reportId} onClose={() => setReportId(null)} />}
+      {reportId && <ReportContentDialog type="comment" id={reportId} onClose={() => setReportId(null)} />}
       {blockTarget && (
         <ConfirmDialog
           title="Bloquear a esta persona"

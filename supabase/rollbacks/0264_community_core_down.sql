@@ -16,6 +16,7 @@ drop table if exists public.community_drafts cascade;
 drop table if exists public.community_admin_log cascade;
 drop table if exists public.community_bans cascade;
 drop table if exists public.community_warnings cascade;
+drop table if exists public.community_visitor_reports cascade;
 drop table if exists public.community_reports cascade;
 drop table if exists public.community_blocks cascade;
 drop table if exists public.community_conversation_follows cascade;

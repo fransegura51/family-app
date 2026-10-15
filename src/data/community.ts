@@ -144,7 +144,7 @@ export const listFollowing = () => rpc<{ id: string; alias: string; avatarEmoji:
 export const setFavoriteTopics = (topics: string[]) => rpc<void>('community_set_favorite_topics', { p_topics: topics })
 export const getFavoriteTopics = () => rpc<string[]>('community_get_favorite_topics')
 export const getPublicProfile = (profileId: string) => rpc<PublicProfileInfo | null>('community_get_public_profile', { p_cp: profileId })
-export const reportContent = (type: 'post' | 'comment' | 'user', id: string, reason: string, detail: string | null) =>
+export const reportContent = (type: 'post' | 'comment' | 'user' | 'review', id: string, reason: string, detail: string | null) =>
   rpc<{ alreadyReported: boolean; hidden?: boolean }>('community_report', { p_type: type, p_id: id, p_reason: reason, p_detail: detail })
 
 // ---- Borradores y búsquedas
@@ -211,9 +211,19 @@ export const deleteMyCommunityContent = () => rpc<number>('community_delete_my_c
 export const requestContentRemoval = (scope: 'all_my_content' | 'specific', targetType: 'post' | 'comment' | null, targetId: string | null, detail: string) =>
   rpc<string>('community_request_content_removal', { p_scope: scope, p_target_type: targetType, p_target_id: targetId, p_detail: detail })
 
-// ---- Fotos (bucket público «community-media»; la ruta empieza por el id del perfil público)
-export function communityPhotoUrl(path: string): string {
-  return supabase.storage.from('community-media').getPublicUrl(path).data.publicUrl
+// ---- Fotos (bucket PRIVADO «community-media»; la ruta empieza por el id del perfil público). Nadie las lee por una dirección fija: la política de Storage
+// (migración 0277) solo deja leer lo que cuelga de contenido publicado, lo propio y, a la administración, todo. Las direcciones que se pintan las construye
+// `src/ui/community/communityPhotoUrl.ts`: la del Worker (`/c/img/…`, contenido publicado) o, para lo que el Worker no puede servir, una FIRMADA temporal.
+export const COMMUNITY_SIGNED_URL_SECONDS = 600
+
+// Pide en UNA sola llamada las direcciones firmadas (10 minutos) de varias fotos. Las que fallan (sin permiso, borradas…) simplemente no salen en el resultado.
+export async function createCommunityPhotoSignedUrls(paths: string[]): Promise<Record<string, string>> {
+  if (paths.length === 0) return {}
+  const { data, error } = await supabase.storage.from('community-media').createSignedUrls(paths, COMMUNITY_SIGNED_URL_SECONDS)
+  if (error) throw toCommunityError(error)
+  const out: Record<string, string> = {}
+  for (const item of data ?? []) if (item.path && item.signedUrl && !item.error) out[item.path] = item.signedUrl
+  return out
 }
 
 export async function uploadCommunityPhoto(profileId: string, blob: Blob): Promise<string> {
@@ -232,10 +242,10 @@ export async function removeCommunityPhoto(path: string): Promise<void> {
 export const adminOverview = () => rpc<Record<string, number>>('community_admin_overview')
 export const adminListReports = (status: 'open' | 'resolved' = 'open', limit = 50, offset = 0) =>
   rpc<Record<string, unknown>[]>('community_admin_list_reports', { p_status: status, p_limit: limit, p_offset: offset })
-export const adminGetContent = (type: 'post' | 'comment', id: string) => rpc<Record<string, unknown> | null>('community_admin_get_content', { p_type: type, p_id: id })
-export const adminResolveContent = (type: 'post' | 'comment' | 'user', id: string, action: 'sin_accion' | 'ocultar' | 'advertir' | 'expulsar', note: string | null) =>
+export const adminGetContent = (type: 'post' | 'comment' | 'review', id: string) => rpc<Record<string, unknown> | null>('community_admin_get_content', { p_type: type, p_id: id })
+export const adminResolveContent = (type: 'post' | 'comment' | 'user' | 'review', id: string, action: 'sin_accion' | 'ocultar' | 'advertir' | 'expulsar', note: string | null) =>
   rpc<Record<string, unknown>>('community_admin_resolve_content', { p_type: type, p_id: id, p_action: action, p_note: note })
-export const adminSetVisibility = (type: 'post' | 'comment', id: string, visible: boolean, reason: string) =>
+export const adminSetVisibility = (type: 'post' | 'comment' | 'review', id: string, visible: boolean, reason: string) =>
   rpc<void>('community_admin_set_visibility', { p_type: type, p_id: id, p_visible: visible, p_reason: reason })
 export const adminListHidden = () => rpc<Record<string, unknown>[]>('community_admin_list_hidden')
 export const adminListUsers = (query: string | null) => rpc<Record<string, unknown>[]>('community_admin_list_users', { p_query: query })

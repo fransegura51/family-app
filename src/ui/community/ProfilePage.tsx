@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { blockUser, followUser, getMedals, getPublicProfile, listFollowing, listPosts, unblockUser, unfollowUser } from '@/data/community'
 import type { CommunityCardItem, FollowMode, MedalsView, PublicProfileInfo } from '@/domain/community'
 import { communityErrorText } from '@/domain/communityErrors'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { DEFAULT_FOLLOW_MODE, FOLLOW_MODES, constancyText, earnedMedals, formatLongDate } from '@/domain/communityProfile'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
@@ -20,6 +21,8 @@ type Tab = 'todo' | 'recetas'
 export function ProfilePage() {
   const { id = '' } = useParams()
   const { requireParticipation } = useCommunity()
+  // Con permiso solo de lectura se puede ver el perfil, pero no seguir, bloquear, desbloquear ni denunciar.
+  const { canParticipate } = useCommunityAccess()
   // undefined = cargando; null = no disponible (usuario eliminado o inexistente)
   const [profile, setProfile] = useState<PublicProfileInfo | null | undefined>(undefined)
   const [medals, setMedals] = useState<MedalsView | null>(null)
@@ -167,7 +170,7 @@ export function ProfilePage() {
         {crumbs}
         <div className="community-blocked-card" role="group" aria-label="Perfil de usuario bloqueado por ti">
           <p>Contenido de usuario bloqueado por ti</p>
-          <button type="button" className="link-button" disabled={busy} onClick={() => void unblock()}>
+          <button type="button" className="link-button" disabled={busy || !canParticipate} onClick={() => void unblock()}>
             Desbloquear
           </button>
           {actionError && (
@@ -183,8 +186,8 @@ export function ProfilePage() {
   const alias = profile.alias ?? 'Alguien'
   const earned = earnedMedals(medals)
   // El servidor no deja seguir a las cuentas oficiales (Pepa / Equipo PEPA) y tampoco se bloquean ni se denuncian como una persona.
-  const canFollow = !profile.isMe && !profile.isOfficial && profile.canInteract !== false
-  const canModerate = !profile.isMe && !profile.isOfficial
+  const canFollow = canParticipate && !profile.isMe && !profile.isOfficial && profile.canInteract !== false
+  const canModerate = canParticipate && !profile.isMe && !profile.isOfficial
 
   return (
     <>

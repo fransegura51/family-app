@@ -162,6 +162,26 @@
   overflow-wrap: anywhere;
 }
 
+/* Denunciar una reseña (objetivo táctil de 44 px) y aviso de reseña oculta por moderación. */
+.community-review-report {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 4px;
+}
+
+.community-review-reported {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.community-review-hidden-note {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--warn-bg, #fff6e0);
+  border: 1px solid var(--warn-border, #f0d48a);
+}
+
 /* ---- Importar a mi Cocina */
 .community-import {
   display: flex;

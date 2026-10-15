@@ -243,7 +243,7 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(276) // 0276: protege las columnas privilegiadas de profiles (fallo de seguridad); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(277) // 0277: permisos de menores de Comunidad y fotos privadas; la numeración la sube quien añada la siguiente
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

@@ -19,11 +19,7 @@ insert into public.community_settings (key, value, description)
 values ('launch_enabled', '0', '1 = Comunidad abierta a todos los usuarios registrados; 0 = solo los administradores (pruebas antes del lanzamiento).')
 on conflict (key) do nothing;
 
--- Decisión de seguridad por defecto (no está en la especificación; se puede cambiar): participar (publicar, comentar, valorar…) solo con cuentas de adultos
--- (rol admin o adult). Las cuentas de invitado o de menor pueden LEER pero no publicar: la especificación prohíbe mostrar datos de menores y Comunidad es pública.
-insert into public.community_settings (key, value, description)
-values ('participants_adults_only', '1', '1 = solo cuentas de adultos (admin/adult) pueden participar; 0 = también invitados y menores con cuenta.')
-on conflict (key) do nothing;
+-- La regla de edad (menores de 15 sin acceso; de 15 a 17 solo con permiso del administrador familiar; desde 18 normal) está en 0277.
 
 create or replace function private.community_launched()
 returns boolean
@@ -53,10 +49,8 @@ begin
   if not private.community_launched() and not private.community_is_admin() then
     raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
   end if;
-  if private.community_setting_int('participants_adults_only', 1) = 1
-     and not exists (select 1 from public.profiles pr where pr.id = (select auth.uid()) and pr.role in ('admin', 'adult')) then
-    raise exception 'ADULT_REQUIRED' using errcode = 'P0001';
-  end if;
+  -- Edad y permisos de la familia (regla de 0277), comprobados en CADA llamada: revocar un permiso corta también las sesiones abiertas.
+  perform private.community_require_participation_access();
   select cp.id, cp.rules_accepted_at into v_cp, v_accepted from public.community_profiles cp where cp.user_id = (select auth.uid()) and cp.deleted_at is null;
   if v_cp is null or v_accepted is null then
     raise exception 'ALIAS_REQUIRED' using errcode = 'P0001';
@@ -268,6 +262,8 @@ begin
     begin
       select cp.user_id into v_user from public.community_profiles cp where cp.id = r.profile_id;
       continue when v_user is null;
+      -- Quien ya no tiene acceso a Comunidad (menor sin permiso) no recibe avisos de Comunidad.
+      continue when private.community_access_level(v_user) = 'none';
       continue when not private.community_in_personal_window(v_user);
       select * into v_state from public.community_notice_state s where s.profile_id = r.profile_id;
       if found and v_state.last_notice_at is not null then
@@ -330,9 +326,7 @@ as $$
 declare
   v_cp uuid := private.community_cp();
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if v_cp is null then
     return '[]'::jsonb;
   end if;
@@ -370,7 +364,7 @@ begin
     return null;
   end if;
   for r in select f.follower_id, cp.user_id from public.community_user_follows f join public.community_profiles cp on cp.id = f.follower_id
-           where f.followed_id = new.author_id and f.notify_mode = 'every' and cp.user_id is not null
+           where f.followed_id = new.author_id and f.notify_mode = 'every' and cp.user_id is not null and private.community_access_level(cp.user_id) <> 'none'
              and not exists (select 1 from public.community_blocks b where b.blocker_id = new.author_id and b.blocked_id = f.follower_id) loop
     perform private.notify_user(r.user_id, 'other', 'community_followed_post',
       (select cp2.alias from public.community_profiles cp2 where cp2.id = new.author_id) || ' ha publicado', new.title, '/comunidad/p/' || new.id, null, 'follow-every:' || new.id, true);
@@ -405,6 +399,7 @@ begin
       and (ns.last_suggestion_at is null or ns.last_suggestion_at < now() - make_interval(hours => coalesce(np.community_suggestion_every_hours, 48)))
   loop
     begin
+      continue when private.community_access_level(r.user_id) = 'none';
       continue when not private.community_in_general_window(r.user_id);
       continue when private.community_ban_state(r.cp_id) <> 'ok';
       v_post := null;

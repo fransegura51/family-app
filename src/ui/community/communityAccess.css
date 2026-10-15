@@ -1,0 +1,41 @@
+/* Acceso por edad y permisos de Comunidad (aviso de solo lectura y pantallas de «no disponible»). Colores heredados del tema de PEPA. */
+.community-readonly-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 10px;
+  background: var(--card-bg, rgba(127, 127, 127, 0.08));
+  font-size: 14px;
+}
+.community-readonly-notice p {
+  margin: 0;
+}
+.community-readonly-notice details {
+  margin-top: 4px;
+}
+.community-readonly-notice summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px; /* objetivo táctil */
+  cursor: pointer;
+  text-decoration: underline;
+}
+.community-readonly-notice details p {
+  padding-bottom: 8px;
+}
+.community-readonly-hint {
+  margin: 8px 0;
+  font-size: 14px;
+}
+.community-unavailable {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0 16px;
+}
+.community-unavailable h1 {
+  margin: 0;
+}
+.community-unavailable p {
+  margin: 0;
+}

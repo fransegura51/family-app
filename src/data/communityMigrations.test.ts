@@ -87,7 +87,9 @@ describe('funciones de Comunidad', () => {
   it('las funciones de participación comprueban sesión, alias, reglas, expulsión, lanzamiento y adultos antes de escribir', () => {
     // La definición VIGENTE es la última (0271 sustituye a la de 0265).
     const guard = [...all.matchAll(/create or replace function private\.community_require_participant\(\)([\s\S]*?)\n\$\$;/g)].at(-1)?.[1] ?? ''
-    for (const code of ['AUTH_REQUIRED', 'NOT_LAUNCHED', 'ADULT_REQUIRED', 'ALIAS_REQUIRED', 'BANNED']) expect(guard).toContain(code)
+    for (const code of ['AUTH_REQUIRED', 'NOT_LAUNCHED', 'ALIAS_REQUIRED', 'BANNED']) expect(guard).toContain(code)
+    // La edad y los permisos de la familia (menores) se comprueban en CADA llamada, con una función de 0277.
+    expect(guard).toContain('private.community_require_participation_access()')
     for (const w of ['community_create_post', 'community_add_comment', 'community_toggle_like', 'community_toggle_save', 'community_follow_user', 'community_rate_recipe', 'community_report', 'community_vote_poll', 'community_save_draft']) {
       const body = new RegExp(`function public\\.${w}\\([\\s\\S]*?\\n\\$\\$;`).exec(all)?.[0] ?? ''
       expect(body, w).toContain('private.community_require_participant()')
@@ -100,6 +102,19 @@ describe('funciones de Comunidad', () => {
     const comments = /create or replace function public\.community_public_get_comments[\s\S]*?\n\$\$;/.exec(all)?.[0] ?? ''
     expect(comments).not.toMatch(/'author_id'|'family_id'|user_id|profile_id/)
     expect(pub).toContain('private.community_launched()')
+  })
+
+  it('un visitante sin sesión (anon) solo puede ejecutar una lista cerrada de funciones, y los avisos de visitantes no guardan identidad ni ocultan nada', () => {
+    const anonFns = new Set([...all.matchAll(/grant execute on function public\.([a-z_]+)\([^)]*\) to [a-z_, ]*\banon\b/g)].map((m) => m[1]))
+    expect([...anonFns].sort()).toEqual(
+      ['community_list_topics', 'community_public_get_comments', 'community_public_get_poll', 'community_public_get_post', 'community_public_sitemap', 'community_visitor_report'].sort())
+    const table = /create table public\.community_visitor_reports \(([\s\S]*?)\n\);/.exec(all)?.[1] ?? ''
+    expect(table).not.toMatch(/user_id|profile_id|family_id|email|\bip\b|reporter_id/i)
+    const fn = /create or replace function public\.community_visitor_report\([\s\S]*?\n\$\$;/.exec(all)?.[0] ?? ''
+    for (const w of ['private.community_launched()', 'private.community_clean_text', 'RATE_LIMIT', 'private.community_notify_admins']) expect(fn, w).toContain(w)
+    // Nunca oculta contenido por sí solo: eso solo lo hace la administración al resolver.
+    expect(fn).not.toContain('community_set_content_status')
+    expect(all).toMatch(/revoke all on function public\.community_visitor_report\([^)]*\) from public, anon, authenticated;/)
   })
 
   it('el borrado de cuenta deja el contenido como «Usuario eliminado» sin identidad', () => {
@@ -119,6 +134,37 @@ describe('funciones de Comunidad', () => {
     expect(check).toContain("split_part(v_path, '/', 1) <> p_cp::text")
     expect(check).toContain('storage.objects')
     expect(all).toContain("(storage.foldername(name))[1] = (select private.community_cp()::text)")
+  })
+})
+
+describe('menores y fotos privadas (0277, 0266)', () => {
+  it('toda función de lectura de Comunidad comprueba el acceso por edad y permisos en cada llamada', () => {
+    for (const fn of ['community_list_posts', 'community_similar_posts', 'community_search_suggest', 'community_get_post', 'community_list_comments', 'community_get_public_profile', 'community_get_poll', 'community_get_summary', 'community_news_breakdown', 'community_get_medals', 'community_list_recipe_reviews']) {
+      const body = new RegExp(`function public\\.${fn}\\([\\s\\S]*?\\n\\$\\$;`).exec(all)?.[0] ?? ''
+      expect(body, fn).toContain('private.community_require_reader()')
+    }
+  })
+
+  it('las funciones de permisos de menores solo las ejecuta quien tiene sesión y exigen ser administrador de familia', () => {
+    expect(all).toMatch(/revoke all on function public\.community_set_minor_permission\(uuid, boolean, boolean\) from public, anon;/)
+    expect(all).not.toMatch(/grant execute on function public\.community_(?:set|list)_minor_permission[a-z_]*\([^)]*\) to anon/)
+    const setFn = /function public\.community_set_minor_permission[\s\S]*?\n\$\$;/.exec(all)?.[0] ?? ''
+    expect(setFn).toContain('private.community_family_admin()')
+    expect(setFn).toContain('v_age < 15 or v_age >= 18')
+  })
+
+  it('el bucket de fotos es privado y la lectura la decide una política con contenido publicado', () => {
+    expect(all).toMatch(/values \('community-media', 'community-media', false,/)
+    expect(all).toContain('create policy "community media: read" on storage.objects')
+    expect(all).toContain('private.community_photo_visible')
+  })
+
+  it('el contenido de menores no llega a la IA', () => {
+    expect(all).toContain('alter table public.community_posts add column ai_excluded')
+    for (const fn of ['community_service_summary_input', 'community_service_pepa_candidates', 'community_service_pepa_mentions']) {
+      const body = new RegExp(`function public\\.${fn}\\([\\s\\S]*?\\n\\$\\$;`).exec(all)?.[0] ?? ''
+      expect(body, fn).toContain('ai_excluded')
+    }
   })
 })
 

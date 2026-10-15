@@ -21,7 +21,8 @@ begin
   if not private.community_launched() then
     return null;
   end if;
-  select * into p from public.community_posts x where x.id = p_id and x.status = 'published';
+  -- Lo que publican personas menores de edad NO tiene página pública (ni se indexa en buscadores): solo se lee dentro de la app.
+  select * into p from public.community_posts x where x.id = p_id and x.status = 'published' and not x.ai_excluded;
   if not found then
     return null;
   end if;
@@ -59,7 +60,7 @@ as $$
 declare
   v_limit integer := least(greatest(coalesce(p_limit, 50), 1), 100);
 begin
-  if not private.community_launched() or not exists (select 1 from public.community_posts p where p.id = p_post and p.status = 'published') then
+  if not private.community_launched() or not exists (select 1 from public.community_posts p where p.id = p_post and p.status = 'published' and not p.ai_excluded) then
     return null;
   end if;
   return coalesce((
@@ -75,10 +76,10 @@ begin
              select jsonb_agg(jsonb_build_object('id', r.id, 'body', r.body, 'photo_path', r.photo_path, 'created_at', r.created_at, 'like_count', r.like_count,
                'author_alias', case when ra.deleted_at is not null then 'Usuario eliminado' else ra.alias end,
                'author_avatar', case when ra.deleted_at is not null then null else ra.avatar_emoji end, 'author_is_official', ra.is_official) order by r.created_at)
-             from public.community_comments r join public.community_profiles ra on ra.id = r.author_id where r.parent_id = c.id and r.status = 'published'), '[]'::jsonb)) as j
+             from public.community_comments r join public.community_profiles ra on ra.id = r.author_id where r.parent_id = c.id and r.status = 'published' and not r.ai_excluded), '[]'::jsonb)) as j
       from public.community_comments c join public.community_profiles a on a.id = c.author_id
-      where c.post_id = p_post and c.parent_id is null
-        and (c.status = 'published' or exists (select 1 from public.community_comments r where r.parent_id = c.id and r.status = 'published'))
+      where c.post_id = p_post and c.parent_id is null and not c.ai_excluded
+        and (c.status = 'published' or exists (select 1 from public.community_comments r where r.parent_id = c.id and r.status = 'published' and not r.ai_excluded))
       order by c.created_at limit v_limit
     ) x
   ), '[]'::jsonb);
@@ -99,7 +100,7 @@ begin
   end if;
   return coalesce((
     select jsonb_agg(jsonb_build_object('id', p.id, 'title', p.title, 'kind', p.kind, 'updated_at', coalesce(p.edited_at, p.created_at), 'last_activity_at', p.last_activity_at) order by p.created_at desc)
-    from (select * from public.community_posts x where x.status = 'published' order by x.created_at desc
+    from (select * from public.community_posts x where x.status = 'published' and not x.ai_excluded order by x.created_at desc
           limit least(greatest(coalesce(p_limit, 1000), 1), 5000) offset greatest(coalesce(p_offset, 0), 0)) p
   ), '[]'::jsonb);
 end;

@@ -1,5 +1,6 @@
 // Comunidad PEPA — tipos y constantes compartidos por la capa de datos y las pantallas (sin red, sin React).
 // El servidor (migraciones 0264-0273) es quien aplica las reglas; aquí solo viven las formas de los datos y los textos fijos.
+import type { CommunityAccessLevel, CommunityAccessReason } from './communityAccess'
 
 export type PostKind = 'receta' | 'pregunta' | 'consejo' | 'anecdota'
 // Tipos de publicación OFICIAL (de Pepa o Equipo PEPA): no son un quinto tipo de publicación de personas.
@@ -83,8 +84,12 @@ export interface MyCommunityProfile {
 
 export interface CommunityStatus {
   launched: boolean
+  // Ya incluye el acceso por edad y permisos (migración 0277): false = no se enseña Comunidad a esta persona.
   visible: boolean
   isAdmin: boolean
+  // Nivel de acceso de la persona y motivo (0277). Opcionales por si el servidor aún no tiene esa migración (se trata como acceso completo).
+  access?: CommunityAccessLevel
+  accessReason?: CommunityAccessReason | null
 }
 
 // Capa neutra de alguien bloqueado: el servidor NO manda su contenido; solo el id para poder desbloquear.
@@ -147,6 +152,8 @@ export interface PublicRecipe {
   myRating: number | null
   // Mi reseña de esta receta (para no perderla al cambiar la valoración).
   myReview?: string | null
+  // true = la administración ocultó mi reseña (las estrellas se conservan en la media). Solo lo ve su autora.
+  myReviewHidden?: boolean
   importedByMyFamily: boolean
 }
 
@@ -309,6 +316,8 @@ export interface NewsBreakdownItem {
 }
 
 export interface RecipeReview {
+  // Id de la reseña (para denunciarla individualmente). No viene en la capa neutra de alguien bloqueado.
+  id?: string
   authorId: string
   authorAlias?: string | null
   authorAvatar?: string | null

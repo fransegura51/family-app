@@ -19,7 +19,7 @@ import {
 const config: PublicPageConfig = {
   publicBase: 'https://pepafamilyapp.es/c',
   appBase: 'https://fransegura51.github.io/family-app',
-  mediaBase: 'https://abc.supabase.co/storage/v1/object/public/community-media',
+  mediaBase: 'https://pepafamilyapp.es/c/img',
 }
 
 const POST_ID = '3f2b1c9e-8a44-4d3a-9b7e-1c2d3e4f5a6b'
@@ -27,6 +27,10 @@ const PROFILE_ID = 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb'
 const FAMILY_ID = 'ffffffff-2222-4333-8444-cccccccccccc'
 const USER_ID = 'eeeeeeee-3333-4444-8555-dddddddddddd'
 const COMMENT_ID = '99999999-4444-4555-8666-aaaaaaaaaaaa'
+// Rutas de foto con la forma real del almacenamiento: `<id perfil>/<uuid>.jpg`.
+const PHOTO_1 = `${PROFILE_ID}/11111111-aaaa-4bbb-8ccc-000000000001.jpg`
+const PHOTO_2 = `${PROFILE_ID}/11111111-aaaa-4bbb-8ccc-000000000002.jpg`
+const PHOTO_RECIPE = `${PROFILE_ID}/11111111-aaaa-4bbb-8ccc-000000000003.webp`
 
 function post(extra: Record<string, unknown> = {}) {
   return {
@@ -99,9 +103,10 @@ describe('escape y utilidades', () => {
     expect(isUuid(null)).toBe(false)
   })
 
-  it('fotos: solo rutas normales del almacenamiento público', () => {
-    expect(photoUrl('perfil/abc-123.jpg', config)).toBe('https://abc.supabase.co/storage/v1/object/public/community-media/perfil/abc-123.jpg')
-    for (const bad of ['../secreto.jpg', 'a//b.jpg', '/etc/passwd', 'a b.jpg', 'a.jpg"onload="x', 'javascript:alert(1)', '', null, 5]) {
+  it('fotos: siempre por la ruta /img del Worker y solo con la forma exacta <perfil>/<uuid>.<ext> (el almacenamiento es privado)', () => {
+    expect(photoUrl(PHOTO_1, config)).toBe(`https://pepafamilyapp.es/c/img/${PHOTO_1}`)
+    expect(photoUrl(PHOTO_RECIPE, config)).toBe(`https://pepafamilyapp.es/c/img/${PHOTO_RECIPE}`)
+    for (const bad of ['perfil/abc-123.jpg', '../secreto.jpg', 'a//b.jpg', '/etc/passwd', 'a b.jpg', 'a.jpg"onload="x', 'javascript:alert(1)', 'https://evil.example/x.jpg', `${PROFILE_ID}/../${PROFILE_ID}/11111111-aaaa-4bbb-8ccc-000000000001.jpg`, PHOTO_1.replace('.jpg', '.svg'), '', null, 5]) {
       expect(photoUrl(bad, config), String(bad)).toBeNull()
     }
   })
@@ -163,21 +168,22 @@ describe('página de una publicación', () => {
     expect(meta(html, 'twitter:title', 'name')).toBe('Cómo ahorrar en la compra semanal')
   })
 
-  it('la imagen de la vista previa es la primera foto; las fotos usan la dirección pública del almacenamiento', () => {
+  it('la imagen de la vista previa es la primera foto; las fotos usan la ruta /img del Worker (nunca la dirección de Supabase)', () => {
     const html = render(
       post({
         photos: [
-          { path: 'perfil/segunda.jpg', position: 2 },
-          { path: 'perfil/primera.jpg', position: 1 },
+          { path: PHOTO_2, position: 2 },
+          { path: PHOTO_1, position: 1 },
           { path: '../robada.jpg', position: 3 },
         ],
       }),
     )
-    expect(meta(html, 'og:image')).toBe('https://abc.supabase.co/storage/v1/object/public/community-media/perfil/primera.jpg')
+    expect(meta(html, 'og:image')).toBe(`https://pepafamilyapp.es/c/img/${PHOTO_1}`)
+    expect(html).not.toContain('supabase.co')
     expect(meta(html, 'twitter:card', 'name')).toBe('summary_large_image')
     expect(html.match(/<img /g)).toHaveLength(2)
     expect(html).not.toContain('robada')
-    expect(html.indexOf('primera.jpg')).toBeLessThan(html.indexOf('segunda.jpg'))
+    expect(html.indexOf(PHOTO_1)).toBeLessThan(html.indexOf(PHOTO_2))
     expect(html).toContain('alt="Foto 1 de 2:')
   })
 
@@ -252,13 +258,15 @@ describe('página de una publicación', () => {
       post({ body: 'Escríbeme a maria.privada@correo.com si quieres la receta.' }),
       [{ id: COMMENT_ID, author_id: PROFILE_ID, family_id: FAMILY_ID, real_name: 'María García', body: 'Gracias', author_alias: 'Pepe', replies: [] }],
     )
-    for (const secret of [PROFILE_ID, FAMILY_ID, USER_ID, COMMENT_ID, 'María García', 'maria.privada@correo.com', 'topic-internal-id']) {
+    for (const secret of [PROFILE_ID, FAMILY_ID, USER_ID, 'María García', 'maria.privada@correo.com', 'topic-internal-id']) {
       expect(html, secret).not.toContain(secret)
     }
     expect(html).toContain('[correo oculto]')
-    // El único identificador visible es el de la propia publicación (va en su enlace público).
+    // Los únicos identificadores visibles son los del contenido público: el de la propia publicación (va en su enlace público) y el del comentario, que solo
+    // aparece dentro del enlace «Denunciar este comentario» (orden 2.4: un visitante sin cuenta puede avisar de un comentario concreto). Nunca el de una persona.
     const uuids = new Set(html.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi))
-    expect([...uuids]).toEqual([POST_ID])
+    expect([...uuids].sort()).toEqual([COMMENT_ID, POST_ID].sort())
+    expect(html).toContain(`type=comment&amp;id=${COMMENT_ID}`)
   })
 
   it('un alias que es un correo se cambia por «Usuario»; el autor eliminado sale como tal', () => {
@@ -325,7 +333,7 @@ describe('JSON-LD por tipo', () => {
       section: 'recetas',
       title: 'Tortilla de patatas',
       body: 'La de siempre, jugosa.',
-      photos: [{ path: 'p/tortilla.jpg', position: 1 }],
+      photos: [{ path: PHOTO_RECIPE, position: 1 }],
       recipe: {
         title: 'Tortilla de patatas',
         servings: 4,
@@ -351,7 +359,7 @@ describe('JSON-LD por tipo', () => {
     expect(recipe.recipeYield).toBe('4 raciones')
     expect(recipe.aggregateRating).toMatchObject({ ratingValue: 4.5, ratingCount: 12 })
     expect(recipe.author).toEqual({ '@type': 'Person', name: 'AnaCocina' })
-    expect(recipe.image).toEqual(['https://abc.supabase.co/storage/v1/object/public/community-media/p/tortilla.jpg'])
+    expect(recipe.image).toEqual([`https://pepafamilyapp.es/c/img/${PHOTO_RECIPE}`])
     expect(html).toContain('<h2 id="ingredientes">Ingredientes</h2>')
     expect(html).toContain('<li>600 g Patatas</li>')
     expect(html).toContain('<ol><li>Pela y corta las patatas.</li>')
@@ -521,7 +529,8 @@ describe('política de seguridad de contenido', () => {
     expect(csp).toContain("default-src 'none'")
     expect(csp).toContain("script-src 'none'")
     expect(csp).toContain("frame-ancestors 'none'")
-    expect(csp).toContain("img-src 'self' https://abc.supabase.co https://fransegura51.github.io")
+    expect(csp).toContain("img-src 'self' https://pepafamilyapp.es https://fransegura51.github.io")
+    expect(csp).not.toContain('supabase.co')
     expect(csp).not.toContain('unsafe-eval')
     expect(csp).not.toMatch(/script-src[^;]*unsafe/)
   })

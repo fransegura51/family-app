@@ -23,7 +23,7 @@ vi.mock('@/data/community', () => ({
   getFavoriteTopics: vi.fn(async () => []),
   setFavoriteTopics: vi.fn(async () => undefined),
   unblockUser: vi.fn(async () => undefined),
-  communityPhotoUrl: (p: string) => p,
+  createCommunityPhotoSignedUrls: vi.fn(async () => ({})),
 }))
 vi.mock('@/ui/community/CommunityProvider', () => ({
   useCommunity: () => ({ status: null, me: { hasProfile: false }, loading: false, refresh: async () => undefined, requireParticipation: async () => true }),

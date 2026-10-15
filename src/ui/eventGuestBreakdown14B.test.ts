@@ -269,6 +269,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(276) // 0276: protege las columnas privilegiadas de profiles (fallo de seguridad); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(277) // 0277: permisos de menores de Comunidad y fotos privadas; la numeración la sube quien añada la siguiente
   })
 })

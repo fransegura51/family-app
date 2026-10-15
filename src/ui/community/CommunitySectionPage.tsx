@@ -20,6 +20,7 @@ import {
 } from '@/domain/communityDiscovery'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { FavoriteTopicsDialog } from '@/ui/community/FavoriteTopicsDialog'
 import { paths, sectionCrumbs } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
@@ -42,6 +43,8 @@ function SectionContent({ section }: { section: CommunitySection }) {
   const navigate = useNavigate()
   const navType = useNavigationType()
   const { requireParticipation } = useCommunity()
+  // Con permiso solo de lectura no se enseñan crear ni «Mis temas favoritos» (guardarlos es participar).
+  const { canParticipate } = useCommunityAccess()
   const topics = useCommunityTopics()
   const [sp, setSp] = useSearchParams()
   const [favOpen, setFavOpen] = useState(false)
@@ -133,7 +136,7 @@ function SectionContent({ section }: { section: CommunitySection }) {
         </label>
       </div>
 
-      {topics && (
+      {topics && canParticipate && (
         <button type="button" className="link-button community-fav-open" onClick={() => setFavOpen(true)}>
           ⭐ Mis temas favoritos
         </button>
@@ -166,9 +169,11 @@ function SectionContent({ section }: { section: CommunitySection }) {
                 Quitar los filtros
               </button>
             )}
-            <button type="button" className="primary" onClick={() => void onCreate()}>
-              ✍️ Crear publicación
-            </button>
+            {canParticipate && (
+              <button type="button" className="primary" onClick={() => void onCreate()}>
+                ✍️ Crear publicación
+              </button>
+            )}
           </div>
         )}
 

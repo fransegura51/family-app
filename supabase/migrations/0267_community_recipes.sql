@@ -44,9 +44,7 @@ as $$
 declare
   v_viewer uuid := private.community_cp();
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if not exists (select 1 from public.community_posts p where p.recipe_id = p_recipe and p.status = 'published') then
     return '[]'::jsonb;
   end if;
@@ -54,10 +52,11 @@ begin
     select jsonb_agg(case
         when v_viewer is not null and exists (select 1 from public.community_blocks b where b.blocker_id = v_viewer and b.blocked_id = r.profile_id)
           then jsonb_build_object('author_id', r.profile_id, 'blocked_by_me', true)
-        else jsonb_build_object('author_id', r.profile_id, 'author_alias', case when cp.deleted_at is not null then 'Usuario eliminado' else cp.alias end,
+        else jsonb_build_object('id', r.id, 'author_id', r.profile_id, 'author_alias', case when cp.deleted_at is not null then 'Usuario eliminado' else cp.alias end,
                                 'author_avatar', cp.avatar_emoji, 'stars', r.stars, 'review', r.review, 'created_at', r.created_at, 'mine', v_viewer = r.profile_id)
       end order by r.updated_at desc)
-    from (select * from public.community_recipe_ratings x where x.recipe_id = p_recipe order by x.updated_at desc
+    -- Una reseña ocultada por la administración no sale (su voto de estrellas sigue contando en la media de la receta).
+    from (select * from public.community_recipe_ratings x where x.recipe_id = p_recipe and x.status = 'published' order by x.updated_at desc
           limit least(greatest(coalesce(p_limit, 20), 1), 50) offset greatest(coalesce(p_offset, 0), 0)) r
     join public.community_profiles cp on cp.id = r.profile_id
   ), '[]'::jsonb);
@@ -77,6 +76,7 @@ declare
   v_profile public.profiles%rowtype;
   v_version integer;
 begin
+  perform private.community_require_participation_access();
   select * into v_profile from public.profiles p where p.id = (select auth.uid());
   if not found then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
@@ -114,6 +114,7 @@ declare
   v_current public.community_recipes%rowtype;
   v_status text;
 begin
+  perform private.community_require_reader();
   select pr.family_id into v_family from public.profiles pr where pr.id = (select auth.uid());
   if v_family is null then
     return null;
@@ -148,6 +149,7 @@ as $$
 declare
   v_family uuid;
 begin
+  perform private.community_require_participation_access();
   select pr.family_id into v_family from public.profiles pr where pr.id = (select auth.uid());
   update public.community_recipe_imports i
   set imported_version = (select r.version from public.community_recipes r where r.id = i.recipe_id), imported_at = now()

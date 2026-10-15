@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { communityPhotoUrl } from '@/data/community'
 import { MAX_COMMENT, type CommentNode } from '@/domain/community'
 import { newRepliesOf } from '@/domain/communityComments'
 import { relativeTimeEs } from '@/domain/communityPost'
@@ -8,6 +7,7 @@ import { ConfirmButton } from '@/ui/ConfirmButton'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { ContentMenu } from '@/ui/community/ContentMenu'
 import { paths } from '@/ui/community/communityNav'
+import { useCommunityPhotoUrl } from '@/ui/community/communityPhotoUrl'
 import '@/ui/community/communityPost.css'
 
 export interface CommentActions {
@@ -46,6 +46,8 @@ export function CommentItem({
   const [draft, setDraft] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Foto del comentario: por el Worker (los comentarios visibles están publicados); si no carga, firmada una vez.
+  const photo = useCommunityPhotoUrl(comment.photoPath)
 
   const cls = 'community-comment' + (isReply ? ' is-reply' : '') + (comment.isNew ? ' is-new' : '') + (highlighted ? ' is-target' : '')
 
@@ -74,6 +76,8 @@ export function CommentItem({
 
   const author = comment.authorDeleted ? 'Usuario eliminado' : (comment.authorAlias ?? 'Alguien')
   const interactive = comment.canInteract !== false && !readOnly
+  // Quien solo puede LEER (menor con permiso de lectura, sin alias…) sí puede denunciar: el menú le enseña solo «Denunciar».
+  const reportOnly = !interactive && !comment.mine
   const newReplies = newRepliesOf(comment)
 
   async function saveEdit() {
@@ -134,8 +138,8 @@ export function CommentItem({
         <>
           {comment.body && <CommunityRichText text={comment.body} className="community-comment-body" />}
           {comment.photoPath && (
-            <button type="button" className="community-comment-photo" aria-label="Ampliar la foto del comentario" onClick={() => actions.onOpenPhoto(communityPhotoUrl(comment.photoPath as string))}>
-              <img src={communityPhotoUrl(comment.photoPath)} alt="Foto del comentario" loading="lazy" decoding="async" />
+            <button type="button" className="community-comment-photo" aria-label="Ampliar la foto del comentario" onClick={() => photo.src && actions.onOpenPhoto(photo.src)}>
+              {photo.src && <img src={photo.src} alt="Foto del comentario" loading="lazy" decoding="async" onError={photo.onError} />}
             </button>
           )}
         </>
@@ -164,7 +168,7 @@ export function CommentItem({
             Responder
           </button>
         )}
-        {interactive && !editing && (
+        {(interactive || reportOnly) && !editing && (
           <ContentMenu label="Más opciones del comentario">
             {(close) =>
               comment.mine ? (
@@ -193,7 +197,7 @@ export function CommentItem({
                   >
                     Denunciar
                   </button>
-                  {!comment.authorDeleted && !comment.authorIsOfficial && (
+                  {interactive && !comment.authorDeleted && !comment.authorIsOfficial && (
                     <button
                       type="button"
                       onClick={() => {

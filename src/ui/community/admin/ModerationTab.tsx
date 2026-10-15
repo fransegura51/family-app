@@ -1,8 +1,10 @@
 import { MODERATION_SECTIONS, type ModerationSection } from '@/domain/communityAdmin'
 import { HiddenPanel, ReadmissionsPanel, RemovalsPanel } from '@/ui/community/admin/ModerationLists'
 import { ReportsPanel } from '@/ui/community/admin/ModerationReports'
+import { VisitorReportsPanel } from '@/ui/community/admin/ModerationVisitorReports'
 
-// Moderación: denuncias agrupadas, contenido oculto, readmisiones y solicitudes de eliminación. Cada apartado carga SOLO cuando se abre.
+// Moderación: denuncias agrupadas (publicaciones, comentarios, reseñas y personas), denuncias de visitantes, contenido oculto, readmisiones y solicitudes de
+// eliminación. Cada apartado carga SOLO cuando se abre.
 export function ModerationTab({ section, onSection, onChanged }: { section: ModerationSection; onSection: (s: ModerationSection) => void; onChanged: () => void }) {
   return (
     <div className="cadm-stack">
@@ -14,6 +16,7 @@ export function ModerationTab({ section, onSection, onChanged }: { section: Mode
         ))}
       </div>
       {section === 'denuncias' && <ReportsPanel onChanged={onChanged} />}
+      {section === 'visitantes' && <VisitorReportsPanel onChanged={onChanged} />}
       {section === 'ocultos' && <HiddenPanel onChanged={onChanged} />}
       {section === 'readmisiones' && <ReadmissionsPanel onChanged={onChanged} />}
       {section === 'eliminacion' && <RemovalsPanel onChanged={onChanged} />}

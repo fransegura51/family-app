@@ -1,5 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
+import { CommunityAccessGate } from '@/ui/community/CommunityAccessUi'
+import { ParticipationOnly } from '@/ui/community/CommunityAccessNotices'
 import { CommunityLayout } from '@/ui/community/CommunityLayout'
 import { CommunityProvider } from '@/ui/community/CommunityProvider'
 
@@ -23,22 +25,26 @@ export function CommunityRoutes() {
     <CommunityProvider>
       <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <Routes>
-          <Route element={<CommunityLayout />}>
-            <Route index element={<CommunityHome />} />
-            <Route path="s/:section" element={<CommunitySectionPage />} />
-            <Route path="p/:id" element={<PostDetailPage />} />
-            <Route path="nueva" element={<PostEditorPage />} />
-            <Route path="editar/:id" element={<PostEditorPage />} />
-            <Route path="borradores" element={<DraftsPage />} />
-            <Route path="guardados" element={<SavedPage />} />
-            <Route path="buscar" element={<SearchPage />} />
-            <Route path="u/:id" element={<ProfilePage />} />
-            <Route path="mi-perfil" element={<MySettingsPage />} />
-            <Route path="medallas" element={<MedalsPage />} />
-            <Route path="novedades" element={<NewsPage />} />
-            <Route path="normas" element={<RulesPage />} />
-            <Route path="admin" element={<AdminPage />} />
-            <Route path="*" element={<Navigate to="/comunidad" replace />} />
+          {/* Acceso por edad y permisos (0277): sin acceso solo se enseña «Comunidad no está disponible para tu cuenta». Con permiso solo de lectura, las
+              pantallas de escritura (crear, editar, borradores, guardados, medallas propias y ajustes/alias) se sustituyen por una explicación. */}
+          <Route element={<CommunityAccessGate />}>
+            <Route element={<CommunityLayout />}>
+              <Route index element={<CommunityHome />} />
+              <Route path="s/:section" element={<CommunitySectionPage />} />
+              <Route path="p/:id" element={<PostDetailPage />} />
+              <Route path="nueva" element={<ParticipationOnly><PostEditorPage /></ParticipationOnly>} />
+              <Route path="editar/:id" element={<ParticipationOnly><PostEditorPage /></ParticipationOnly>} />
+              <Route path="borradores" element={<ParticipationOnly><DraftsPage /></ParticipationOnly>} />
+              <Route path="guardados" element={<ParticipationOnly><SavedPage /></ParticipationOnly>} />
+              <Route path="buscar" element={<SearchPage />} />
+              <Route path="u/:id" element={<ProfilePage />} />
+              <Route path="mi-perfil" element={<ParticipationOnly><MySettingsPage /></ParticipationOnly>} />
+              <Route path="medallas" element={<ParticipationOnly><MedalsPage /></ParticipationOnly>} />
+              <Route path="novedades" element={<NewsPage />} />
+              <Route path="normas" element={<RulesPage />} />
+              <Route path="admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/comunidad" replace />} />
+            </Route>
           </Route>
         </Routes>
       </Suspense>

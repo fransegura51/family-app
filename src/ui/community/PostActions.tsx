@@ -6,8 +6,9 @@ import type { FollowMode, PostDetail } from '@/domain/community'
 import { toggleCount } from '@/domain/communityPost'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { ConfirmDialog, ContentMenu } from '@/ui/community/ContentMenu'
-import { ReportDialog } from '@/ui/community/ReportDialog'
+import { ReportContentDialog } from '@/ui/community/ReportContentDialog'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { paths } from '@/ui/community/communityNav'
 import { getShareUrl, shareCommunityPost } from '@/ui/community/communityShare'
 import '@/ui/community/communityPost.css'
@@ -23,6 +24,8 @@ const FOLLOW_MODE_LABELS: Record<FollowMode, string> = {
 // vuelven atrás. Si `canInteract` es falso las acciones de interacción ni se enseñan (sin explicar el motivo).
 export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail; onPatch: (p: Partial<PostDetail>) => void; onReload: () => void }) {
   const { requireParticipation } = useCommunity()
+  // Permiso solo de lectura: se ve la publicación y se puede compartir, pero no hay me gusta, guardar, seguir, denunciar, bloquear, editar ni eliminar.
+  const { canParticipate } = useCommunityAccess()
   const navigate = useNavigate()
   const busy = useRef(new Set<string>())
   const [error, setError] = useState<string | null>(null)
@@ -34,7 +37,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
   const [blockError, setBlockError] = useState<string | null>(null)
   const [followMode, setFollowMode] = useState<FollowMode | ''>('')
 
-  const interactive = detail.canInteract
+  const interactive = detail.canInteract && canParticipate
   const authorAlias = detail.authorDeleted ? 'Usuario eliminado' : (detail.authorAlias ?? 'esta persona')
   // El servidor no permite seguir ni bloquear a las cuentas oficiales (Pepa / Equipo PEPA): esos botones ni se enseñan.
   const canFollowAuthor = !detail.isMine && !detail.authorDeleted && !detail.authorIsOfficial
@@ -142,8 +145,9 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
     else if (r === 'failed') setManualUrl(getShareUrl(detail.id))
   }
 
-  async function startReport() {
-    if (await requireParticipation()) setReporting(true)
+  // Denunciar NO exige participar (ni alias): `ReportContentDialog` elige el camino del servidor según el acceso de la persona.
+  function startReport() {
+    setReporting(true)
   }
 
   async function startBlock() {
@@ -217,7 +221,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
         <button type="button" className="community-action" onClick={() => void share()}>
           <span aria-hidden="true">📤</span> Compartir
         </button>
-        {(interactive || detail.isMine) && (
+        {(interactive || (detail.isMine && canParticipate) || (!detail.isMine && !canParticipate)) && (
           <ContentMenu label="Más opciones de la publicación">
             {(close) =>
               detail.isMine ? (
@@ -244,7 +248,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
                   >
                     Denunciar
                   </button>
-                  {canBlockAuthor && (
+                  {canBlockAuthor && canParticipate && (
                     <button
                       type="button"
                       onClick={() => {
@@ -307,7 +311,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
         </p>
       )}
 
-      {reporting && <ReportDialog type="post" id={detail.id} onClose={() => setReporting(false)} />}
+      {reporting && <ReportContentDialog type="post" id={detail.id} onClose={() => setReporting(false)} />}
       {blocking && (
         <ConfirmDialog
           title="Bloquear a esta persona"

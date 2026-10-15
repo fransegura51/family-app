@@ -35,10 +35,11 @@ export function parseAdminTab(v: string | null | undefined): AdminTabId {
   return ADMIN_TABS.find((t) => t.id === v)?.id ?? 'resumen'
 }
 
-export type ModerationSection = 'denuncias' | 'ocultos' | 'readmisiones' | 'eliminacion'
+export type ModerationSection = 'denuncias' | 'visitantes' | 'ocultos' | 'readmisiones' | 'eliminacion'
 
 export const MODERATION_SECTIONS: { id: ModerationSection; label: string }[] = [
   { id: 'denuncias', label: 'Denuncias' },
+  { id: 'visitantes', label: 'Denuncias de visitantes' },
   { id: 'ocultos', label: 'Ocultos' },
   { id: 'readmisiones', label: 'Readmisiones' },
   { id: 'eliminacion', label: 'Eliminación de contenido' },
@@ -50,6 +51,10 @@ export const ADMIN_TEXT = {
   twoAdmins:
     'Los dos administradores de Comunidad tienen los mismos permisos: no hay jefe ni doble firma, y cualquiera puede deshacer lo que hizo el otro (todo queda en el historial). No es lo mismo que el administrador de tu familia en PEPA.',
   reportAloneRemovesNothing: 'Una denuncia por sí sola NO retira nada: el contenido sigue visible hasta que un administrador decide.',
+  visitorNeverHides:
+    'Los avisos de visitantes nunca ocultan nada por sí solos: los revisa la administración. Llegan de personas sin cuenta (a través de la página pública) o de personas con sesión pero sin alias o con permiso solo de lectura. No se guarda quién es la persona: solo, si ella lo escribe, un contacto, que aquí sale como texto (nunca como enlace). Úsalo solo si de verdad hace falta.',
+  visitorLimits:
+    'Para evitar abusos, el servidor limita los avisos: 5 al día por origen, 5 abiertos por contenido y día, y topes por hora y por día en total. Si ves muchos avisos iguales, es normal que solo llegue una parte.',
   autoHide:
     'La ocultación automática es provisional: solo ocurre cuando 3 personas distintas denuncian lo mismo con un motivo grave (acoso, violencia, contenido sexual, algo ilegal o datos privados). Queda pendiente de que lo revise una persona de la administración.',
   threeWarnings:
@@ -167,6 +172,7 @@ export interface AdminOverview {
   comments7d: number
   members: number
   openReports: number
+  openVisitorReports: number
   hiddenContent: number
   activeBans: number
   readmissionRequests: number
@@ -182,6 +188,7 @@ export function toAdminOverview(raw: unknown): AdminOverview {
     comments7d: num(r.comments7d),
     members: num(r.members),
     openReports: num(r.openReports),
+    openVisitorReports: num(r.openVisitorReports),
     hiddenContent: num(r.hiddenContent),
     activeBans: num(r.activeBans),
     readmissionRequests: num(r.readmissionRequests),
@@ -196,7 +203,8 @@ export const OVERVIEW_METRICS: { key: keyof AdminOverview; label: string; hint: 
   { key: 'comments7d', label: 'Comentarios (7 días)', hint: 'Nuevos en la última semana' },
   { key: 'members', label: 'Miembros', hint: 'Personas con alias público' },
   { key: 'openReports', label: 'Denuncias abiertas', hint: 'Contenidos con denuncias por revisar' },
-  { key: 'hiddenContent', label: 'Contenido oculto', hint: 'Publicaciones y comentarios ocultos' },
+  { key: 'openVisitorReports', label: 'Denuncias de visitantes', hint: 'Avisos de personas sin alias por revisar' },
+  { key: 'hiddenContent', label: 'Contenido oculto', hint: 'Publicaciones, comentarios y reseñas ocultos' },
   { key: 'activeBans', label: 'Expulsiones activas', hint: 'Personas sin poder participar ahora' },
   { key: 'readmissionRequests', label: 'Readmisiones pedidas', hint: 'Personas que piden volver' },
   { key: 'removalRequests', label: 'Eliminaciones pedidas', hint: 'Solicitudes de borrar contenido' },
@@ -215,6 +223,7 @@ export interface PendingShortcut {
 export function pendingShortcuts(o: AdminOverview): PendingShortcut[] {
   const out: PendingShortcut[] = []
   if (o.openReports > 0) out.push({ id: 'reports', label: 'Denuncias por revisar', tab: 'moderacion', section: 'denuncias', count: o.openReports })
+  if (o.openVisitorReports > 0) out.push({ id: 'visitors', label: 'Denuncias de visitantes', tab: 'moderacion', section: 'visitantes', count: o.openVisitorReports })
   if (o.readmissionRequests > 0) out.push({ id: 'readmissions', label: 'Peticiones de readmisión', tab: 'moderacion', section: 'readmisiones', count: o.readmissionRequests })
   if (o.removalRequests > 0) out.push({ id: 'removals', label: 'Peticiones de eliminar contenido', tab: 'moderacion', section: 'eliminacion', count: o.removalRequests })
   if (o.hiddenContent > 0) out.push({ id: 'hidden', label: 'Contenido oculto', tab: 'moderacion', section: 'ocultos', count: o.hiddenContent })
@@ -257,10 +266,17 @@ export function validateAdminNote(note: string, required: boolean): string | nul
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Denuncias
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
-export type ReportTargetType = 'post' | 'comment' | 'user'
+export type ReportTargetType = 'post' | 'comment' | 'user' | 'review'
 export type ResolveAction = 'sin_accion' | 'ocultar' | 'advertir' | 'expulsar'
 
-export const TARGET_TYPE_TEXT: Record<ReportTargetType, string> = { post: 'Publicación', comment: 'Comentario', user: 'Persona' }
+export const TARGET_TYPE_TEXT: Record<ReportTargetType, string> = { post: 'Publicación', comment: 'Comentario', user: 'Persona', review: 'Reseña' }
+
+// «★★★☆☆ (3 de 5)»: las estrellas de una reseña dichas también en palabras, para quien no ve los símbolos.
+export function starsLabel(stars: number | null): string {
+  if (stars === null) return ''
+  const n = Math.max(0, Math.min(5, Math.round(stars)))
+  return `${'★'.repeat(n)}${'☆'.repeat(5 - n)} (${n} de 5)`
+}
 
 export function reasonLabel(id: string): string {
   return REPORT_REASONS.find((r) => r.id === id)?.label ?? id
@@ -269,9 +285,12 @@ export function reasonLabel(id: string): string {
 export interface ReportedContent {
   title: string
   excerpt: string
+  // Solo en las reseñas de receta.
+  stars: number | null
   status: string
   authorId: string | null
   authorAlias: string
+  // Publicación (o receta) a la que pertenece el comentario o la reseña; en las publicaciones, ella misma si el servidor lo manda.
   postId: string | null
 }
 
@@ -297,7 +316,7 @@ export interface ReportGroup {
   content: ReportedContent | null
 }
 
-const asTargetType = (v: unknown): ReportTargetType => (v === 'comment' || v === 'user' ? v : 'post')
+const asTargetType = (v: unknown): ReportTargetType => (v === 'comment' || v === 'user' || v === 'review' ? v : 'post')
 
 export function toReportGroups(raw: unknown): ReportGroup[] {
   return rows(raw)
@@ -321,6 +340,7 @@ export function toReportGroups(raw: unknown): ReportGroup[] {
           ? {
               title: str(c.title),
               excerpt: str(c.excerpt),
+              stars: typeof c.stars === 'number' ? c.stars : null,
               status: str(c.status),
               authorId: strOrNull(c.authorId),
               authorAlias: str(c.authorAlias, 'Persona sin alias'),
@@ -382,10 +402,12 @@ export interface ReportDetail {
 }
 
 export interface AdminContent {
-  type: 'post' | 'comment'
+  type: 'post' | 'comment' | 'review'
   id: string
   title: string
   body: string
+  // Solo en las reseñas de receta.
+  stars: number | null
   status: string
   hiddenReason: string | null
   authorAlias: string
@@ -398,20 +420,22 @@ export interface AdminContent {
 
 export function toAdminContent(raw: unknown): AdminContent | null {
   if (!isRec(raw)) return null
-  const type = raw.type === 'comment' ? 'comment' : 'post'
+  const type = raw.type === 'comment' ? 'comment' : raw.type === 'review' ? 'review' : 'post'
   const photoPath = strOrNull(raw.photoPath)
   const photos = asArr(raw.photos).filter((x): x is string => typeof x === 'string')
   return {
     type,
     id: str(raw.id),
     title: str(raw.title),
+    // Una reseña solo con estrellas llega con `body` nulo: se enseña vacío.
     body: str(raw.body),
+    stars: typeof raw.stars === 'number' ? raw.stars : null,
     status: str(raw.status),
     hiddenReason: strOrNull(raw.hiddenReason),
     authorAlias: str(raw.authorAlias, 'Persona sin alias'),
     kind: strOrNull(raw.kind),
     createdAt: strOrNull(raw.createdAt),
-    postId: type === 'comment' ? strOrNull(raw.postId) : null,
+    postId: type === 'comment' || type === 'review' ? strOrNull(raw.postId) : null,
     photos: photoPath ? [photoPath, ...photos] : photos,
     reports: rows(raw.reports).map((r) => ({ reason: str(r.reason), detail: strOrNull(r.detail), status: str(r.status), createdAt: strOrNull(r.createdAt) })),
   }
@@ -422,7 +446,7 @@ export function toAdminContent(raw: unknown): AdminContent | null {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 export interface HiddenItem {
   key: string
-  type: 'post' | 'comment'
+  type: 'post' | 'comment' | 'review'
   id: string
   title: string
   reason: string | null
@@ -438,7 +462,7 @@ export function toHiddenItems(raw: unknown): HiddenItem[] {
   return rows(raw)
     .filter((r) => str(r.id) !== '')
     .map((r) => {
-      const type = r.type === 'comment' ? 'comment' : 'post'
+      const type = r.type === 'comment' ? 'comment' : r.type === 'review' ? 'review' : 'post'
       const reason = strOrNull(r.reason)
       return {
         key: `${type}:${str(r.id)}`,
@@ -508,6 +532,158 @@ export function removalScopeText(r: Pick<RemovalRequest, 'scope' | 'targetType'>
 }
 
 export const REMOVAL_STATUS_TEXT: Record<RemovalStatus, string> = { open: 'Pendientes', done: 'Hechas', rejected: 'Rechazadas' }
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Denuncias de visitantes (orden 2.4): avisos de personas SIN cuenta (desde la página pública) o con sesión pero sin poder participar (sin alias, solo lectura).
+// Nunca ocultan nada solos. El servidor ya los limita contra abusos; aquí solo se revisan y se resuelven.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+export const VISITOR_PAGE = 20
+
+export type VisitorTargetType = 'post' | 'comment' | 'review'
+export type VisitorResolution = 'sin_accion' | 'oculto' | 'advertencia' | 'expulsion' | 'otro'
+export type VisitorSource = 'visitor' | 'reader'
+
+export const VISITOR_SOURCE_TEXT: Record<VisitorSource, string> = { visitor: 'Visitante (sin cuenta)', reader: 'Lector sin alias' }
+
+export const VISITOR_RESOLUTION_TEXT: Record<VisitorResolution, string> = {
+  sin_accion: 'Sin acción',
+  oculto: 'Contenido ocultado',
+  advertencia: 'Autor/a advertido/a',
+  expulsion: 'Autor/a expulsado/a',
+  otro: 'Otra decisión',
+}
+
+export interface VisitorReportContent {
+  title: string
+  excerpt: string
+  stars: number | null
+  status: string
+  hidden: boolean
+  authorId: string | null
+  authorAlias: string
+  postId: string | null
+}
+
+export interface VisitorReport {
+  id: string
+  targetType: VisitorTargetType
+  targetId: string
+  reason: string
+  detail: string | null
+  // Texto libre que escribe la persona (puede ser un correo, un teléfono o cualquier cosa): SIEMPRE se pinta como texto, nunca como enlace.
+  contact: string | null
+  source: VisitorSource
+  status: 'open' | 'resolved'
+  resolution: VisitorResolution | null
+  resolutionNote: string | null
+  resolvedAt: string | null
+  createdAt: string | null
+  // null = el contenido ya no existe.
+  content: VisitorReportContent | null
+}
+
+const asVisitorType = (v: unknown): VisitorTargetType => (v === 'comment' || v === 'review' ? v : 'post')
+
+export function toVisitorReports(raw: unknown): VisitorReport[] {
+  return rows(raw)
+    .filter((r) => str(r.id) !== '' && str(r.targetId) !== '')
+    .map((r) => {
+      const c = isRec(r.content) ? r.content : null
+      const res = str(r.resolution)
+      return {
+        id: str(r.id),
+        targetType: asVisitorType(r.targetType),
+        targetId: str(r.targetId),
+        reason: str(r.reason),
+        detail: strOrNull(r.detail),
+        contact: strOrNull(r.contact),
+        source: r.source === 'reader' ? 'reader' : 'visitor',
+        status: r.status === 'resolved' ? 'resolved' : 'open',
+        resolution: res in VISITOR_RESOLUTION_TEXT ? (res as VisitorResolution) : null,
+        resolutionNote: strOrNull(r.resolutionNote),
+        resolvedAt: strOrNull(r.resolvedAt),
+        createdAt: strOrNull(r.createdAt),
+        content: c
+          ? {
+              title: str(c.title),
+              excerpt: str(c.excerpt),
+              stars: typeof c.stars === 'number' ? c.stars : null,
+              status: str(c.status),
+              hidden: bool(c.hidden) || c.status === 'hidden',
+              authorId: strOrNull(c.authorId),
+              authorAlias: str(c.authorAlias, 'Persona sin alias'),
+              postId: strOrNull(c.postId),
+            }
+          : null,
+      }
+    })
+}
+
+export interface VisitorActionInfo {
+  id: VisitorResolution
+  label: string
+  needsNote: boolean
+  danger: boolean
+  help: string
+  // none: no oculta nunca · forced: oculta siempre · optional: oculta solo si se marca «ocultar también el contenido».
+  hide: 'none' | 'forced' | 'optional'
+  // Necesita que el contenido (y su autor/a) siga existiendo: ocultar, advertir y expulsar actúan sobre él.
+  needsAuthor: boolean
+}
+
+export const VISITOR_ACTIONS: VisitorActionInfo[] = [
+  { id: 'sin_accion', label: 'Sin acción', needsNote: false, danger: false, hide: 'none', needsAuthor: false, help: 'Cierra el aviso y deja el contenido como está.' },
+  { id: 'oculto', label: 'Ocultar contenido', needsNote: true, danger: false, hide: 'forced', needsAuthor: true, help: 'Oculta el contenido (se puede restaurar después) y se avisa a su autor/a.' },
+  {
+    id: 'advertencia',
+    label: 'Advertir al autor',
+    needsNote: true,
+    danger: true,
+    hide: 'optional',
+    needsAuthor: true,
+    help: 'Pone una advertencia a su autor/a. A la tercera se le expulsa de Comunidad 30 días. Puedes ocultar también el contenido.',
+  },
+  {
+    id: 'expulsion',
+    label: 'Expulsar',
+    needsNote: true,
+    danger: true,
+    hide: 'optional',
+    needsAuthor: true,
+    help: 'Expulsa a su autor/a de Comunidad (30 días; su cuenta de PEPA no se toca). Puedes ocultar también el contenido.',
+  },
+  { id: 'otro', label: 'Otro', needsNote: true, danger: false, hide: 'optional', needsAuthor: false, help: 'Cierra el aviso con otra decisión que explicas en la nota. Puedes ocultar también el contenido.' },
+]
+
+// Si el contenido ya no existe (o no se sabe quién lo escribió) solo se puede cerrar el aviso: el servidor rechazaría ocultar, advertir o expulsar.
+export function visitorActionsFor(r: Pick<VisitorReport, 'content'>): VisitorActionInfo[] {
+  const hasAuthor = !!r.content && r.content.authorId !== null
+  return VISITOR_ACTIONS.filter((a) => hasAuthor || !a.needsAuthor)
+}
+
+// Valor de `p_hide` según la acción y la casilla.
+export function visitorHideValue(action: VisitorActionInfo, checked: boolean): boolean {
+  if (action.hide === 'forced') return true
+  return action.hide === 'optional' && checked
+}
+
+// «Otro» con la casilla de ocultar necesita también que el contenido exista.
+export function validateVisitorResolution(action: VisitorActionInfo, note: string, hide: boolean, r: Pick<VisitorReport, 'content'>): string | null {
+  const problem = validateAdminNote(note, action.needsNote)
+  if (problem) return problem
+  if (hide && !r.content) return 'El contenido ya no existe: no se puede ocultar.'
+  return null
+}
+
+// Qué se enseña tras resolver (el servidor devuelve { hidden, warningId?, activeWarnings?, banned? }).
+export function visitorResultText(action: VisitorResolution, result: unknown): string {
+  const r = asRec(result)
+  const parts = ['Aviso resuelto.']
+  if (bool(r.hidden)) parts.push('El contenido queda oculto.')
+  if (action === 'advertencia') parts.push(warnResultText(result))
+  if (action === 'expulsion' && bool(r.banned)) parts.push('La persona queda expulsada de Comunidad 30 días.')
+  return parts.join(' ')
+}
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Usuarios
@@ -1006,6 +1182,11 @@ export const LOG_ACTION_TEXT: Record<string, string> = {
   resolve_ocultar: 'Resolvió una denuncia ocultando el contenido',
   resolve_advertir: 'Resolvió una denuncia advirtiendo al autor',
   resolve_expulsar: 'Resolvió una denuncia expulsando al autor',
+  resolve_visitor_sin_accion: 'Resolvió una denuncia de visitante sin acción',
+  resolve_visitor_oculto: 'Resolvió una denuncia de visitante ocultando el contenido',
+  resolve_visitor_advertencia: 'Resolvió una denuncia de visitante advirtiendo al autor',
+  resolve_visitor_expulsion: 'Resolvió una denuncia de visitante expulsando al autor',
+  resolve_visitor_otro: 'Resolvió una denuncia de visitante con otra decisión',
   hide: 'Ocultó un contenido',
   restore: 'Restauró un contenido',
   readmission_approved: 'Aprobó una readmisión',
@@ -1028,6 +1209,7 @@ export const LOG_TARGET_TEXT: Record<string, string> = {
   user: 'Persona',
   post: 'Publicación',
   comment: 'Comentario',
+  review: 'Reseña',
   setting: 'Parámetro',
   domain: 'Dominio',
   official_item: 'Propuesta oficial',

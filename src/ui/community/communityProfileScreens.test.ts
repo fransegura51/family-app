@@ -220,7 +220,8 @@ describe('COM-144 en Familia → Horarios de tus avisos', () => {
   it('la tarjeta de Familia monta el bloque compartido solo si Comunidad es visible, preguntándolo una vez', () => {
     expect(cardSrc).toContain('<CommunityNoticePrefs prefs={prefs} onSave={save} />')
     expect(cardSrc).toContain('{communityVisible && (')
-    expect(cardSrc).toContain('setCommunityVisible(st.visible)')
+    // Visible Y con permiso de participar (regla de 0277): con solo lectura no hay avisos de Comunidad que ajustar.
+    expect(cardSrc).toContain("setCommunityVisible(st.visible && accessFromStatus(st).level === 'participate')")
     expect(cardSrc.split('communityStatus().then(').length - 1).toBe(1)
     expect(cardSrc).not.toMatch(/setInterval|setTimeout/)
   })

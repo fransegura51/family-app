@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { adminGetContent, adminListReports, adminResolveContent, communityPhotoUrl } from '@/data/community'
+import { adminGetContent, adminListReports, adminResolveContent } from '@/data/community'
 import {
   ADMIN_TEXT,
   RESOLUTION_TEXT,
@@ -11,6 +11,7 @@ import {
   reportCountText,
   resolveActionsFor,
   splitPage,
+  starsLabel,
   toAdminContent,
   toReportGroups,
   type ReportGroup,
@@ -18,6 +19,7 @@ import {
 } from '@/domain/communityAdmin'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { paths } from '@/ui/community/communityNav'
+import { useCommunityPhotoUrls } from '@/ui/community/communityPhotoUrl'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox, NoteForm } from '@/ui/community/admin/AdminShared'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
@@ -139,8 +141,14 @@ export function ReportGroupCard({ group, onResolved }: { group: ReportGroup; onR
       {c && (
         <>
           {c.title && <p className="cadm-title">{c.title}</p>}
+          {group.targetType === 'review' && c.stars !== null && <p className="cadm-small">Valoración: {starsLabel(c.stars)}</p>}
           {c.excerpt && <p className="cadm-excerpt">{c.excerpt}</p>}
           <p className="muted cadm-small">Ahora mismo: {contentStatusText(c.status)}</p>
+          {group.targetType === 'review' && c.postId && c.status === 'published' && (
+            <Link className="link-button cadm-linkbtn" to={paths.post(c.postId)}>
+              Ver la receta
+            </Link>
+          )}
         </>
       )}
       {!c && <p className="muted">El contenido ya no existe.</p>}
@@ -189,12 +197,27 @@ export function ReportGroupCard({ group, onResolved }: { group: ReportGroup; onR
 }
 
 // Contenido completo (también si está oculto) y cada denuncia por separado, para decidir con todos los datos.
-function ContentDetail({ type, id }: { type: 'post' | 'comment'; id: string }) {
+// Fotos del contenido denunciado. La administración también ve las de contenido OCULTO, que el Worker ya no sirve: van siempre con dirección firmada temporal
+// (la política de Storage deja leer todo a la administración), pedidas en una sola llamada para todas las fotos.
+function ReportedPhotos({ paths: photoPaths }: { paths: string[] }) {
+  const { urls, onError } = useCommunityPhotoUrls(photoPaths, 'private')
+  if (photoPaths.length === 0) return null
+  return (
+    <ul className="cadm-photos" aria-label="Fotos del contenido">
+      {photoPaths.map((p, i) => (
+        <li key={p}>{urls[i] && <img src={urls[i] as string} alt="Foto del contenido denunciado" loading="lazy" width={120} height={120} onError={() => onError(p)} />}</li>
+      ))}
+    </ul>
+  )
+}
+
+function ContentDetail({ type, id }: { type: 'post' | 'comment' | 'review'; id: string }) {
   const loader = useCallback(async () => toAdminContent(await adminGetContent(type, id)), [type, id])
   const { data, loading, error, reload } = useAdminData(loader)
   if (loading) return <AdminLoading label="Cargando el contenido…" />
   if (error) return <AdminError message={error} onRetry={reload} />
   if (!data) return <AdminEmpty>Este contenido ya no está disponible.</AdminEmpty>
+  // La reseña vive dentro de la publicación de su receta: el enlace abre esa publicación.
   const postId = data.type === 'post' ? data.id : data.postId
   return (
     <div className="cadm-detail">
@@ -203,16 +226,11 @@ function ContentDetail({ type, id }: { type: 'post' | 'comment'; id: string }) {
         De {data.authorAlias} · {formatMadrid(data.createdAt)} · {contentStatusText(data.status)}
       </p>
       {data.hiddenReason && <p className="cadm-small">Motivo de la ocultación: {data.hiddenReason}</p>}
-      {data.body && <CommunityRichText text={data.body} className="cadm-body" />}
-      {data.photos.length > 0 && (
-        <ul className="cadm-photos" aria-label="Fotos del contenido">
-          {data.photos.map((p) => (
-            <li key={p}>
-              <img src={communityPhotoUrl(p)} alt="Foto del contenido denunciado" loading="lazy" width={120} height={120} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {data.type === 'review' && data.stars !== null && <p className="cadm-small">Valoración: {starsLabel(data.stars)}</p>}
+      {/* Una reseña es texto plano (sin formato): se pinta tal cual, como texto de React. */}
+      {data.body && data.type === 'review' && <p className="cadm-body cadm-plain">{data.body}</p>}
+      {data.body && data.type !== 'review' && <CommunityRichText text={data.body} className="cadm-body" />}
+      <ReportedPhotos paths={data.photos} />
       {postId && data.status === 'published' && (
         <Link className="link-button cadm-linkbtn" to={paths.post(postId)}>
           Abrir en Comunidad

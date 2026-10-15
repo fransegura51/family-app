@@ -7,13 +7,16 @@ compatibility_date = "2025-06-01"
 workers_dev = true
 
 # Variables NO secretas (la dirección del proyecto y las de la web son públicas).
+# Las fotos de Comunidad ya NO salen del almacenamiento público de Supabase (ahora es privado): se sirven por `<PUBLIC_BASE>/img/<ruta>` (este mismo Worker, que las lee
+# con la clave pública y solo si cuelgan de contenido publicado). No hay variables nuevas: usa SUPABASE_URL, SUPABASE_ANON_KEY y PUBLIC_BASE.
 # La clave pública («anon» / «publishable») NO se escribe aquí: se pone en el panel de Cloudflare
 # (Settings → Variables and Secrets) o, en local, en el archivo `.dev.vars` (ver `.dev.vars.example`).
 [vars]
 SUPABASE_URL = "https://objhgjgrinbhyzscjlbw.supabase.co"
 # Dirección de la aplicación (donde se abre «Abrir en la aplicación»). Cámbiala si la aplicación pasa a otro dominio.
 APP_BASE = "https://fransegura51.github.io/family-app"
-# Dirección pública de estas páginas (las que se comparten). Mientras pruebes en workers.dev, pon aquí la dirección workers.dev + "/c".
+# Dirección pública de estas páginas (las que se comparten) y, colgando de ella, `/img/…` (las fotos). Mientras pruebes en workers.dev, pon aquí la dirección workers.dev + "/c".
+# La app debe usar la MISMA base en VITE_COMMUNITY_PUBLIC_BASE para pintar las fotos publicadas.
 PUBLIC_BASE = "https://pepafamilyapp.es/c"
 # Imagen de la vista previa cuando una publicación no tiene fotos (opcional; mejor 1200x630 y menos de 300 KB).
 DEFAULT_IMAGE = "https://fransegura51.github.io/family-app/comunidad-og.jpg"

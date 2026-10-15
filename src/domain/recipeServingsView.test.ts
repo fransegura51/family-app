@@ -3,6 +3,7 @@ import { recipeServingsView } from '@/domain/recipeServingsView'
 
 const src = (path: string) => (import.meta.glob('/src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[`/${path}`]
 const ALIM = src('src/ui/AlimentacionScreen.tsx')
+const EDITOR = src('src/ui/recipeEditor/RecipeEditorFields.tsx') // El editor de campos de receta (Raciones incluidas) es compartido con Comunidad.
 
 describe('ficha de la receta: qué se muestra de las raciones', () => {
   it('1. servings = 4, sin fuente → «Raciones: 4» y sin «Fuente original»', () => {
@@ -71,8 +72,9 @@ describe('edición: el formulario recibe raciones y fuente, y guardar conserva l
   })
 
   it('cambiar Raciones no escribe en la fuente y la edición nunca recalcula raciones desde la fuente', () => {
-    const onChange = ALIM.slice(ALIM.indexOf('onChange={(e) => setServingsText'), ALIM.indexOf('onChange={(e) => setServingsText') + 60)
-    expect(onChange).not.toContain('setServingsSource')
+    // El campo está conectado directamente a setServingsText (no a ninguna función que toque la fuente) y el editor compartido no sabe nada de la fuente.
+    expect(ALIM).toContain('onServingsTextChange={setServingsText}')
+    expect(EDITOR).not.toContain('Source')
     const fromSource = ALIM.split('\n').filter((l) => l.includes('setServingsText(') && l.includes('sourceValue'))
     expect(fromSource).toEqual([])
   })

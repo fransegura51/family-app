@@ -1,12 +1,41 @@
 import { useEffect, useState } from 'react'
 import { reportContent } from '@/data/community'
+import { visitorReport } from '@/data/communityReports'
 import { communityErrorText } from '@/domain/communityErrors'
 import { REPORT_REASONS } from '@/domain/community'
+import {
+  REPORT_ALREADY_TEXT,
+  REPORT_DETAIL_MAX,
+  REPORT_DONE_TEXT,
+  REPORT_INTRO_TEXT,
+  REPORT_TARGET_TEXT,
+  type ReportChannel,
+  type ReportableType,
+} from '@/domain/communityReports'
 import '@/ui/community/communityPost.css'
 
-// Denunciar una publicación o un comentario: motivo (obligatorio) y detalle (opcional). Una denuncia por sí sola NO elimina nada: la revisa la administración.
-// No se cuenta nunca si el contenido se ha ocultado ni a quién ha denunciado (privacidad de todas las partes).
-export function ReportDialog({ type, id, onClose }: { type: 'post' | 'comment'; id: string; onClose: () => void }) {
+export interface ReportResult {
+  alreadyReported: boolean
+  // true = el servidor ocultó el contenido a la vez (solo ocurre con el camino de miembro y varias denuncias graves): hay que quitarlo de la pantalla.
+  hidden: boolean
+}
+
+// Denunciar una publicación, un comentario o una reseña: motivo (obligatorio) y detalle (opcional). Una denuncia por sí sola NO elimina nada: la revisa la
+// administración. No se cuenta nunca si el contenido se ha ocultado ni a quién ha denunciado (privacidad de todas las partes).
+// `channel` elige a qué función del servidor se llama (ver domain/communityReports.ts); casi siempre se usa a través de `ReportContentDialog`, que lo decide.
+export function ReportDialog({
+  type,
+  id,
+  onClose,
+  channel = 'member',
+  onReported,
+}: {
+  type: ReportableType
+  id: string
+  onClose: () => void
+  channel?: ReportChannel
+  onReported?: (result: ReportResult) => void
+}) {
   const [reason, setReason] = useState<string>('')
   const [detail, setDetail] = useState('')
   const [sending, setSending] = useState(false)
@@ -26,8 +55,17 @@ export function ReportDialog({ type, id, onClose }: { type: 'post' | 'comment'; 
     setSending(true)
     setError(null)
     try {
-      const r = await reportContent(type, id, reason, detail.trim() || null)
-      setDone(r.alreadyReported ? 'Ya habías denunciado esto. La administración lo revisará.' : 'Gracias. La administración lo revisará.')
+      const text = detail.trim() || null
+      let result: ReportResult
+      if (channel === 'visitor') {
+        const r = await visitorReport(type, id, reason, text)
+        result = { alreadyReported: r.alreadyReported === true, hidden: false }
+      } else {
+        const r = await reportContent(type, id, reason, text)
+        result = { alreadyReported: r.alreadyReported === true, hidden: r.hidden === true }
+      }
+      setDone(result.alreadyReported ? REPORT_ALREADY_TEXT : REPORT_DONE_TEXT)
+      onReported?.(result)
     } catch (e) {
       setError(communityErrorText(e))
     } finally {
@@ -35,7 +73,7 @@ export function ReportDialog({ type, id, onClose }: { type: 'post' | 'comment'; 
     }
   }
 
-  const what = type === 'post' ? 'esta publicación' : 'este comentario'
+  const what = REPORT_TARGET_TEXT[type]
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
@@ -52,7 +90,7 @@ export function ReportDialog({ type, id, onClose }: { type: 'post' | 'comment'; 
           </>
         ) : (
           <>
-            <p className="muted">Cuéntanos qué pasa. No se borra nada por una denuncia: la revisa la administración. Nadie sabrá que has sido tú.</p>
+            <p className="muted">{REPORT_INTRO_TEXT}</p>
             <fieldset className="community-report-reasons">
               <legend>Motivo</legend>
               {REPORT_REASONS.map((r) => (
@@ -64,7 +102,7 @@ export function ReportDialog({ type, id, onClose }: { type: 'post' | 'comment'; 
             </fieldset>
             <label>
               Detalle (opcional)
-              <textarea value={detail} maxLength={500} rows={3} onChange={(e) => setDetail(e.target.value)} placeholder="Si quieres, explícalo con tus palabras" />
+              <textarea value={detail} maxLength={REPORT_DETAIL_MAX} rows={3} onChange={(e) => setDetail(e.target.value)} placeholder="Si quieres, explícalo con tus palabras" />
             </label>
             {error && (
               <p className="error" role="alert">

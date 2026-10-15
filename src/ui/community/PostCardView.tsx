@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { communityPhotoUrl, unblockUser } from '@/data/community'
+import { unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { KIND_ICONS, KIND_LABELS, type CommunityCardItem } from '@/domain/community'
 import { paths } from '@/ui/community/communityNav'
+import { useCommunityPhotoUrl } from '@/ui/community/communityPhotoUrl'
 
 // Tarjeta COMPACTA de publicación (portada, secciones, buscador, guardados y perfiles): tipo, tema, alias, extracto de máximo dos líneas, miniatura si hay foto
 // e interacciones clave. Tocar TODA la tarjeta abre la página completa (no un modal). Si la persona ha bloqueado al autor, el servidor no manda el contenido y
 // aquí solo se enseña una capa neutra con «Desbloquear».
 export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; onUnblocked?: () => void }) {
   const [error, setError] = useState<string | null>(null)
+  // Miniatura: por el Worker (contenido publicado); si no carga, firmada una vez. Sin dirección aún, no se pinta.
+  const thumb = useCommunityPhotoUrl(item.blockedByMe ? null : item.thumbPath)
 
   if (item.blockedByMe) {
     return (
@@ -64,7 +67,7 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
           {item.kind === 'receta' && item.importCount > 0 && <span>📥 {item.importCount}</span>}
         </div>
       </div>
-      {item.thumbPath && <img className="community-card-thumb" src={communityPhotoUrl(item.thumbPath)} alt="" loading="lazy" decoding="async" />}
+      {thumb.src && <img className="community-card-thumb" src={thumb.src} alt="" loading="lazy" decoding="async" onError={thumb.onError} />}
     </Link>
   )
 }

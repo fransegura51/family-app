@@ -1,0 +1,20 @@
+-- Deshace 0277_community_minors.sql (generado a partir de la migración; revisar antes de usar). Borra los datos de Comunidad que contuviera.
+drop trigger if exists community_posts_mark_ai_excluded on public.community_posts;
+drop trigger if exists community_comments_mark_ai_excluded on public.community_comments;
+drop policy if exists "community media: read" on storage.objects;
+drop function if exists private.community_mark_ai_excluded();
+drop function if exists private.community_can_view_photo(text);
+drop function if exists private.community_photo_visible(text, boolean);
+drop function if exists public.community_get_access();
+drop function if exists public.community_set_minor_permission(uuid, boolean, boolean);
+drop function if exists public.community_list_minor_permissions();
+drop function if exists private.community_family_admin();
+drop function if exists private.community_require_participation_access();
+drop function if exists private.community_require_reader();
+drop function if exists private.community_access_reason(uuid);
+drop function if exists private.community_access_level(uuid);
+drop function if exists private.community_age_years(uuid);
+drop table if exists public.community_minor_permission_log cascade;
+drop table if exists public.community_minor_permissions cascade;
+alter table public.community_posts drop column if exists ai_excluded;
+alter table public.community_comments drop column if exists ai_excluded;

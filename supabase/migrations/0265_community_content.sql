@@ -280,10 +280,7 @@ begin
   if not private.community_launched() and not private.community_is_admin() then
     raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
   end if;
-  if private.community_setting_int('participants_adults_only', 1) = 1
-     and not exists (select 1 from public.profiles pr where pr.id = (select auth.uid()) and pr.role in ('admin', 'adult')) then
-    raise exception 'ADULT_REQUIRED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_participation_access();
   if v_alias !~ '^[A-Za-zÀ-ÿ0-9_. -]{3,24}$' then
     raise exception 'ALIAS_INVALID' using errcode = 'P0001';
   end if;
@@ -689,9 +686,7 @@ declare
   v_tsq tsquery;
   v_result jsonb;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if p_order not in ('recientes', 'comentados', 'valoradas', 'sin_respuesta', 'para_mi') then
     p_order := 'recientes';
   end if;
@@ -747,9 +742,7 @@ declare
   v_viewer uuid := private.community_cp();
   v_tsq tsquery;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if p_title is null or char_length(btrim(p_title)) < 4 then
     return '[]'::jsonb;
   end if;
@@ -784,9 +777,7 @@ declare
   v_prefix text := btrim(coalesce(p_prefix, ''));
   v_like text;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   if char_length(v_prefix) < 2 then
     return '[]'::jsonb;
   end if;
@@ -842,6 +833,7 @@ declare
   v_recipe jsonb;
   v_me_rating integer;
   v_me_review text;
+  v_me_review_hidden boolean := false;
   v_imported boolean := false;
   v_family uuid;
 begin
@@ -852,13 +844,14 @@ begin
   into v_photos from public.community_post_photos ph where ph.post_id = p.id;
   if p.recipe_id is not null then
     if p_viewer is not null then
-      select r.stars, r.review into v_me_rating, v_me_review from public.community_recipe_ratings r where r.recipe_id = p.recipe_id and r.profile_id = p_viewer;
+      select r.stars, r.review, r.status = 'hidden' into v_me_rating, v_me_review, v_me_review_hidden from public.community_recipe_ratings r where r.recipe_id = p.recipe_id and r.profile_id = p_viewer;
+      v_me_review_hidden := coalesce(v_me_review_hidden, false);
       select pr.family_id into v_family from public.profiles pr where pr.id = (select auth.uid());
       v_imported := v_family is not null and exists (select 1 from public.community_recipe_imports i where i.recipe_id = p.recipe_id and i.family_id = v_family);
     end if;
     select jsonb_build_object(
       'id', r.id, 'title', r.title, 'servings', r.servings, 'ingredients', r.ingredients, 'steps', r.steps, 'tags', to_jsonb(r.tags),
-      'version', r.version, 'updated_at', r.updated_at, 'my_rating', v_me_rating, 'my_review', v_me_review, 'imported_by_my_family', v_imported)
+      'version', r.version, 'updated_at', r.updated_at, 'my_rating', v_me_rating, 'my_review', v_me_review, 'my_review_hidden', v_me_review_hidden, 'imported_by_my_family', v_imported)
     into v_recipe from public.community_recipes r where r.id = p.recipe_id;
   end if;
   return v_card || jsonb_build_object(
@@ -884,9 +877,7 @@ declare
   v_viewer uuid := private.community_cp();
   p public.community_posts%rowtype;
 begin
-  if not private.community_launched() and not private.community_is_admin() then
-    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
-  end if;
+  perform private.community_require_reader();
   select * into p from public.community_posts x where x.id = p_id;
   if not found or p.status = 'deleted' then
     return null;

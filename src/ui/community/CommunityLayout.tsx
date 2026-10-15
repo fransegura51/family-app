@@ -1,7 +1,9 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import header640 from '@/assets/community/comunidad-master-v1-640.webp'
 import header1280 from '@/assets/community/comunidad-master-v1-1280.webp'
+import { ReadOnlyNotice } from '@/ui/community/CommunityAccessNotices'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { paths } from '@/ui/community/communityNav'
 import '@/ui/community/community.css'
 
@@ -26,20 +28,22 @@ export function CommunityHeader() {
   )
 }
 
-const LINKS: { to: string; label: string; end?: boolean }[] = [
+// `participates`: solo se enseña a quien puede participar (con permiso solo de lectura no tienen sentido: no hay nada que guardar ni borradores ni alias).
+const LINKS: { to: string; label: string; end?: boolean; participates?: boolean }[] = [
   { to: paths.home, label: 'Portada', end: true },
   { to: '/comunidad/s/recetas', label: '🍲 Recetas y cocina' },
   { to: '/comunidad/s/hogar', label: '🏡 Hogar y familia' },
   { to: paths.search(), label: '🔎 Buscar' },
-  { to: paths.saved, label: '🔖 Guardados' },
-  { to: paths.drafts, label: '📝 Borradores' },
+  { to: paths.saved, label: '🔖 Guardados', participates: true },
+  { to: paths.drafts, label: '📝 Borradores', participates: true },
   { to: paths.news, label: '🔔 Novedades' },
-  { to: paths.medals, label: '🏅 Medallas' },
-  { to: paths.myProfile, label: '🙂 Mi perfil' },
+  { to: paths.medals, label: '🏅 Medallas', participates: true },
+  { to: paths.myProfile, label: '🙂 Mi perfil', participates: true },
 ]
 
 export function CommunityLayout() {
   const { me, status, loading } = useCommunity()
+  const { canParticipate } = useCommunityAccess()
   const location = useLocation()
 
   // Mientras no esté abierta (y la persona no sea administradora) Comunidad no se enseña.
@@ -64,7 +68,7 @@ export function CommunityLayout() {
         </p>
       )}
       <nav className="community-nav" aria-label="Menú de Comunidad">
-        {LINKS.map((l) => (
+        {LINKS.filter((l) => canParticipate || !l.participates).map((l) => (
           <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => 'community-nav-link' + (isActive ? ' active' : '')} state={{ from: location.pathname }}>
             {l.label}
           </NavLink>
@@ -75,6 +79,7 @@ export function CommunityLayout() {
           </NavLink>
         )}
       </nav>
+      <ReadOnlyNotice />
       <Outlet />
     </div>
   )

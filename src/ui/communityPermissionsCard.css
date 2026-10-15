@@ -1,0 +1,110 @@
+/* Tarjeta «Permisos de Comunidad» de Familia. Objetivos táctiles de al menos 44 px; sin scroll horizontal. */
+.community-permissions h2 {
+  margin: 0;
+}
+.community-permissions .cp-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.community-permissions .cp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+}
+.community-permissions .cp-person {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 10px;
+  min-width: 0;
+}
+.community-permissions .cp-person legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+.community-permissions .cp-switch {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.community-permissions .cp-switch-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+/* Interruptor: la casilla real (accesible con teclado y lector de pantalla) dibujada como un interruptor de 48 x 28 px. */
+.community-permissions .cp-switch input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  margin: 0;
+  border-radius: 14px;
+  background: #9aa0a6;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.community-permissions .cp-switch input[type='checkbox']::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.community-permissions .cp-switch input[type='checkbox']:checked {
+  background: var(--primary, #2f7d4f);
+}
+.community-permissions .cp-switch input[type='checkbox']:checked::after {
+  transform: translateX(20px);
+}
+.community-permissions .cp-switch input[type='checkbox']:focus-visible {
+  outline: 3px solid var(--primary, #2f7d4f);
+  outline-offset: 2px;
+}
+.community-permissions .cp-switch input[type='checkbox']:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.community-permissions .cp-status {
+  min-height: 20px;
+  font-size: 14px;
+}
+.community-permissions .cp-status-error {
+  color: #b42318;
+}
+.community-permissions .cp-info {
+  margin: 0;
+}
+.community-permissions .cp-warning {
+  font-weight: 600;
+}
+.community-permissions .cp-legal {
+  margin: 0;
+  font-size: 14px;
+}

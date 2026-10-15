@@ -140,9 +140,10 @@ describe('pantalla Nueva/Editar publicación', () => {
 
   it('usa las migas «Nueva publicación» y sirve a las dos rutas', () => {
     expect(editorPage).toContain("pageCrumbs(isEdit ? 'Editar publicación' : 'Nueva publicación')")
-    expect(routes).toMatch(/path="nueva" element=\{<PostEditorPage \/>\}/)
-    expect(routes).toMatch(/path="editar\/:id" element=\{<PostEditorPage \/>\}/)
-    expect(routes).toMatch(/path="borradores" element=\{<DraftsPage \/>\}/)
+    // Las rutas de escritura van envueltas en ParticipationOnly (permiso solo de lectura, regla de 0277).
+    expect(routes).toMatch(/path="nueva" element=\{<ParticipationOnly><PostEditorPage \/><\/ParticipationOnly>\}/)
+    expect(routes).toMatch(/path="editar\/:id" element=\{<ParticipationOnly><PostEditorPage \/><\/ParticipationOnly>\}/)
+    expect(routes).toMatch(/path="borradores" element=\{<ParticipationOnly><DraftsPage \/><\/ParticipationOnly>\}/)
   })
 
   it('lee ?tipo, ?seccion, ?titulo y ?borrador, y carga el borrador con todos sus datos', () => {

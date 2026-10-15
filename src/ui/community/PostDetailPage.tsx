@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
-import { communityPhotoUrl, getPost, unblockUser } from '@/data/community'
+import { getPost, unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { KIND_ICONS, KIND_LABELS, type BlockedCard, type HiddenPostNotice, type PostDetail } from '@/domain/community'
 import { formatLongDate, isBlockedLayer, isHiddenNotice, sortPhotos, type PostLookup } from '@/domain/communityPost'
@@ -8,12 +8,15 @@ import { ArticleSources } from '@/ui/community/ArticleSources'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { CommentComposer, type ReplyTarget } from '@/ui/community/CommentComposer'
 import { CommentsSection, type CommentsRefresh } from '@/ui/community/CommentsSection'
+import { ReadOnlyHint } from '@/ui/community/CommunityAccessNotices'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { PhotoLightbox } from '@/ui/community/PhotoLightbox'
 import { PollBox } from '@/ui/community/PollBox'
 import { PostActions } from '@/ui/community/PostActions'
 import { RecipePanel } from '@/ui/community/recipes/RecipePanel'
 import { pageCrumbs, paths, postCrumbs } from '@/ui/community/communityNav'
+import { useCommunityPhotoUrls } from '@/ui/community/communityPhotoUrl'
 import '@/ui/community/communityPost.css'
 
 // Página completa de una publicación (no es un modal). Entra por /comunidad/p/:id; desde un aviso llega con ?nuevos=1&c=<id de comentario>.
@@ -174,9 +177,16 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detail.id])
 
-  const photoUrls = sortPhotos(detail.photos).map((p) => communityPhotoUrl(p.path))
+  // Fotos: por el Worker (contenido publicado); la que no cargue pasa a una dirección firmada una vez (p. ej. la propia publicación aún no visible para todos).
+  const photoPaths = sortPhotos(detail.photos).map((p) => p.path)
+  const { urls: resolvedUrls, onError: onPhotoError } = useCommunityPhotoUrls(photoPaths)
+  const gallery = photoPaths.flatMap((path, i) => (resolvedUrls[i] ? [{ path, url: resolvedUrls[i] as string }] : []))
+  const photoUrls = gallery.map((g) => g.url)
   const author = detail.authorDeleted ? 'Usuario eliminado' : (detail.authorAlias ?? 'Alguien')
   const clearReply = useCallback(() => setReplyTarget(null), [])
+  // Interactuar (comentar, responder, votar, me gusta…) exige además el permiso de participar; con solo lectura se ve todo pero no se puede interactuar.
+  const { canParticipate } = useCommunityAccess()
+  const canInteract = detail.canInteract && canParticipate
 
   return (
     <article className="community-post-page">
@@ -209,9 +219,9 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
 
       {photoUrls.length > 0 && (
         <div className={'community-gallery' + (photoUrls.length === 1 ? ' single' : '')} role="group" aria-label="Fotos de la publicación">
-          {photoUrls.map((u, i) => (
-            <button key={u} type="button" className="community-gallery-item" aria-label={`Ampliar la foto ${i + 1} de ${photoUrls.length}`} onClick={() => setLightbox(i)}>
-              <img src={u} alt={`Foto ${i + 1} de ${photoUrls.length}`} loading={i === 0 ? 'eager' : 'lazy'} decoding="async" />
+          {gallery.map(({ path, url: u }, i) => (
+            <button key={path} type="button" className="community-gallery-item" aria-label={`Ampliar la foto ${i + 1} de ${photoUrls.length}`} onClick={() => setLightbox(i)}>
+              <img src={u} alt={`Foto ${i + 1} de ${photoUrls.length}`} loading={i === 0 ? 'eager' : 'lazy'} decoding="async" onError={() => onPhotoError(path)} />
             </button>
           ))}
         </div>
@@ -220,15 +230,16 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
       {detail.body && <CommunityRichText text={detail.body} className="community-post-body" />}
 
       {detail.kind === 'receta' && <RecipePanel detail={detail} onChanged={reload} />}
-      {detail.kind === 'encuesta' && <PollBox postId={detail.id} canInteract={detail.canInteract} />}
+      {detail.kind === 'encuesta' && <PollBox postId={detail.id} canInteract={canInteract} />}
       {detail.kind === 'articulo' && <ArticleSources raw={detail.articleSources} />}
 
       <PostActions detail={detail} onPatch={patch} onReload={reload} />
+      <ReadOnlyHint />
 
       <CommentsSection
         postId={detail.id}
         commentCount={initialCommentCount}
-        canInteract={detail.canInteract}
+        canInteract={canInteract}
         fromNotification={fromNotification}
         targetCommentId={targetCommentId}
         refresh={refresh}
@@ -236,7 +247,7 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
       />
 
       {/* El campo para comentar va el último y queda fijo abajo en móvil, aunque la conversación esté plegada. Sin interacción posible, no se enseña. */}
-      {detail.canInteract && (
+      {canInteract && (
         <CommentComposer
           postId={detail.id}
           replyTarget={replyTarget}

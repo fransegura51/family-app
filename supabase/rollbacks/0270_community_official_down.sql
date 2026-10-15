@@ -9,6 +9,7 @@ drop function if exists public.community_request_summary_refresh(uuid);
 drop function if exists public.community_service_save_summary(uuid, text, integer);
 drop function if exists public.community_service_summary_input(uuid, boolean);
 drop function if exists public.community_get_summary(uuid);
+drop function if exists private.community_summary_state(uuid);
 drop function if exists public.community_public_get_poll(uuid);
 drop function if exists public.community_vote_poll(uuid, integer);
 drop function if exists public.community_get_poll(uuid);

@@ -3,6 +3,10 @@ do $$ begin if exists (select 1 from cron.job where jobname = 'community-purge-a
 do $$ begin if exists (select 1 from cron.job where jobname = 'community-update-featured') then perform cron.unschedule('community-update-featured'); end if; end $$;
 drop function if exists public.community_list_my_comments(integer, integer);
 drop function if exists public.community_list_my_removal_requests();
+drop function if exists public.community_admin_resolve_visitor_report(uuid, text, text, boolean);
+drop function if exists public.community_admin_list_visitor_reports(text, integer, integer);
+drop function if exists private.community_visitor_target_author(text, uuid);
+drop function if exists public.community_visitor_report(text, uuid, text, text, text, text);
 drop function if exists public.community_admin_handle_removal(uuid, boolean, text);
 drop function if exists public.community_admin_list_removal_requests(text);
 drop function if exists public.community_request_content_removal(text, text, uuid, text);

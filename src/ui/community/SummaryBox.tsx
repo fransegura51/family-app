@@ -1,3 +1,4 @@
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import '@/ui/community/communityPost.css'
 
 // Resumen breve de la conversación hecho por Pepa (SOLO con 15 comentarios o más; con menos, esta caja no existe). Resume los comentarios que hay, sin inventar
@@ -20,6 +21,8 @@ export function SummaryBox({
   onOpenConversation: () => void
   onRefresh: () => void
 }) {
+  // Pedir que Pepa actualice el resumen es participar: con permiso solo de lectura se lee el resumen, sin el botón.
+  const { canParticipate } = useCommunityAccess()
   return (
     <section className="community-summary card" aria-label="Resumen de la conversación">
       <h2 className="community-summary-title">✨ Resumen de Pepa</h2>
@@ -40,9 +43,11 @@ export function SummaryBox({
             Ver toda la conversación
           </button>
         )}
-        <button type="button" className="link-button" disabled={busy} onClick={onRefresh}>
-          {busy ? 'Actualizando…' : 'Actualizar resumen'}
-        </button>
+        {canParticipate && (
+          <button type="button" className="link-button" disabled={busy} onClick={onRefresh}>
+            {busy ? 'Actualizando…' : 'Actualizar resumen'}
+          </button>
+        )}
       </div>
     </section>
   )

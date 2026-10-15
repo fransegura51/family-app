@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { eventMenuPath } from '@/domain/eventMenuHub'
 import { paletteByName, pastelPalette } from '@/domain/colors'
 import { dedupeStepNumbers } from '@/domain/recipeSteps'
+import { ingredientRowsFrom, newIngredientRow, newStepRow, stepRowsFrom, type IngredientRow, type StepRow } from '@/domain/recipeEditor'
 import {
   ALIMENTACION_MENU_ITEM_META,
   alimentacionMenuEntryMeta,
@@ -49,6 +50,8 @@ import { errorMessage } from '@/domain/errorMessage'
 import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
+// EL editor de campos de receta (raciones, etiquetas, ingredientes y pasos) es el MISMO que usa Comunidad: ver src/ui/recipeEditor/RecipeEditorFields.tsx.
+import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
 // Comunidad: «Compartir en Comunidad» (hoja para publicar una copia pública, solo se descarga al pulsar) y el aviso «Hay una versión nueva» de las recetas
 // que se guardaron desde Comunidad. No cambian nada de lo que ya hacía la Cocina.
 import { RecipeUpdateBanner } from '@/ui/community/recipes/RecipeUpdateBanner'
@@ -1186,20 +1189,7 @@ type RecipeCandidate =
 // gusta... darle un aspecto más profesional"), y al guardar se convierten
 // al mismo texto de siempre (una línea "nombre, cantidad, unidad" por
 // ingrediente y "1. paso" por paso), así que no cambia nada en la base de datos.
-interface IngredientRow {
-  id: string
-  name: string
-  quantity: string
-  unit: string
-}
-interface StepRow {
-  id: string
-  text: string
-}
-let formRowSeq = 0
-const newIngredientRow = (over: Partial<IngredientRow> = {}): IngredientRow => ({ id: `ing-${++formRowSeq}`, name: '', quantity: '', unit: '', ...over })
-const newStepRow = (text = ''): StepRow => ({ id: `step-${++formRowSeq}`, text })
-const UNIT_SUGGESTIONS = ['g', 'kg', 'ml', 'l', 'unidades', 'cucharadas', 'cucharaditas', 'tazas', 'pizca', 'dientes', 'lonchas']
+// (Las filas, sus ayudantes y las reglas de etiquetas/raciones están en src/domain/recipeEditor.ts, compartidas con Comunidad.)
 
 function RecipeForm({
   mode,
@@ -1228,22 +1218,19 @@ function RecipeForm({
   const sourceValue = servingsSource ? (servingsFromSource(servingsSource)?.servings ?? null) : null
   const servingsNow = servingsText.trim() === '' ? null : Number(servingsText.trim().replace(',', '.'))
   const [steps, setSteps] = useState<StepRow[]>(() =>
-    recipe?.notes && !legacyNotes
-      ? recipe.notes
-          .split('\n')
-          .filter((l) => l.trim())
-          .map((l) => newStepRow(dedupeStepNumbers(l.trim()).replace(/^\d+\.\s*/, '')))
-      : [newStepRow(), newStepRow()],
+    stepRowsFrom(
+      recipe?.notes && !legacyNotes
+        ? recipe.notes
+            .split('\n')
+            .filter((l) => l.trim())
+            .map((l) => dedupeStepNumbers(l.trim()).replace(/^\d+\.\s*/, ''))
+        : [],
+    ),
   )
-  const [ingRows, setIngRows] = useState<IngredientRow[]>(() =>
-    recipe && recipe.ingredients.length > 0
-      ? recipe.ingredients.map((i) => newIngredientRow({ name: i.name, quantity: i.quantity ?? '', unit: i.unit ?? '' }))
-      : [newIngredientRow(), newIngredientRow(), newIngredientRow()],
-  )
+  const [ingRows, setIngRows] = useState<IngredientRow[]>(() => ingredientRowsFrom(recipe?.ingredients ?? []))
   const [startMode, setStartMode] = useState<'manual' | 'search' | 'url'>('manual')
   const [showImageUrl, setShowImageUrl] = useState(false)
   const [tags, setTags] = useState<string[]>(recipe?.tags ?? [])
-  const [newTag, setNewTag] = useState('')
   // Petición real: "que las recetas tengan una imagen en la cabecera...
   // si no [importada] que se pueda subir una foto propia o buscar una
   // de internet" — sin API de búsqueda de pago, "buscar de internet" es
@@ -1269,17 +1256,6 @@ function RecipeForm({
       .then(setSearchHistory)
       .catch(() => {})
   }, [])
-
-  function toggleTag(tag: string) {
-    setTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
-  }
-
-  function handleAddNewTag() {
-    const t = newTag.trim()
-    if (!t) return
-    if (!tags.includes(t)) setTags((prev) => [...prev, t])
-    setNewTag('')
-  }
 
   async function handleUploadImage(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -1497,47 +1473,9 @@ function RecipeForm({
     }
   }
 
-  function updateIngredient(id: string, patch: Partial<IngredientRow>) {
-    setIngRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)))
-  }
-
-  function addIngredientAfter(id: string | null) {
-    setIngRows((rows) => {
-      const at = id ? rows.findIndex((r) => r.id === id) + 1 : rows.length
-      return [...rows.slice(0, at), newIngredientRow(), ...rows.slice(at)]
-    })
-  }
-
-  function moveStep(index: number, direction: -1 | 1) {
-    setSteps((rows) => {
-      const target = index + direction
-      if (target < 0 || target >= rows.length) return rows
-      const next = [...rows]
-      ;[next[index], next[target]] = [next[target], next[index]]
-      return next
-    })
-  }
-
   return (
     <form onSubmit={handleSubmit} className="recipe-form">
-      <div className="recipe-field">
-        <input
-          className="recipe-title-input"
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-          placeholder="Nombre de la receta (p. ej. Tortilla de patatas)"
-          list="recipe-search-history"
-          autoComplete="off"
-          aria-label="Título"
-        />
-        <datalist id="recipe-search-history">
-          {searchHistory.map((q) => (
-            <option key={q} value={q} />
-          ))}
-        </datalist>
-      </div>
+      <RecipeTitleField value={title} onChange={setTitle} required placeholder="Nombre de la receta (p. ej. Tortilla de patatas)" suggestions={searchHistory} ariaLabel="Título" />
 
       {mode === 'add' && (
         <div className="recipe-field">
@@ -1649,126 +1587,26 @@ function RecipeForm({
         {imageError && <p className="error">{imageError}</p>}
       </div>
 
-      <div className="recipe-field">
-        <span className="recipe-field-label">Raciones (opcional)</span>
-        <input type="number" inputMode="decimal" min={1} max={50} step={0.5} value={servingsText} onChange={(e) => setServingsText(e.target.value)} placeholder="¿Para cuántas personas es?" aria-label="Raciones" />
-        {servingsSource && sourceValue !== null && (
-          // Usa siempre el valor ACTUAL del campo (servingsNow), no el punto medio original.
-          <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
-            {servingsSourceNote(servingsSource, sourceValue, Number.isFinite(servingsNow) ? servingsNow : null)}
-          </p>
-        )}
-      </div>
-
-      <div className="recipe-field">
-        <span className="recipe-field-label">Etiquetas</span>
-        <div className="filter-row">
-          {availableTags.map((tag) => (
-            <button key={tag} type="button" className={'chip' + (tags.includes(tag) ? ' chip-active' : '')} onClick={() => toggleTag(tag)}>
-              {tag}
-            </button>
-          ))}
-          {tags
-            .filter((t) => !availableTags.includes(t))
-            .map((tag) => (
-              <button key={tag} type="button" className="chip chip-active" onClick={() => toggleTag(tag)}>
-                {tag} ✕
-              </button>
-            ))}
-        </div>
-        <div className="recipe-inline-row">
-          <input
-            type="text"
-            value={newTag}
-            onChange={(e) => setNewTag(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleAddNewTag()
-              }
-            }}
-            placeholder="Nueva etiqueta"
-            aria-label="Nueva etiqueta"
-          />
-          <button type="button" onClick={handleAddNewTag} disabled={!newTag.trim()}>
-            Añadir
-          </button>
-        </div>
-      </div>
-
-      <div className="recipe-field">
-        <span className="recipe-field-label">Ingredientes</span>
-        {ingRows.map((r) => (
-          <div key={r.id} className="recipe-ing-row">
-            <input
-              className="recipe-ing-name"
-              type="text"
-              value={r.name}
-              onChange={(e) => updateIngredient(r.id, { name: e.target.value })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addIngredientAfter(r.id)
-                }
-              }}
-              placeholder="Ingrediente"
-              aria-label="Ingrediente"
-            />
-            <input className="recipe-ing-qty" type="text" inputMode="decimal" value={r.quantity} onChange={(e) => updateIngredient(r.id, { quantity: e.target.value })} placeholder="Cant." aria-label="Cantidad" />
-            <input className="recipe-ing-unit" type="text" list="recipe-units" value={r.unit} onChange={(e) => updateIngredient(r.id, { unit: e.target.value })} placeholder="Unidad" aria-label="Unidad" />
-            <button type="button" className="recipe-row-remove" aria-label="Quitar ingrediente" onClick={() => setIngRows((rows) => (rows.length > 1 ? rows.filter((x) => x.id !== r.id) : [newIngredientRow()]))}>
-              ✕
-            </button>
-          </div>
-        ))}
-        <datalist id="recipe-units">
-          {UNIT_SUGGESTIONS.map((u) => (
-            <option key={u} value={u} />
-          ))}
-        </datalist>
-        <button type="button" className="link-button" style={{ alignSelf: 'flex-start' }} onClick={() => addIngredientAfter(null)}>
-          + Añadir ingrediente
-        </button>
-      </div>
-
-      {legacyNotes ? (
-        <div className="recipe-field">
-          <span className="recipe-field-label">Preparación / notas</span>
-          <textarea rows={6} value={notes} onChange={(e) => setNotes(e.target.value)} aria-label="Preparación / notas" />
-        </div>
-      ) : (
-        <div className="recipe-field">
-          <span className="recipe-field-label">Preparación</span>
-          {steps.map((st, i) => (
-            <div key={st.id} className="recipe-step-row">
-              <span className="recipe-step-num" aria-hidden="true">
-                {i + 1}
-              </span>
-              <textarea
-                rows={2}
-                value={st.text}
-                onChange={(e) => setSteps((rows) => rows.map((x) => (x.id === st.id ? { ...x, text: e.target.value } : x)))}
-                placeholder={i === 0 ? 'Describe el primer paso…' : 'Siguiente paso…'}
-                aria-label={`Paso ${i + 1}`}
-              />
-              <div className="recipe-step-actions">
-                <button type="button" className="recipe-row-remove" aria-label="Subir paso" disabled={i === 0} onClick={() => moveStep(i, -1)}>
-                  ↑
-                </button>
-                <button type="button" className="recipe-row-remove" aria-label="Bajar paso" disabled={i === steps.length - 1} onClick={() => moveStep(i, 1)}>
-                  ↓
-                </button>
-                <button type="button" className="recipe-row-remove" aria-label="Quitar paso" onClick={() => setSteps((rows) => (rows.length > 1 ? rows.filter((x) => x.id !== st.id) : [newStepRow()]))}>
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))}
-          <button type="button" className="link-button" style={{ alignSelf: 'flex-start' }} onClick={() => setSteps((rows) => [...rows, newStepRow()])}>
-            + Añadir paso
-          </button>
-        </div>
-      )}
+      <RecipeEditorFields
+        servingsText={servingsText}
+        onServingsTextChange={setServingsText}
+        servingsNote={
+          servingsSource && sourceValue !== null ? (
+            // Usa siempre el valor ACTUAL del campo (servingsNow), no el punto medio original.
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>
+              {servingsSourceNote(servingsSource, sourceValue, Number.isFinite(servingsNow) ? servingsNow : null)}
+            </p>
+          ) : null
+        }
+        tags={tags}
+        onTagsChange={setTags}
+        tagOptions={availableTags}
+        ingredients={ingRows}
+        onIngredientsChange={setIngRows}
+        steps={steps}
+        onStepsChange={setSteps}
+        legacyNotes={legacyNotes ? { value: notes, onChange: setNotes } : undefined}
+      />
 
       {error && <p className="error">{error}</p>}
       <div className="recipe-form-footer">

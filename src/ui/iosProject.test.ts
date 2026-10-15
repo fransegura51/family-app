@@ -8,6 +8,9 @@ import appDelegate from '../../ios/App/App/AppDelegate.swift?raw'
 import entitlements from '../../ios/App/App/App.entitlements?raw'
 import pbxproj from '../../ios/App/App.xcodeproj/project.pbxproj?raw'
 import testflight from '../../.github/workflows/ios-testflight.yml?raw'
+import nativeLocation from '../../ios-patches/background-geolocation/PepaNativeLocation.swift?raw'
+import iosPatch from '../../scripts/patch-background-geolocation-ios.mjs?raw'
+import pkg from '../../package.json?raw'
 
 describe('app de iPhone: Info.plist', () => {
   it('pide los permisos con textos claros en español (Apple rechaza los permisos sin explicación)', () => {
@@ -111,5 +114,27 @@ describe('app de iPhone: envío a TestFlight (probado el 15/10/2026: sube con el
     expect(testflight).toContain('CURRENT_PROJECT_VERSION="${{ github.run_number }}"')
     // Si no se firma el archivo, la app se queda sin el permiso de avisos (aps-environment).
     expect(testflight).not.toContain('CODE_SIGNING_ALLOWED=NO')
+  })
+})
+
+describe('app de iPhone: ubicación con la app cerrada', () => {
+  it('AppDelegate retoma la vigilancia al arrancar (también cuando iOS relanza la app por un cambio de ubicación)', () => {
+    expect(appDelegate).toContain('import CapacitorCommunityBackgroundGeolocation')
+    expect(appDelegate).toContain('PepaNativeLocation.shared.resumeIfConfigured()')
+  })
+
+  it('el código nativo vigila cambios significativos, manda cada posición a report_device_location y se para con «off» o «revoked»', () => {
+    expect(nativeLocation).toContain('startMonitoringSignificantLocationChanges()')
+    expect(nativeLocation).toContain('allowsBackgroundLocationUpdates = true')
+    expect(nativeLocation).toContain('/rest/v1/rpc/report_device_location')
+    for (const field of ['p_token', 'p_latitude', 'p_longitude', 'p_recorded_at']) expect(nativeLocation).toContain(field)
+    expect(nativeLocation).toContain('\\"off\\"')
+    expect(nativeLocation).toContain('\\"revoked\\"')
+    expect(nativeLocation).toContain('beginBackgroundTask')
+  })
+
+  it('el parche añade los tres métodos al complemento y corre tras cada npm install', () => {
+    for (const method of ['setNativeUpload', 'clearNativeUpload', 'getBackgroundLocationStatus']) expect(iosPatch).toContain(method)
+    expect(pkg).toContain('patch-background-geolocation-ios.mjs --soft')
   })
 })

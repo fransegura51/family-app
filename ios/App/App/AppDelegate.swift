@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import FirebaseCore
 import FirebaseMessaging
+import CapacitorCommunityBackgroundGeolocation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,6 +15,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()
         }
+        // Ubicación con la app cerrada: si ya hay llave guardada, se retoma la vigilancia. Es lo que hace iOS al relanzar la app en segundo plano
+        // por un cambio significativo de ubicación (launchOptions[.location]), aunque la persona la hubiera deslizado para cerrarla.
+        PepaNativeLocation.shared.resumeIfConfigured()
         return true
     }
 

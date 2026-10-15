@@ -24,13 +24,14 @@ beforeEach(async () => {
 })
 
 describe('envío nativo de la ubicación (app cerrada)', () => {
-  it('en iPhone no existe ese servicio: no se pide ninguna llave ni se llama al servidor', async () => {
+  it('en iPhone también: la llave se entrega al código nativo que relanza la app y manda la ubicación', async () => {
     native.ios = true
     await enableNativeUpload('m1')
+    expect(data.createLocationDeviceToken).toHaveBeenCalledWith('m1')
+    expect(location.configureNativeUpload).toHaveBeenCalledWith('t'.repeat(64))
     await disableNativeUpload()
-    expect(data.createLocationDeviceToken).not.toHaveBeenCalled()
-    expect(location.configureNativeUpload).not.toHaveBeenCalled()
-    expect(data.revokeLocationDeviceTokens).not.toHaveBeenCalled()
+    expect(location.clearNativeUpload).toHaveBeenCalledTimes(1)
+    expect(data.revokeLocationDeviceTokens).toHaveBeenCalledTimes(1)
   })
 
   it('pide la llave de ESA persona y se la da al servicio nativo', async () => {

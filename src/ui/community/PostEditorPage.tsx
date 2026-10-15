@@ -13,7 +13,8 @@ import {
   updatePost,
 } from '@/data/community'
 import { ANECDOTE_TYPES, DRAFT_DAYS, MAX_TITLE, POST_KINDS, SECTIONS, parseAnecdoteType, type CommunityTopic, type PostCard } from '@/domain/community'
-import { CommunityError, communityErrorText } from '@/domain/communityErrors'
+import { CommunityError, communityErrorCode, communityErrorText } from '@/domain/communityErrors'
+import { MINORS_NO_PHOTOS_NOTE } from '@/domain/communityAccess'
 import { bufferScope, clearBuffer, readBuffer, shouldOfferBuffer, writeBuffer, type BufferEntry } from '@/domain/communityDraftBuffer'
 import {
   charCounter,
@@ -52,6 +53,7 @@ import { useCommunity } from '@/ui/community/CommunityProvider'
 import { pageCrumbs, paths } from '@/ui/community/communityNav'
 import { RecipeConsentCheckbox } from '@/ui/community/recipes/RecipeConsentCheckbox'
 import { RecipeFields } from '@/ui/community/recipes/RecipeFields'
+import { useCommunityPhotosAllowed } from '@/ui/community/useCommunityPhotosAllowed'
 import { useRecipeSeed } from '@/ui/community/useRecipeSeed'
 import { useUnsavedChangesGuard } from '@/ui/community/useUnsavedChangesGuard'
 import '@/ui/community/communityEditor.css'
@@ -266,6 +268,16 @@ export function PostEditorPage() {
   const sectionTopics = useMemo(() => topicsForSection(topics, form.section), [topics, form.section])
   const update = useCallback((patch: Partial<PostForm>) => setForm((f) => ({ ...f, ...patch })), [])
 
+  // Las personas menores de edad participan SIN fotos: se les oculta el selector (una consulta por sesión) y, si aun así el servidor responde PHOTOS_NOT_ALLOWED,
+  // se quitan las fotos del formulario y se explica con amabilidad.
+  const { photosAllowed, forbid: forbidPhotosForMe } = useCommunityPhotosAllowed()
+  function failureText(e: unknown): string {
+    if (communityErrorCode(e) !== 'PHOTOS_NOT_ALLOWED') return communityErrorText(e)
+    forbidPhotosForMe()
+    update({ photos: [] })
+    return `${communityErrorText(e)} Hemos quitado las fotos del formulario: vuelve a intentarlo.`
+  }
+
   // Id público de la persona (pidiéndole alias y normas si aún no los tiene): hace falta para subir fotos, guardar y publicar.
   const ensureProfileId = useCallback(async (): Promise<string | null> => {
     if (!(await requireParticipation())) return null
@@ -317,7 +329,7 @@ export function PostEditorPage() {
       setMessage(`Borrador guardado. Se conserva ${DRAFT_DAYS} días (hasta el ${until.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}) desde este último guardado.`)
       return true
     } catch (e) {
-      setSubmitError(communityErrorText(e))
+      setSubmitError(failureText(e))
       return false
     } finally {
       setBusy(null)
@@ -355,7 +367,7 @@ export function PostEditorPage() {
       if (profileId) clearBuffer(profileId, scope)
       leaveTo(paths.post(postId))
     } catch (e) {
-      setSubmitError(communityErrorText(e))
+      setSubmitError(failureText(e))
       setBusy(null)
     }
   }
@@ -677,14 +689,21 @@ export function PostEditorPage() {
 
       {/* Fotos */}
       <div id="ce-field-photos">
-        <PhotoPicker
-          value={form.photos}
-          onChange={(photos) => update({ photos })}
-          ensureProfileId={ensureProfileId}
-          persisted={persisted}
-          disabled={busy !== null}
-          onBusyChange={setPhotosBusy}
-        />
+        {photosAllowed === false ? (
+          // Persona menor de edad: sin selector de fotos (el servidor también las rechaza).
+          <p className="muted ce-help" id="ce-photos-note">
+            {MINORS_NO_PHOTOS_NOTE}
+          </p>
+        ) : (
+          <PhotoPicker
+            value={form.photos}
+            onChange={(photos) => update({ photos })}
+            ensureProfileId={ensureProfileId}
+            persisted={persisted}
+            disabled={busy !== null}
+            onBusyChange={setPhotosBusy}
+          />
+        )}
         {errors.photos && (
           <p className="error" role="alert">
             {errors.photos}

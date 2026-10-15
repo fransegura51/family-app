@@ -145,7 +145,7 @@ describe('consentimiento para publicar (CMN-§5.1)', () => {
   })
 
   it('la foto se copia (bajar por enlace firmado, quitar datos ocultos y subir a Comunidad) solo si se elige, y se retira si falla la publicación', () => {
-    expect(publishSheet).toContain('includePhoto && recipe.imagePath')
+    expect(publishSheet).toContain('withPhoto && recipe.imagePath')
     expect(publishSheet).toContain('copyPrivatePhotoToCommunity(')
     expect(publishSheet).toContain('removeCommunityPhoto(uploaded)')
     expect(photoCopy).toContain('getRecipePhotoUrl(imagePath)')

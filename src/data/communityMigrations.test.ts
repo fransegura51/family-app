@@ -147,7 +147,7 @@ describe('menores y fotos privadas (0277, 0266)', () => {
   })
 
   it('las funciones de permisos de menores solo las ejecuta quien tiene sesión y exigen ser administrador de familia', () => {
-    expect(all).toMatch(/revoke all on function public\.community_set_minor_permission\(uuid, boolean, boolean\) from public, anon;/)
+    expect(all).toMatch(/revoke all on function public\.community_set_minor_permission\(uuid, boolean, boolean, boolean\) from public, anon;/)
     expect(all).not.toMatch(/grant execute on function public\.community_(?:set|list)_minor_permission[a-z_]*\([^)]*\) to anon/)
     const setFn = /function public\.community_set_minor_permission[\s\S]*?\n\$\$;/.exec(all)?.[0] ?? ''
     expect(setFn).toContain('private.community_family_admin()')

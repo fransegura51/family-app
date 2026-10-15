@@ -12,6 +12,8 @@ export type CommunityErrorCode =
   | 'NOT_LAUNCHED'
   | 'COMMUNITY_ACCESS_DENIED'
   | 'PARTICIPATION_NOT_ALLOWED'
+  | 'GUARDIAN_DECLARATION_REQUIRED'
+  | 'PHOTOS_NOT_ALLOWED'
   | 'RATE_LIMIT'
   | 'NOT_AVAILABLE'
   | 'NOT_ADMIN'
@@ -45,6 +47,9 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   // Regla de edad y permisos (migración 0277): sustituye a la antigua «solo adultos» (ADULT_REQUIRED ya no existe en el servidor).
   COMMUNITY_ACCESS_DENIED: 'Ahora mismo no tienes acceso a Comunidad con esta cuenta. Si crees que es un error, pregunta a quien administra tu familia.',
   PARTICIPATION_NOT_ALLOWED: 'Tienes permiso solo de lectura: puedes leer Comunidad, pero no participar. Quien administra tu familia puede cambiarlo.',
+  // Permisos de personas menores (0277): al dar un permiso hay que declarar ser madre, padre o tutor legal, y las personas menores participan sin fotos.
+  GUARDIAN_DECLARATION_REQUIRED: 'Para dar este permiso tienes que confirmar que eres madre, padre o tutor legal de esa persona.',
+  PHOTOS_NOT_ALLOWED: 'Las personas menores de edad participan en Comunidad sin fotos. Quita las fotos e inténtalo de nuevo.',
   RATE_LIMIT: 'Vas muy rápido. Espera un poco y vuelve a intentarlo.',
   NOT_AVAILABLE: 'Esto ya no está disponible.',
   NOT_ADMIN: 'Esta acción es solo para la administración de Comunidad.',
@@ -101,6 +106,12 @@ export function toCommunityError(error: unknown): CommunityError {
     for (const listener of [...accessErrorListeners]) listener(result.code)
   }
   return result
+}
+
+// Código de un error ya convertido (CommunityError) o de uno crudo del servidor. OJO: un CommunityError no se debe volver a pasar por toCommunityError, porque su
+// mensaje ya es la frase en español y no contiene el código.
+export function communityErrorCode(error: unknown): CommunityErrorCode {
+  return error instanceof CommunityError ? error.code : toCommunityError(error).code
 }
 
 export function communityErrorText(error: unknown): string {

@@ -36,6 +36,8 @@ create table public.community_minor_permission_log (
   actor_id uuid,
   can_read boolean not null,
   can_participate boolean not null,
+  -- Declaración de quien autoriza: «soy madre/padre/tutor legal de esta persona» (obligatoria al ACTIVAR un permiso).
+  guardian_declared boolean not null default false,
   created_at timestamptz not null default now()
 );
 create index idx_community_minor_permission_log_profile on public.community_minor_permission_log (profile_id, created_at desc);
@@ -178,6 +180,28 @@ end;
 $$;
 revoke execute on function private.community_require_participation_access() from public, anon, authenticated;
 
+-- ¿Es adulta a efectos de la IA y de las páginas públicas? Edad conocida >= 18; sin edad: titulares admin/adult cuya ficha no sea de niño/bebé.
+create or replace function private.community_user_is_adult(p_user uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_age integer := private.community_age_years(p_user);
+  v_role text;
+begin
+  if v_age is not null then
+    return v_age >= 18;
+  end if;
+  select pr.role into v_role from public.profiles pr where pr.id = p_user;
+  return coalesce(v_role, 'guest') in ('admin', 'adult')
+         and not exists (select 1 from public.family_members fm where fm.linked_profile_id = p_user and fm.member_type in ('child', 'baby'));
+end;
+$$;
+revoke execute on function private.community_user_is_adult(uuid) from public, anon, authenticated;
+
 -- Subir fotos: acceso completo y no estar expulsado (política de Storage de 0266, sustituida).
 create or replace function private.community_can_upload()
 returns boolean
@@ -189,6 +213,7 @@ as $$
   select private.community_cp() is not null
      and private.community_ban_state(private.community_cp()) = 'ok'
      and private.community_access_level((select auth.uid())) = 'participate'
+     and private.community_user_is_adult((select auth.uid()))
 $$;
 revoke execute on function private.community_can_upload() from public, anon;
 grant execute on function private.community_can_upload() to authenticated;
@@ -273,7 +298,7 @@ begin
 end;
 $$;
 
-create or replace function public.community_set_minor_permission(p_profile uuid, p_can_read boolean, p_can_participate boolean)
+create or replace function public.community_set_minor_permission(p_profile uuid, p_can_read boolean, p_can_participate boolean, p_guardian_declared boolean default false)
 returns jsonb
 language plpgsql
 security definer
@@ -284,6 +309,7 @@ declare
   v_age integer;
   v_read boolean := coalesce(p_can_read, false);
   v_part boolean := coalesce(p_can_participate, false);
+  v_prev public.community_minor_permissions%rowtype;
 begin
   if p_profile is null or p_profile = (select auth.uid())
      or not exists (select 1 from public.profiles pr where pr.id = p_profile and pr.family_id = v_family) then
@@ -297,10 +323,17 @@ begin
   if v_part then
     v_read := true;
   end if;
+  -- Al ACTIVAR un permiso (leer o participar) quien autoriza declara que es madre, padre o tutor legal de esa persona (la autorización de la administración
+  -- familiar no sustituye por sí sola a la de quien ejerce la patria potestad). Quitar permisos no exige declaración.
+  select * into v_prev from public.community_minor_permissions m where m.profile_id = p_profile;
+  if ((v_read and not coalesce(v_prev.can_read, false)) or (v_part and not coalesce(v_prev.can_participate, false))) and not coalesce(p_guardian_declared, false) then
+    raise exception 'GUARDIAN_DECLARATION_REQUIRED' using errcode = 'P0001';
+  end if;
   insert into public.community_minor_permissions (profile_id, can_read, can_participate, updated_by, updated_at)
   values (p_profile, v_read, v_part, (select auth.uid()), now())
   on conflict (profile_id) do update set can_read = excluded.can_read, can_participate = excluded.can_participate, updated_by = excluded.updated_by, updated_at = now();
-  insert into public.community_minor_permission_log (profile_id, actor_id, can_read, can_participate) values (p_profile, (select auth.uid()), v_read, v_part);
+  insert into public.community_minor_permission_log (profile_id, actor_id, can_read, can_participate, guardian_declared)
+  values (p_profile, (select auth.uid()), v_read, v_part, coalesce(p_guardian_declared, false));
   return jsonb_build_object('profile_id', p_profile, 'can_read', v_read, 'can_participate', v_part);
 end;
 $$;
@@ -308,20 +341,24 @@ $$;
 -- Acceso de la propia persona (para que la app explique por qué no entra o qué puede hacer).
 create or replace function public.community_get_access()
 returns jsonb
-language sql
+language plpgsql
 stable
 security definer
 set search_path = ''
 as $$
-  select jsonb_build_object('level', private.community_access_level((select auth.uid())), 'reason', private.community_access_reason((select auth.uid())),
-                            'age_known', private.community_age_years((select auth.uid())) is not null)
+begin
+  return jsonb_build_object('level', private.community_access_level((select auth.uid())), 'reason', private.community_access_reason((select auth.uid())),
+                            'age_known', private.community_age_years((select auth.uid())) is not null,
+                            -- Las personas menores de edad participan SIN fotos (norma de protección de menores).
+                            'photos_allowed', private.community_user_is_adult((select auth.uid())));
+end;
 $$;
 
 revoke all on function public.community_list_minor_permissions() from public, anon;
-revoke all on function public.community_set_minor_permission(uuid, boolean, boolean) from public, anon;
+revoke all on function public.community_set_minor_permission(uuid, boolean, boolean, boolean) from public, anon;
 revoke all on function public.community_get_access() from public, anon;
 grant execute on function public.community_list_minor_permissions() to authenticated;
-grant execute on function public.community_set_minor_permission(uuid, boolean, boolean) to authenticated;
+grant execute on function public.community_set_minor_permission(uuid, boolean, boolean, boolean) to authenticated;
 grant execute on function public.community_get_access() to authenticated;
 
 -- ---------------------------------------------------------------------------------------------
@@ -385,28 +422,6 @@ create policy "community media: read" on storage.objects
 -- (por edad conocida o, sin fecha, por rol/ficha de niño) se marca `ai_excluded` al crearse y NUNCA se envía a la IA: ni en los resúmenes de conversaciones, ni
 -- Pepa responde a sus preguntas, ni atiende sus menciones. (Los comentarios de adultos en una publicación de un menor tampoco se resumen.)
 -- ---------------------------------------------------------------------------------------------
--- ¿Es adulta a efectos de la IA y de las páginas públicas? Edad conocida >= 18; sin edad: titulares admin/adult cuya ficha no sea de niño/bebé.
-create or replace function private.community_user_is_adult(p_user uuid)
-returns boolean
-language plpgsql
-stable
-security definer
-set search_path = ''
-as $$
-declare
-  v_age integer := private.community_age_years(p_user);
-  v_role text;
-begin
-  if v_age is not null then
-    return v_age >= 18;
-  end if;
-  select pr.role into v_role from public.profiles pr where pr.id = p_user;
-  return coalesce(v_role, 'guest') in ('admin', 'adult')
-         and not exists (select 1 from public.family_members fm where fm.linked_profile_id = p_user and fm.member_type in ('child', 'baby'));
-end;
-$$;
-revoke execute on function private.community_user_is_adult(uuid) from public, anon, authenticated;
-
 create or replace function private.community_mark_ai_excluded()
 returns trigger
 language plpgsql
@@ -457,3 +472,49 @@ $$;
 revoke execute on function private.community_recompute_ai_excluded() from public, anon, authenticated;
 create trigger family_members_recompute_ai_excluded after insert or update of birth_date, linked_profile_id, member_type on public.family_members
   for each row execute function private.community_recompute_ai_excluded();
+
+-- ---------------------------------------------------------------------------------------------
+-- Aviso a la familia: cuando una persona menor de edad PUBLICA o COMENTA en Comunidad, las personas administradoras de su familia reciben un aviso (sin el texto;
+-- solo quién y un enlace). Como mucho uno por hora y menor para no saturar. Nunca bloquea la publicación si el aviso falla.
+-- ---------------------------------------------------------------------------------------------
+create or replace function private.community_notify_family_minor_activity()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_user uuid;
+  v_family uuid;
+  v_name text;
+  v_kind text := case when tg_table_name = 'community_posts' then 'una publicación' else 'un comentario' end;
+  r record;
+begin
+  if not new.ai_excluded then
+    return new;
+  end if;
+  select cp.user_id into v_user from public.community_profiles cp where cp.id = new.author_id;
+  if v_user is null then
+    return new;
+  end if;
+  select pr.family_id, coalesce((select fm.name from public.family_members fm where fm.linked_profile_id = pr.id limit 1), pr.display_name)
+    into v_family, v_name from public.profiles pr where pr.id = v_user;
+  if v_family is null then
+    return new;
+  end if;
+  for r in select p.id from public.profiles p where p.family_id = v_family and p.role = 'admin' and p.id <> v_user loop
+    perform private.notify_user(r.id, 'other', 'community_minor_activity', 'Actividad en Comunidad',
+      v_name || ' ha publicado ' || v_kind || ' en Comunidad.', '/comunidad/p/' || coalesce((to_jsonb(new) ->> 'post_id')::uuid, new.id), null,
+      'minor-activity:' || new.author_id || ':' || to_char(now(), 'YYYYMMDDHH24') || ':' || r.id, true);
+  end loop;
+  return new;
+exception when others then
+  raise warning 'community_notify_family_minor_activity: %', sqlerrm;
+  return new;
+end;
+$$;
+revoke execute on function private.community_notify_family_minor_activity() from public, anon, authenticated;
+create trigger community_posts_notify_family_minor after insert on public.community_posts
+  for each row execute function private.community_notify_family_minor_activity();
+create trigger community_comments_notify_family_minor after insert on public.community_comments
+  for each row execute function private.community_notify_family_minor_activity();

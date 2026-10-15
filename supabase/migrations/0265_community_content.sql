@@ -184,6 +184,11 @@ as $$
 declare
   v_path text;
 begin
+  -- Las personas menores de edad no pueden adjuntar fotos (servidor; la app ya no les enseña el botón).
+  if coalesce(cardinality(p_paths), 0) > 0
+     and not private.community_user_is_adult((select cp.user_id from public.community_profiles cp where cp.id = p_cp)) then
+    raise exception 'PHOTOS_NOT_ALLOWED' using errcode = 'P0001';
+  end if;
   if coalesce(cardinality(p_paths), 0) > private.community_setting_int('max_photos_per_post', 5) then
     raise exception 'TOO_MANY_PHOTOS' using errcode = 'P0001';
   end if;

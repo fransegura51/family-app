@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createPost, getMyCommunityProfile, listCommunityTopics, removeCommunityPhoto } from '@/data/community'
 import { getRecipePhotoUrl } from '@/data/food'
-import { communityErrorText } from '@/domain/communityErrors'
+import { communityErrorCode, communityErrorText } from '@/domain/communityErrors'
 import type { CommunityTopic, RecipeDraftInput } from '@/domain/community'
 import { MAX_TITLE } from '@/domain/community'
 import {
@@ -16,8 +16,9 @@ import { formatServingsValue } from '@/domain/servingsSourceNote'
 import type { Recipe } from '@/domain/types'
 import { paths } from '@/ui/community/communityNav'
 import { CommunityProvider, useCommunity } from '@/ui/community/CommunityProvider'
-import { participationBlockedText } from '@/domain/communityAccess'
+import { MINORS_NO_PHOTOS_NOTE, participationBlockedText } from '@/domain/communityAccess'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
+import { useCommunityPhotosAllowed } from '@/ui/community/useCommunityPhotosAllowed'
 import { RecipeConsentCheckbox } from '@/ui/community/recipes/RecipeConsentCheckbox'
 import { RecipeFields } from '@/ui/community/recipes/RecipeFields'
 import { RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
@@ -138,6 +139,9 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
   const problems = recipePublishProblems(title, draft)
   // Cerrada = Comunidad no abierta, sin acceso por edad/permisos, o permiso solo de lectura (no se puede publicar): se explica el motivo exacto.
   const { canParticipate } = useCommunityAccess()
+  // Las personas menores de edad participan sin fotos: no se ofrece incluir la portada de la receta (una consulta por sesión, solo si la receta tiene foto).
+  const { photosAllowed, forbid: forbidPhotosForMe } = useCommunityPhotosAllowed(!!recipe.imagePath)
+  const withPhoto = includePhoto && photosAllowed !== false
   const blockedText = participationBlockedText(status)
   const closed = (status !== null && !status.visible) || !canParticipate
   // «¿Es lo mismo que…?»: hasta 3 parecidas, solo una ayuda (nunca bloquea «Publicar»).
@@ -152,7 +156,7 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
     try {
       // Alias y normas la primera vez (si cancela, no se publica nada).
       if (!(await requireParticipation())) return
-      if (includePhoto && recipe.imagePath) {
+      if (withPhoto && recipe.imagePath) {
         // El id del perfil público puede no estar aún en el estado si acaba de elegir alias: se pide directamente.
         const profileId = me?.id ?? (await getMyCommunityProfile())?.id
         if (!profileId) {
@@ -182,7 +186,14 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
     } catch (e) {
       // Si la publicación falla, la foto subida se retira (quedaría huérfana en Comunidad).
       if (uploaded) await removeCommunityPhoto(uploaded)
-      setError(communityErrorText(e))
+      if (communityErrorCode(e) === 'PHOTOS_NOT_ALLOWED') {
+        // Persona menor de edad: sin foto. Se desmarca y puede volver a publicar la receta sin ella.
+        forbidPhotosForMe()
+        setIncludePhoto(false)
+        setError(`${communityErrorText(e)} Hemos quitado la foto: vuelve a publicar la receta.`)
+      } else {
+        setError(communityErrorText(e))
+      }
     } finally {
       setBusy(false)
     }
@@ -264,7 +275,7 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
               </div>
             ) : (
               <>
-                <PublicPreview title={title} draft={clean} photoUrl={includePhoto ? photoUrl : null} />
+                <PublicPreview title={title} draft={clean} photoUrl={withPhoto ? photoUrl : null} />
                 <button type="button" className="link-button" style={{ minHeight: 44, alignSelf: 'flex-start' }} onClick={() => setEditing(true)} disabled={busy}>
                   ✏️ Cambiar algo antes de publicar
                 </button>
@@ -274,7 +285,8 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
               </>
             )}
 
-            {recipe.imagePath && (
+            {recipe.imagePath && photosAllowed === false && <p className="muted">{MINORS_NO_PHOTOS_NOTE}</p>}
+            {recipe.imagePath && photosAllowed !== false && (
               <label className="checkbox-label" style={{ minHeight: 44 }}>
                 <input type="checkbox" checked={includePhoto} onChange={(e) => setIncludePhoto(e.target.checked)} disabled={busy} />
                 <span>

@@ -149,3 +149,74 @@ describe('colocación y coste', () => {
     expect(cssSrc).toMatch(/\.cp-toggle \{[^}]*min-height: 44px/)
   })
 })
+
+describe('confirmación al ACTIVAR un permiso (declaración de madre, padre o tutor legal)', () => {
+  const pendingRead = { m: LUCIA, field: 'read' as const, value: true, next: { canRead: true, canParticipate: false } }
+  const pendingPart = { m: LUCIA, field: 'participate' as const, value: true, next: { canRead: true, canParticipate: true } }
+
+  it('sin confirmación pendiente no hay diálogo', () => {
+    expect(view({ items: [LUCIA] })).not.toContain('role="dialog"')
+  })
+
+  it('con una confirmación pendiente aparece un diálogo accesible con la casilla obligatoria y los dos botones', () => {
+    const html = view({ items: [LUCIA], pending: pendingRead })
+    expect(html).toContain('role="dialog"')
+    expect(html).toContain('aria-modal="true"')
+    expect(html).toMatch(/aria-labelledby="[^"]+-title"/)
+    expect(html).toMatch(/aria-describedby="[^"]+-text"/)
+    expect(html).toContain('Confirma la autorización')
+    expect(html).toContain('Soy madre, padre o tutor legal de Lucía y autorizo que use Comunidad')
+    expect(html).toContain('aria-required="true"')
+    expect(html).toContain('Autorizar')
+    expect(html).toContain('Cancelar')
+    // Casilla sin marcar → «Autorizar» desactivado hasta marcarla.
+    expect(html).not.toMatch(/<input type="checkbox"[^>]*aria-required="true"[^>]*checked/)
+    expect(html).toMatch(/<button type="button" class="primary" disabled="">Autorizar<\/button>/)
+  })
+
+  it('el texto del diálogo cambia según lo que se activa (leer / participar)', () => {
+    expect(view({ items: [LUCIA], pending: pendingRead })).toContain('Lucía lea Comunidad')
+    const part = view({ items: [LUCIA], pending: pendingPart })
+    expect(part).toContain('Lucía participe en Comunidad')
+    expect(part).toContain('Participará sin fotos')
+  })
+
+  it('el texto informativo dice que participan sin fotos y que se avisa a la familia cuando publican', () => {
+    const html = view({ items: [LUCIA] })
+    expect(html).toContain('Las personas menores de edad participan sin fotos.')
+    expect(html).toContain('recibirán un aviso')
+    // Sin nadie a quien autorizar no se añade ruido.
+    expect(view({ items: [] })).not.toContain('recibirán un aviso')
+  })
+
+  it('el diálogo reutiliza el foco atrapado de Comunidad y se cierra con Escape o tocando fuera', () => {
+    expect(cardSrc).toContain("import { useDialogFocus } from '@/ui/community/useDialogFocus'")
+    expect(cardSrc).toContain('useDialogFocus<HTMLDivElement>()')
+    expect(cardSrc).toContain("e.key === 'Escape'")
+    expect(cardSrc).toContain('onClick={onCancel}')
+  })
+
+  it('activar abre el diálogo y NO llama al servidor; quitar guarda al instante sin declaración', () => {
+    const request = cardSrc.slice(cardSrc.indexOf('function request('), cardSrc.indexOf('function confirmPending('))
+    expect(request).toContain('needsGuardianDeclaration(m, next)')
+    expect(request).toContain('setPending({ m, field, value, next })')
+    expect(request).toContain('void change(m, field, value, false)')
+    // El único sitio que llama con la declaración es el botón «Autorizar» (confirmPending).
+    expect((cardSrc.match(/change\(m, field, value, true\)/g) ?? []).length).toBe(1)
+    const confirm = cardSrc.slice(cardSrc.indexOf('function confirmPending('), cardSrc.indexOf('async function change('))
+    expect(confirm).toContain('change(m, field, value, true)')
+    expect(cardSrc).toContain('setMinorPermission(m.profileId, next.canRead, next.canParticipate, guardianDeclared)')
+    expect(cardSrc).toContain('onChange={request}')
+  })
+
+  it('la llamada al servidor lleva p_guardian_declared (false por defecto)', () => {
+    expect(dataSrc).toContain('guardianDeclared = false')
+    expect(dataSrc).toContain('p_guardian_declared: guardianDeclared')
+    expect(dataSrc).toContain("'community_set_minor_permission'")
+  })
+
+  it('los botones del diálogo miden al menos 44 px de alto de toque', () => {
+    expect(cssSrc).toMatch(/\.cp-dialog-actions button \{[^}]*min-height: 44px/)
+    expect(cssSrc).toMatch(/\.cp-declaration \{[^}]*min-height: 44px/)
+  })
+})

@@ -4,7 +4,7 @@
 //     ambos desactivados por defecto; participar exige también poder leer).  · Desde 18: acceso normal.
 // Aquí vive la lógica PURA (sin red ni pantalla): niveles, textos en español y reglas de los interruptores. La seguridad real está en el servidor: la interfaz
 // solo tiene que reflejar el estado con claridad y no enseñar botones que no van a funcionar.
-import { toCommunityError, type CommunityAccessErrorCode, type CommunityErrorCode } from './communityErrors'
+import { communityErrorCode, type CommunityAccessErrorCode, type CommunityErrorCode } from './communityErrors'
 
 export type CommunityAccessLevel = 'none' | 'read' | 'participate'
 export type CommunityAccessReason = 'under_15' | 'age_unknown' | 'not_authorized' | 'read_only'
@@ -148,7 +148,46 @@ export function groupMinors(list: MinorPermission[]): MinorGroups {
   }
 }
 
-export const MINORS_INTRO = 'Las personas menores de 15 años no pueden entrar en Comunidad. De 15 a 17 años solo entran si vosotros lo autorizáis. Desde los 18 entran con normalidad.'
+// Acceso de la propia persona (`community_get_access()`). `photosAllowed` es false si la persona no es adulta (las personas menores participan SIN fotos). Es opcional
+// por si el servidor es anterior a esa regla: en ese caso se trata como permitido y el servidor decide (devuelve PHOTOS_NOT_ALLOWED si no).
+export interface MyCommunityAccess {
+  level: CommunityAccessLevel
+  reason: CommunityAccessReason | null
+  ageKnown: boolean
+  photosAllowed?: boolean
+}
+
+// Solo un «no» claro del servidor oculta las fotos: mientras no se sabe (cargando, sin red) se enseñan y el servidor corrige con PHOTOS_NOT_ALLOWED.
+export function photosAllowedFrom(access: { photosAllowed?: boolean } | null | undefined): boolean {
+  return access?.photosAllowed !== false
+}
+
+export const MINORS_NO_PHOTOS_NOTE = 'Las personas menores de edad participan sin fotos.'
+
+// Declaración de quien autoriza (obligatoria al ACTIVAR un permiso; el servidor la guarda en el registro de permisos).
+export const GUARDIAN_DIALOG_TITLE = 'Confirma la autorización'
+export const GUARDIAN_AUTHORIZE_LABEL = 'Autorizar'
+export const GUARDIAN_CANCEL_LABEL = 'Cancelar'
+export const guardianDeclarationLabel = (name: string): string => `Soy madre, padre o tutor legal de ${name} y autorizo que use Comunidad`
+
+// Qué se va a permitir, en una frase (para el diálogo de confirmación). Si se activa «participar» manda sobre «leer» (participar incluye leer).
+export function guardianDialogText(name: string, current: MinorFlags, next: MinorFlags): string {
+  if (next.canParticipate && !current.canParticipate) {
+    return `Vas a permitir que ${name} participe en Comunidad: podrá leer, publicar, comentar, valorar recetas, guardar y seguir conversaciones. Participará sin fotos.`
+  }
+  return `Vas a permitir que ${name} lea Comunidad: podrá consultar publicaciones, comentarios y perfiles, pero no publicar ni interactuar.`
+}
+
+// ¿El cambio ACTIVA algún permiso (de desactivado a activado)? Entonces hay que pedir la declaración antes de llamar al servidor. Quitar permisos es inmediato.
+// Se compara con lo que quedará tras aplicar la regla de los dos interruptores (activar «participar» activa también «leer»), igual que el servidor.
+export function needsGuardianDeclaration(current: MinorFlags, next: MinorFlags): boolean {
+  return (next.canRead && !current.canRead) || (next.canParticipate && !current.canParticipate)
+}
+
+export const MINORS_RULES_NOTE =
+  'Las personas menores de edad participan sin fotos. Cuando una de ellas publique o comente, las personas que administran la familia recibirán un aviso.'
+
+export const MINORS_INTRO ='Las personas menores de 15 años no pueden entrar en Comunidad. De 15 a 17 años solo entran si vosotros lo autorizáis. Desde los 18 entran con normalidad.'
 export const MINORS_LEGAL_REMINDER =
   'Quien autoriza debe ser la madre, el padre o la persona tutora legal de la persona menor. Puedes retirar el permiso cuando quieras y se aplica enseguida.'
 export const MINORS_EMPTY = 'Ahora mismo nadie de vuestra familia necesita este permiso.'
@@ -167,9 +206,11 @@ export function needsBirthdateText(m: Pick<MinorPermission, 'name'>): string {
 
 // Errores del panel de permisos: los textos generales de Comunidad hablan de la «administración de Comunidad», que aquí confundiría.
 export function minorPermissionErrorText(error: unknown): string {
-  const code: CommunityErrorCode = toCommunityError(error).code
+  // El error llega ya convertido (CommunityError) desde la capa de datos: se lee su código sin volver a analizar su frase en español.
+  const code: CommunityErrorCode = communityErrorCode(error)
   if (code === 'NOT_ADMIN') return 'Solo quien administra la familia puede cambiar estos permisos.'
   if (code === 'NOT_AVAILABLE') return 'Este permiso ya no se puede cambiar (puede que haya cambiado la edad o la ficha de la persona). Vuelve a abrir la lista para verla al día.'
+  if (code === 'GUARDIAN_DECLARATION_REQUIRED') return 'Para dar este permiso tienes que confirmar que eres madre, padre o tutor legal de esa persona.'
   if (code === 'AUTH_REQUIRED') return 'Entra de nuevo en tu cuenta de PEPA para cambiar estos permisos.'
   return 'No se ha podido guardar el cambio. Inténtalo de nuevo.'
 }

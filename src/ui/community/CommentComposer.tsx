@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { addComment, getMyCommunityProfile, removeCommunityPhoto, uploadCommunityPhoto } from '@/data/community'
-import { communityErrorText } from '@/domain/communityErrors'
+import { communityErrorCode, communityErrorText } from '@/domain/communityErrors'
+import { MINORS_NO_PHOTOS_NOTE } from '@/domain/communityAccess'
 import { MAX_COMMENT } from '@/domain/community'
 import { prepareCommunityPhoto } from '@/services/communityPhoto'
 import { useCommunity } from '@/ui/community/CommunityProvider'
+import { useCommunityPhotosAllowed } from '@/ui/community/useCommunityPhotosAllowed'
 import '@/ui/community/communityPost.css'
 
 export interface ReplyTarget {
@@ -41,6 +43,10 @@ export function CommentComposer({
   const uploadedRef = useRef<string | null>(null)
   const photoUrlRef = useRef<string | null>(null)
   photoUrlRef.current = photo?.url ?? null
+  const expanded = opened || text.length > 0 || photo !== null || replyTarget !== null
+  // Las personas menores de edad participan sin fotos: solo se pregunta (una vez por sesión) cuando el campo está desplegado y se va a enseñar el botón de foto.
+  const { photosAllowed, forbid } = useCommunityPhotosAllowed(expanded)
+  const showPhotos = photosAllowed !== false
 
   // Al elegir «Responder» el cursor va directo al campo.
   useEffect(() => {
@@ -110,13 +116,19 @@ export function CommentComposer({
       setOpened(false)
       onPosted(newId, replyTarget)
     } catch (e) {
-      setError(communityErrorText(e))
+      if (communityErrorCode(e) === 'PHOTOS_NOT_ALLOWED') {
+        // Persona menor de edad: sin fotos. Se quita la foto (y se oculta el selector) para que pueda publicar solo el texto.
+        forbid()
+        dropPhoto()
+        setError(`${communityErrorText(e)} Hemos quitado la foto: puedes publicar solo el texto.`)
+      } else {
+        setError(communityErrorText(e))
+      }
     } finally {
       setSending(false)
     }
   }
 
-  const expanded = opened || text.length > 0 || photo !== null || replyTarget !== null
   const left = MAX_COMMENT - text.length
 
   return (
@@ -157,21 +169,23 @@ export function CommentComposer({
       </div>
       {expanded && (
         <div className="community-composer-tools">
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="community-sr-only"
-            id={`comment-photo-${postId}`}
-            aria-label="Añadir una foto al comentario"
-            onChange={(e) => void onPick(e.target.files?.[0])}
-          />
-          {!photo && (
+          {showPhotos && (
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              className="community-sr-only"
+              id={`comment-photo-${postId}`}
+              aria-label="Añadir una foto al comentario"
+              onChange={(e) => void onPick(e.target.files?.[0])}
+            />
+          )}
+          {showPhotos && !photo && (
             <label htmlFor={`comment-photo-${postId}`} className="link-button community-composer-photo-btn" aria-disabled={preparing}>
               {preparing ? 'Preparando la foto…' : '📷 Añadir foto'}
             </label>
           )}
-          {photo && (
+          {showPhotos && photo && (
             <span className="community-composer-preview">
               <img src={photo.url} alt="Foto que vas a añadir" />
               <button type="button" className="link-button" aria-label="Quitar la foto" onClick={dropPhoto}>
@@ -180,7 +194,7 @@ export function CommentComposer({
             </span>
           )}
           <span className="muted community-composer-count" aria-live="polite">
-            {left < 200 ? `${left} caracteres` : 'Una foto como máximo'}
+            {left < 200 ? `${left} caracteres` : showPhotos ? 'Una foto como máximo' : MINORS_NO_PHOTOS_NOTE}
           </span>
         </div>
       )}

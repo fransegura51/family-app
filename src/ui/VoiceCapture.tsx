@@ -38,6 +38,7 @@ import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocati
 import { reverseGeocode, searchAndResolveFirst } from '@/services/geocoding'
 import { requestMemberFocus } from '@/services/mapFocus'
 import { getAutoConfirm } from '@/services/pepaPreferences'
+import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { canAccessSection } from '@/pepa/sectionAccess'
 import { getDrivingEta } from '@/services/drivingEta'
 import { getWeather } from '@/services/weather'
@@ -164,9 +165,13 @@ interface FabPosition {
 // "Hablar con PEPA" sale al final de la fila, dejando sitio al botón de redes
 // sociales; como todos, se puede arrastrar donde se quiera.
 const TALK_DEFAULT_SLOT = 6
-const DEFAULT_FAB_POSITIONS: Record<PanelMode, FabPosition> = Object.fromEntries(
-  PANEL_MODES.map((m, i) => [m, { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + (m === 'talk' ? TALK_DEFAULT_SLOT : i) * (FAB_SIZE + FAB_GAP) }]),
-) as Record<PanelMode, FabPosition>
+// Los botones clásicos (los cinco de siempre) se pueden ocultar desde Familia → «Mostrar botones clásicos»: entonces solo queda el 💬, que pasa al primer
+// hueco. Nada se borra: son los mismos botones, solo no se dibujan. Un hueco elegido arrastrando manda sobre estos por defecto.
+const CLASSIC_PANEL_MODES: PanelMode[] = PANEL_MODES.filter((m) => m !== 'talk')
+function defaultFabPosition(mode: PanelMode, showClassic: boolean): FabPosition {
+  const slot = mode === 'talk' ? (showClassic ? TALK_DEFAULT_SLOT : 0) : PANEL_MODES.indexOf(mode)
+  return { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + slot * (FAB_SIZE + FAB_GAP) }
+}
 
 const FAB_POSITIONS_KEY = 'familyapp:pepa-fab-positions'
 
@@ -278,7 +283,7 @@ const PANEL_INFO: Record<
     instructions: [
       'Un solo botón para todo: pregunta lo que tienes en el calendario, en la lista de la compra o en el menú, o pídele que apunte algo.',
       'Las preguntas se contestan directamente. Todo lo que hay que APUNTAR (calendario, compra, menú) te lo enseña primero en una tarjeta y solo se guarda cuando pulsas el botón de guardar.',
-      'Si Pepa no lo entiende, te lo dice — los otros botones de siempre siguen ahí, con su forma de funcionar de siempre.',
+      'Si Pepa no lo entiende, te lo dice — los otros botones de siempre siguen ahí, con su forma de funcionar de siempre. Si los has ocultado, vuelven con Familia → «Mostrar botones clásicos».',
       'Se cierra sola al contestarte — para volver a hablar, toca este icono otra vez.',
     ],
     submitLabel: 'Enviar',
@@ -1281,6 +1286,7 @@ export function VoiceCapture() {
   // en px, no un orden dentro de una rejilla fija. El que no se haya
   // tocado nunca sale en su sitio por defecto (fila arriba del todo).
   const [fabPositions, setFabPositions] = useState<Partial<Record<PanelMode, FabPosition>>>(() => loadFabPositions())
+  const showClassic = useShowClassicButtons()
   const buttonDragRef = useRef<{ mode: PanelMode; startX: number; startY: number; moved: number } | null>(null)
   const [draggingButton, setDraggingButton] = useState<PanelMode | null>(null)
   const [buttonDragOffset, setButtonDragOffset] = useState({ x: 0, y: 0 })
@@ -1372,9 +1378,9 @@ export function VoiceCapture() {
           arrastrar a cualquier sitio de la pantalla; el nombre
           completo sigue disponible al tacto (aria-label) y, ya
           abierto, en el título del panel. */}
-      {PANEL_MODES.map((m) => {
+      {(showClassic ? PANEL_MODES : PANEL_MODES.filter((m) => !CLASSIC_PANEL_MODES.includes(m))).map((m) => {
         const isDragging = draggingButton === m
-        const pos = fabPositions[m] ?? DEFAULT_FAB_POSITIONS[m]
+        const pos = fabPositions[m] ?? defaultFabPosition(m, showClassic)
         return (
           <button
             key={m}

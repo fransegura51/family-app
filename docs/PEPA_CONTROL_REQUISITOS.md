@@ -527,6 +527,18 @@ como "Aprobado".
 
 ---
 
+## Botones de Pepa: mostrar u ocultar los clásicos (PEPA-BTN)
+
+Encargo dictado el 2026-10-15 (conversación «Apple nativa»). Decisión acordada: **no se elimina ningún botón, código ni dato** (ni en la app, ni en Supabase, ni en GitHub); solo se esconden, para no tener la barra de arriba tan cargada. Regla previa que sigue vigente: los botones clásicos conservan su forma de funcionar «byte a byte» y las funciones nuevas pasan por 💬 «Hablar con PEPA».
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| BTN-1 | Casilla «Mostrar botones clásicos» en Familia (tarjeta «🔘 Botones de Pepa»): ticada se ven los cinco botones de siempre (🐣 Pepa Calendario, 🐣 Pepa Compra, 🎤 Apuntar Calendario, 🎤 Apuntar Compra y 📍 Buscar sitio); destickada solo queda 💬 «Hablar con PEPA». Cada persona elige la suya (por móvil) y el cambio se ve al momento. Por defecto ticada (todo como hasta ahora) | Implementado (sin commit todavía) | `pepaPreferences.ts` (`getShowClassicButtons`/`setShowClassicButtons`, clave `pepa:show-classic-buttons`), `ClassicButtonsCard.tsx`, `useShowClassicButtons.ts`, `FamilyScreen.tsx`, `VoiceCapture.tsx` (`CLASSIC_PANEL_MODES`) | `pepaPreferences.test.ts` (5 tests nuevos: por defecto visibles, se recuerda, sin localStorage, ningún modo se borra, cableado Familia/NavShell/Ayuda). `tsc`, `eslint .` limpios | Reglas previas de PEPA (los botones clásicos no se tocan) | **Prueba manual con tu sesión real, casilla ticada Y destickada**; confirmar con el dedo que, destickada, 💬 queda arriba a la izquierda y que al volver a ticar reaparecen los cinco |
+| BTN-2 | El botón de redes sociales se recoloca solo: sexto hueco con los clásicos visibles (antes se solapaba con 📍), segundo hueco sin ellos; un hueco arrastrado a mano manda | Implementado (sin commit todavía) | `SocialMenuFab.tsx` (prop `slot`), `NavShell.tsx` | `pepaPreferences.test.ts` (cableado) | BTN-1 | Prueba manual en móvil y escritorio; en los móviles donde ya se arrastraron, no cambia nada |
+| BTN-3 | Ayuda actualizada: nueva entrada «Botones de Pepa: mostrar u ocultar» en Familia y frase en «Botones redondos de arriba»; el texto del botón 💬 recuerda cómo volver a ver los clásicos | Implementado (sin commit todavía) | `AyudaScreen.tsx`, `VoiceCapture.tsx` (instrucciones de `talk`) | `pepaPreferences.test.ts` | BTN-1 | Vídeo explicativo (encargado, pendiente de grabar) |
+
+**Pendiente**: nada pasa a **Aprobado** sin confirmación expresa. Antes de dar por cerrado: comprobar que 💬 «Hablar con PEPA» cubre lo que hacían los cuatro botones (calendario, compra) en el móvil real; el uso de los botones clásicos ocultos no se ha cambiado.
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

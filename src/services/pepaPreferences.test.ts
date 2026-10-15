@@ -2,11 +2,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import voiceCapture from '@/ui/VoiceCapture.tsx?raw'
 import family from '@/ui/FamilyScreen.tsx?raw'
+import navShell from '@/ui/NavShell.tsx?raw'
+import socialFab from '@/ui/SocialMenuFab.tsx?raw'
+import ayuda from '@/ui/AyudaScreen.tsx?raw'
 
 const native = vi.hoisted(() => ({ value: false }))
 vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value }))
 
-import { getAutoConfirm, setAutoConfirm } from '@/services/pepaPreferences'
+import { getAutoConfirm, setAutoConfirm, getShowClassicButtons, setShowClassicButtons } from '@/services/pepaPreferences'
 
 let store: Record<string, string>
 
@@ -54,5 +57,50 @@ describe('preferencia de la tarjeta de confirmación', () => {
   it('«Hablar con PEPA» lee la preferencia y Familia deja cambiarla', () => {
     expect(voiceCapture).toContain('autoConfirm: () => getAutoConfirm()')
     expect(family).toContain('<PepaPreferencesCard />')
+  })
+})
+
+describe('«Mostrar botones clásicos» (Familia): se esconden los cinco botones de siempre, sin borrar nada', () => {
+  it('por defecto se ven, y lo elegido se recuerda en el aparato', () => {
+    expect(getShowClassicButtons()).toBe(true)
+    setShowClassicButtons(false)
+    expect(getShowClassicButtons()).toBe(false)
+    setShowClassicButtons(true)
+    expect(getShowClassicButtons()).toBe(true)
+  })
+
+  it('sin localStorage no rompe nada y se quedan visibles', () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => {
+        throw new Error('bloqueado')
+      },
+      setItem: () => {
+        throw new Error('bloqueado')
+      },
+    })
+    expect(() => setShowClassicButtons(false)).not.toThrow()
+    expect(getShowClassicButtons()).toBe(true)
+  })
+
+  it('en VoiceCapture solo se esconden los cinco clásicos: «Hablar con PEPA» se ve siempre y ningún botón se borra', () => {
+    expect(voiceCapture).toContain('useShowClassicButtons()')
+    expect(voiceCapture).toContain("PANEL_MODES.filter((m) => m !== 'talk')")
+    expect(voiceCapture).toContain('PANEL_MODES.filter((m) => !CLASSIC_PANEL_MODES.includes(m))')
+    // Siguen definidos los seis modos, con todo su código: ocultar no es quitar.
+    for (const mode of ['ask-calendario', 'ask-compras', 'create-calendario', 'create-compras', 'search-place', 'talk']) {
+      expect(voiceCapture).toContain(`'${mode}'`)
+    }
+    expect(voiceCapture).toContain('async function handleSearchPlace')
+  })
+
+  it('el botón de redes se recoloca solo y Familia deja elegir', () => {
+    expect(navShell).toContain('slot={showClassicButtons ? 5 : 1}')
+    expect(socialFab).toContain('slot = DEFAULT_SLOT')
+    expect(family).toContain('<ClassicButtonsCard />')
+  })
+
+  it('la ayuda explica cómo mostrarlos y ocultarlos', () => {
+    expect(ayuda).toContain('Botones de Pepa: mostrar u ocultar')
+    expect(ayuda).toContain('Mostrar botones clásicos')
   })
 })

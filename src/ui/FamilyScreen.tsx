@@ -27,6 +27,7 @@ import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
+import { ClassicButtonsCard } from '@/ui/ClassicButtonsCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
@@ -220,6 +221,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       </div>
       <NotificationsCard />
       <PepaPreferencesCard />
+      <ClassicButtonsCard />
       <BackgroundLocationCard />
       <BatteryGuideCard />
       {error && <p className="error">{error}</p>}

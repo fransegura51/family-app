@@ -11,9 +11,9 @@ import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, React
 const FAB_SIZE = 42
 const FAB_GAP = 7
 const FAB_DEFAULT_TOP = 8
-// Los 4 primeros huecos de la fila son los botones de Pepa — este
-// botón ocupa el quinto, justo después.
-const PEPA_SLOTS = 4
+// Con los botones clásicos a la vista, los 5 primeros huecos de la fila son los de Pepa (4 de siempre + 📍) y este botón ocupa el sexto;
+// sin ellos (Familia → «Mostrar botones clásicos» destickado), solo queda el 💬 y este botón va justo detrás. Un hueco elegido arrastrando manda.
+const DEFAULT_SLOT = 5
 const TAP_THRESHOLD_PX = 8
 const STORAGE_KEY = 'familyapp:social-menu-fab-position'
 
@@ -29,17 +29,20 @@ export interface SocialMenuItem {
   icon: ReactNode
 }
 
-const DEFAULT_POSITION: FabPosition = { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + PEPA_SLOTS * (FAB_SIZE + FAB_GAP) }
+function defaultPosition(slot: number): FabPosition {
+  return { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + slot * (FAB_SIZE + FAB_GAP) }
+}
 
-function loadPosition(): FabPosition {
+// null = nunca se ha arrastrado: se usa el hueco por defecto que toque en cada momento.
+function loadPosition(): FabPosition | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_POSITION
+    if (!raw) return null
     const parsed = JSON.parse(raw)
     if (typeof parsed?.top === 'number' && typeof parsed?.left === 'number') return parsed
-    return DEFAULT_POSITION
+    return null
   } catch {
-    return DEFAULT_POSITION
+    return null
   }
 }
 
@@ -52,8 +55,9 @@ function savePosition(position: FabPosition) {
   }
 }
 
-export function SocialMenuFab({ items }: { items: SocialMenuItem[] }) {
-  const [position, setPosition] = useState<FabPosition>(() => loadPosition())
+export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMenuItem[]; slot?: number }) {
+  const [savedPosition, setPosition] = useState<FabPosition | null>(() => loadPosition())
+  const position = savedPosition ?? defaultPosition(slot)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [open, setOpen] = useState(false)

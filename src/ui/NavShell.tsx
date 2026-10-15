@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
+import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { ToastHost } from '@/ui/ToastHost'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
@@ -81,6 +82,7 @@ const SOCIAL_MENU_ITEMS: SocialMenuItem[] = [
 export function NavShell({ profile }: { profile: Profile }) {
   const location = useLocation()
   const navigate = useNavigate()
+  const showClassicButtons = useShowClassicButtons()
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
   const [menuOpen, setMenuOpen] = useState(false)
   const [manager, setManager] = useState<ManagerKind | null>(null)
@@ -141,7 +143,7 @@ export function NavShell({ profile }: { profile: Profile }) {
           <ManagersHost kind={manager} onClose={() => setManager(null)} />
         </Suspense>
       )}
-      <SocialMenuFab items={SOCIAL_MENU_ITEMS} />
+      <SocialMenuFab items={SOCIAL_MENU_ITEMS} slot={showClassicButtons ? 5 : 1} />
       <ScrollToTopFab />
 
       {menuOpen && <div className="nav-menu-overlay" onClick={() => setMenuOpen(false)} />}

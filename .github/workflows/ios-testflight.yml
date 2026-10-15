@@ -88,7 +88,25 @@ jobs:
           echo "Perfil instalado: $(security cms -D -i "$RUNNER_TEMP/perfil.mobileprovision" | plutil -extract Name raw -)"
           security find-identity -v -p codesigning "$KC"
 
-      # Se archiva SIN firmar y se firma al exportar con el certificado de distribución (así también quedan firmados los frameworks de Firebase).
+      # Firma manual del objetivo App con el certificado y el perfil de distribución (los Pods no se tocan). Archivar SIN firmar dejaba la app
+      # sin el permiso de avisos (aps-environment): al activar las notificaciones salía «falta la clave de autorización aps-environment».
+      - name: Fijar la firma del proyecto
+        working-directory: ios/App
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          IOS_APPSTORE_PROFILE_NAME: ${{ secrets.IOS_APPSTORE_PROFILE_NAME }}
+        run: |
+          ruby -rxcodeproj -e '
+            project = Xcodeproj::Project.open("App.xcodeproj")
+            target = project.targets.find { |t| t.name == "App" }
+            target.build_configurations.each do |c|
+              c.build_settings["CODE_SIGN_STYLE"] = "Manual"
+              c.build_settings["DEVELOPMENT_TEAM"] = ENV["APPLE_TEAM_ID"]
+              c.build_settings["CODE_SIGN_IDENTITY"] = "Apple Distribution"
+              c.build_settings["PROVISIONING_PROFILE_SPECIFIER"] = ENV["IOS_APPSTORE_PROFILE_NAME"]
+            end
+            project.save'
+
       - name: Crear el archivo (archive)
         working-directory: ios/App
         run: |
@@ -100,7 +118,6 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/PEPA.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}" | tail -40
 
       - name: Firmar, exportar y subir a TestFlight
@@ -135,5 +152,9 @@ jobs:
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" | tail -40
           IPA="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
           test -f "$IPA" || { echo "No se generó el .ipa"; exit 1; }
+          rm -rf "$RUNNER_TEMP/ipa-check" && mkdir -p "$RUNNER_TEMP/ipa-check" && unzip -q "$IPA" -d "$RUNNER_TEMP/ipa-check"
+          echo "Permisos (entitlements) de la app exportada:"
+          codesign -d --entitlements :- "$RUNNER_TEMP"/ipa-check/Payload/*.app 2>/dev/null | plutil -p - || true
+          codesign -dv "$RUNNER_TEMP"/ipa-check/Payload/*.app 2>&1 | grep -E "Authority|TeamIdentifier" || true
           # Subida con el Apple ID de Paco y una contraseña de aplicación (la subida con la llave de la API da «Cannot verify client's JWT headers»).
           xcrun altool --upload-app --type ios --file "$IPA" --username "$APPLE_ID" --password "$APPLE_APP_PASSWORD"

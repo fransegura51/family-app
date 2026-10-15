@@ -60,6 +60,34 @@ jobs:
           mkdir -p "$RUNNER_TEMP/keys"
           echo "$ASC_KEY_P8_B64" | base64 --decode > "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
 
+      # Diagnóstico: comprueba sin imprimir ningún valor secreto que la llave, su ID y el Issuer ID se entienden entre sí.
+      # Pide a la API de App Store Connect la lista de apps con un token firmado con esa llave y solo muestra el código HTTP (200 = bien, 401 = no coinciden).
+      - name: Comprobar la llave de App Store Connect
+        continue-on-error: true
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          export KEY="$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8"
+          echo "Largo de ASC_KEY_ID: ${#ASC_KEY_ID} (esperado 10)"
+          echo "Largo de ASC_ISSUER_ID: ${#ASC_ISSUER_ID} (esperado 36)"
+          echo "Caracteres raros en ASC_KEY_ID: $(printf '%s' "$ASC_KEY_ID" | tr -d '[:alnum:]' | wc -c | tr -d ' ')"
+          echo "Caracteres raros en ASC_ISSUER_ID (guiones esperados: 4): $(printf '%s' "$ASC_ISSUER_ID" | tr -d '[:alnum:]' | wc -c | tr -d ' ')"
+          echo "Tamaño del .p8: $(wc -c < "$KEY" | tr -d ' ') bytes; primera línea: $(head -1 "$KEY" | tr -d '\r')"
+          echo "Retornos de carro en el .p8: $(tr -cd '\r' < "$KEY" | wc -c | tr -d ' ')"
+          ruby -ropenssl -rbase64 -rjson -rnet/http -e '
+            b64 = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+            key = OpenSSL::PKey::EC.new(File.read(ENV["KEY"]))
+            header = { alg: "ES256", kid: ENV["ASC_KEY_ID"], typ: "JWT" }
+            payload = { iss: ENV["ASC_ISSUER_ID"], iat: Time.now.to_i, exp: Time.now.to_i + 600, aud: "appstoreconnect-v1" }
+            data = b64.(header.to_json) + "." + b64.(payload.to_json)
+            der = key.sign(OpenSSL::Digest::SHA256.new, data)
+            r, s = OpenSSL::ASN1.decode(der).value.map { |i| i.value.to_s(2).rjust(32, "\0") }
+            token = data + "." + b64.(r + s)
+            uri = URI("https://api.appstoreconnect.apple.com/v1/apps?limit=1")
+            res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |h| h.get(uri, "Authorization" => "Bearer #{token}") }
+            puts "Respuesta de Apple a la llave: HTTP #{res.code}"'
+
       - name: Crear el archivo firmado (archive)
         working-directory: ios/App
         env:
@@ -67,6 +95,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          set -o pipefail
           # El número de compilación tiene que subir en cada envío a TestFlight: se usa el número de ejecución de GitHub.
           xcodebuild archive \
             -workspace App.xcworkspace \
@@ -89,6 +118,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          set -o pipefail
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

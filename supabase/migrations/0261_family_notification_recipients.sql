@@ -67,6 +67,19 @@ begin
     join public.family_members fm on fm.id = cem.member_id
     where cem.event_id = p_event_id and fm.family_id = e.family_id and fm.linked_profile_id is not null;
 
+  -- EXCEPCIÓN OBLIGATORIA (en todos los modos y también en el resumen diario): si hay una persona menor SIN cuenta asignada, se avisa a todos los
+  -- adultos de la familia con cuenta (administradores y adultos).
+  select exists (
+    select 1 from public.calendar_event_members cem
+    join public.family_members fm on fm.id = cem.member_id
+    where cem.event_id = p_event_id and fm.family_id = e.family_id and fm.linked_profile_id is null and fm.member_type in ('child', 'baby')
+  ) into v_minor;
+  if v_minor then
+    -- Solo cuentas con acceso al calendario (ven el título de la tarea).
+    return query select p.id from public.profiles p where p.family_id = e.family_id and p.role in ('admin', 'adult')
+      and (p.allowed_sections is null or 'calendario' = any(p.allowed_sections));
+  end if;
+
   if v_mode is null then
     -- Sin modo elegido: como hasta ahora, además los administradores (salvo en el resumen diario).
     if not p_for_summary then
@@ -75,15 +88,6 @@ begin
     return;
   end if;
 
-  -- Modo 'assigned': excepción del menor sin cuenta → todos los adultos con cuenta.
-  select exists (
-    select 1 from public.calendar_event_members cem
-    join public.family_members fm on fm.id = cem.member_id
-    where cem.event_id = p_event_id and fm.family_id = e.family_id and fm.linked_profile_id is null and fm.member_type in ('child', 'baby')
-  ) into v_minor;
-  if v_minor then
-    return query select p.id from public.profiles p where p.family_id = e.family_id and p.role in ('admin', 'adult');
-  end if;
 end;
 $$;
 revoke execute on function private.event_notification_recipients(uuid, boolean) from public, anon, authenticated;
@@ -242,7 +246,8 @@ begin
     end if;
   elsif m.member_type in ('child', 'baby') then
     -- Menor sin cuenta: lo reciben los adultos con cuenta (menos quien asigna).
-    for r in select p.id from public.profiles p where p.family_id = e.family_id and p.role in ('admin', 'adult') and p.id is distinct from v_actor loop
+    for r in select p.id from public.profiles p where p.family_id = e.family_id and p.role in ('admin', 'adult') and p.id is distinct from v_actor
+             and (p.allowed_sections is null or 'calendario' = any(p.allowed_sections)) loop
       perform private.notify_user(r.id, 'personal', 'task_assigned', 'Tarea asignada a ' || coalesce(m.name, 'un menor'), e.title, '/calendario',
         null, 'assign:' || new.event_id || ':' || new.member_id || ':' || r.id, true);
     end loop;

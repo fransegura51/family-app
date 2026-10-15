@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useNavigationType } from 'react-router-dom'
 import { listPosts } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { SECTIONS, type CommunityCardItem } from '@/domain/community'
@@ -8,6 +8,7 @@ import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { homeCrumbs, paths } from '@/ui/community/communityNav'
+import { clearListState, HOME_STATE_KEY, loadHomeState, saveHomeState } from '@/ui/community/communityListState'
 import { PostCardView } from '@/ui/community/PostCardView'
 import '@/ui/community/communityHome.css'
 import '@/ui/community/communityLists.css'
@@ -18,27 +19,81 @@ import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 //  - Cada bloque hace UNA petición pequeña al abrir (y otra solo si se desbloquea a alguien). Sin consultas periódicas.
 //  - Los bloques sin contenido se ocultan y ninguna publicación se repite entre bloques visibles (el primer bloque de la lista se la queda).
 //  - «Para mí» solo se pide a quien ya tiene perfil público (sin perfil no hay nada que personalizar).
+//  - Al VOLVER ATRÁS desde una publicación (navegación POP) se recuperan los bloques ya cargados, el texto del buscador y la posición de desplazamiento,
+//    sin volver a pedir nada al servidor (igual que las secciones, el buscador y Guardados). Al entrar de nuevo por un enlace se empieza de cero.
 type BlockState = { status: 'loading' | 'ready' | 'error'; items: CommunityCardItem[]; error?: string }
 
 const LOADING: BlockState = { status: 'loading', items: [] }
+
+type BlocksState = Record<HomeBlockId, BlockState>
+
+// Solo se puede recuperar una portada con los bloques públicos ya cargados (sin fallos): si no, se pide de nuevo.
+function restorableBlocks(raw: unknown): BlocksState | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const b = raw as Partial<BlocksState>
+  for (const def of HOME_BLOCKS) {
+    const st = b[def.id]
+    if (!st || !Array.isArray(st.items)) return null
+    if (!def.personal && st.status !== 'ready') return null
+  }
+  return b as BlocksState
+}
 
 export function CommunityHome() {
   const { me, loading: meLoading, requireParticipation } = useCommunity()
   // Con permiso solo de lectura no se enseñan los botones de crear (el aviso fijo de Comunidad lo explica).
   const { canParticipate } = useCommunityAccess()
   const navigate = useNavigate()
-  const [text, setText] = useState('')
-  const [blocks, setBlocks] = useState<Record<HomeBlockId, BlockState>>({
-    recientes: LOADING,
-    comentados: LOADING,
-    sin_respuesta: LOADING,
-    para_mi: { status: 'ready', items: [] },
+  const navType = useNavigationType()
+  // Estado guardado de la visita anterior: solo se mira al montar y solo al volver atrás.
+  const [saved] = useState(() => {
+    if (navType !== 'POP') return null
+    const st = loadHomeState<unknown>()
+    const restored = st ? restorableBlocks(st.blocks) : null
+    return st && restored ? { scrollY: st.scrollY, text: st.text, blocks: restored } : null
   })
+  const [text, setText] = useState(saved?.text ?? '')
+  const [blocks, setBlocks] = useState<BlocksState>(
+    saved?.blocks ?? {
+      recientes: LOADING,
+      comentados: LOADING,
+      sin_respuesta: LOADING,
+      para_mi: { status: 'ready', items: [] },
+    },
+  )
   const [reloadToken, setReloadToken] = useState(0)
   const hasProfile = me?.hasProfile === true
 
+  // Lo último visto, para guardarlo al salir de la portada (en el efecto de layout, ANTES de que la página siguiente cambie la altura del documento).
+  const latest = useRef({ text, blocks })
+  const lastScroll = useRef(typeof window === 'undefined' ? 0 : window.scrollY)
+  useLayoutEffect(() => {
+    latest.current = { text, blocks }
+  })
+  useEffect(() => {
+    // Al entrar por navegación normal se olvida lo guardado antes (no debe reaparecer más tarde).
+    if (!saved) clearListState(HOME_STATE_KEY)
+  }, [saved])
+  useLayoutEffect(() => {
+    const onScroll = () => {
+      lastScroll.current = window.scrollY
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      const restorable = restorableBlocks(latest.current.blocks)
+      if (restorable) saveHomeState({ scrollY: lastScroll.current, text: latest.current.text, blocks: restorable })
+    }
+  }, [])
+  // Restaurar el desplazamiento una vez pintada la portada recuperada.
+  useLayoutEffect(() => {
+    if (saved) window.scrollTo(0, saved.scrollY)
+  }, [saved])
+
   // Bloques públicos: una petición cada uno, en paralelo. Si uno falla, los demás se enseñan igual.
   useEffect(() => {
+    // Recuperada de la memoria: no se vuelve a pedir (solo si luego se pide recargar, p. ej. al desbloquear a alguien).
+    if (saved && reloadToken === 0) return
     let cancelled = false
     for (const block of HOME_BLOCKS.filter((b) => !b.personal)) {
       listPosts({ order: block.order, limit: HOME_BLOCK_FETCH }).then(
@@ -53,11 +108,12 @@ export function CommunityHome() {
     return () => {
       cancelled = true
     }
-  }, [reloadToken])
+  }, [reloadToken, saved])
 
   // Bloque personal: solo cuando se sabe si hay perfil y solo si lo hay.
   useEffect(() => {
     if (meLoading || !hasProfile) return
+    if (saved && reloadToken === 0) return
     let cancelled = false
     listPosts({ order: 'para_mi', limit: HOME_BLOCK_FETCH }).then(
       (items) => {
@@ -71,7 +127,7 @@ export function CommunityHome() {
     return () => {
       cancelled = true
     }
-  }, [meLoading, hasProfile, reloadToken])
+  }, [meLoading, hasProfile, reloadToken, saved])
 
   const publicBlocks = HOME_BLOCKS.filter((b) => !b.personal)
   const stillLoading = publicBlocks.some((b) => blocks[b.id].status === 'loading')
@@ -128,7 +184,7 @@ export function CommunityHome() {
           value={text}
           maxLength={MAX_QUERY_CHARS}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Busca recetas, consejos, preguntas…"
+          placeholder="Busca en Comunidad"
           enterKeyHint="search"
           autoComplete="off"
         />

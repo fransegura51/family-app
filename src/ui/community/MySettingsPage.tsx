@@ -504,7 +504,7 @@ function ReadingPrefs() {
             </select>
           </label>
           <p className="muted">Es el orden con el que se abren las conversaciones. Dentro de una conversación puedes cambiarlo solo para esa vez.</p>
-          <label className="checkbox-label">
+          <label className="checkbox-label community-touch-label">
             <input type="checkbox" checked={prefs.foldReadComments} onChange={(e) => void change({ foldReadComments: e.target.checked })} />
             Plegar los comentarios que ya he leído
           </label>

@@ -46,6 +46,9 @@ revoke all on public.community_minor_permission_log from anon, authenticated;
 alter table public.community_posts add column ai_excluded boolean not null default false;
 alter table public.community_comments add column ai_excluded boolean not null default false;
 
+-- Declaración de mayoría de edad (solo cuando la edad no consta en la ficha de familia): cuándo la hizo la persona al crear su alias.
+alter table public.community_profiles add column adult_declared_at timestamptz;
+
 -- Edad en años de la persona (null = no se puede saber).
 create or replace function private.community_age_years(p_user uuid)
 returns integer
@@ -382,6 +385,28 @@ create policy "community media: read" on storage.objects
 -- (por edad conocida o, sin fecha, por rol/ficha de niño) se marca `ai_excluded` al crearse y NUNCA se envía a la IA: ni en los resúmenes de conversaciones, ni
 -- Pepa responde a sus preguntas, ni atiende sus menciones. (Los comentarios de adultos en una publicación de un menor tampoco se resumen.)
 -- ---------------------------------------------------------------------------------------------
+-- ¿Es adulta a efectos de la IA y de las páginas públicas? Edad conocida >= 18; sin edad: titulares admin/adult cuya ficha no sea de niño/bebé.
+create or replace function private.community_user_is_adult(p_user uuid)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_age integer := private.community_age_years(p_user);
+  v_role text;
+begin
+  if v_age is not null then
+    return v_age >= 18;
+  end if;
+  select pr.role into v_role from public.profiles pr where pr.id = p_user;
+  return coalesce(v_role, 'guest') in ('admin', 'adult')
+         and not exists (select 1 from public.family_members fm where fm.linked_profile_id = p_user and fm.member_type in ('child', 'baby'));
+end;
+$$;
+revoke execute on function private.community_user_is_adult(uuid) from public, anon, authenticated;
+
 create or replace function private.community_mark_ai_excluded()
 returns trigger
 language plpgsql
@@ -390,21 +415,11 @@ set search_path = ''
 as $$
 declare
   v_user uuid;
-  v_age integer;
-  v_role text;
 begin
   select cp.user_id into v_user from public.community_profiles cp where cp.id = new.author_id;
-  if v_user is null then
-    return new;
+  if v_user is not null then
+    new.ai_excluded := not private.community_user_is_adult(v_user);
   end if;
-  v_age := private.community_age_years(v_user);
-  if v_age is not null then
-    new.ai_excluded := v_age < 18;
-    return new;
-  end if;
-  select pr.role into v_role from public.profiles pr where pr.id = v_user;
-  new.ai_excluded := not (coalesce(v_role, 'guest') in ('admin', 'adult')
-                          and not exists (select 1 from public.family_members fm where fm.linked_profile_id = v_user and fm.member_type in ('child', 'baby')));
   return new;
 end;
 $$;
@@ -413,3 +428,32 @@ create trigger community_posts_mark_ai_excluded before insert on public.communit
   for each row execute function private.community_mark_ai_excluded();
 create trigger community_comments_mark_ai_excluded before insert on public.community_comments
   for each row execute function private.community_mark_ai_excluded();
+
+-- Si cambia la fecha de nacimiento, el enlace o el tipo de ficha de una persona, se RECALCULA lo ya publicado (si pasa a ser menor, deja de enviarse a la IA y de
+-- tener página pública; si pasa a ser adulta, vuelve a ser normal).
+create or replace function private.community_recompute_ai_excluded()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cp uuid;
+  v_excl boolean;
+begin
+  if new.linked_profile_id is null then
+    return null;
+  end if;
+  select cp.id into v_cp from public.community_profiles cp where cp.user_id = new.linked_profile_id;
+  if v_cp is null then
+    return null;
+  end if;
+  v_excl := not private.community_user_is_adult(new.linked_profile_id);
+  update public.community_posts set ai_excluded = v_excl where author_id = v_cp and ai_excluded is distinct from v_excl;
+  update public.community_comments set ai_excluded = v_excl where author_id = v_cp and ai_excluded is distinct from v_excl;
+  return null;
+end;
+$$;
+revoke execute on function private.community_recompute_ai_excluded() from public, anon, authenticated;
+create trigger family_members_recompute_ai_excluded after insert or update of birth_date, linked_profile_id, member_type on public.family_members
+  for each row execute function private.community_recompute_ai_excluded();

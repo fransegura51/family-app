@@ -1232,6 +1232,25 @@ export function logExtra(e: Pick<LogEntry, 'action' | 'details'>): string | null
   return null
 }
 
+// Motivo que se enseña en el historial. El servidor guarda para algunas acciones un texto técnico («max_links_per_post=12», «launch_enabled»):
+// aquí se convierte en una frase en español con el nombre legible del ajuste y su valor. El resto de motivos (escritos por quien administra) van tal cual.
+export function logReasonText(e: Pick<LogEntry, 'action' | 'reason'>): string | null {
+  const reason = e.reason?.trim()
+  if (!reason) return null
+  if (e.action === 'launch' || e.action === 'unlaunch') return reason === LAUNCH_KEY ? null : reason
+  if (e.action === 'setting') {
+    const m = /^([a-z][a-z0-9_]*)=(-?[0-9]+)$/.exec(reason)
+    if (!m) return reason
+    const [, key, value] = m
+    const meta = SETTING_META[key]
+    // El nombre largo puede traer una aclaración entre paréntesis («… (0 = sin tope)»): se quita porque la frase ya dice el valor.
+    const label = (meta?.label ?? key.replace(/_/g, ' ')).replace(/ *[(][^)]*[)] *$/, '')
+    if (key === 'ai_daily_cap' && Number(value) === 0) return `Ahora «${label}» está sin tope.`
+    return `Ahora «${label}» vale ${value}${meta?.unit ? ` ${meta.unit}` : ''}.`
+  }
+  return reason
+}
+
 // Pide una fila de más para saber si hay página siguiente sin otra consulta.
 export function splitPage<T>(items: T[], pageSize: number): { page: T[]; hasMore: boolean } {
   return { page: items.slice(0, pageSize), hasMore: items.length > pageSize }

@@ -224,7 +224,10 @@ begin
     return jsonb_build_object('id', c.id, 'blocked_by_me', true, 'author_id', c.author_id, 'created_at', c.created_at);
   end if;
   if c.reply_to_id is not null then
-    select case when ra.deleted_at is not null then 'Usuario eliminado' else ra.alias end into v_reply_alias
+    -- Si la persona a quien responde está bloqueada por quien mira, no se enseña su alias (capa neutra).
+    select case when ra.deleted_at is not null then 'Usuario eliminado'
+                when p_viewer is not null and exists (select 1 from public.community_blocks b where b.blocker_id = p_viewer and b.blocked_id = ra.id) then null
+                else ra.alias end into v_reply_alias
     from public.community_comments rc join public.community_profiles ra on ra.id = rc.author_id where rc.id = c.reply_to_id;
   end if;
   return jsonb_build_object(

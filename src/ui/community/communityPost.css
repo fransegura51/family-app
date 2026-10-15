@@ -708,3 +708,33 @@
 .community-article-table th:first-child {
   text-align: left;
 }
+
+/* ---- Ventana de denuncia en móvil: el cuerpo se desplaza y los botones quedan SIEMPRE a la vista (pie fijo). */
+.community-report {
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.community-report .community-report-actions {
+  position: sticky;
+  bottom: -20px; /* el relleno de .modal-sheet (20 px): el pie llega hasta el borde */
+  margin: 8px -20px -20px;
+  padding: 10px 20px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1px solid var(--border, #e3e7ef);
+  z-index: 1;
+}
+
+.community-report-actions .community-report-hint {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 14px;
+}
+
+.community-report .link-button {
+  min-height: 44px;
+  padding-left: 12px;
+  padding-right: 12px;
+}

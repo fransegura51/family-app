@@ -36,7 +36,7 @@ as $$
 $$;
 revoke execute on function private.community_log(text, text, uuid, text, jsonb) from public, anon, authenticated;
 
--- Avisa a los dos administradores (nunca a quien provoca el aviso si es uno de ellos).
+-- Avisa a los dos administradores de Comunidad (propietarios de la app), incluido quien provoca el aviso si es uno de ellos (así consta en su campana).
 create or replace function private.community_notify_admins(p_title text, p_body text, p_url text, p_dedupe text default null)
 returns void
 language plpgsql
@@ -876,6 +876,8 @@ begin
       perform private.community_queue_media_deletion(array(select ph.storage_path from public.community_post_photos ph where ph.post_id = q.target_id));
       delete from public.community_post_photos where post_id = q.target_id;
       update public.community_posts set status = 'deleted', title = 'Publicación eliminada', body = '' where id = q.target_id;
+      -- Si era una receta, también se vacía la receta pública (ingredientes, pasos, versiones y foto de portada).
+      perform private.community_blank_recipe((select x.recipe_id from public.community_posts x where x.id = q.target_id));
     elsif q.target_type = 'comment' then
       update public.community_comments set status = 'deleted', body = '', photo_path = null where id = q.target_id;
     end if;

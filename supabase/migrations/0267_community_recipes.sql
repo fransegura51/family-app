@@ -23,7 +23,8 @@ begin
     raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
   select p.author_id into v_author from public.community_posts p where p.recipe_id = p_recipe and p.status = 'published';
-  if v_author is null or private.community_blocked_either(v_cp, v_author) then
+  -- Nadie valora su propia receta (inflaría su media); tampoco si la bloqueó o lo bloqueó.
+  if v_author is null or v_author = v_cp or private.community_blocked_either(v_cp, v_author) then
     raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
   end if;
   insert into public.community_recipe_ratings (recipe_id, profile_id, stars, review) values (p_recipe, v_cp, p_stars, v_review)

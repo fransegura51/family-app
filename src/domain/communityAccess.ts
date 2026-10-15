@@ -4,7 +4,7 @@
 //     ambos desactivados por defecto; participar exige también poder leer).  · Desde 18: acceso normal.
 // Aquí vive la lógica PURA (sin red ni pantalla): niveles, textos en español y reglas de los interruptores. La seguridad real está en el servidor: la interfaz
 // solo tiene que reflejar el estado con claridad y no enseñar botones que no van a funcionar.
-import { toCommunityError, type CommunityAccessErrorCode, type CommunityErrorCode } from '@/domain/communityErrors'
+import { toCommunityError, type CommunityAccessErrorCode, type CommunityErrorCode } from './communityErrors'
 
 export type CommunityAccessLevel = 'none' | 'read' | 'participate'
 export type CommunityAccessReason = 'under_15' | 'age_unknown' | 'not_authorized' | 'read_only'
@@ -39,6 +39,18 @@ export function isAccessErrorCode(code: string): code is AccessErrorCode {
   return code === 'COMMUNITY_ACCESS_DENIED' || code === 'PARTICIPATION_NOT_ALLOWED'
 }
 
+// ---- Declaración de mayoría de edad (al crear el alias, solo si la ficha de familia no tiene fecha de nacimiento)
+// Es una DECLARACIÓN, no una verificación: PEPA no puede comprobar la edad. Con fecha en la ficha no se enseña nada.
+export const ADULT_DECLARATION_LABEL = 'Confirmo que tengo 18 años o más'
+export const ADULT_DECLARATION_HELP =
+  'PEPA no puede comprobar tu edad, por eso te lo preguntamos. La persona que administra tu familia puede añadir tu fecha de nacimiento en tu ficha de Familia y así no tendrás que confirmarlo.'
+
+// La casilla solo sale cuando se SABE que no consta la edad (age_known === false); con edad conocida o sin respuesta del servidor no se muestra
+// (si el servidor la necesita, responde ADULT_DECLARATION_REQUIRED y entonces sí se muestra).
+export function needsAdultDeclaration(ageKnown: boolean | null | undefined): boolean {
+  return ageKnown === false
+}
+
 // ---- Textos de la persona que usa Comunidad
 export const UNAVAILABLE_TITLE = 'Comunidad no está disponible para tu cuenta'
 
@@ -46,7 +58,7 @@ export const UNAVAILABLE_TITLE = 'Comunidad no está disponible para tu cuenta'
 export function unavailableReasonText(reason: CommunityAccessReason | null): string {
   switch (reason) {
     case 'under_15':
-      return 'Comunidad es para personas a partir de 15 años. Todo lo demás de PEPA sigue funcionando igual para ti.'
+      return 'Comunidad es para personas a partir de 15 años.'
     case 'age_unknown':
       return 'Todavía no tenemos tu fecha de nacimiento. Pide a quien administra tu familia que la añada en tu ficha de Familia y así podremos comprobar si puedes entrar.'
     case 'not_authorized':

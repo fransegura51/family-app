@@ -3,6 +3,7 @@ import { precacheAndRoute } from 'workbox-precaching'
 import { registerRoute } from 'workbox-routing'
 import { NetworkFirst } from 'workbox-strategies'
 import { recordReminderReceipt } from './services/reminderReceipts'
+import { pushEntryQuery } from './domain/pushEntryRoute'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -118,8 +119,8 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   // "?/calendario" (o "?/dinero"...) es la forma que index.html descodifica a la ruta real
   // (ver 404.html): entra directo, sin depender del salto por el 404 de GitHub Pages.
-  const path = (event.notification.data as string | null) ?? '/calendario'
-  const targetUrl = scopeUrl(`?${path}`)
+  // Un «&» de la ruta (p. ej. «?nuevos=1&c=<id>» de Comunidad) viaja como «~and~» para que index.html no lo rompa (INC-04).
+  const targetUrl = scopeUrl(`?${pushEntryQuery(event.notification.data)}`)
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clients) => {
       const existing = clients.find((c) => 'focus' in c) as WindowClient | undefined

@@ -110,7 +110,13 @@ export function ReportDialog({
               </p>
             )}
             <div className="modal-actions community-report-actions">
-              <button type="button" className="primary" disabled={!reason || sending} onClick={() => void send()}>
+              {/* El botón está desactivado hasta elegir motivo: se dice por qué (y el lector de pantalla lo lee con el botón). */}
+              {!reason && (
+                <p id="report-reason-hint" className="muted community-report-hint">
+                  Elige un motivo para poder enviar
+                </p>
+              )}
+              <button type="button" className="primary" disabled={!reason || sending} aria-describedby={!reason ? 'report-reason-hint' : undefined} onClick={() => void send()}>
                 {sending ? 'Enviando…' : 'Enviar denuncia'}
               </button>
               <button type="button" className="link-button" onClick={onClose}>

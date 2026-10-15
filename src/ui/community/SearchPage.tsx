@@ -245,7 +245,7 @@ export function SearchPage() {
               aria-activedescendant={showList && active >= 0 ? `${listId}-${active}` : undefined}
               value={text}
               maxLength={MAX_QUERY_CHARS}
-              placeholder="Por ejemplo: tortilla, ahorro, manualidades…"
+              placeholder="Busca en Comunidad"
               autoComplete="off"
               enterKeyHint="search"
               onChange={(e) => {

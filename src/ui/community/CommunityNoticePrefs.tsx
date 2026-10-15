@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SUGGESTION_WINDOW_TEXT, parseSuggestionHours, suggestionEveryLabel, validateWindow, windowSummary } from '@/domain/communityProfile'
 import { COMMUNITY_SUGGESTION_MAX_HOURS, COMMUNITY_SUGGESTION_MIN_HOURS, timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
@@ -21,6 +21,11 @@ export function CommunityNoticePrefs({
   const [end, setEnd] = useState(prefs.personalWindowEnd)
   const [hours, setHours] = useState(String(prefs.communitySuggestionEveryHours))
   const [problem, setProblem] = useState<string | null>(null)
+  // Elegir «Establecer franja horaria» solo enseña las horas: NO guarda nada hasta pulsar «Guardar franja» (antes guardaba 08:00-21:00 al instante).
+  const [pickWindow, setPickWindow] = useState(prefs.personalCommunityMode === 'window')
+  useEffect(() => {
+    setPickWindow(prefs.personalCommunityMode === 'window')
+  }, [prefs.personalCommunityMode])
 
   function saveWindow() {
     const p = validateWindow(start, end)
@@ -49,19 +54,20 @@ export function CommunityNoticePrefs({
           <input
             type="radio"
             name="personal-mode"
-            checked={prefs.personalCommunityMode === 'any'}
+            checked={!pickWindow}
             onChange={() => {
               setProblem(null)
+              setPickWindow(false)
               void onSave({ personalCommunityMode: 'any' })
             }}
           />
           A cualquier hora
         </label>
         <label className="checkbox-label">
-          <input type="radio" name="personal-mode" checked={prefs.personalCommunityMode === 'window'} onChange={saveWindow} />
+          <input type="radio" name="personal-mode" checked={pickWindow} onChange={() => setPickWindow(true)} />
           Establecer franja horaria
         </label>
-        {prefs.personalCommunityMode === 'window' && (
+        {pickWindow && (
           <div className="community-window-fields">
             <label>
               Desde
@@ -76,6 +82,7 @@ export function CommunityNoticePrefs({
             </button>
           </div>
         )}
+        {pickWindow && prefs.personalCommunityMode !== 'window' && <p className="muted">Elige las horas y pulsa «Guardar franja»: hasta entonces los avisos siguen llegando a cualquier hora.</p>}
         <p className="muted" aria-live="polite">
           Ahora: {windowSummary(prefs.personalCommunityMode, prefs.personalWindowStart, prefs.personalWindowEnd)}. Las horas son las de tu zona horaria ({timezoneLabel(prefs.timezone)}).
           {showZoneHint && (

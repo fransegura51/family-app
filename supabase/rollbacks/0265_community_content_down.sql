@@ -12,7 +12,7 @@ drop function if exists public.community_create_post(text, text, text, text, tex
 drop function if exists private.community_clean_recipe(jsonb);
 drop function if exists private.community_rate_check(uuid, text);
 drop function if exists public.community_list_topics();
-drop function if exists public.community_set_alias(text, text, boolean);
+drop function if exists public.community_set_alias(text, text, boolean, boolean);
 drop function if exists public.community_get_my_profile();
 drop function if exists private.community_plain_excerpt(text);
 drop function if exists private.community_queue_media_deletion(text[]);

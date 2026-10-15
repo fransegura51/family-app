@@ -249,3 +249,57 @@
   color: var(--muted, #6b7280);
   white-space: nowrap;
 }
+
+/* ---- Contraste de enlaces (WCAG AA, ≥ 4,5:1 sobre blanco): el azul base de PEPA (#4c6ef5) da ~4,3:1; dentro de Comunidad se usa uno más oscuro (~5,7:1).
+   Con el estilo de color «vivo» ya se usa el #364fc7 (~6,8:1) y se respeta. No hay modo oscuro en la app. */
+.community-screen,
+.community-touch-scope {
+  --primary: #3b5bdb;
+}
+
+:root[data-color-theme='vivo'] .community-screen,
+:root[data-color-theme='vivo'] .community-touch-scope {
+  --primary: #364fc7;
+}
+
+/* ---- Objetivos táctiles de 44 px (móvil) sin cambiar el aspecto: botones de texto, casillas con etiqueta y migas de pan. */
+.community-screen .link-button,
+.community-touch-scope .link-button {
+  min-height: 44px;
+}
+
+.community-touch-label,
+.community-screen .checkbox-label {
+  min-height: 44px;
+}
+
+.community-touch-label input[type='checkbox'],
+.community-screen .checkbox-label input[type='checkbox'] {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+/* Migas: el enlace sigue viéndose igual, pero su zona de toque mide 45 px (el relleno se compensa con el margen negativo, así no cambia la altura de la línea). */
+.community-crumbs a {
+  display: inline-block;
+  padding: 13px 6px;
+  margin: -13px -6px;
+}
+
+/* ---- Final de página: nada queda tapado por el menú inferior de PEPA (~62 px), el botón flotante «↑» ni el campo fijo de comentarios. */
+.community-screen {
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Con campo para comentar, el botón «↑» sube por encima de él para no taparlo (el campo mide ~76 px en una línea; con respuesta o foto crece, y ahí el botón
+   queda por detrás del campo, que tiene prioridad: z-index 30 < 39 del botón, por eso se sube lo bastante). */
+body:has(.community-composer) .scroll-top-fab {
+  bottom: calc(62px + 140px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Los enlaces con aspecto de botón de texto (<a class="link-button">) dentro de una frase son «en línea»: sin esto el alto mínimo no les afecta. */
+.community-screen a.link-button,
+.community-touch-scope a.link-button {
+  display: inline-block;
+}

@@ -52,8 +52,10 @@ async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> 
 // ---- Estado, alias y temas
 export const communityStatus = () => rpc<CommunityStatus>('community_status')
 export const getMyCommunityProfile = () => rpc<MyCommunityProfile | null>('community_get_my_profile')
-export const setCommunityAlias = (alias: string, avatarEmoji: string | null, acceptRules: boolean) =>
-  rpc<MyCommunityProfile>('community_set_alias', { p_alias: alias, p_avatar_emoji: avatarEmoji, p_accept_rules: acceptRules })
+// `declareAdult` = «Confirmo que tengo 18 años o más» (solo hace falta cuando la ficha de familia no tiene fecha de nacimiento; si la edad consta, el
+// servidor lo ignora). Por defecto false: nunca se declara nada en nombre de la persona.
+export const setCommunityAlias = (alias: string, avatarEmoji: string | null, acceptRules: boolean, declareAdult = false) =>
+  rpc<MyCommunityProfile>('community_set_alias', { p_alias: alias, p_avatar_emoji: avatarEmoji, p_accept_rules: acceptRules, p_declare_adult: declareAdult })
 export const listCommunityTopics = () => rpc<CommunityTopic[]>('community_list_topics')
 
 // ---- Publicaciones

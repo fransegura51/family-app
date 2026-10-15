@@ -262,7 +262,7 @@ begin
 end;
 $$;
 
-create or replace function public.community_set_alias(p_alias text, p_avatar_emoji text default null, p_accept_rules boolean default false)
+create or replace function public.community_set_alias(p_alias text, p_avatar_emoji text default null, p_accept_rules boolean default false, p_declare_adult boolean default true)
 returns jsonb
 language plpgsql
 security definer
@@ -304,9 +304,14 @@ begin
     if not p_accept_rules then
       raise exception 'RULES_REQUIRED' using errcode = 'P0001';
     end if;
+    -- Sin fecha de nacimiento en la ficha de familia la edad no se conoce: se pide una DECLARACIÓN («tengo 18 años o más») y se guarda cuándo se hizo.
+    -- (Es una declaración, no una verificación: PEPA no puede comprobar la edad. La app muestra la casilla y la exige.)
+    if private.community_age_years((select auth.uid())) is null and not p_declare_adult then
+      raise exception 'ADULT_DECLARATION_REQUIRED' using errcode = 'P0001';
+    end if;
     begin
-      insert into public.community_profiles (user_id, alias, avatar_emoji, rules_accepted_at, alias_changed_at)
-      values ((select auth.uid()), v_alias, v_emoji, now(), now())
+      insert into public.community_profiles (user_id, alias, avatar_emoji, rules_accepted_at, alias_changed_at, adult_declared_at)
+      values ((select auth.uid()), v_alias, v_emoji, now(), now(), case when private.community_age_years((select auth.uid())) is null then now() end)
       returning * into v_existing;
     exception when unique_violation then
       raise exception 'ALIAS_TAKEN' using errcode = 'P0001';
@@ -619,7 +624,9 @@ begin
   select ph.storage_path into v_thumb from public.community_post_photos ph where ph.post_id = p.id order by ph.position limit 1;
   if p.recipe_id is not null then
     select round(avg(r.stars)::numeric, 2), count(*)::integer into v_rating, v_rating_n from public.community_recipe_ratings r where r.recipe_id = p.recipe_id;
-    select count(*)::integer into v_imports from public.community_recipe_imports i where i.recipe_id = p.recipe_id;
+    -- Importaciones de OTRAS familias (la de la propia autora no cuenta).
+    select count(*)::integer into v_imports from public.community_recipe_imports i where i.recipe_id = p.recipe_id
+      and i.family_id is distinct from (select pr.family_id from public.community_profiles acp join public.profiles pr on pr.id = acp.user_id where acp.id = p.author_id);
   end if;
   return jsonb_build_object(
     'id', p.id,
@@ -691,7 +698,13 @@ begin
     p_order := 'recientes';
   end if;
   if p_query is not null and btrim(p_query) <> '' then
-    v_tsq := websearch_to_tsquery('spanish'::regconfig, p_query);
+    -- Cada palabra se busca como PREFIJO («tort» encuentra «tortilla»), igual que el autocompletado; si no queda ninguna palabra útil, búsqueda web normal.
+    select to_tsquery('spanish'::regconfig, string_agg(s.w || ':*', ' & ')) into v_tsq
+    from (select regexp_replace(lower(x), '[^a-z0-9áéíóúüñ]', '', 'g') as w from unnest(string_to_array(btrim(p_query), ' ')) x) s
+    where s.w <> '';
+    if v_tsq is null then
+      v_tsq := websearch_to_tsquery('spanish'::regconfig, p_query);
+    end if;
   end if;
 
   select coalesce(jsonb_agg(private.community_card(q.p, v_viewer) order by q.rn), '[]'::jsonb) into v_result
@@ -902,7 +915,7 @@ $$;
 -- adelante, 0272, se añade la lectura pública sin sesión con su propia función).
 -- ---------------------------------------------------------------------------------------------
 revoke all on function public.community_get_my_profile() from public, anon;
-revoke all on function public.community_set_alias(text, text, boolean) from public, anon;
+revoke all on function public.community_set_alias(text, text, boolean, boolean) from public, anon;
 revoke all on function public.community_list_topics() from public;
 revoke all on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid) from public, anon;
 revoke all on function public.community_update_post(uuid, text, text, text, text[], jsonb) from public, anon;
@@ -912,7 +925,7 @@ revoke all on function public.community_similar_posts(text, text, text) from pub
 revoke all on function public.community_search_suggest(text) from public, anon;
 revoke all on function public.community_get_post(uuid) from public, anon;
 grant execute on function public.community_get_my_profile() to authenticated;
-grant execute on function public.community_set_alias(text, text, boolean) to authenticated;
+grant execute on function public.community_set_alias(text, text, boolean, boolean) to authenticated;
 grant execute on function public.community_list_topics() to anon, authenticated;
 grant execute on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid) to authenticated;
 grant execute on function public.community_update_post(uuid, text, text, text, text[], jsonb) to authenticated;

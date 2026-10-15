@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react'
 import { adminListLog } from '@/data/community'
-import { ADMIN_TEXT, LOG_PAGE_SIZE, formatMadrid, logActionText, logExtra, logTargetText, splitPage, toLogEntries } from '@/domain/communityAdmin'
+import { ADMIN_TEXT, LOG_PAGE_SIZE, formatMadrid, logActionText, logExtra, logReasonText, logTargetText, splitPage, toLogEntries } from '@/domain/communityAdmin'
 import { AdminEmpty, AdminError, AdminLoading, InfoBox } from '@/ui/community/admin/AdminShared'
 import { useAdminData } from '@/ui/community/admin/useAdminData'
 
@@ -20,6 +20,7 @@ export function LogTab() {
         <ol className="cadm-log" aria-label={`Acciones, página ${page + 1}`}>
           {data.page.map((e) => {
             const extra = logExtra(e)
+            const reason = logReasonText(e)
             return (
               <li key={e.id} className="cadm-card">
                 <p className="cadm-title">{logActionText(e.action)}</p>
@@ -27,7 +28,7 @@ export function LogTab() {
                   {logTargetText(e.targetType)} · Por {e.actor} · {formatMadrid(e.createdAt)}
                   {extra ? ` · ${extra}` : ''}
                 </p>
-                {e.reason && <p className="cadm-small">Motivo: {e.reason}</p>}
+                {reason && <p className="cadm-small">{e.action === 'setting' ? reason : `Motivo: ${reason}`}</p>}
               </li>
             )
           })}

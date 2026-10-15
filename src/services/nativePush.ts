@@ -5,6 +5,7 @@
 import { PushNotifications } from '@capacitor/push-notifications'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { isNativeApp } from '@/services/nativeApp'
+import { pushEntryUrl } from '@/domain/pushEntryRoute'
 
 export const FCM_ENDPOINT_PREFIX = 'fcm:'
 
@@ -56,8 +57,8 @@ export async function requestNativePermission(): Promise<NativePermission> {
 
 // Al tocar un aviso se abre PEPA en la pantalla que corresponda («?/calendario» es la forma que index.html descodifica a la ruta real).
 function openFromNotification(data: Record<string, unknown> | undefined): void {
-  const url = typeof data?.url === 'string' && data.url.startsWith('/') ? data.url : '/calendario'
-  window.location.assign(`${import.meta.env.BASE_URL}?${url}`)
+  // Un «&» de la ruta (p. ej. «?nuevos=1&c=<id>» de Comunidad) viaja como «~and~» para que index.html no lo rompa (INC-04).
+  window.location.assign(pushEntryUrl(import.meta.env.BASE_URL, data?.url))
 }
 
 // Con la app ABIERTA, Android no enseña los avisos de FCM por sí solo: se enseñan como aviso local con el mismo texto.

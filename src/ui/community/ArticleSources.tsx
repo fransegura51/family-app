@@ -32,8 +32,9 @@ export function ArticleSources({ raw }: { raw: unknown }) {
       ) : (
         <p className="muted">Este artículo no indica fuentes.</p>
       )}
+      {/* La tabla tiene scroll horizontal propio: tiene que poder enfocarse con el teclado y tener nombre para el lector de pantalla. */}
       {info.table && (
-        <div className="community-article-table-wrap">
+        <div className="community-article-table-wrap" tabIndex={0} role="region" aria-label="Tabla de datos del artículo (se desplaza hacia los lados)">
           <table className="community-article-table">
             <caption>Datos usados{info.table.unit ? ` (${info.table.unit})` : ''}</caption>
             <thead>

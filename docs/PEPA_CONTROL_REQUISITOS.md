@@ -527,6 +527,22 @@ como "Aprobado".
 
 ---
 
+## Comunidad PEPA (COMUNIDAD; rama `comunidad`, SIN desplegar)
+
+Encargo dictado el 2026-10-14/15 (documento maestro + orden de implementación + órdenes de corrección y de menores). El detalle de requisitos, la
+matriz de cumplimiento y los informes son **privados** (carpeta local `docs/comunidad/`, excluida del repositorio público a propósito); aquí solo consta
+el estado global.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COM-ALL | Comunidad completa (publicaciones, comentarios, recetas, encuestas, medallas, moderación, IA, enlaces públicos, avisos y campana) | **Implementado en la rama `comunidad` y probado en local; NO desplegado ni aprobado** | Migraciones `0260`-`0277` sin aplicar, con deshacer; pruebas de base de datos y de pantalla en verde; despliegue pendiente de autorización expresa |
+| COM-SEG | Migración `0276`: `profiles` impedía proteger `role`/`is_app_owner`/`family_id` (fallo existente en producción) | **Preparada, probada en local; pendiente de autorización** | `supabase/migrations/0276_*.sql` + deshacer + prueba |
+| COM-MEN | Menores: <15 sin acceso; 15-17 con dos permisos (leer / participar) del administrador familiar; ≥18 normal | **Implementado y probado en local** | `0277_community_minors.sql`, tarjeta «Permisos de Comunidad» en Familia |
+
+Nada de lo anterior se marca «Aprobado» sin la confirmación expresa de la dueña.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

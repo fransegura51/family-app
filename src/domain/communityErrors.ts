@@ -7,6 +7,7 @@ export type CommunityErrorCode =
   | 'ALIAS_RESERVED'
   | 'ALIAS_TAKEN'
   | 'RULES_REQUIRED'
+  | 'ADULT_DECLARATION_REQUIRED'
   | 'BANNED'
   | 'NOT_LAUNCHED'
   | 'COMMUNITY_ACCESS_DENIED'
@@ -38,6 +39,7 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   ALIAS_RESERVED: 'Ese alias no está permitido (no puede parecerse a Pepa, al equipo ni a la administración).',
   ALIAS_TAKEN: 'Ese alias ya lo usa otra persona. Prueba con otro.',
   RULES_REQUIRED: 'Tienes que aceptar las normas de Comunidad para participar.',
+  ADULT_DECLARATION_REQUIRED: 'Marca la casilla «Confirmo que tengo 18 años o más» para poder participar.',
   BANNED: 'Ahora mismo no puedes participar en Comunidad. Puedes seguir leyendo.',
   NOT_LAUNCHED: 'Comunidad todavía no está abierta. ¡Pronto!',
   // Regla de edad y permisos (migración 0277): sustituye a la antigua «solo adultos» (ADULT_REQUIRED ya no existe en el servidor).

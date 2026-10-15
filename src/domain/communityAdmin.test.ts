@@ -18,6 +18,7 @@ import {
   launchText,
   logActionText,
   logExtra,
+  logReasonText,
   logTargetText,
   madridWallToInstant,
   normalizeDomain,
@@ -451,6 +452,21 @@ describe('historial', () => {
     expect(logTargetText('???')).toBe('Otro')
     expect(logExtra(e)).toBe('30 días')
     expect(logExtra({ action: 'proposal_approved', details: { version: 2 } })).toBe('versión 2')
+  })
+  it('los motivos técnicos del servidor se muestran como una frase con el nombre legible y el valor', () => {
+    expect(logReasonText({ action: 'setting', reason: 'max_links_per_post=12' })).toBe('Ahora «Enlaces por publicación o comentario» vale 12 enlaces.')
+    expect(logReasonText({ action: 'setting', reason: 'rate_posts_per_hour=5' })).toBe('Ahora «Publicaciones por persona y hora» vale 5 por hora.')
+    expect(logReasonText({ action: 'setting', reason: 'ai_daily_cap=0' })).toBe('Ahora «Tope diario de llamadas de IA» está sin tope.')
+    expect(logReasonText({ action: 'setting', reason: 'ai_daily_cap=300' })).toBe('Ahora «Tope diario de llamadas de IA» vale 300 al día.')
+    expect(logReasonText({ action: 'setting', reason: 'ajuste_nuevo=3' })).toBe('Ahora «ajuste nuevo» vale 3.')
+    expect(logReasonText({ action: 'setting', reason: 'texto libre' })).toBe('texto libre')
+    expect(logReasonText({ action: 'launch', reason: 'launch_enabled' })).toBeNull()
+    expect(logReasonText({ action: 'unlaunch', reason: 'launch_enabled' })).toBeNull()
+    expect(logReasonText({ action: 'ban', reason: 'Acoso reiterado' })).toBe('Acoso reiterado')
+    expect(logReasonText({ action: 'ban', reason: null })).toBeNull()
+    expect(logReasonText({ action: 'ban', reason: '  ' })).toBeNull()
+    // Nunca queda el texto técnico «clave=valor» en lo que ve la persona.
+    for (const key of Object.keys(SETTING_META)) expect(logReasonText({ action: 'setting', reason: key + '=7' })).not.toContain('=')
   })
   it('sin actor conocido pone «sistema»', () => {
     expect(toLogEntries([{ id: 1, action: 'x' }])[0].actor).toBe('sistema')

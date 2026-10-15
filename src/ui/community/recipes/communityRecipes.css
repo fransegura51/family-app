@@ -386,7 +386,7 @@
 }
 
 .community-recipe-fields .recipe-ing-name {
-  flex: 1 1 140px;
+  flex: 1 1 96px;
 }
 
 /* ---- «¿Es lo mismo que…?» (publicaciones parecidas, solo una ayuda) */
@@ -415,4 +415,25 @@
   display: inline-block;
   min-height: 44px;
   line-height: 44px;
+}
+
+/* ---- Táctil (44 px) en el editor compartido de recetas, SOLO dentro de Comunidad: la Cocina conserva sus medidas. */
+.community-recipe-fields .recipe-step-actions .recipe-row-remove {
+  height: 44px;
+}
+
+.community-recipe-fields .link-button {
+  min-height: 44px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.community-recipe-fields .recipe-ing-qty {
+  width: 76px;
+  min-width: 72px;
+}
+
+/* Con la cantidad más ancha, nombre + cantidad + unidad + ✕ caben en una sola línea en un móvil de 360-375 px. */
+.community-recipe-fields .recipe-ing-unit {
+  width: 100px;
 }

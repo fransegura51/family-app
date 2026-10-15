@@ -44,6 +44,7 @@ const HELP_VIDEOS: Record<string, { src: string; poster: string; dur: string }> 
   '/calendario': { src: `${HELP_VIDEO_BASE}calendario.mp4`, poster: `${HELP_VIDEO_BASE}calendario.jpg`, dur: '1 min 27 s' },
   '/compras': { src: `${HELP_VIDEO_BASE}compras.mp4`, poster: `${HELP_VIDEO_BASE}compras.jpg`, dur: '1 min 35 s' },
   '/dinero': { src: `${HELP_VIDEO_BASE}economia.mp4`, poster: `${HELP_VIDEO_BASE}economia.jpg`, dur: '1 min 55 s' },
+  '/ubicacion': { src: `${HELP_VIDEO_BASE}ubicacion.mp4`, poster: `${HELP_VIDEO_BASE}ubicacion.jpg`, dur: '52 s' },
 }
 
 interface HelpItem {

@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import voiceCapture from '@/ui/VoiceCapture.tsx?raw'
 import family from '@/ui/FamilyScreen.tsx?raw'
+import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 import navShell from '@/ui/NavShell.tsx?raw'
 import socialFab from '@/ui/SocialMenuFab.tsx?raw'
 import ayuda from '@/ui/AyudaScreen.tsx?raw'
@@ -60,7 +61,7 @@ describe('preferencia de la tarjeta de confirmación', () => {
   })
 })
 
-describe('«Mostrar botones clásicos» (Familia): se esconden los cinco botones de siempre, sin borrar nada', () => {
+describe('«Mostrar botones clásicos» (Configuración → Pepa): se esconden los cinco botones de siempre, sin borrar nada', () => {
   it('por defecto se ven, y lo elegido se recuerda en el aparato', () => {
     expect(getShowClassicButtons()).toBe(true)
     setShowClassicButtons(false)
@@ -93,10 +94,12 @@ describe('«Mostrar botones clásicos» (Familia): se esconden los cinco botones
     expect(voiceCapture).toContain('async function handleSearchPlace')
   })
 
-  it('el botón de redes se recoloca solo y Familia deja elegir', () => {
+  it('el botón de redes se recoloca solo y se elige en Configuración (tema «Pepa»), no en Familia', () => {
     expect(navShell).toContain('slot={showClassicButtons ? 5 : 1}')
     expect(socialFab).toContain('slot = DEFAULT_SLOT')
-    expect(family).toContain('<ClassicButtonsCard />')
+    expect(settings).toContain('<ClassicButtonsCard />')
+    expect(settings).toMatch(/title="Pepa"/)
+    expect(family).not.toContain('ClassicButtonsCard')
   })
 
   it('la ayuda explica cómo mostrarlos y ocultarlos', () => {

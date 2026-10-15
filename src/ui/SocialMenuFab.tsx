@@ -12,7 +12,7 @@ const FAB_SIZE = 42
 const FAB_GAP = 7
 const FAB_DEFAULT_TOP = 8
 // Con los botones clásicos a la vista, los 5 primeros huecos de la fila son los de Pepa (4 de siempre + 📍) y este botón ocupa el sexto;
-// sin ellos (Familia → «Mostrar botones clásicos» destickado), solo queda el 💬 y este botón va justo detrás. Un hueco elegido arrastrando manda.
+// sin ellos (Configuración → Pepa → «Mostrar botones clásicos» destickado), solo queda el 💬 y este botón va justo detrás. Un hueco elegido arrastrando manda.
 const DEFAULT_SLOT = 5
 const TAP_THRESHOLD_PX = 8
 const STORAGE_KEY = 'familyapp:social-menu-fab-position'

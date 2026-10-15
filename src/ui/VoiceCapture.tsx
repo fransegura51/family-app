@@ -165,7 +165,7 @@ interface FabPosition {
 // "Hablar con PEPA" sale al final de la fila, dejando sitio al botón de redes
 // sociales; como todos, se puede arrastrar donde se quiera.
 const TALK_DEFAULT_SLOT = 6
-// Los botones clásicos (los cinco de siempre) se pueden ocultar desde Familia → «Mostrar botones clásicos»: entonces solo queda el 💬, que pasa al primer
+// Los botones clásicos (los cinco de siempre) se pueden ocultar desde Configuración → Pepa → «Mostrar botones clásicos»: entonces solo queda el 💬, que pasa al primer
 // hueco. Nada se borra: son los mismos botones, solo no se dibujan. Un hueco elegido arrastrando manda sobre estos por defecto.
 const CLASSIC_PANEL_MODES: PanelMode[] = PANEL_MODES.filter((m) => m !== 'talk')
 function defaultFabPosition(mode: PanelMode, showClassic: boolean): FabPosition {
@@ -283,7 +283,7 @@ const PANEL_INFO: Record<
     instructions: [
       'Un solo botón para todo: pregunta lo que tienes en el calendario, en la lista de la compra o en el menú, o pídele que apunte algo.',
       'Las preguntas se contestan directamente. Todo lo que hay que APUNTAR (calendario, compra, menú) te lo enseña primero en una tarjeta y solo se guarda cuando pulsas el botón de guardar.',
-      'Si Pepa no lo entiende, te lo dice — los otros botones de siempre siguen ahí, con su forma de funcionar de siempre. Si los has ocultado, vuelven con Familia → «Mostrar botones clásicos».',
+      'Si Pepa no lo entiende, te lo dice — los otros botones de siempre siguen ahí, con su forma de funcionar de siempre. Si los has ocultado, vuelven en Configuración → Pepa → «Mostrar botones clásicos».',
       'Se cierra sola al contestarte — para volver a hablar, toca este icono otra vez.',
     ],
     submitLabel: 'Enviar',

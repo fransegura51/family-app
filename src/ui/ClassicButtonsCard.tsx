@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { getShowClassicButtons, setShowClassicButtons } from '@/services/pepaPreferences'
 
-// «Mostrar botones clásicos» en Familia: ticado se ven los cinco botones redondos de siempre; destickado solo queda el 💬 «Hablar con PEPA».
+// «Mostrar botones clásicos» en Configuración → Pepa: ticado se ven los cinco botones redondos de siempre; destickado solo queda el 💬 «Hablar con PEPA».
 // Es por móvil (cada persona elige el suyo): ver services/pepaPreferences.ts.
 export function ClassicButtonsCard() {
   const [show, setShow] = useState(getShowClassicButtons())
 
   return (
-    <div className="card member-form">
-      <h2>🔘 Botones de Pepa</h2>
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🔘 Botones de Pepa</strong>
       <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <input
           type="checkbox"

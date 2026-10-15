@@ -53,6 +53,7 @@ import {
 } from '@/data/family'
 import { DISABLEABLE_SPEND_RANGE_PRESETS, PRESET_LABELS, type SpendRangePreset } from '@/domain/dateRanges'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { ClassicButtonsCard } from '@/ui/ClassicButtonsCard'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
@@ -1887,7 +1888,7 @@ function CalendarExternalLinksSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
+type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'pepa' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
 export function MenuSettingsScreen() {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
@@ -1898,7 +1899,8 @@ export function MenuSettingsScreen() {
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
-  const groupColors = pastelPalette(8)
+  // (pastelPalette reparte los tonos por posición: pedir uno más no cambia el color de los ocho de antes.)
+  const groupColors = pastelPalette(9)
 
   return (
     <div className="screen">
@@ -1926,6 +1928,17 @@ export function MenuSettingsScreen() {
         onToggle={() => toggle('familia')}
       >
         <BabyUntilSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[8]}
+        icon="🗣️"
+        title="Pepa"
+        summary="Qué botones de Pepa ves arriba: los de siempre o solo 💬 Hablar con PEPA"
+        open={openGroup === 'pepa'}
+        onToggle={() => toggle('pepa')}
+      >
+        <ClassicButtonsCard />
       </SettingsGroup>
 
       <SettingsGroup

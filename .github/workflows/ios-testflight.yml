@@ -117,6 +117,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: |
           set -o pipefail
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
@@ -143,6 +145,11 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
           IPA="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
           test -f "$IPA" || { echo "No se generó el .ipa"; exit 1; }
-          mkdir -p "$HOME/.private_keys"
-          cp "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.private_keys/"
-          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_APP_PASSWORD" ]; then
+            # Con el Apple ID de Paco y una contraseña de aplicación (la subida con la llave de la API da «Cannot verify client's JWT headers»).
+            xcrun altool --upload-app --type ios --file "$IPA" --username "$APPLE_ID" --password "$APPLE_APP_PASSWORD"
+          else
+            mkdir -p "$HOME/.private_keys"
+            cp "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.private_keys/"
+            xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          fi

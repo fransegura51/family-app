@@ -171,8 +171,8 @@ begin
     end if;
     v_host := lower(substring(v_url from '^https?://([^/:?#]+)'));
     v_host := rtrim(regexp_replace(coalesce(v_host, ''), '^.*@', ''), '.');
-    -- También se rechazan los dominios con caracteres internacionales codificados (xn--): se usan para imitar a otras webs.
-    if v_host is null or v_host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' or v_host !~ '\.' or v_host ~ 'xn--' then
+    -- También se rechazan los dominios con caracteres fuera de a-z, 0-9, punto y guion (letras cirílicas, tildes…) o ya codificados (xn--): se usan para imitar a otras webs.
+    if v_host is null or v_host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' or v_host !~ '\.' or v_host ~ 'xn--' or v_host ~ '[^a-z0-9.-]' then
       raise exception 'UNSAFE_LINK' using errcode = 'P0001';
     end if;
     if exists (select 1 from public.community_blocked_domains d where v_host = d.domain or v_host like '%.' || d.domain) then

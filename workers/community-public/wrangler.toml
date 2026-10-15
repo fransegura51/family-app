@@ -1,0 +1,25 @@
+# Worker de la lectura pública de Comunidad PEPA (enlaces de WhatsApp y Google). Guía para no técnicos:
+# docs/comunidad/GUIA_ENLACES_PUBLICOS.md (en el repositorio de Paco, carpeta family-app).
+name = "pepa-comunidad-publica"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+# Dirección de pruebas «pepa-comunidad-publica.<tu-cuenta>.workers.dev» (no hace falta tocar los DNS para probar).
+workers_dev = true
+
+# Variables NO secretas (la dirección del proyecto y las de la web son públicas).
+# La clave pública («anon» / «publishable») NO se escribe aquí: se pone en el panel de Cloudflare
+# (Settings → Variables and Secrets) o, en local, en el archivo `.dev.vars` (ver `.dev.vars.example`).
+[vars]
+SUPABASE_URL = "https://objhgjgrinbhyzscjlbw.supabase.co"
+# Dirección de la aplicación (donde se abre «Abrir en la aplicación»). Cámbiala si la aplicación pasa a otro dominio.
+APP_BASE = "https://fransegura51.github.io/family-app"
+# Dirección pública de estas páginas (las que se comparten). Mientras pruebes en workers.dev, pon aquí la dirección workers.dev + "/c".
+PUBLIC_BASE = "https://pepafamilyapp.es/c"
+# Imagen de la vista previa cuando una publicación no tiene fotos (opcional; mejor 1200x630 y menos de 300 KB).
+DEFAULT_IMAGE = "https://fransegura51.github.io/family-app/comunidad-og.jpg"
+
+# SOLO cuando pepafamilyapp.es ya esté en Cloudflare: la ruta que hace que /c/* lo atienda este Worker.
+# El resto de la web (y el correo) siguen igual. Descomenta estas líneas cuando llegue el momento.
+# [[routes]]
+# pattern = "pepafamilyapp.es/c/*"
+# zone_name = "pepafamilyapp.es"

@@ -1,0 +1,594 @@
+/* Centro de Mando de Comunidad — estilos propios. Móvil primero: sin scroll horizontal, objetivos táctiles de al menos 44 px, buen contraste. */
+
+.cadm {
+  display: block;
+  min-width: 0;
+}
+
+.cadm * {
+  box-sizing: border-box;
+}
+
+.cadm h1 {
+  margin: 4px 0 6px;
+}
+
+.cadm h2.cadm-panel-title {
+  margin: 14px 0 8px;
+  font-size: 20px;
+}
+
+.cadm h3 {
+  margin: 14px 0 8px;
+  font-size: 17px;
+}
+
+.cadm h4 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.cadm h5 {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+.cadm-intro {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.cadm-small {
+  font-size: 13px;
+  margin: 4px 0;
+}
+
+.cadm-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.cadm-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---- Pestañas: se parten en varias filas en lugar de desplazarse hacia los lados. */
+.cadm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+
+.cadm-tab {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cadm-tab.active {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+  font-weight: 700;
+}
+
+.cadm-tab:focus-visible,
+.cadm-btn:focus-visible,
+.cadm-chip-button:focus-visible,
+.cadm-panel:focus-visible {
+  outline: 3px solid #1c4ed8;
+  outline-offset: 2px;
+}
+
+.cadm-panel[hidden] {
+  display: none;
+}
+
+.cadm-panel {
+  min-width: 0;
+}
+
+/* ---- Tarjetas y listas */
+.cadm-card {
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--border, #e5e7eb);
+  min-width: 0;
+}
+
+.cadm-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+
+.cadm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cadm-title {
+  font-weight: 600;
+  margin: 6px 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.cadm-excerpt,
+.cadm-body {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.cadm-detail {
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--bg, #f5f6fa);
+}
+
+.cadm-reportlist {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 14px;
+}
+
+.cadm-reportlist li {
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+
+.cadm-reportdetail {
+  display: block;
+  color: var(--muted, #4b5563);
+}
+
+.cadm-resolution {
+  font-weight: 600;
+  margin: 8px 0 0;
+}
+
+.cadm-approval {
+  font-weight: 600;
+}
+
+.cadm-photos {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.cadm-photos img {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+/* ---- Etiquetas */
+.cadm-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 4px 0;
+}
+
+.cadm-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  color: #1f2937;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cadm-chip-ok {
+  background: #d3f5df;
+  color: #0b5b2a;
+}
+
+.cadm-chip-warn {
+  background: #ffe4cc;
+  color: #7a3500;
+}
+
+/* ---- Botones */
+.cadm-btn {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.cadm-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cadm-btn-primary {
+  background: var(--primary, #4c6ef5);
+  color: #fff;
+}
+
+.cadm-btn-secondary {
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  border-color: #9ca3af;
+}
+
+.cadm-btn-danger {
+  background: #b42318;
+  color: #fff;
+}
+
+.cadm-btn-ghost {
+  background: transparent;
+  color: var(--text, #1c1f26);
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+.cadm-btn-armed {
+  outline: 3px solid #f59e0b;
+  outline-offset: 1px;
+}
+
+.cadm-twotap {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cadm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cadm-linkbtn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  text-align: left;
+}
+
+.cadm-inline {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.cadm-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cadm-chip-button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #9ca3af;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.cadm-chip-button.active {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---- Avisos */
+.cadm-infobox {
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  background: #e8f0fe;
+  color: #11275c;
+  border: 1px solid #b6c9f5;
+}
+
+.cadm-infobox p {
+  margin: 0 0 6px;
+}
+
+.cadm-infobox p:last-child {
+  margin-bottom: 0;
+}
+
+.cadm-infobox-warn {
+  background: #fff4dc;
+  color: #5c3a00;
+  border-color: #f2d28b;
+}
+
+.cadm-notice {
+  margin: 6px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.cadm-notice-ok {
+  background: #d3f5df;
+  color: #0b5b2a;
+}
+
+.cadm-notice-error {
+  background: #fde2e0;
+  color: #8a1c14;
+}
+
+.cadm-loading,
+.cadm-empty {
+  margin: 8px 0;
+}
+
+/* ---- Formularios */
+.cadm-noteform,
+.cadm-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--bg, #f5f6fa);
+  border: 1px solid var(--border, #d9dee8);
+}
+
+.cadm-noteform-title {
+  margin: 0;
+  font-weight: 700;
+}
+
+.cadm .cadm-noteform input,
+.cadm .cadm-noteform textarea,
+.cadm .cadm-noteform select,
+.cadm .cadm-search input,
+.cadm .cadm-setting input {
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+
+.cadm-search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.cadm-search-row input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.cadm-setting .cadm-search-row input {
+  flex: 0 1 140px;
+}
+
+.cadm-setting-label {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.cadm-fieldset {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 8px 10px 10px;
+  min-width: 0;
+}
+
+.cadm-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.cadm-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cadm-source-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border, #d9dee8);
+}
+
+.cadm-domain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ---- Resumen */
+.cadm-shortcuts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.cadm-shortcut {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+.cadm-count {
+  min-width: 28px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #b42318;
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+}
+
+.cadm-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.cadm-metric {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.cadm-metric dt {
+  font-size: 13px;
+  color: var(--muted, #4b5563);
+}
+
+.cadm-metric dd {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.cadm-metric dd.cadm-metric-hint {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* ---- Encuestas */
+.cadm-dates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px;
+  margin: 6px 0 0;
+}
+
+.cadm-dates dt {
+  font-size: 13px;
+  color: var(--muted, #4b5563);
+}
+
+.cadm-dates dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.cadm-options {
+  margin: 6px 0;
+  padding-left: 22px;
+}
+
+.cadm-sources {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.cadm-bars {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cadm-bar-label {
+  display: block;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.cadm-bar {
+  display: block;
+  height: 10px;
+  border-radius: 6px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.cadm-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--primary, #4c6ef5);
+}
+
+/* ---- Historial */
+.cadm-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cadm-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+@media (min-width: 700px) {
+  .cadm-tab {
+    font-size: 15px;
+    padding: 8px 16px;
+  }
+}

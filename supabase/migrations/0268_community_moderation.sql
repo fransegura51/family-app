@@ -903,3 +903,34 @@ grant execute on function public.community_admin_set_featured(uuid, boolean) to 
 grant execute on function public.community_admin_list_featured() to authenticated;
 grant execute on function public.community_admin_list_removal_requests(text) to authenticated;
 grant execute on function public.community_admin_handle_removal(uuid, boolean, text) to authenticated;
+
+-- Mis solicitudes de eliminación de contenido (para enseñar su estado) y mis comentarios (para poder pedir la eliminación de uno concreto).
+create or replace function public.community_list_my_removal_requests()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', q.id, 'scope', q.scope, 'target_type', q.target_type, 'target_id', q.target_id, 'detail', q.detail,
+                                               'status', q.status, 'handled_note', q.handled_note, 'created_at', q.created_at, 'handled_at', q.handled_at) order by q.created_at desc), '[]'::jsonb)
+  from public.community_removal_requests q where q.profile_id = private.community_cp()
+$$;
+
+create or replace function public.community_list_my_comments(p_limit integer default 30, p_offset integer default 0)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('id', c.id, 'post_id', c.post_id, 'excerpt', left(c.body, 120), 'created_at', c.created_at,
+                                               'post_title', (select p.title from public.community_posts p where p.id = c.post_id)) order by c.created_at desc), '[]'::jsonb)
+  from (select * from public.community_comments x where x.author_id = private.community_cp() and x.status = 'published'
+        order by x.created_at desc limit least(greatest(coalesce(p_limit, 30), 1), 100) offset greatest(coalesce(p_offset, 0), 0)) c
+$$;
+
+revoke all on function public.community_list_my_removal_requests() from public, anon;
+revoke all on function public.community_list_my_comments(integer, integer) from public, anon;
+grant execute on function public.community_list_my_removal_requests() to authenticated;
+grant execute on function public.community_list_my_comments(integer, integer) to authenticated;

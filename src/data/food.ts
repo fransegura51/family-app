@@ -19,13 +19,22 @@ async function currentFamilyId(): Promise<string> {
 // Recetas (Skill 15)
 // ---------------------------------------------------------------------
 
-export async function listRecipes(): Promise<Recipe[]> {
-  const { data, error } = await supabase
-    .from('recipes')
-    .select('id, family_id, title, notes, image_path, tags, servings, servings_source, recipe_ingredients(id, name, quantity, unit)')
-    .order('created_at', { ascending: true })
-  if (error) throw error
-  return data.map((r) => ({
+const RECIPE_COLUMNS = 'id, family_id, title, notes, image_path, tags, servings, servings_source, recipe_ingredients(id, name, quantity, unit)'
+
+type RecipeRow = {
+  id: string
+  family_id: string
+  title: string
+  notes: string | null
+  image_path: string | null
+  tags: string[] | null
+  servings?: number | null
+  servings_source?: string | null
+  recipe_ingredients: unknown
+}
+
+function toRecipe(r: RecipeRow): Recipe {
+  return {
     id: r.id,
     familyId: r.family_id,
     title: r.title,
@@ -37,7 +46,21 @@ export async function listRecipes(): Promise<Recipe[]> {
     ingredients: (r.recipe_ingredients as { id: string; name: string; quantity: string | null; unit: string | null }[]).map(
       (i) => ({ id: i.id, name: i.name, quantity: i.quantity, unit: i.unit }),
     ),
-  }))
+  }
+}
+
+export async function listRecipes(): Promise<Recipe[]> {
+  const { data, error } = await supabase.from('recipes').select(RECIPE_COLUMNS).order('created_at', { ascending: true })
+  if (error) throw error
+  return data.map((r) => toRecipe(r as RecipeRow))
+}
+
+// Una sola receta de la familia (Comunidad: «Compartir en Comunidad» desde un enlace, sin traer todo el recetario). null si no existe o no es de la familia
+// (las políticas de acceso ya lo impiden).
+export async function getRecipeById(id: string): Promise<Recipe | null> {
+  const { data, error } = await supabase.from('recipes').select(RECIPE_COLUMNS).eq('id', id).maybeSingle()
+  if (error) throw error
+  return data ? toRecipe(data as RecipeRow) : null
 }
 
 function parseIngredientLines(lines: string[]): { name: string; quantity: string | null; unit: string | null }[] {
@@ -61,7 +84,7 @@ export async function createRecipe(input: {
   servings?: number | null
   // Texto original de la fuente («6-7 personas»). Solo se guarda junto a unas raciones.
   servingsSource?: string | null
-}): Promise<void> {
+}): Promise<string> {
   const familyId = await currentFamilyId()
   const { data: recipe, error } = await supabase
     .from('recipes')
@@ -83,6 +106,8 @@ export async function createRecipe(input: {
     const { error: ingredientsError } = await supabase.from('recipe_ingredients').insert(ingredients)
     if (ingredientsError) throw ingredientsError
   }
+  // Devuelve el id de la receta creada (Comunidad lo necesita para registrar la importación). Quien no lo usa, lo ignora igual que antes.
+  return recipe.id as string
 }
 
 // Petición real: "hay que poder editar las recetas no solo comprar o

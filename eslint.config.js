@@ -7,7 +7,7 @@ import tsPlugin from '@typescript-eslint/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default [
-  { ignores: ['dist/**', 'dev-dist/**', 'node_modules/**', 'supabase/**', '*.config.*'] },
+  { ignores: ['dist/**', 'dev-dist/**', 'node_modules/**', 'supabase/**', 'workers/**', '*.config.*'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {

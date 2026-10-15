@@ -1,0 +1,370 @@
+/* Comunidad PEPA — recetas: ficha pública, valoración, importar a la Cocina, comparar versiones y hoja de publicar.
+   Móvil primero: objetivos táctiles de al menos 44 px, sin scroll horizontal. Los colores del diff no son lo único que distingue (siempre hay una palabra). */
+
+.community-recipe-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.community-recipe-panel h3,
+.community-recipe-sheet h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
+.community-recipe-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.community-recipe-meta .muted {
+  font-size: 13px;
+}
+
+.community-recipe-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.community-recipe-tags .chip {
+  cursor: default;
+}
+
+/* Raciones con botones «−» y «+» (escalado orientativo de cantidades). */
+.community-servings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-servings button {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.community-servings-value {
+  min-width: 90px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.community-recipe-ingredients,
+.community-recipe-steps {
+  margin: 0;
+  padding-left: 22px;
+}
+
+.community-recipe-ingredients li,
+.community-recipe-steps li {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.community-recipe-steps li {
+  padding-left: 4px;
+}
+
+/* ---- Valoración con estrellas */
+.community-rating-box {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.community-rating-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+
+.community-rating-average {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.community-stars {
+  display: flex;
+  gap: 2px;
+}
+
+.community-star {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 30px;
+  line-height: 1;
+  color: #c7ccd8;
+  cursor: pointer;
+}
+
+.community-star.on {
+  color: #f5a623;
+}
+
+.community-star:focus-visible {
+  outline: 3px solid var(--primary, #4c6ef5);
+  outline-offset: 1px;
+  border-radius: 8px;
+}
+
+.community-stars-static {
+  color: #f5a623;
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+
+.community-rating-box textarea {
+  width: 100%;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.community-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.community-review {
+  border-bottom: 1px solid var(--border, #e5e8f0);
+  padding-bottom: 10px;
+}
+
+.community-review-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  font-size: 14px;
+}
+
+.community-review p {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ---- Importar a mi Cocina */
+.community-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.community-import button.primary {
+  min-height: 48px;
+}
+
+.community-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #eef3ff;
+  border: 1px solid #c9d6ff;
+  font-size: 14px;
+}
+
+.community-notice.ok {
+  background: #ecf8ef;
+  border-color: #bfe3c8;
+}
+
+/* ---- Aviso «Hay una versión nueva» (dentro de la receta de la Cocina) */
+.community-update-banner {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff7e6;
+  border: 1px solid #f3d38b;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.community-update-banner button,
+.community-update-banner a {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* ---- Comparar versiones */
+.community-compare {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.community-compare-section h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+
+.community-diff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.community-diff-item {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+  overflow-wrap: anywhere;
+}
+
+.community-diff-item.added {
+  background: #ecf8ef;
+  border-left-color: #2f9e57;
+}
+
+.community-diff-item.removed {
+  background: #fdecec;
+  border-left-color: #d64545;
+}
+
+.community-diff-item.changed {
+  background: #fff7e6;
+  border-left-color: #e0a100;
+}
+
+.community-diff-item.same {
+  background: transparent;
+  border-left-color: var(--border, #d9dee8);
+  color: var(--muted, #667);
+}
+
+.community-diff-badge {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.community-diff-from {
+  text-decoration: line-through;
+}
+
+.community-compare-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.community-compare-actions button {
+  min-height: 48px;
+}
+
+/* ---- Hoja de publicar desde la Cocina */
+.community-recipe-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.community-recipe-sheet label.community-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.community-recipe-sheet input[type='text'],
+.community-recipe-sheet select,
+.community-recipe-sheet textarea {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.community-recipe-preview {
+  border: 1px dashed var(--border, #c4cad8);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.community-recipe-preview img {
+  max-width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.community-consent {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff7e6;
+  border: 1px solid #f3d38b;
+  font-size: 14px;
+}
+
+.community-consent input[type='checkbox'] {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-top: 2px;
+}
+
+.community-recipe-sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.community-recipe-sheet-actions button {
+  min-height: 48px;
+}
+
+/* ---- Campos de receta del editor: objetivos táctiles de 44 px */
+.community-recipe-fields .recipe-row-remove {
+  width: 44px;
+  height: 44px;
+}
+
+.community-recipe-fields .recipe-step-actions .recipe-row-remove {
+  height: 40px;
+}
+
+.community-recipe-fields .chip {
+  min-height: 44px;
+}
+
+.community-recipe-fields .recipe-ing-row {
+  flex-wrap: wrap;
+}
+
+.community-recipe-fields .recipe-ing-name {
+  flex: 1 1 140px;
+}

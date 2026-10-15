@@ -19,6 +19,12 @@ insert into public.community_settings (key, value, description)
 values ('launch_enabled', '0', '1 = Comunidad abierta a todos los usuarios registrados; 0 = solo los administradores (pruebas antes del lanzamiento).')
 on conflict (key) do nothing;
 
+-- Decisión de seguridad por defecto (no está en la especificación; se puede cambiar): participar (publicar, comentar, valorar…) solo con cuentas de adultos
+-- (rol admin o adult). Las cuentas de invitado o de menor pueden LEER pero no publicar: la especificación prohíbe mostrar datos de menores y Comunidad es pública.
+insert into public.community_settings (key, value, description)
+values ('participants_adults_only', '1', '1 = solo cuentas de adultos (admin/adult) pueden participar; 0 = también invitados y menores con cuenta.')
+on conflict (key) do nothing;
+
 create or replace function private.community_launched()
 returns boolean
 language sql
@@ -46,6 +52,10 @@ begin
   end if;
   if not private.community_launched() and not private.community_is_admin() then
     raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
+  if private.community_setting_int('participants_adults_only', 1) = 1
+     and not exists (select 1 from public.profiles pr where pr.id = (select auth.uid()) and pr.role in ('admin', 'adult')) then
+    raise exception 'ADULT_REQUIRED' using errcode = 'P0001';
   end if;
   select cp.id, cp.rules_accepted_at into v_cp, v_accepted from public.community_profiles cp where cp.user_id = (select auth.uid()) and cp.deleted_at is null;
   if v_cp is null or v_accepted is null then

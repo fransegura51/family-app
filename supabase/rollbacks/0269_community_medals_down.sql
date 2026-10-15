@@ -1,0 +1,23 @@
+-- Deshace 0269_community_medals.sql (generado a partir de la migración; revisar antes de usar). Borra los datos de Comunidad que contuviera.
+do $$ begin if exists (select 1 from cron.job where jobname = 'community-process-medals') then perform cron.unschedule('community-process-medals'); end if; end $$;
+drop trigger if exists community_posts_dirty on public.community_posts;
+drop trigger if exists community_comments_dirty on public.community_comments;
+drop trigger if exists community_post_likes_dirty on public.community_post_likes;
+drop trigger if exists community_saves_dirty on public.community_saves;
+drop trigger if exists community_comment_likes_dirty on public.community_comment_likes;
+drop trigger if exists community_ratings_dirty on public.community_recipe_ratings;
+drop trigger if exists community_imports_dirty on public.community_recipe_imports;
+drop function if exists private.community_dirty_recipe_target();
+drop function if exists private.community_dirty_comment_likes();
+drop function if exists private.community_dirty_post_target();
+drop function if exists private.community_dirty_comments();
+drop function if exists private.community_dirty_posts();
+drop function if exists private.community_mark_dirty(uuid);
+drop function if exists private.community_process_medals();
+drop function if exists public.community_get_medals(uuid);
+drop function if exists private.community_constancy_level(uuid);
+drop function if exists private.community_recompute_medals(uuid);
+drop function if exists private.community_medal_status(uuid);
+drop function if exists private.community_medal_catalog();
+drop table if exists public.community_medal_dirty cascade;
+drop table if exists public.community_medals cascade;

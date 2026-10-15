@@ -8,7 +8,15 @@ export interface NotificationPrefs {
   personalCommunityMode: 'any' | 'window'
   personalWindowStart: string
   personalWindowEnd: string
+  // Sugerencias de Comunidad («Para ti en Comunidad»): activadas por defecto, una cada N horas (solo salen entre 08:00 y 21:00 de la zona de la persona).
+  communitySuggestionsEnabled: boolean
+  communitySuggestionEveryHours: number
 }
+
+// Límites que también impone la base de datos (check 6-720) y valor por defecto (≈ una cada 48 h, COM-144).
+export const COMMUNITY_SUGGESTION_MIN_HOURS = 6
+export const COMMUNITY_SUGGESTION_MAX_HOURS = 720
+export const COMMUNITY_SUGGESTION_DEFAULT_HOURS = 48
 
 // Quien ya existe empieza en Europe/Madrid, a las 08:00, con el resumen activado.
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
@@ -18,6 +26,8 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   personalCommunityMode: 'any',
   personalWindowStart: '08:00',
   personalWindowEnd: '21:00',
+  communitySuggestionsEnabled: true,
+  communitySuggestionEveryHours: COMMUNITY_SUGGESTION_DEFAULT_HOURS,
 }
 
 // null = el comportamiento de siempre (asignados + administradores) hasta que un administrador elija otro modo.

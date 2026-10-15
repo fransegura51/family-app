@@ -261,3 +261,34 @@ export const adminEditProposal = (id: string, title: string, body: string, paylo
 export const adminApproveProposal = (id: string) => rpc<Record<string, unknown>>('community_admin_approve_proposal', { p_id: id })
 export const adminRejectProposal = (id: string, note: string | null) => rpc<void>('community_admin_reject_proposal', { p_id: id, p_note: note })
 export const adminSetLaunch = (enabled: boolean) => rpc<void>('community_admin_set_launch', { p_enabled: enabled })
+
+// ---- Preferencias de lectura (se sincronizan entre dispositivos)
+export interface CommunityUserPrefs {
+  commentOrder: CommentOrder
+  foldReadComments: boolean
+}
+export const getCommunityUserPrefs = () => rpc<CommunityUserPrefs>('community_get_user_prefs')
+export const setCommunityUserPrefs = (p: { commentOrder?: CommentOrder; foldReadComments?: boolean }) =>
+  rpc<CommunityUserPrefs>('community_set_user_prefs', { p_comment_order: p.commentOrder ?? null, p_fold_read: p.foldReadComments ?? null })
+
+// Mis solicitudes de eliminación y mis comentarios (para pedir la eliminación de uno concreto)
+export interface MyRemovalRequest {
+  id: string
+  scope: 'all_my_content' | 'specific'
+  targetType: 'post' | 'comment' | null
+  targetId: string | null
+  detail: string | null
+  status: 'open' | 'done' | 'rejected'
+  handledNote: string | null
+  createdAt: string
+  handledAt: string | null
+}
+export interface MyCommentItem {
+  id: string
+  postId: string
+  excerpt: string
+  createdAt: string
+  postTitle: string | null
+}
+export const listMyRemovalRequests = () => rpc<MyRemovalRequest[]>('community_list_my_removal_requests')
+export const listMyComments = (limit = 30, offset = 0) => rpc<MyCommentItem[]>('community_list_my_comments', { p_limit: limit, p_offset: offset })

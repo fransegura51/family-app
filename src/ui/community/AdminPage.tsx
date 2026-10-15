@@ -1,4 +1,97 @@
-// PROVISIONAL: pantalla pendiente de construir (ver docs/comunidad/PROGRESO.md). Se sustituye entera.
+import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { adminOverview } from '@/data/community'
+import { ADMIN_TABS, ADMIN_TEXT, parseAdminTab, toAdminOverview, type AdminTabId, type ModerationSection } from '@/domain/communityAdmin'
+import { useCommunity } from '@/ui/community/CommunityProvider'
+import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
+import { pageCrumbs, paths } from '@/ui/community/communityNav'
+import { AdminLoading, AdminTabs } from '@/ui/community/admin/AdminShared'
+import { FeaturedTab } from '@/ui/community/admin/FeaturedTab'
+import { LogTab } from '@/ui/community/admin/LogTab'
+import { ModerationTab } from '@/ui/community/admin/ModerationTab'
+import { OfficialTab } from '@/ui/community/admin/OfficialTab'
+import { OverviewTab } from '@/ui/community/admin/OverviewTab'
+import { PollsTab } from '@/ui/community/admin/PollsTab'
+import { SettingsTab } from '@/ui/community/admin/SettingsTab'
+import { UsersTab } from '@/ui/community/admin/UsersTab'
+import { useAdminData } from '@/ui/community/admin/useAdminData'
+import '@/ui/community/communityAdmin.css'
+
+// Centro de Mando de Comunidad (solo los dos administradores de Comunidad; el servidor lo impone con NOT_ADMIN).
+// Si quien entra no es administrador, se enseña un aviso y NO se llama al servidor.
 export function AdminPage() {
-  return <p className="muted">En construcción.</p>
+  const { status, loading } = useCommunity()
+  if (loading) return <AdminLoading />
+  if (!status?.isAdmin) return <NotAdmin />
+  return <AdminCenter />
+}
+
+export function NotAdmin() {
+  return (
+    <section className="cadm" aria-labelledby="cadm-notadmin">
+      <Breadcrumbs crumbs={pageCrumbs('Administración')} />
+      <h1 id="cadm-notadmin">{ADMIN_TEXT.notAdmin}</h1>
+      <p className="muted">Si crees que deberías tener acceso, habla con la administración de Comunidad.</p>
+      <Link to={paths.home} className="link-button">
+        Volver a la portada de Comunidad
+      </Link>
+    </section>
+  )
+}
+
+const ID_BASE = 'cadm'
+
+export function AdminCenter() {
+  const [params, setParams] = useSearchParams()
+  const active = parseAdminTab(params.get('tab'))
+  // Cada pestaña se monta la primera vez que se abre y se conserva (oculta) después: volver a ella no repite la consulta al servidor.
+  const [visited, setVisited] = useState<AdminTabId[]>([active])
+  const [section, setSection] = useState<ModerationSection>('denuncias')
+
+  // El resumen se pide una vez al entrar; solo se vuelve a pedir si, mientras tanto, se ha cambiado algo que lo afecta (denuncias, expulsiones…).
+  const overviewLoader = useCallback(async () => toAdminOverview(await adminOverview()), [])
+  const overview = useAdminData(overviewLoader)
+  const dirty = useRef(false)
+  const markDirty = useCallback(() => {
+    dirty.current = true
+  }, [])
+
+  const select = (tab: AdminTabId) => {
+    setVisited((v) => (v.includes(tab) ? v : [...v, tab]))
+    setParams({ tab }, { replace: true })
+    if (tab === 'resumen' && dirty.current) {
+      dirty.current = false
+      overview.reload()
+    }
+  }
+  const go = (tab: AdminTabId, sec?: ModerationSection) => {
+    if (sec) setSection(sec)
+    select(tab)
+  }
+
+  const content: Record<AdminTabId, ReactNode> = {
+    resumen: <OverviewTab overview={overview.data} loading={overview.loading} error={overview.error} onReload={overview.reload} onGo={go} />,
+    moderacion: <ModerationTab section={section} onSection={setSection} onChanged={markDirty} />,
+    usuarios: <UsersTab onChanged={markDirty} />,
+    oficial: <OfficialTab onChanged={markDirty} />,
+    encuestas: <PollsTab onGo={go} />,
+    destacados: <FeaturedTab onChanged={markDirty} />,
+    configuracion: <SettingsTab onChanged={markDirty} />,
+    historial: <LogTab />,
+  }
+
+  return (
+    <section className="cadm" aria-labelledby="cadm-title">
+      <Breadcrumbs crumbs={pageCrumbs('Administración')} />
+      <h1 id="cadm-title">Centro de Mando de Comunidad</h1>
+      <p className="muted cadm-intro">{ADMIN_TEXT.twoAdmins}</p>
+      <AdminTabs active={active} onSelect={select} idBase={ID_BASE} />
+      {ADMIN_TABS.filter((t) => t.id === active || visited.includes(t.id)).map((t) => (
+        <div key={t.id} role="tabpanel" id={`${ID_BASE}-panel-${t.id}`} aria-labelledby={`${ID_BASE}-tab-${t.id}`} hidden={t.id !== active} tabIndex={0} className="cadm-panel">
+          <h2 className="cadm-panel-title">{t.label}</h2>
+          {content[t.id]}
+        </div>
+      ))}
+    </section>
+  )
 }

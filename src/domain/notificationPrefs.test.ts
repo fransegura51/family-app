@@ -1,6 +1,16 @@
 // Ajustes de avisos por persona: valores por defecto, validación de horas y zonas.
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_NOTIFICATION_PREFS, detectDeviceTimezone, isValidTime, isValidTimezone, listTimezones, timezoneLabel } from '@/domain/notificationPrefs'
+import {
+  COMMUNITY_SUGGESTION_DEFAULT_HOURS,
+  COMMUNITY_SUGGESTION_MAX_HOURS,
+  COMMUNITY_SUGGESTION_MIN_HOURS,
+  DEFAULT_NOTIFICATION_PREFS,
+  detectDeviceTimezone,
+  isValidTime,
+  isValidTimezone,
+  listTimezones,
+  timezoneLabel,
+} from '@/domain/notificationPrefs'
 
 describe('valores por defecto', () => {
   it('quien ya existe empieza en Europe/Madrid, resumen activado a las 08:00', () => {
@@ -10,6 +20,13 @@ describe('valores por defecto', () => {
   })
   it('los avisos personales de Comunidad empiezan «a cualquier hora»', () => {
     expect(DEFAULT_NOTIFICATION_PREFS.personalCommunityMode).toBe('any')
+  })
+  it('las sugerencias de Comunidad empiezan activadas, una cada 48 h, con los límites de la base (6-720)', () => {
+    expect(DEFAULT_NOTIFICATION_PREFS.communitySuggestionsEnabled).toBe(true)
+    expect(DEFAULT_NOTIFICATION_PREFS.communitySuggestionEveryHours).toBe(48)
+    expect(COMMUNITY_SUGGESTION_DEFAULT_HOURS).toBe(48)
+    expect(COMMUNITY_SUGGESTION_MIN_HOURS).toBe(6)
+    expect(COMMUNITY_SUGGESTION_MAX_HOURS).toBe(720)
   })
 })
 

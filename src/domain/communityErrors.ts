@@ -9,6 +9,7 @@ export type CommunityErrorCode =
   | 'RULES_REQUIRED'
   | 'BANNED'
   | 'NOT_LAUNCHED'
+  | 'ADULT_REQUIRED'
   | 'RATE_LIMIT'
   | 'NOT_AVAILABLE'
   | 'NOT_ADMIN'
@@ -38,6 +39,7 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   RULES_REQUIRED: 'Tienes que aceptar las normas de Comunidad para participar.',
   BANNED: 'Ahora mismo no puedes participar en Comunidad. Puedes seguir leyendo.',
   NOT_LAUNCHED: 'Comunidad todavía no está abierta. ¡Pronto!',
+  ADULT_REQUIRED: 'Para participar en Comunidad hace falta una cuenta de adulto. Puedes leer todo lo que quieras.',
   RATE_LIMIT: 'Vas muy rápido. Espera un poco y vuelve a intentarlo.',
   NOT_AVAILABLE: 'Esto ya no está disponible.',
   NOT_ADMIN: 'Esta acción es solo para la administración de Comunidad.',

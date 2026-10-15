@@ -1,0 +1,5 @@
+# Copia este archivo como `.dev.vars` (ese NO se sube al repositorio) y rellena la clave pública.
+# La encuentras en Supabase → Project Settings → API → «anon public» (o «publishable»).
+SUPABASE_ANON_KEY=PON_AQUI_LA_CLAVE_PUBLICA
+# Para probar en local con wrangler dev puedes sobrescribir las demás variables:
+PUBLIC_BASE=http://localhost:8787/c

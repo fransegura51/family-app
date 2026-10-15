@@ -613,6 +613,11 @@ begin
     raise exception 'TEXT_TOO_LONG' using errcode = 'P0001';
   end if;
   if p_id is not null then
+    -- Las fotos que se quitan del borrador y no usa ninguna publicación se encolan para borrar del almacenamiento.
+    perform private.community_queue_media_deletion(array(
+      select x from public.community_drafts d, jsonb_array_elements_text(d.photos) x
+      where d.id = p_id and d.profile_id = v_cp and not (x = any (v_paths))
+        and not exists (select 1 from public.community_post_photos ph where ph.storage_path = x)));
     update public.community_drafts
     set kind = p_kind, section = p_section, topic_id = p_topic, title = coalesce(p_title, ''), body = coalesce(p_body, ''),
         photos = coalesce(p_photos, '[]'::jsonb), recipe = p_recipe, saved_at = now()

@@ -1,0 +1,28 @@
+-- Deshace 0265_community_content.sql (generado a partir de la migración; revisar antes de usar). Borra los datos de Comunidad que contuviera.
+drop function if exists public.community_get_post(uuid);
+drop function if exists private.community_post_detail(public.community_posts, uuid);
+drop function if exists public.community_search_suggest(text);
+drop function if exists public.community_similar_posts(text, text, text);
+drop function if exists public.community_list_posts(text, text, text, text, integer, integer, text, uuid, boolean, boolean);
+drop function if exists private.community_card(public.community_posts, uuid);
+drop function if exists public.community_delete_post(uuid);
+drop function if exists public.community_update_post(uuid, text, text, text, text[], jsonb);
+drop function if exists public.community_create_post(text, text, text, text, text, text[], jsonb, uuid);
+drop function if exists private.community_clean_recipe(jsonb);
+drop function if exists private.community_rate_check(uuid, text);
+drop function if exists public.community_list_topics();
+drop function if exists public.community_set_alias(text, text, boolean);
+drop function if exists public.community_get_my_profile();
+drop function if exists private.community_plain_excerpt(text);
+drop function if exists private.community_queue_media_deletion(text[]);
+drop function if exists private.community_check_photo_paths(uuid, text[]);
+drop function if exists private.community_clean_text(text, integer, boolean);
+drop function if exists private.community_blocked_either(uuid, uuid);
+drop function if exists private.community_require_participant();
+drop function if exists private.community_ban_state(uuid);
+drop function if exists private.community_is_admin();
+drop function if exists private.community_cp();
+drop function if exists private.community_setting_int(text, integer);
+drop table if exists public.community_post_visits cascade;
+drop table if exists public.community_favorite_topics cascade;
+drop table if exists public.community_blocked_domains cascade;

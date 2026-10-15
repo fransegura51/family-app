@@ -265,6 +265,14 @@ begin
   if (select auth.uid()) is null then
     raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
   end if;
+  -- Mismas puertas que para participar (interruptor de lanzamiento y solo adultos; ver 0271): ni siquiera se crea el alias si no se puede participar.
+  if not private.community_launched() and not private.community_is_admin() then
+    raise exception 'NOT_LAUNCHED' using errcode = 'P0001';
+  end if;
+  if private.community_setting_int('participants_adults_only', 1) = 1
+     and not exists (select 1 from public.profiles pr where pr.id = (select auth.uid()) and pr.role in ('admin', 'adult')) then
+    raise exception 'ADULT_REQUIRED' using errcode = 'P0001';
+  end if;
   if v_alias !~ '^[A-Za-zÀ-ÿ0-9_. -]{3,24}$' then
     raise exception 'ALIAS_INVALID' using errcode = 'P0001';
   end if;
@@ -774,6 +782,7 @@ declare
   v_photos jsonb;
   v_recipe jsonb;
   v_me_rating integer;
+  v_me_review text;
   v_imported boolean := false;
   v_family uuid;
 begin
@@ -784,13 +793,13 @@ begin
   into v_photos from public.community_post_photos ph where ph.post_id = p.id;
   if p.recipe_id is not null then
     if p_viewer is not null then
-      select r.stars into v_me_rating from public.community_recipe_ratings r where r.recipe_id = p.recipe_id and r.profile_id = p_viewer;
+      select r.stars, r.review into v_me_rating, v_me_review from public.community_recipe_ratings r where r.recipe_id = p.recipe_id and r.profile_id = p_viewer;
       select pr.family_id into v_family from public.profiles pr where pr.id = (select auth.uid());
       v_imported := v_family is not null and exists (select 1 from public.community_recipe_imports i where i.recipe_id = p.recipe_id and i.family_id = v_family);
     end if;
     select jsonb_build_object(
       'id', r.id, 'title', r.title, 'servings', r.servings, 'ingredients', r.ingredients, 'steps', r.steps, 'tags', to_jsonb(r.tags),
-      'version', r.version, 'updated_at', r.updated_at, 'my_rating', v_me_rating, 'imported_by_my_family', v_imported)
+      'version', r.version, 'updated_at', r.updated_at, 'my_rating', v_me_rating, 'my_review', v_me_review, 'imported_by_my_family', v_imported)
     into v_recipe from public.community_recipes r where r.id = p.recipe_id;
   end if;
   return v_card || jsonb_build_object(

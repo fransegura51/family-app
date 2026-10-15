@@ -145,6 +145,8 @@ export interface PublicRecipe {
   version: number
   updatedAt: string
   myRating: number | null
+  // Mi reseña de esta receta (para no perderla al cambiar la valoración).
+  myReview?: string | null
   importedByMyFamily: boolean
 }
 

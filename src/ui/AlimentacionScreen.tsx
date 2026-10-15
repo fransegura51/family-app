@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { eventMenuPath } from '@/domain/eventMenuHub'
 import { paletteByName, pastelPalette } from '@/domain/colors'
@@ -49,6 +49,10 @@ import { errorMessage } from '@/domain/errorMessage'
 import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
+// Comunidad: «Compartir en Comunidad» (hoja para publicar una copia pública, solo se descarga al pulsar) y el aviso «Hay una versión nueva» de las recetas
+// que se guardaron desde Comunidad. No cambian nada de lo que ya hacía la Cocina.
+import { RecipeUpdateBanner } from '@/ui/community/recipes/RecipeUpdateBanner'
+const RecipePublishHost = lazy(() => import('@/ui/community/recipes/RecipePublishSheet').then((m) => ({ default: m.RecipePublishHost })))
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Cocinar'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -780,6 +784,8 @@ function RecipesTab() {
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Recipe | null>(null)
   const [adding, setAdding] = useState(false)
+  // Receta que se está compartiendo en Comunidad (hoja de publicar con vista previa y consentimiento).
+  const [sharing, setSharing] = useState<Recipe | null>(null)
   // Llegada desde «Menú del evento» (recipeLinkPath): abre ESA receta una sola vez y recuerda de qué evento viene.
   const [searchParams, setSearchParams] = useSearchParams()
   const requestedRecipeId = searchParams.get('receta')
@@ -1062,6 +1068,17 @@ function RecipesTab() {
                 />
               </div>
             </div>
+            {/* Comunidad: si la receta se guardó desde Comunidad y hay versión nueva, aviso con comparación (nunca cambia nada solo). */}
+            <RecipeUpdateBanner
+              recipe={viewing}
+              onUpdated={() => {
+                closeViewer()
+                reload()
+              }}
+            />
+            <button type="button" className="link-button" style={{ minHeight: 44, alignSelf: 'flex-start' }} onClick={() => setSharing(viewing)}>
+              🌍 Compartir en Comunidad
+            </button>
             {/* Raciones de la receta (dato estructurado). Si no hay, no se pinta nada: ni fila vacía ni «desconocidas». */}
             {(() => {
               const view = recipeServingsView(viewing.servings, viewing.servingsSource)
@@ -1136,6 +1153,12 @@ function RecipesTab() {
           }}
           onError={(msg) => setError(msg)}
         />
+      )}
+
+      {sharing && (
+        <Suspense fallback={null}>
+          <RecipePublishHost recipe={sharing} onClose={() => setSharing(null)} />
+        </Suspense>
       )}
     </div>
   )

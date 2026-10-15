@@ -1,0 +1,369 @@
+/* Comunidad PEPA — perfil público, Mi perfil y ajustes, medallas y novedades. Móvil primero: objetivos táctiles >= 44 px y sin scroll horizontal. */
+
+.community-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #e7f0ff;
+  color: #1c4ea8;
+  font-weight: 700;
+  line-height: 1;
+}
+.community-avatar-sm {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+}
+.community-avatar-md {
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+}
+.community-avatar-lg {
+  width: 72px;
+  height: 72px;
+  font-size: 36px;
+}
+
+/* ---- Perfil público */
+.community-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 8px 0;
+}
+.community-profile-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.community-profile-head p {
+  margin: 2px 0;
+}
+.community-profile-stats {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 10px 0;
+  padding: 0;
+}
+.community-profile-stats li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #e3e7ef);
+  background: var(--card-bg, #fff);
+  text-align: center;
+  font-size: 13px;
+}
+.community-profile-stats strong {
+  font-size: 22px;
+}
+.community-profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.community-profile-actions button {
+  min-height: 44px;
+}
+.community-profile-actions.secondary {
+  gap: 16px;
+}
+.community-profile-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+.community-profile-mode select {
+  min-height: 44px;
+}
+.community-profile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+.community-profile-tabs button {
+  min-height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  color: inherit;
+  padding: 0 16px;
+}
+.community-profile-tabs button.active {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+}
+
+.community-medal-chips {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 0;
+}
+.community-medal-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #fff1cc;
+  color: #6b4500;
+  font-size: 14px;
+  font-weight: 600;
+}
+.community-constancy-line {
+  font-weight: 600;
+  margin: 8px 0;
+}
+
+/* ---- Avisos amables (pausa de acceso, medallas en pausa) */
+.community-notice {
+  margin: 10px 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff7e0;
+  border: 1px solid #f0d58c;
+  color: #3d2f00;
+  font-size: 15px;
+}
+.community-notice p {
+  margin: 6px 0;
+}
+.community-notice a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* ---- Mi perfil y ajustes */
+.community-settings-section {
+  margin: 10px 0;
+}
+.community-settings-section h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.community-settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.community-settings-section > div {
+  margin-top: 8px;
+}
+.community-settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 8px 0;
+}
+.community-settings-links button {
+  min-height: 44px;
+}
+.community-people-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.community-people-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #e3e7ef);
+}
+.community-people-list select,
+.community-people-list button {
+  min-height: 44px;
+}
+.community-person-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  flex: 1 1 140px;
+  min-width: 0;
+  color: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.community-topic-group,
+.community-notice-group,
+.community-report-reasons {
+  border: 1px solid var(--border, #e3e7ef);
+  border-radius: 12px;
+  margin: 10px 0;
+  padding: 8px 12px;
+}
+.community-topic-group .checkbox-label,
+.community-notice-group .checkbox-label,
+.community-report-reasons .checkbox-label {
+  min-height: 44px;
+}
+.community-window-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+.community-window-fields input,
+.community-window-fields button {
+  min-height: 44px;
+}
+.primary.danger {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+/* ---- Medallas */
+.community-medal-list {
+  list-style: none;
+  margin: 8px 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.community-medal-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--border, #e3e7ef);
+  background: var(--card-bg, #fff);
+}
+.community-medal-card.earned {
+  border-color: #e6c35c;
+  background: #fffaf0;
+}
+.community-medal-icon {
+  font-size: 28px;
+  line-height: 1.2;
+}
+.community-medal-text {
+  flex: 1;
+  min-width: 0;
+}
+.community-medal-text h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+}
+.community-medal-text p {
+  margin: 2px 0;
+  font-size: 14px;
+}
+.community-medal-status {
+  color: var(--muted, #6b7280);
+  font-weight: 600;
+}
+.community-progress {
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: #e5e7ee;
+  overflow: hidden;
+}
+.community-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary, #4c6ef5);
+}
+.community-constancy-rule {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.community-constancy-rule li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #e3e7ef);
+  font-size: 14px;
+}
+.community-constancy-rule li.current {
+  border-color: var(--primary, #4c6ef5);
+  background: #eef2ff;
+  color: #1c2f7a;
+}
+
+/* ---- Novedades */
+.community-news-summary {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+.community-news-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.community-news-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border, #e3e7ef);
+  background: var(--card-bg, #fff);
+  color: inherit;
+  text-decoration: none;
+}
+.community-news-item:hover {
+  border-color: var(--primary, #4c6ef5);
+}
+.community-news-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.community-news-count {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--primary, #4c6ef5);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+.community-news-empty {
+  text-align: center;
+}
+.community-news-empty-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 6px 0;
+}

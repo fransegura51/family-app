@@ -1,0 +1,36 @@
+-- Deshace 0270_community_official.sql (generado a partir de la migración; revisar antes de usar). Borra los datos de Comunidad que contuviera.
+do $$ begin if exists (select 1 from cron.job where jobname = 'community-run-polls') then perform cron.unschedule('community-run-polls'); end if; end $$;
+drop trigger if exists community_comments_pepa_mention on public.community_comments;
+drop function if exists public.community_service_pepa_mentions();
+drop function if exists public.community_service_pepa_comment(uuid, text, text, uuid);
+drop function if exists public.community_service_pepa_candidates();
+drop function if exists private.community_detect_pepa_mention();
+drop function if exists public.community_request_summary_refresh(uuid);
+drop function if exists public.community_service_save_summary(uuid, text, integer);
+drop function if exists public.community_service_summary_input(uuid, boolean);
+drop function if exists public.community_get_summary(uuid);
+drop function if exists public.community_public_get_poll(uuid);
+drop function if exists public.community_vote_poll(uuid, integer);
+drop function if exists public.community_get_poll(uuid);
+drop function if exists private.community_poll_json(public.community_polls, uuid);
+drop function if exists private.community_run_polls();
+drop function if exists public.community_admin_reject_proposal(uuid, text);
+drop function if exists public.community_admin_approve_proposal(uuid);
+drop function if exists public.community_admin_edit_proposal(uuid, text, text, jsonb, text);
+drop function if exists public.community_admin_list_proposals(text);
+drop function if exists public.community_service_create_proposals(date, jsonb);
+drop function if exists private.community_publish_item(uuid);
+drop function if exists private.community_poll_window(timestamptz);
+drop table if exists public.community_pepa_mentions cascade;
+drop table if exists public.community_pepa_activity cascade;
+drop table if exists public.community_post_summaries cascade;
+drop table if exists public.community_poll_votes cascade;
+drop table if exists public.community_polls cascade;
+drop table if exists public.community_official_item_versions cascade;
+drop table if exists public.community_official_items cascade;
+alter table public.community_posts drop constraint if exists community_posts_official_item_fk;
+alter table public.community_posts drop constraint if exists community_posts_official_kinds;
+-- Restaurar el tipo de publicación original solo si no hay publicaciones oficiales (encuesta/artículo); si las hay, borrarlas antes.
+delete from public.community_posts where kind in ('encuesta', 'articulo');
+alter table public.community_posts drop constraint if exists community_posts_kind_check;
+alter table public.community_posts add constraint community_posts_kind_check check (kind in ('receta', 'pregunta', 'consejo', 'anecdota'));

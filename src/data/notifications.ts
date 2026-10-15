@@ -83,9 +83,11 @@ interface PrefsRow {
   personal_community_mode: string
   personal_window_start: string
   personal_window_end: string
+  community_suggestions_enabled: boolean
+  community_suggestion_every_hours: number
 }
 
-const PREFS_COLUMNS = 'timezone, daily_summary_enabled, daily_summary_time, personal_community_mode, personal_window_start, personal_window_end'
+const PREFS_COLUMNS = 'timezone, daily_summary_enabled, daily_summary_time, personal_community_mode, personal_window_start, personal_window_end, community_suggestions_enabled, community_suggestion_every_hours'
 
 // Las horas llegan como «08:00:00»; la app las usa como «08:00».
 function hhmm(value: string): string {
@@ -104,6 +106,8 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
     personalCommunityMode: row.personal_community_mode === 'window' ? 'window' : 'any',
     personalWindowStart: hhmm(row.personal_window_start),
     personalWindowEnd: hhmm(row.personal_window_end),
+    communitySuggestionsEnabled: row.community_suggestions_enabled ?? DEFAULT_NOTIFICATION_PREFS.communitySuggestionsEnabled,
+    communitySuggestionEveryHours: row.community_suggestion_every_hours ?? DEFAULT_NOTIFICATION_PREFS.communitySuggestionEveryHours,
   }
 }
 
@@ -118,6 +122,8 @@ export async function saveNotificationPrefs(patch: Partial<NotificationPrefs>): 
   if (patch.personalCommunityMode !== undefined) row.personal_community_mode = patch.personalCommunityMode
   if (patch.personalWindowStart !== undefined) row.personal_window_start = patch.personalWindowStart
   if (patch.personalWindowEnd !== undefined) row.personal_window_end = patch.personalWindowEnd
+  if (patch.communitySuggestionsEnabled !== undefined) row.community_suggestions_enabled = patch.communitySuggestionsEnabled
+  if (patch.communitySuggestionEveryHours !== undefined) row.community_suggestion_every_hours = patch.communitySuggestionEveryHours
   const { error } = await supabase.from('user_notification_prefs').upsert(row, { onConflict: 'profile_id' })
   if (error) throw error
 }

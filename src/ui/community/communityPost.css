@@ -1,0 +1,681 @@
+/* Comunidad PEPA — página de una publicación y su conversación (acciones, galería, encuesta, resumen, comentarios, campo para comentar, ventanas).
+   Móvil primero: objetivos táctiles de al menos 44 px y nada que obligue a desplazarse de lado. */
+
+.community-post-page {
+  display: block;
+  padding-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.community-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Cabecera de la publicación */
+.community-post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
+.community-post-title {
+  margin: 4px 0 6px;
+  font-size: 24px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.community-post-author {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.community-post-body {
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 8px 0 12px;
+}
+
+.community-notice {
+  background: #fff7e0;
+  border: 1px solid #f0d58c;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+/* ---- Fotos */
+.community-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.community-gallery.single {
+  grid-template-columns: 1fr;
+}
+
+.community-gallery-item {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #eceef3;
+  cursor: zoom-in;
+  min-height: 44px;
+}
+
+.community-gallery-item img {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+}
+
+.community-gallery.single .community-gallery-item img {
+  height: auto;
+  max-height: 420px;
+  object-fit: contain;
+}
+
+.community-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(10, 12, 20, 0.88);
+  padding: 12px;
+}
+
+.community-lightbox-img {
+  max-width: 100%;
+  max-height: 78vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.community-lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 0;
+  background: #fff;
+  color: #1c1f26;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.community-lightbox-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: #fff;
+}
+
+.community-lightbox-nav button {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 999px;
+  border: 0;
+  background: #fff;
+  color: #1c1f26;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.community-lightbox-nav button:disabled {
+  opacity: 0.4;
+}
+
+/* ---- Acciones */
+.community-actions {
+  margin: 12px 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--border, #e5e7eb);
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.community-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.community-action,
+.community-action-static {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.community-action-static {
+  border-color: transparent;
+  cursor: default;
+}
+
+.community-action.active {
+  border-color: var(--primary, #4c6ef5);
+  background: #eef2ff;
+}
+
+.community-follow-mode select,
+.community-order select {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  padding: 0 10px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+}
+
+.community-share-manual {
+  display: block;
+  font-size: 14px;
+  margin: 6px 0;
+}
+
+.community-share-manual input {
+  width: 100%;
+  min-height: 44px;
+}
+
+.community-menu {
+  position: relative;
+}
+
+.community-menu-list {
+  position: absolute;
+  z-index: 35;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.community-menu-list > button,
+.community-menu-list > a,
+.community-menu-list .community-menu-danger {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, #1c1f26);
+  font-size: 15px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.community-menu-list > button:hover,
+.community-menu-list > a:hover {
+  background: #f3f4f7;
+}
+
+.community-menu-list .community-menu-danger {
+  color: #b42318;
+}
+
+.community-menu-list .confirm-delete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+}
+
+/* ---- Denunciar */
+.community-report-reasons {
+  border: 0;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.community-report-reason {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.community-report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---- Encuesta oficial */
+.community-poll {
+  margin: 12px 0;
+}
+
+.community-poll-when {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--muted, #6b7280);
+}
+
+.community-poll-question {
+  margin: 4px 0 10px;
+  font-size: 18px;
+}
+
+.community-poll-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.community-poll-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.community-poll-results,
+.community-poll-plain {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.community-poll-plain li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.community-poll-results li {
+  margin-bottom: 10px;
+}
+
+.community-poll-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 15px;
+}
+
+.community-poll-bar {
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: #eceef3;
+  overflow: hidden;
+}
+
+.community-poll-bar span {
+  display: block;
+  height: 100%;
+  background: var(--primary, #4c6ef5);
+}
+
+.community-poll-results li.mine .community-poll-bar span {
+  background: #2f9e44;
+}
+
+.community-poll-note,
+.community-sources-note {
+  font-size: 13px;
+}
+
+/* ---- Fuentes del artículo */
+.community-sources {
+  margin: 12px 0;
+}
+
+.community-sources h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.community-sources h3 {
+  margin: 10px 0 2px;
+  font-size: 15px;
+}
+
+.community-sources-list {
+  padding-left: 18px;
+  margin: 0;
+}
+
+.community-sources-list li {
+  margin-bottom: 8px;
+}
+
+/* ---- Resumen de Pepa */
+.community-summary {
+  margin: 12px 0;
+  border-left: 4px solid var(--primary, #4c6ef5);
+}
+
+.community-summary-title {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.community-summary-text {
+  margin: 0 0 6px;
+  white-space: pre-line;
+  line-height: 1.45;
+}
+
+.community-summary-meta {
+  font-size: 13px;
+  margin: 4px 0 8px;
+}
+
+.community-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---- Conversación */
+.community-comments {
+  margin-top: 8px;
+}
+
+.community-conversation-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.community-conversation-bar h2 {
+  margin: 0;
+  font-size: 19px;
+  flex: 1 1 auto;
+}
+
+.community-comment-list,
+.community-replies {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.community-comment {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border, #eceef3);
+}
+
+.community-comment-card {
+  padding: 2px 0;
+  border-radius: 10px;
+}
+
+.community-comment.is-new > .community-comment-card {
+  border-left: 3px solid var(--primary, #4c6ef5);
+  padding-left: 8px;
+}
+
+.community-comment.is-target > .community-comment-card {
+  background: #fff7e0;
+}
+
+/* Un solo nivel visual de sangría, aunque se responda a una respuesta. */
+.community-replies {
+  margin: 8px 0 0 14px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border, #dfe3ec);
+}
+
+.community-replies .community-comment {
+  border-bottom: 0;
+  padding: 6px 0;
+}
+
+.community-replies-toggle {
+  margin-left: 14px;
+  min-height: 44px;
+}
+
+.community-comment-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.community-comment-avatar {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.community-comment-who {
+  font-size: 14px;
+}
+
+.community-comment-replyto {
+  margin: 2px 0 0 30px;
+  font-size: 13px;
+}
+
+.community-comment-body {
+  margin: 4px 0 4px 30px;
+  line-height: 1.45;
+}
+
+.community-comment-photo {
+  display: block;
+  margin: 4px 0 4px 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #eceef3;
+  cursor: zoom-in;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.community-comment-photo img {
+  display: block;
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+}
+
+.community-comment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: 22px;
+}
+
+.community-comment-actions .community-action,
+.community-comment-actions .community-action-static {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.community-comment-edit {
+  margin: 4px 0 4px 30px;
+}
+
+.community-comment-edit textarea {
+  width: 100%;
+}
+
+.community-comment-edit-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.community-comment-removed {
+  margin: 4px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #f3f4f7;
+  color: var(--muted, #6b7280);
+  font-size: 14px;
+}
+
+.community-new-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #e7f0ff;
+  color: #1c4ea8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.community-fold {
+  border-bottom: 1px solid var(--border, #eceef3);
+}
+
+.community-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: #f3f4f7;
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.community-more {
+  display: block;
+  margin: 10px auto;
+  min-height: 44px;
+}
+
+/* ---- Campo para comentar: fijo abajo (por encima del menú inferior de PEPA), también con la conversación plegada. */
+.community-composer {
+  position: sticky;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  z-index: 30;
+  margin-top: 14px;
+  padding: 8px 10px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 14px;
+  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.1);
+}
+
+.community-composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.community-composer-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.community-composer-field textarea {
+  width: 100%;
+  min-height: 44px;
+  resize: vertical;
+  font-size: 16px; /* 16 px evita que iPhone Safari haga zoom al escribir */
+}
+
+.community-composer-send {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.community-composer-reply {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.community-composer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.community-composer-photo-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.community-composer-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-composer-preview img {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.community-composer-count {
+  font-size: 12px;
+}
+
+@media (min-width: 700px) {
+  .community-post-title {
+    font-size: 28px;
+  }
+
+  .community-gallery-item img {
+    height: 200px;
+  }
+}

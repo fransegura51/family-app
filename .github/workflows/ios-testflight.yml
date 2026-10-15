@@ -125,17 +125,24 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key><string>app-store-connect</string>
-            <key>destination</key><string>upload</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>${APPLE_TEAM_ID}</string>
             <key>signingStyle</key><string>automatic</string>
             <key>uploadSymbols</key><true/>
           </dict>
           </plist>
           EOF
+          # Se exporta el .ipa y se sube con altool: la subida directa de xcodebuild fallaba con «Cannot verify client's JWT headers» aunque la llave es válida.
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/PEPA.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
             -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" | tail -40
+          IPA="$(ls "$RUNNER_TEMP"/export/*.ipa | head -1)"
+          test -f "$IPA" || { echo "No se generó el .ipa"; exit 1; }
+          mkdir -p "$HOME/.private_keys"
+          cp "$RUNNER_TEMP/keys/AuthKey_${ASC_KEY_ID}.p8" "$HOME/.private_keys/"
+          xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

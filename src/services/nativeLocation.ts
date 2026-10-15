@@ -10,6 +10,7 @@ import { LocalNotifications } from '@capacitor/local-notifications'
 interface PepaNativeUploadPlugin {
   setNativeUpload(options: { url: string; apikey: string; token: string; backgroundTitle: string; backgroundMessage: string; distanceFilter: number }): Promise<void>
   clearNativeUpload(): Promise<void>
+  getBackgroundLocationStatus(): Promise<{ granted: boolean }>
 }
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin & PepaNativeUploadPlugin>('BackgroundGeolocation')
@@ -44,6 +45,22 @@ export async function configureNativeUpload(token: string): Promise<void> {
 
 export async function clearNativeUpload(): Promise<void> {
   await BackgroundGeolocation.clearNativeUpload()
+}
+
+// ¿Tiene la app el permiso de ubicación «Permitir siempre»? Sin él, si Android reinicia el servicio con la app cerrada, se queda sin posición y los
+// avisos de llegada no salen hasta abrir PEPA. Una app nativa anterior a esta función no responde: se da por buena para no avisar en falso.
+export async function hasBackgroundLocationPermission(): Promise<boolean> {
+  try {
+    const { granted } = await BackgroundGeolocation.getBackgroundLocationStatus()
+    return granted
+  } catch {
+    return true
+  }
+}
+
+// Abre los ajustes de PEPA en Android (Permisos → Ubicación → Permitir todo el tiempo).
+export async function openLocationSettings(): Promise<void> {
+  await BackgroundGeolocation.openSettings()
 }
 
 // Android 13+ necesita el permiso de notificaciones para poder enseñar el aviso fijo del servicio de ubicación.

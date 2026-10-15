@@ -21,6 +21,7 @@ import { effectiveMemberType } from '@/domain/growth'
 import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
+import { BackgroundLocationCard } from '@/ui/BackgroundLocationCard'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { disableNativeUpload } from '@/services/nativeUpload'
@@ -219,6 +220,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       </div>
       <NotificationsCard />
       <PepaPreferencesCard />
+      <BackgroundLocationCard />
       <BatteryGuideCard />
       {error && <p className="error">{error}</p>}
       <div className="event-list">

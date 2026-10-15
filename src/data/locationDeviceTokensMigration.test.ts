@@ -8,6 +8,7 @@ import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import packageJson from '../../package.json?raw'
 import sharing from '@/services/locationSharing.ts?raw'
 import family from '@/ui/FamilyScreen.tsx?raw'
+import manifest from '../../android/app/src/main/AndroidManifest.xml?raw'
 import locationActions from '@/pepa/actions/locationActions.ts?raw'
 import locationScreen from '@/ui/LocationScreen.tsx?raw'
 
@@ -92,6 +93,12 @@ describe('servicio de Android que sigue con la app cerrada', () => {
   it('al volver a abrir la app se retira el envío nativo (no hay envíos duplicados)', () => {
     expect(service).toContain('removeWatcherById(NATIVE_WATCHER_ID);')
     expect(service).toMatch(/public IBinder onBind\(Intent intent\) \{\s*appIsBack\(\);/)
+  })
+
+  it('pide «Permitir siempre»: permiso en el manifiesto, método nativo para comprobarlo y tarjeta en Familia', () => {
+    expect(manifest).toContain('android.permission.ACCESS_BACKGROUND_LOCATION')
+    expect(patchScript).toContain('getBackgroundLocationStatus')
+    expect(family).toContain('<BackgroundLocationCard />')
   })
 
   it('el parche comprueba la versión y la huella del original, y se aplica al instalar y al construir el APK', () => {

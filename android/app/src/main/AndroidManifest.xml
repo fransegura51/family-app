@@ -48,4 +48,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- «Permitir siempre»: sin él, si Android reinicia el servicio de ubicación en segundo plano (Android 11+), se queda sin acceso a la posición. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 </manifest>

@@ -87,6 +87,16 @@ if (pluginSrc.includes(MARK)) {
         call.resolve();
     }
 
+    // ${MARK}: ¿tiene la app el permiso «Permitir siempre»? (en Android 9 o anterior no existe y no hace falta). JavaScript lo usa para avisar.
+    @PluginMethod()
+    public void getBackgroundLocationStatus(PluginCall call) {
+        boolean granted = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q
+                || getContext().checkSelfPermission(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        com.getcapacitor.JSObject result = new com.getcapacitor.JSObject();
+        result.put("granted", granted);
+        call.resolve(result);
+    }
+
     @PluginMethod()
     public void clearNativeUpload(PluginCall call) {
         getContext().getSharedPreferences(BackgroundGeolocationService.PREFS, Context.MODE_PRIVATE).edit().clear().apply();

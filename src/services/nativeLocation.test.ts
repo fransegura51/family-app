@@ -5,6 +5,7 @@ const plugin = vi.hoisted(() => ({
   addWatcher: vi.fn(),
   removeWatcher: vi.fn(),
   openSettings: vi.fn(),
+  getBackgroundLocationStatus: vi.fn(),
 }))
 const http = vi.hoisted(() => ({ post: vi.fn(), request: vi.fn() }))
 const native = vi.hoisted(() => ({ value: true }))
@@ -24,7 +25,7 @@ import locationScreenSrc from '@/ui/LocationScreen.tsx?raw'
 import { watchPosition } from '@/services/geolocation'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import deployWorkflow from '../../.github/workflows/deploy.yml?raw'
-import { NATIVE_DISTANCE_FILTER_M, NATIVE_WATCHER_OPTIONS, watchNativePosition } from '@/services/nativeLocation'
+import { hasBackgroundLocationPermission, NATIVE_DISTANCE_FILTER_M, NATIVE_WATCHER_OPTIONS, watchNativePosition } from '@/services/nativeLocation'
 
 const FILES = import.meta.glob(
   ['/capacitor.config.ts', '/android/app/build.gradle', '/src/data/location.ts'],
@@ -211,5 +212,18 @@ describe('configuración de la app y secretos', () => {
   it('cada compilación sube el número de versión (Android solo instala encima una versión mayor)', () => {
     expect(FILES['/android/app/build.gradle']).toContain("project.property('pepaVersionCode')")
     expect(androidWorkflow).toContain('-PpepaVersionCode=${{ github.run_number }}')
+  })
+})
+
+describe('permiso «Permitir siempre»', () => {
+  it('lo da por bueno o no según lo que conteste el servicio nativo', async () => {
+    plugin.getBackgroundLocationStatus.mockResolvedValueOnce({ granted: false })
+    expect(await hasBackgroundLocationPermission()).toBe(false)
+    plugin.getBackgroundLocationStatus.mockResolvedValueOnce({ granted: true })
+    expect(await hasBackgroundLocationPermission()).toBe(true)
+  })
+  it('una app nativa anterior (sin ese método) no avisa en falso', async () => {
+    plugin.getBackgroundLocationStatus.mockRejectedValueOnce(new Error('not implemented'))
+    expect(await hasBackgroundLocationPermission()).toBe(true)
   })
 })

@@ -15,6 +15,9 @@
 --    hora local ocurre dos veces) solo se envía una vez: delivery única por persona y fecha local.
 --  · Las ocurrencias de una serie se miran hasta 365 días atrás; una tarea suelta sin completar se considera atrasada sin límite.
 --  · Las fechas de las tareas son fechas de calendario (Europe/Madrid, como el resto del calendario); «hoy» es la fecha local de la persona.
+--  · El cálculo vive en private.run_daily_task_summaries_at(p_now): recibe «qué hora es» como parámetro para poder PROBARLO en un día de cambio de hora
+--    (INC-19) sin esperar al domingo. private.run_daily_task_summaries() (la que llama pg_cron) solo la llama con now(): el comportamiento real no cambia.
+--  · Enlace del aviso (INC-14): /calendario?fecha=<hoy de la persona>&tareas=1 → Calendario abre ese día y baja al bloque «Tareas».
 --  · Destinatarios: private.event_notification_recipients(tarea, true) (0261): en el modo sin elegir (null) del ajuste familiar, solo las personas asignadas.
 
 create table public.daily_task_summary_deliveries (
@@ -26,7 +29,7 @@ create table public.daily_task_summary_deliveries (
 alter table public.daily_task_summary_deliveries enable row level security;
 revoke all on public.daily_task_summary_deliveries from anon, authenticated;
 
-create or replace function private.run_daily_task_summaries()
+create or replace function private.run_daily_task_summaries_at(p_now timestamptz)
 returns integer
 language plpgsql
 security definer
@@ -56,7 +59,7 @@ begin
       and (p.allowed_sections is null or 'calendario' = any(p.allowed_sections))
   loop
     begin
-      v_local := (now() at time zone r.tz);
+      v_local := (p_now at time zone r.tz);
       v_date := v_local::date;
       -- Solo dentro de la ventana [hora elegida, hora elegida + 60 min] del día local de esta persona.
       continue when (v_local - (v_date + r.tm)) not between interval '0 minutes' and interval '60 minutes';
@@ -121,16 +124,27 @@ begin
         end
       );
 
-      perform private.notify_user(r.profile_id, 'personal', 'task_daily_summary', v_title, v_body, '/calendario', null, 'daily:' || v_date::text, true);
+      perform private.notify_user(r.profile_id, 'personal', 'task_daily_summary', v_title, v_body, '/calendario?fecha=' || v_date::text || '&tareas=1', null, 'daily:' || v_date::text, true);
       v_sent := v_sent + 1;
     exception when others then
       raise warning 'run_daily_task_summaries (%): %', r.profile_id, sqlerrm;
     end;
   end loop;
 
-  delete from public.daily_task_summary_deliveries where local_date < (now() at time zone 'UTC')::date - 3;
+  delete from public.daily_task_summary_deliveries where local_date < (p_now at time zone 'UTC')::date - 3;
   return v_sent;
 end;
+$$;
+revoke execute on function private.run_daily_task_summaries_at(timestamptz) from public, anon, authenticated;
+
+-- La que programa pg_cron: la hora real de ahora.
+create or replace function private.run_daily_task_summaries()
+returns integer
+language sql
+security definer
+set search_path = ''
+as $$
+  select private.run_daily_task_summaries_at(now());
 $$;
 revoke execute on function private.run_daily_task_summaries() from public, anon, authenticated;
 grant execute on function private.run_daily_task_summaries() to service_role;

@@ -342,6 +342,18 @@ export interface SummaryPlan {
   needsGenerate: boolean
 }
 
+// ¿Puede esta persona pedir al servidor que GENERE el resumen? (INC-21) El servidor solo atiende a quien puede participar: con alias, sin expulsión y con
+// permiso de participar (los de «solo lectura» no). Quien no puede, lee el resumen que ya exista pero no provoca ninguna llamada de generación (que
+// terminaría en un 403 y en un «no hay resumen» engañoso, además de gastar una llamada). Mientras no se sabe (cargando) tampoco se pide.
+export function canRequestSummary(
+  level: 'none' | 'read' | 'participate' | null | undefined,
+  me: { hasProfile?: boolean; banState?: string | null } | null | undefined,
+): boolean {
+  if (level !== 'participate') return false
+  if (!me || me.hasProfile !== true) return false
+  return !me.banState || me.banState === 'ok'
+}
+
 export function planSummary(state: SummaryState | null): SummaryPlan {
   if (!state || !state.eligible) return { useSummary: false, foldConversation: false, needsGenerate: false }
   return { useSummary: true, foldConversation: true, needsGenerate: state.stale || !state.summary }

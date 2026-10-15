@@ -13,6 +13,7 @@ import {
   type ReportableType,
 } from '@/domain/communityReports'
 import '@/ui/community/communityPost.css'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 
 export interface ReportResult {
   alreadyReported: boolean
@@ -41,6 +42,7 @@ export function ReportDialog({
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -77,7 +79,7 @@ export function ReportDialog({
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div className="modal-sheet community-report" role="dialog" aria-modal="true" aria-label={`Denunciar ${what}`} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet community-report" role="dialog" aria-modal="true" aria-label={`Denunciar ${what}`} onClick={(e) => e.stopPropagation()}>
         <h2>Denunciar {what}</h2>
         {done ? (
           <>

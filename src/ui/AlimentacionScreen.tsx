@@ -55,6 +55,7 @@ import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEd
 // Comunidad: «Compartir en Comunidad» (hoja para publicar una copia pública, solo se descarga al pulsar) y el aviso «Hay una versión nueva» de las recetas
 // que se guardaron desde Comunidad. No cambian nada de lo que ya hacía la Cocina.
 import { RecipeUpdateBanner } from '@/ui/community/recipes/RecipeUpdateBanner'
+import { ShareToCommunityButton } from '@/ui/community/recipes/ShareToCommunityButton'
 const RecipePublishHost = lazy(() => import('@/ui/community/recipes/RecipePublishSheet').then((m) => ({ default: m.RecipePublishHost })))
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Cocinar'] as const
@@ -1079,9 +1080,8 @@ function RecipesTab() {
                 reload()
               }}
             />
-            <button type="button" className="link-button" style={{ minHeight: 44, alignSelf: 'flex-start' }} onClick={() => setSharing(viewing)}>
-              🌍 Compartir en Comunidad
-            </button>
+            {/* Solo sale si Comunidad está abierta para esta persona (sin consultas extra: ver ShareToCommunityButton). */}
+            <ShareToCommunityButton onShare={() => setSharing(viewing)} />
             {/* Raciones de la receta (dato estructurado). Si no hay, no se pinta nada: ni fila vacía ni «desconocidas». */}
             {(() => {
               const view = recipeServingsView(viewing.servings, viewing.servingsSource)

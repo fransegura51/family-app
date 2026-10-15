@@ -38,7 +38,7 @@ function loadFcmServiceAccount(): Promise<FcmServiceAccount | null> {
 
 async function deliverPush(
   sub: { endpoint: string; p256dh: string; auth: string },
-  payload: { title: string; body: string; tag?: string; url?: string },
+  payload: { title: string; body: string; tag?: string; url?: string; n?: string },
   options: { TTL: number; urgency: "high" },
 ): Promise<void> {
   if (sub.endpoint.startsWith(FCM_PREFIX)) {
@@ -59,6 +59,8 @@ interface Body {
   title?: unknown
   body?: unknown
   url?: unknown
+  // {persona → id de su aviso en el historial}: cada móvil recibe el id del aviso de SU dueño (clave «n») para marcarlo como leído al tocarlo (INC-06).
+  notification_ids?: unknown
   dry_run?: unknown
 }
 
@@ -100,9 +102,19 @@ Deno.serve(async (req) => {
       .filter((id) => onlyProfileId === null || id === onlyProfileId)
     if (profileIds.length === 0) return Response.json({ targets: 0, sent: 0, expired: 0 })
 
+    // Solo se aceptan pares uuid → uuid; cualquier otra cosa se ignora (el push sale igual, sin «n»).
+    const notificationIds = new Map<string, string>()
+    if (input.notification_ids && typeof input.notification_ids === "object" && !Array.isArray(input.notification_ids)) {
+      for (const [profileId, notificationId] of Object.entries(input.notification_ids as Record<string, unknown>)) {
+        if (UUID_RE.test(profileId) && typeof notificationId === "string" && UUID_RE.test(notificationId)) {
+          notificationIds.set(profileId.toLowerCase(), notificationId.toLowerCase())
+        }
+      }
+    }
+
     const { data: subs, error: subsError } = await supabaseAdmin
       .from("push_subscriptions")
-      .select("endpoint, p256dh, auth")
+      .select("profile_id, endpoint, p256dh, auth")
       .in("profile_id", profileIds)
     if (subsError) throw subsError
 
@@ -124,7 +136,8 @@ Deno.serve(async (req) => {
     await Promise.all(
       (subs ?? []).map(async (s) => {
         try {
-          await deliverPush({ endpoint: s.endpoint as string, p256dh: s.p256dh as string, auth: s.auth as string }, payload, options)
+          const n = notificationIds.get(String(s.profile_id).toLowerCase())
+          await deliverPush({ endpoint: s.endpoint as string, p256dh: s.p256dh as string, auth: s.auth as string }, n ? { ...payload, n } : payload, options)
           sent++
         } catch (err) {
           const status = (err as { statusCode?: number }).statusCode

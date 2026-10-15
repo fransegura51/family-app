@@ -12,7 +12,7 @@ import {
   similarPosts,
   updatePost,
 } from '@/data/community'
-import { DRAFT_DAYS, MAX_TITLE, POST_KINDS, SECTIONS, type CommunityTopic, type PostCard } from '@/domain/community'
+import { ANECDOTE_TYPES, DRAFT_DAYS, MAX_TITLE, POST_KINDS, SECTIONS, parseAnecdoteType, type CommunityTopic, type PostCard } from '@/domain/community'
 import { CommunityError, communityErrorText } from '@/domain/communityErrors'
 import { bufferScope, clearBuffer, readBuffer, shouldOfferBuffer, writeBuffer, type BufferEntry } from '@/domain/communityDraftBuffer'
 import {
@@ -27,6 +27,8 @@ import {
   isFormDirty,
   isSectionAllowed,
   recipeForServer,
+  anecdoteTypeForServer,
+  withAnecdoteType,
   recipeToInput,
   topicsForSection,
   unsavedPhotos,
@@ -156,6 +158,7 @@ export function PostEditorPage() {
             body: post.body,
             photos: [...post.photos].sort((a, b) => a.position - b.position).map((p) => p.path),
             recipe: post.kind === 'receta' ? (recipeToInput(post.recipe) ?? emptyRecipe()) : null,
+            anecdoteType: post.kind === 'anecdota' ? parseAnecdoteType(post.anecdoteType) : null,
           }
           setForm(loaded)
           setBaseline(loaded)
@@ -166,6 +169,9 @@ export function PostEditorPage() {
           setTopics(topicList)
           if (!draft) return block(`Este borrador ya no existe o ha caducado (los borradores se conservan ${DRAFT_DAYS} días desde el último guardado).`)
           const loaded = draftToForm(draft)
+          // Un borrador de receta puede venir de la Cocina privada y el borrador no recuerda de dónde salió: antes de publicarla se vuelve a pedir el
+          // consentimiento explícito (así nunca se publica una receta de la Cocina sin él, ni se pierde la constancia de la fecha).
+          if (loaded.kind === 'receta') setNeedsConsent(true)
           setForm(loaded)
           setBaseline(loaded)
           setDraftId(draft.id)
@@ -290,7 +296,7 @@ export function PostEditorPage() {
     const profileId = await ensureProfileId()
     if (!profileId) return false
     setBusy('draft')
-    const args = { kind: form.kind, section: form.section, topicId: form.topicId, title: form.title, body: form.body, photos: form.photos, recipe: recipeForServer(form) }
+    const args = { kind: form.kind, section: form.section, topicId: form.topicId, title: form.title, body: form.body, photos: form.photos, recipe: recipeForServer(form), anecdoteType: anecdoteTypeForServer(form) }
     try {
       let id: string
       try {
@@ -337,13 +343,13 @@ export function PostEditorPage() {
     if (!(await requireParticipation())) return
     setBusy('publish')
     try {
-      const common = { topicId: form.topicId as string, title: form.title.trim(), body: form.body.trim(), photos: form.photos, recipe: recipeForServer(form) }
+      const common = { topicId: form.topicId as string, title: form.title.trim(), body: form.body.trim(), photos: form.photos, recipe: recipeForServer(form), anecdoteType: anecdoteTypeForServer(form) }
       let postId: string
       if (editId) {
         await updatePost(editId, common)
         postId = editId
       } else {
-        postId = await createPost({ kind: form.kind, section: form.section as 'recetas' | 'hogar', fromDraft: draftId, ...common })
+        postId = await createPost({ kind: form.kind, section: form.section as 'recetas' | 'hogar', fromDraft: draftId, recipeConsent: needsConsent && consent, ...common })
       }
       const profileId = meRef.current?.id
       if (profileId) clearBuffer(profileId, scope)
@@ -506,6 +512,43 @@ export function PostEditorPage() {
           </p>
         )}
       </div>
+
+      {/* Subtipo opcional de la Anécdota: solo una etiqueta (no crea secciones ni filtros). */}
+      {form.kind === 'anecdota' && (
+        <div id="ce-field-anecdote" className="ce-field">
+          <span className="ce-label" id="ce-anecdote-label">
+            ¿Qué tipo de historia es? <span className="muted">(opcional)</span>
+          </span>
+          <div className="ce-chips" role="radiogroup" aria-labelledby="ce-anecdote-label">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!form.anecdoteType}
+              className={'ce-chip' + (!form.anecdoteType ? ' selected' : '')}
+              disabled={busyAny}
+              onClick={() => setForm((f) => withAnecdoteType(f, null))}
+            >
+              <span>Sin etiqueta</span>
+            </button>
+            {ANECDOTE_TYPES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="radio"
+                aria-checked={form.anecdoteType === t.id}
+                className={'ce-chip' + (form.anecdoteType === t.id ? ' selected' : '')}
+                disabled={busyAny}
+                onClick={() => setForm((f) => withAnecdoteType(f, t.id))}
+              >
+                <span>
+                  <span aria-hidden="true">{t.icon}</span> {t.label}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="muted">Es solo una etiqueta para quien la lea. Puedes dejarla sin elegir.</p>
+        </div>
+      )}
 
       {/* Sección */}
       <div id="ce-field-section" className="ce-field">

@@ -28,6 +28,7 @@ const FinanceScreen = lazy(() => import('@/ui/FinanceScreen').then((m) => ({ def
 const LocationScreen = lazy(() => import('@/ui/LocationScreen').then((m) => ({ default: m.LocationScreen })))
 import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { NativeDeepLinks } from '@/ui/NativeDeepLinks'
+import { NotificationOpenMarker } from '@/ui/NotificationOpenMarker'
 import { UsageTracker } from '@/ui/UsageTracker'
 import { PushSubscriptionKeeper } from '@/ui/PushSubscriptionKeeper'
 import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
@@ -141,6 +142,8 @@ function AuthedApp() {
         <ReminderWatcher profile={profile} />
         <UsageTracker />
         <NativeDeepLinks />
+        {/* INC-06: abrir un aviso desde la notificación del móvil (?aviso=<id>) lo marca como leído; abrir Novedades marca los avisos agrupados. */}
+        <NotificationOpenMarker />
         <PushSubscriptionKeeper />
         <LocationSharingWatcher profileId={profile.id} />
         <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>

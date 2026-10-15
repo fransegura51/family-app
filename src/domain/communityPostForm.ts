@@ -2,12 +2,14 @@
 // publicar y cuánto le queda a un borrador. El servidor (migraciones 0265/0266) vuelve a comprobar y sanea todo; aquí solo se evitan errores tontos y se avisa con frases claras.
 import {
   DRAFT_DAYS,
+  parseAnecdoteType,
   MAX_BODY,
   MAX_POST_PHOTOS,
   MAX_TITLE,
   POST_KINDS,
   SECTIONS,
   type CommunitySection,
+  type AnecdoteType,
   type CommunityTopic,
   type Draft,
   type PostKind,
@@ -29,6 +31,8 @@ export interface PostForm {
   photos: string[]
   // Solo se usa (y se envía) cuando el tipo es Receta.
   recipe: RecipeDraftInput | null
+  // Subtipo OPCIONAL de la Anécdota (graciosa, bonita, emotiva). Solo se usa (y se envía) cuando el tipo es Anécdota. Ausente = sin subtipo.
+  anecdoteType?: AnecdoteType | null
 }
 
 export function emptyRecipe(): RecipeDraftInput {
@@ -71,7 +75,18 @@ export function withKind(form: PostForm, kind: PostKind): PostForm {
     topicId: section === form.section ? form.topicId : null,
     // La receta escrita se conserva si se cambia de tipo por error y se vuelve atrás.
     recipe: kind === 'receta' ? (form.recipe ?? emptyRecipe()) : form.recipe,
+    // El subtipo solo existe en las Anécdotas: al cambiar a otro tipo se quita (no se enviaría de todos modos).
+    anecdoteType: kind === 'anecdota' ? (form.anecdoteType ?? null) : null,
   }
+}
+
+export function withAnecdoteType(form: PostForm, type: AnecdoteType | null): PostForm {
+  return form.kind === 'anecdota' ? { ...form, anecdoteType: type } : form
+}
+
+// Lo que viaja al servidor: solo las Anécdotas llevan subtipo.
+export function anecdoteTypeForServer(form: PostForm): AnecdoteType | null {
+  return form.kind === 'anecdota' ? (parseAnecdoteType(form.anecdoteType) ?? null) : null
 }
 
 export function withSection(form: PostForm, section: CommunitySection): PostForm {
@@ -95,6 +110,7 @@ function comparable(form: PostForm) {
     body: form.body.trim(),
     photos: form.photos,
     recipe: form.kind === 'receta' ? (form.recipe ?? emptyRecipe()) : null,
+    anecdoteType: anecdoteTypeForServer(form),
   }
 }
 
@@ -202,6 +218,7 @@ export function draftToForm(d: Draft): PostForm {
     body: d.body,
     photos: Array.isArray(d.photos) ? d.photos : [],
     recipe: d.kind === 'receta' ? (recipeToInput(d.recipe) ?? emptyRecipe()) : null,
+    anecdoteType: d.kind === 'anecdota' ? parseAnecdoteType(d.anecdoteType) : null,
   }
 }
 

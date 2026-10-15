@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import '@/ui/community/communityPost.css'
 
 // Foto ampliada en ventana emergente (fotos de una publicación y de un comentario). Se cierra con el botón, tocando fuera o con Escape, y al cerrar la persona
@@ -6,6 +7,7 @@ import '@/ui/community/communityPost.css'
 export function PhotoLightbox({ urls, startIndex = 0, label, onClose }: { urls: string[]; startIndex?: number; label: string; onClose: () => void }) {
   const [index, setIndex] = useState(Math.min(Math.max(startIndex, 0), Math.max(urls.length - 1, 0)))
   const closeRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
 
   useEffect(() => {
     // Se recuerda dónde estaba la persona (posición y elemento con foco) para devolverla ahí al cerrar.
@@ -32,7 +34,7 @@ export function PhotoLightbox({ urls, startIndex = 0, label, onClose }: { urls: 
   const many = urls.length > 1
 
   return (
-    <div className="community-lightbox" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
+    <div ref={dialogRef} className="community-lightbox" role="dialog" aria-modal="true" aria-label={label} onClick={onClose}>
       <button ref={closeRef} type="button" className="community-lightbox-close" aria-label="Cerrar la foto" onClick={onClose}>
         ✕
       </button>

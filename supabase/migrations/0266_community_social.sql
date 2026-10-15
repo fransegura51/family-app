@@ -605,6 +605,7 @@ $$;
 -- ---------------------------------------------------------------------------------------------
 -- Borradores: solo el guardado MANUAL asegura la conservación (30 días desde el último guardado manual).
 -- ---------------------------------------------------------------------------------------------
+-- p_anecdote_type: subtipo opcional de una Anécdota (graciosa | bonita | emotiva); null = sin subtipo.
 create or replace function public.community_save_draft(
   p_id uuid,
   p_kind text,
@@ -613,7 +614,8 @@ create or replace function public.community_save_draft(
   p_title text,
   p_body text,
   p_photos jsonb default '[]'::jsonb,
-  p_recipe jsonb default null
+  p_recipe jsonb default null,
+  p_anecdote_type text default null
 )
 returns uuid
 language plpgsql
@@ -626,6 +628,9 @@ declare
   v_paths text[];
 begin
   if p_kind not in ('receta', 'pregunta', 'consejo', 'anecdota') or (p_section is not null and p_section not in ('recetas', 'hogar')) then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
+  if p_anecdote_type is not null and (p_kind <> 'anecdota' or p_anecdote_type not in ('graciosa', 'bonita', 'emotiva')) then
     raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
   if p_topic is not null and not exists (select 1 from public.community_topics t where t.id = p_topic and (p_section is null or t.section = p_section)) then
@@ -648,15 +653,15 @@ begin
         and not exists (select 1 from public.community_post_photos ph where ph.storage_path = x)));
     update public.community_drafts
     set kind = p_kind, section = p_section, topic_id = p_topic, title = coalesce(p_title, ''), body = coalesce(p_body, ''),
-        photos = coalesce(p_photos, '[]'::jsonb), recipe = p_recipe, saved_at = now()
+        photos = coalesce(p_photos, '[]'::jsonb), recipe = p_recipe, anecdote_type = p_anecdote_type, saved_at = now()
     where id = p_id and profile_id = v_cp
     returning id into v_id;
     if v_id is null then
       raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
     end if;
   else
-    insert into public.community_drafts (profile_id, kind, section, topic_id, title, body, photos, recipe)
-    values (v_cp, p_kind, p_section, p_topic, coalesce(p_title, ''), coalesce(p_body, ''), coalesce(p_photos, '[]'::jsonb), p_recipe)
+    insert into public.community_drafts (profile_id, kind, section, topic_id, title, body, photos, recipe, anecdote_type)
+    values (v_cp, p_kind, p_section, p_topic, coalesce(p_title, ''), coalesce(p_body, ''), coalesce(p_photos, '[]'::jsonb), p_recipe, p_anecdote_type)
     returning id into v_id;
   end if;
   return v_id;
@@ -687,7 +692,7 @@ security definer
 set search_path = ''
 as $$
   select jsonb_build_object('id', d.id, 'kind', d.kind, 'section', d.section, 'topic_id', d.topic_id, 'title', d.title, 'body', d.body,
-                            'photos', d.photos, 'recipe', d.recipe, 'saved_at', d.saved_at,
+                            'photos', d.photos, 'recipe', d.recipe, 'anecdote_type', d.anecdote_type, 'saved_at', d.saved_at,
                             'days_left', greatest(0, ceil(extract(epoch from (d.saved_at + make_interval(days => private.community_setting_int('draft_days', 30)) - now())) / 86400.0))::integer)
   from public.community_drafts d
   where d.id = p_id and d.profile_id = private.community_cp()
@@ -812,7 +817,7 @@ revoke all on function public.community_list_following() from public, anon;
 revoke all on function public.community_set_favorite_topics(text[]) from public, anon;
 revoke all on function public.community_get_favorite_topics() from public, anon;
 revoke all on function public.community_get_public_profile(uuid) from public, anon;
-revoke all on function public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb) from public, anon;
+revoke all on function public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb, text) from public, anon;
 revoke all on function public.community_list_drafts() from public, anon;
 revoke all on function public.community_get_draft(uuid) from public, anon;
 revoke all on function public.community_delete_draft(uuid) from public, anon;
@@ -836,7 +841,7 @@ grant execute on function public.community_list_following() to authenticated;
 grant execute on function public.community_set_favorite_topics(text[]) to authenticated;
 grant execute on function public.community_get_favorite_topics() to authenticated;
 grant execute on function public.community_get_public_profile(uuid) to authenticated;
-grant execute on function public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb) to authenticated;
+grant execute on function public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb, text) to authenticated;
 grant execute on function public.community_list_drafts() to authenticated;
 grant execute on function public.community_get_draft(uuid) to authenticated;
 grant execute on function public.community_delete_draft(uuid) to authenticated;

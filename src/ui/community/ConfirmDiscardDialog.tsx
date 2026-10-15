@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import '@/ui/community/communityEditor.css'
 
 // Confirmación de seguridad antes de tirar algo a la basura (descartar el formulario, descartar un borrador, descartar cambios). Sin red: solo pregunta.
@@ -21,6 +22,7 @@ export function ConfirmDiscardDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   const cancelRef = useRef<HTMLButtonElement>(null)
   useEffect(() => {
     // Se enfoca el botón SEGURO («no descartar») para que un Intro sin querer no borre nada.
@@ -29,6 +31,7 @@ export function ConfirmDiscardDialog({
   return (
     <div className="modal-overlay" role="presentation" onClick={busy ? undefined : onCancel}>
       <div
+        ref={dialogRef}
         className="modal-sheet ce-dialog"
         role="alertdialog"
         aria-modal="true"

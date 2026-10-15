@@ -69,6 +69,6 @@ describe('dirección de entrada de los avisos', () => {
   it('el service worker y la app nativa usan la función común (no vuelven a construir la dirección a mano)', () => {
     expect(swSource).toContain('pushEntryQuery(event.notification.data)')
     expect(swSource).not.toMatch(/scopeUrl\(`\?\$\{path\}`\)/)
-    expect(nativePushSource).toContain('pushEntryUrl(import.meta.env.BASE_URL, data?.url)')
+    expect(nativePushSource).toContain('pushEntryUrl(import.meta.env.BASE_URL, data)')
   })
 })

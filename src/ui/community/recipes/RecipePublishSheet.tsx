@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createPost, getMyCommunityProfile, listCommunityTopics, removeCommunityPhoto } from '@/data/community'
 import { getRecipePhotoUrl } from '@/data/food'
@@ -25,6 +25,7 @@ import { copyPrivatePhotoToCommunity } from '@/ui/community/recipes/recipePhotoC
 import { browserStore, rememberShared, sharedPostFor } from '@/ui/community/recipes/recipeUpdateCache'
 import { useSimilarRecipes } from '@/ui/community/recipes/useSimilarRecipes'
 import '@/ui/community/recipes/communityRecipes.css'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 
 // «Compartir en Comunidad» (CMN-§5.1, recorrido D): publica una receta de la Cocina como copia PÚBLICA e INDEPENDIENTE.
 //  - NUNCA se publica nada solo: la persona ve la vista previa de lo que será público, puede cambiarlo, elige tema y foto, MARCA la casilla de
@@ -107,7 +108,7 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
   const [publishedId, setPublishedId] = useState<string | null>(null)
   // Si ya se compartió desde este dispositivo, se avisa (crear otra publicación sería una copia repetida).
   const alreadySharedId = useMemo(() => sharedPostFor(browserStore(), recipe.id), [recipe.id])
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
 
   // Temas de «Recetas y cocina» (una consulta al abrir) y foto de vista previa (enlace firmado de la Cocina: solo la ve quien la abre).
   useEffect(() => {
@@ -132,10 +133,6 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
       cancelled = true
     }
   }, [recipe.imagePath])
-
-  useEffect(() => {
-    dialogRef.current?.focus()
-  }, [])
 
   const clean = useMemo(() => cleanRecipeDraft(draft), [draft])
   const problems = recipePublishProblems(title, draft)
@@ -177,6 +174,8 @@ export function RecipePublishSheet({ recipe, onClose }: { recipe: Recipe; onClos
         body: body.trim(),
         photos: uploaded ? [uploaded] : [],
         recipe: clean,
+        // La casilla de consentimiento está marcada (si no, «Publicar» no está activo): el servidor anota solo la fecha de ese consentimiento.
+        recipeConsent: consent,
       })
       rememberShared(browserStore(), recipe.id, id)
       setPublishedId(id)

@@ -1,5 +1,45 @@
 -- Deshace 0263: vuelve send_family_push (0243_location_alerts_reliability.sql) y claim_due_forecast_reminders (0155_forecast_payments.sql) a su versión anterior, sin historial.
 -- (El historial ya anotado en user_notifications no se toca: caduca solo a los 30 días.)
+-- Antes de volver send_family_push a su versión de 0243: el envío deja de llevar el id de los avisos.
+create or replace function private.dispatch_location_alert(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  a record;
+  v_request bigint;
+begin
+  select * into a from public.location_alert_outbox where id = p_id;
+  if not found or a.delivered then
+    return;
+  end if;
+
+  v_request := net.http_post(
+    url := 'https://objhgjgrinbhyzscjlbw.supabase.co/functions/v1/send-family-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select public.get_app_secret('cron_shared_secret'))
+    ),
+    body := jsonb_build_object(
+      'family_id', a.family_id,
+      'exclude_member_id', a.exclude_member_id,
+      'title', a.title,
+      'body', a.body,
+      'url', a.url
+    ),
+    timeout_milliseconds := 15000
+  );
+
+  update public.location_alert_outbox
+  set attempts = attempts + 1, last_attempt_at = now(), request_id = v_request
+  where id = p_id;
+end;
+$$;
+revoke execute on function private.dispatch_location_alert(uuid) from public, anon, authenticated;
+do $$ begin if to_regclass('public.location_alert_outbox') is not null then alter table public.location_alert_outbox drop column if exists notification_ids; end if; end $$;
+
 create or replace function private.send_family_push(
   p_family_id uuid,
   p_exclude_member_id uuid,
@@ -30,7 +70,9 @@ end;
 $$;
 
 revoke execute on function private.send_family_push(uuid, uuid, text, text, text) from public, anon, authenticated;
-create or replace function public.claim_due_forecast_reminders(p_due jsonb)
+-- La versión de 0263 devuelve una columna más: se borra antes de volver a la anterior.
+drop function if exists public.claim_due_forecast_reminders(jsonb);
+create function public.claim_due_forecast_reminders(p_due jsonb)
 returns table(out_subscription_id uuid, out_endpoint text, out_p256dh text, out_auth text, out_title text, out_occurrence_date date)
 language plpgsql
 security definer

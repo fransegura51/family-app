@@ -157,6 +157,8 @@ export function CommunityHome() {
 
   return (
     <>
+      {/* Título de la página para lectores de pantalla (la imagen de la cabecera ya lo enseña a la vista): toda página tiene un único encabezado de nivel 1. */}
+      <h1 className="community-visually-hidden">Comunidad PEPA</h1>
       <Breadcrumbs crumbs={homeCrumbs} />
       <InviteFriendsButton />
 

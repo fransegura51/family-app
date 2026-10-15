@@ -1,6 +1,8 @@
 import { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { addDaysIso, CALENDAR_LINK_PARAMS, parseCalendarDeepLink, pickOccurrenceDate } from '@/domain/calendarDeepLink'
+import { searchWithoutParams } from '@/domain/notificationDeepLink'
 import { findMemberInText } from '@/domain/voiceQuery'
 import {
   CALENDARIO_MENU_ITEM_META,
@@ -314,6 +316,79 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   }
 
   useEffect(reload, [])
+
+  // ENLACE PROFUNDO desde un aviso (INC-14): /calendario?evento=<uuid>&fecha=AAAA-MM-DD abre ese día y marca ese evento o tarea (la ocurrencia concreta si
+  // es una serie); /calendario?fecha=AAAA-MM-DD&tareas=1 (resumen diario) abre ese día y baja al bloque «Tareas». Se reutiliza lo que ya hay: la tarjeta
+  // fija del día (DayModal, vista Mes) y su fila de siempre (AgendaRow), que se resalta unos segundos; no hay una pantalla nueva. El uuid y la fecha se validan
+  // (domain/calendarDeepLink.ts). Si el evento ya no existe o esta persona no tiene acceso (la base solo le enseña lo suyo), un aviso amable y todo sigue normal.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null)
+  const [deepLinkFocus, setDeepLinkFocus] = useState<{ eventId: string | null; date: string | null; tasks: boolean } | null>(null)
+  useEffect(() => {
+    if (loading) return // hace falta tener ya los eventos cargados para saber si existe
+    const link = parseCalendarDeepLink(location.search)
+    if (!link) return
+    // La dirección se limpia ya (sin recargar y conservando el resto de parámetros): un refresco no repite el salto ni vuelve a avisar.
+    navigate(
+      { pathname: location.pathname, search: searchWithoutParams(window.location.search, CALENDAR_LINK_PARAMS), hash: location.hash },
+      { replace: true },
+    )
+    let date = link.date
+    let notice: string | null = null
+    let focusEventId: string | null = null
+    if (link.invalidEvent) {
+      notice = 'Este enlace no es válido. Te dejo en el calendario.'
+    } else if (link.eventId) {
+      const ev = events.find((e) => e.id === link.eventId)
+      if (!ev) {
+        notice = 'Ese evento o tarea ya no existe, o no tienes acceso a él. Te dejo en el calendario.'
+      } else {
+        // La ocurrencia pedida si existe; si no (p. ej. una serie asignada hace tiempo), la más cercana a partir de esa fecha.
+        const wanted = link.date ?? toDateStr(new Date())
+        const after = expandOccurrences(ev, wanted, addDaysIso(wanted, 400), holidayDates)
+        const found = pickOccurrenceDate(after.length > 0 ? after : expandOccurrences(ev, addDaysIso(wanted, -400), wanted, holidayDates), wanted)
+        date = found ?? wanted
+        focusEventId = ev.id
+        notice = found ? `Te llevo a «${ev.title}».` : `No he encontrado «${ev.title}» en ese día. Te dejo en el día del aviso.`
+      }
+    }
+    if (date) {
+      const [y, m] = date.split('-').map(Number)
+      setVisibleYear(y)
+      setVisibleMonth(m - 1)
+      setSelectedDate(date)
+    }
+    // Las tarjetas del día viven en la vista Mes (la tarjeta fija bajo la cuadrícula): se pasa a ella para que el evento o el bloque de tareas existan en pantalla.
+    if (date || link.focusTasks || focusEventId) setView('Mes')
+    setEditingId(null)
+    setDeepLinkNotice(notice)
+    setDeepLinkFocus({ eventId: focusEventId, date, tasks: link.focusTasks && !focusEventId })
+  }, [loading, location.search]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Con la pantalla ya pintada en el día pedido: baja hasta la fila (o el bloque de tareas) y la resalta unos segundos. Sin animaciones: solo un contorno.
+  useEffect(() => {
+    if (!deepLinkFocus) return
+    const { eventId, date, tasks } = deepLinkFocus
+    let target: Element | null = null
+    if (eventId && date) {
+      target = document.querySelector(`[data-agenda-event-id="${eventId}"][data-agenda-date="${date}"]`)
+    } else if (tasks) {
+      target = document.querySelector('.day-panel [data-calendar-group="Tareas"]')
+    }
+    setDeepLinkFocus(null)
+    if (!target) return
+    const found = target
+    found.scrollIntoView({ block: 'center' })
+    found.classList.add('calendar-deeplink-highlight')
+    // Sin limpieza al re-ejecutarse (setDeepLinkFocus(null) la dispara y cancelaría el temporizador): si la fila desaparece antes, quitar la clase no hace daño.
+    window.setTimeout(() => found.classList.remove('calendar-deeplink-highlight'), 6000)
+  }, [deepLinkFocus, selectedDate, view])
+  useEffect(() => {
+    if (!deepLinkNotice) return
+    const timer = window.setTimeout(() => setDeepLinkNotice(null), 8000)
+    return () => window.clearTimeout(timer)
+  }, [deepLinkNotice])
 
   // Cuando se apunta un evento por voz (VoiceCapture vive fuera de esta
   // pantalla, montado en toda la app), esta pantalla no se enteraba —
@@ -818,6 +893,11 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       <SectionBreadcrumb subsection={CALENDARIO_MENU_ITEM_META[view].label} />
       {error && <p className="error">{error}</p>}
       {shareNotice && <p className="points-badge">{shareNotice}</p>}
+      {deepLinkNotice && (
+        <p className="points-badge calendar-deeplink-notice" role="status">
+          {deepLinkNotice}
+        </p>
+      )}
 
       {calendarMenuOpen && (
         <CalendarioMenuDropdown
@@ -1663,7 +1743,7 @@ function DayEntriesBody({
       {groups.map(
         (group) =>
           group.items.length > 0 && (
-            <div key={group.label}>
+            <div key={group.label} data-calendar-group={group.label}>
               <div className="calendar-section-header">{group.label}</div>
               <div className="agenda-day-block">
                 {group.items.map((entry) => (
@@ -2704,7 +2784,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
   const translateX = liveX ?? openX
 
   return (
-    <div className="agenda-row-outer">
+    <div className="agenda-row-outer" data-agenda-event-id={entry.isExternal ? undefined : entry.id} data-agenda-date={entry.date}>
       {canDelete && (
         <div className="agenda-row-delete-behind">
           <button type="button" className="agenda-row-delete-btn" onClick={handleDeleteTap} aria-label={`Eliminar ${entry.title}`}>

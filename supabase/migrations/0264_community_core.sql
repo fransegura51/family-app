@@ -129,6 +129,9 @@ create table public.community_recipes (
   tags text[] not null default '{}' check (cardinality(tags) <= 12),
   photo_path text,
   version integer not null default 1,
+  -- Constancia del consentimiento explícito al publicar una copia pública de una receta de la Cocina (CMN-§5.1, INC-24): SOLO la fecha. No se guarda quién
+  -- ni nada de la familia; la autoría ya consta en `author_id` (perfil público seudónimo). Null = publicada directamente desde Comunidad (sin Cocina).
+  consent_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -188,6 +191,9 @@ create table public.community_posts (
   title text not null check (char_length(btrim(title)) between 3 and 140),
   body text not null default '' check (char_length(body) <= 10000),
   recipe_id uuid references public.community_recipes(id),
+  -- Subtipo OPCIONAL de una Anécdota (CMN-§4.8: «historias graciosas, bonitas o emotivas»). Es solo una etiqueta: NO crea secciones ni filtros nuevos (la
+  -- navegación no se fragmenta). Solo las anécdotas pueden llevarlo.
+  anecdote_type text,
   status text not null default 'published' check (status in ('published', 'hidden', 'deleted')),
   hidden_reason text,
   hidden_at timestamptz,
@@ -206,7 +212,8 @@ create table public.community_posts (
   edited_at timestamptz,
   last_activity_at timestamptz not null default now(),
   search tsvector generated always as (to_tsvector('spanish'::regconfig, coalesce(title, '') || ' ' || coalesce(body, ''))) stored,
-  constraint community_posts_recipe_only_in_recipes check (kind <> 'receta' or (section = 'recetas' and recipe_id is not null))
+  constraint community_posts_recipe_only_in_recipes check (kind <> 'receta' or (section = 'recetas' and recipe_id is not null)),
+  constraint community_posts_anecdote_type check (anecdote_type is null or (kind = 'anecdota' and anecdote_type in ('graciosa', 'bonita', 'emotiva')))
 );
 create index idx_community_posts_feed on public.community_posts (section, topic_id, created_at desc) where status = 'published';
 create index idx_community_posts_recent on public.community_posts (created_at desc) where status = 'published';
@@ -501,9 +508,12 @@ create table public.community_drafts (
   body text not null default '' check (char_length(body) <= 10000),
   photos jsonb not null default '[]'::jsonb check (jsonb_typeof(photos) = 'array' and jsonb_array_length(photos) <= 5),
   recipe jsonb,
+  -- Subtipo opcional de una Anécdota (ver community_posts.anecdote_type).
+  anecdote_type text,
   -- Último guardado MANUAL: de aquí salen los 30 días.
   saved_at timestamptz not null default now(),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint community_drafts_anecdote_type check (anecdote_type is null or (kind = 'anecdota' and anecdote_type in ('graciosa', 'bonita', 'emotiva')))
 );
 create index idx_community_drafts_profile on public.community_drafts (profile_id, saved_at desc);
 create index idx_community_drafts_expiry on public.community_drafts (saved_at);

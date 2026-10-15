@@ -17,6 +17,7 @@ import publishSheetSrc from '@/ui/community/recipes/RecipePublishSheet.tsx?raw'
 import summarySrc from '@/ui/community/SummaryBox.tsx?raw'
 import prefsCardSrc from '@/ui/NotificationPrefsCard.tsx?raw'
 import homeEntrySrc from '@/ui/community/CommunityHomeEntry.tsx?raw'
+import visibleHookSrc from '@/ui/community/useCommunityVisible.ts?raw'
 
 const state = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
@@ -270,7 +271,8 @@ describe('los componentes de escritura usan el guard común (código fuente)', (
   })
 
   it('la entrada de Inicio sigue dependiendo de `visible` (que ya incluye el acceso)', () => {
-    expect(homeEntrySrc).toContain('setVisible(s.visible)')
+    expect(homeEntrySrc).toContain('useCommunityVisible()')
+    expect(visibleHookSrc).toContain('return status === null ? null : status.visible')
   })
 })
 

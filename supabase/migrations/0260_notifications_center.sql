@@ -125,6 +125,9 @@ create table public.user_push_outbox (
   body text not null,
   url text,
   tag text,
+  -- Id del aviso del historial (user_notifications.id) al que corresponde este push. Viaja en la carga útil del push (clave «n») para que, al tocarlo, la
+  -- app marque ESE aviso como leído (INC-06). Sin clave foránea a propósito: si la persona borra el aviso, el push pendiente se envía igual.
+  notification_id uuid,
   created_at timestamptz not null default now(),
   attempts integer not null default 0,
   last_attempt_at timestamptz,
@@ -158,7 +161,7 @@ begin
       'Content-Type', 'application/json',
       'x-cron-secret', (select public.get_app_secret('cron_shared_secret'))
     ),
-    body := jsonb_build_object('profile_id', a.profile_id, 'title', a.title, 'body', a.body, 'url', a.url, 'tag', a.tag),
+    body := jsonb_build_object('profile_id', a.profile_id, 'title', a.title, 'body', a.body, 'url', a.url, 'tag', a.tag, 'n', a.notification_id),
     timeout_milliseconds := 15000
   );
 
@@ -258,8 +261,8 @@ begin
 
   if p_push then
     begin
-      insert into public.user_push_outbox (profile_id, title, body, url, tag)
-      values (p_profile, left(p_title, 120), left(coalesce(p_body, ''), 300), p_url, p_dedupe_key)
+      insert into public.user_push_outbox (profile_id, title, body, url, tag, notification_id)
+      values (p_profile, left(p_title, 120), left(coalesce(p_body, ''), 300), p_url, p_dedupe_key, v_id)
       returning id into v_outbox;
       perform private.dispatch_user_push(v_outbox);
     exception when others then
@@ -275,20 +278,22 @@ revoke execute on function private.notify_user(uuid, text, text, text, text, tex
 -- ---------------------------------------------------------------------------------------------
 -- Para las funciones de servidor que ya mandan el push por su cuenta (recordatorios, previsión de pagos): solo anotan el aviso en el
 -- historial de cada persona. Solo service_role. Items: [{profile_id, bucket, category, title, body, url, group_key, dedupe_key}].
+-- Devuelve los avisos CREADOS: [{profile_id, dedupe_key, id}] (los repetidos, por su dedupe_key, no aparecen). La función de servidor usa ese id como
+-- clave «n» del push, para que al tocarlo la app marque el aviso como leído (INC-06).
 -- ---------------------------------------------------------------------------------------------
 create or replace function public.record_notifications(p_items jsonb)
-returns integer
+returns jsonb
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
   it jsonb;
-  v_count integer := 0;
+  v_created jsonb := '[]'::jsonb;
   v_id uuid;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array' then
-    return 0;
+    return v_created;
   end if;
   for it in select * from jsonb_array_elements(p_items) loop
     begin
@@ -305,13 +310,13 @@ begin
         coalesce(it -> 'payload', '{}'::jsonb)
       );
       if v_id is not null then
-        v_count := v_count + 1;
+        v_created := v_created || jsonb_build_array(jsonb_build_object('profile_id', it ->> 'profile_id', 'dedupe_key', it ->> 'dedupe_key', 'id', v_id));
       end if;
     exception when others then
       raise warning 'record_notifications: %', sqlerrm;
     end;
   end loop;
-  return v_count;
+  return v_created;
 end;
 $$;
 revoke all on function public.record_notifications(jsonb) from public, anon, authenticated;

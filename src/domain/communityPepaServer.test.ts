@@ -181,6 +181,7 @@ describe('menciones @pepa', () => {
     expect(report.mentions).toEqual({ received: 2, answered: 2, failed: 0 })
     const posted = s.client.argsOf('community_service_pepa_comment')
     expect(posted.map((a) => [a.p_post, a.p_kind, a.p_reply_to]).sort()).toEqual([[P1, 'mention', U1], [P2, 'mention', U2]].sort())
+    expect(s.client.argsOf('community_service_record_ai').length).toBeGreaterThan(0) // (si no hubiera llamadas, el «every» de abajo valdría siempre)
     expect(s.client.argsOf('community_service_record_ai').every((a) => a.p_purpose === 'pepa_mention')).toBe(true)
   })
   it('las menciones van antes que las preguntas sin responder y un fallo no para a las demás', async () => {

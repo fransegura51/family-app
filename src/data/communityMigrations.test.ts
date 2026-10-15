@@ -34,6 +34,7 @@ describe('tablas de Comunidad', () => {
     for (const t of list) expect(revokedTables.has(t), `${t} sin revoke all`).toBe(true)
     // Las únicas políticas de Comunidad son las de las FOTOS (Storage), restringidas a la carpeta propia.
     const policies = [...all.matchAll(/create policy "([^"]+)"/g)].map((m) => m[1])
+    expect(policies.length).toBeGreaterThan(0)
     expect(policies.every((p) => p.startsWith('community media:'))).toBe(true)
   })
 

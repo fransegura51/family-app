@@ -25,7 +25,7 @@ describe('2. Service worker y app abierta comparten identidad y no se duplican',
   })
   it('los avisos que no son recordatorios (pagos, lugares) siguen sin etiqueta', () => {
     expect(SW).toContain('...(tag ? { tag } : {})')
-    expect(SW).toContain('data: payload.url ?? null')
+    expect(SW).toContain('data: { url: payload.url ?? null, n: notificationIdFromPushData(payload) }')
   })
   it('ReminderWatcher decide con localReminderAction (alta de Web Push + recibo) y usa la misma etiqueta que el servidor', () => {
     expect(WATCHER).toContain('localReminderAction({')

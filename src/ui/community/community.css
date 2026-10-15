@@ -227,6 +227,17 @@
   font-weight: 600;
 }
 
+/* Subtipo opcional de una Anécdota (graciosa, bonita, emotiva): solo una etiqueta. */
+.community-tag-subtype {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #efe9ff;
+  color: #4a2f9a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .community-richtext p,
 .community-richtext ul,
 .community-richtext ol {
@@ -282,6 +293,15 @@
 
 /* Migas: el enlace sigue viéndose igual, pero su zona de toque mide 45 px (el relleno se compensa con el margen negativo, así no cambia la altura de la línea). */
 .community-crumbs a {
+  display: inline-block;
+  padding: 13px 6px;
+  margin: -13px -6px;
+}
+
+/* Enlace al perfil de quien escribe (cabecera de la publicación) y enlaces «Ver la fuente» de los artículos: igual que las migas, la zona de toque llega a 44 px
+   sin cambiar el aspecto ni la altura de la línea. */
+.community-post-author a,
+.community-external-link {
   display: inline-block;
   padding: 13px 6px;
   margin: -13px -6px;

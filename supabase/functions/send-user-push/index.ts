@@ -32,7 +32,7 @@ function loadFcmServiceAccount(): Promise<FcmServiceAccount | null> {
 
 async function deliverPush(
   sub: { endpoint: string; p256dh: string; auth: string },
-  payload: { title: string; body: string; tag?: string; url?: string },
+  payload: { title: string; body: string; tag?: string; url?: string; n?: string },
   options: { TTL: number; urgency: "high" },
 ): Promise<void> {
   if (sub.endpoint.startsWith(FCM_PREFIX)) {
@@ -52,6 +52,8 @@ interface Body {
   body?: unknown
   url?: unknown
   tag?: unknown
+  // Id del aviso del historial (user_notifications.id): viaja en el push (clave «n») para marcarlo como leído al tocarlo (INC-06).
+  n?: unknown
   dry_run?: unknown
 }
 
@@ -68,6 +70,8 @@ Deno.serve(async (req) => {
     if (typeof input.title !== "string" || typeof input.body !== "string") return new Response("bad payload", { status: 400 })
     const url = typeof input.url === "string" && input.url.startsWith("/") && !input.url.startsWith("//") ? input.url : undefined
     const tag = typeof input.tag === "string" && input.tag.length > 0 ? input.tag.slice(0, 120) : undefined
+    // Solo un uuid válido: la app volverá a validarlo, pero nunca se manda texto libre en esta clave.
+    const n = typeof input.n === "string" && UUID_RE.test(input.n) ? input.n.toLowerCase() : undefined
 
     const { data: subs, error: subsError } = await supabaseAdmin
       .from("push_subscriptions")
@@ -84,7 +88,7 @@ Deno.serve(async (req) => {
     ])
     webpush.setVapidDetails("mailto:family-app@example.com", vapidPublicKey as string, vapidPrivateKey as string)
 
-    const payload = { title: input.title.slice(0, 120), body: input.body.slice(0, 300), url, tag }
+    const payload = { title: input.title.slice(0, 120), body: input.body.slice(0, 300), url, tag, n }
     let sent = 0
     let expired = 0
     let failed = 0

@@ -89,6 +89,7 @@ describe('0261: destinatarios', () => {
   it('tiene su deshacer', () => {
     expect(down261).toContain('drop column if exists task_notify_mode')
     expect(down262).toContain('drop function if exists private.run_daily_task_summaries();')
+    expect(down262).toContain('drop function if exists private.run_daily_task_summaries_at(timestamptz);')
   })
 })
 
@@ -99,7 +100,7 @@ describe('0262: resumen diario', () => {
   })
 
   it('usa la zona horaria PROPIA de cada persona y una ventana de 60 minutos (cambios de hora)', () => {
-    expect(m262).toContain('now() at time zone r.tz')
+    expect(m262).toContain('p_now at time zone r.tz')
     expect(m262).toContain("interval '60 minutes'")
   })
 

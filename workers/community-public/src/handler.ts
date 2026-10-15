@@ -19,6 +19,7 @@
 //   publicaciones: 60 s «frescas» + 60 s sirviendo la copia vieja mientras se refresca en segundo plano (stale-while-revalidate).
 //   404: solo 10 s (para que una publicación recién creada no se quede «no disponible», y lo borrado deje de verse enseguida).
 //   fallos al hablar con Supabase: 503 y NUNCA se guardan en caché (un fallo temporal no debe parecer «borrado» a Google).
+import { scrubImageMetadata } from '../../../src/domain/communityImageScrub'
 import { COMMUNITY_MEDIA_BUCKET, isCommunityPhotoPath } from '../../../src/domain/communityPhotoPath'
 import {
   isUuid,
@@ -303,7 +304,11 @@ async function fetchImage(path: string, env: Env, deps: Deps): Promise<BuiltImag
     if (!bytes || bytes.length === 0) return MISSING_IMAGE
     const real = sniffImageType(bytes)
     if (real === null || real !== declared) return MISSING_IMAGE
-    return { status: 200, bytes, type: real }
+    // Nada sale a internet con datos ocultos (EXIF/GPS, XMP, comentarios…) aunque el archivo se hubiera subido así (INC-12). Si no se puede revisar con
+    // seguridad (truncado o mal formado), se trata como «no disponible» en vez de servirlo tal cual.
+    const clean = scrubImageMetadata(bytes, real)
+    if (clean === null) return MISSING_IMAGE
+    return { status: 200, bytes: clean, type: real }
   } catch {
     return FAILED_IMAGE
   } finally {

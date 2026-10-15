@@ -4,6 +4,7 @@
 import { supabase } from '@/data/supabaseClient'
 import { toCommunityError } from '@/domain/communityErrors'
 import type {
+  AnecdoteType,
   AnyPostKind,
   CommentList,
   CommentOrder,
@@ -103,6 +104,10 @@ export interface PostInput {
   photos: string[]
   recipe?: RecipeDraftInput | null
   fromDraft?: string | null
+  // Subtipo opcional de una Anécdota (CMN-§4.8). Solo se envía con tipo Anécdota.
+  anecdoteType?: AnecdoteType | null
+  // true = se marcó la casilla de consentimiento al compartir una receta de la Cocina: el servidor anota solo la FECHA (INC-24).
+  recipeConsent?: boolean
 }
 
 export const createPost = (i: PostInput) =>
@@ -115,10 +120,21 @@ export const createPost = (i: PostInput) =>
     p_photos: i.photos,
     p_recipe: i.recipe ?? null,
     p_from_draft: i.fromDraft ?? null,
+    p_anecdote_type: i.kind === 'anecdota' ? (i.anecdoteType ?? null) : null,
+    p_recipe_consent: i.kind === 'receta' && i.recipeConsent === true,
   })
 
-export const updatePost = (id: string, i: Omit<PostInput, 'kind' | 'section' | 'fromDraft'>) =>
-  rpc<void>('community_update_post', { p_id: id, p_topic: i.topicId, p_title: i.title, p_body: i.body, p_photos: i.photos, p_recipe: i.recipe ?? null })
+// Al editar se manda siempre el subtipo actual (null = sin subtipo; en cualquier tipo que no sea Anécdota debe ser null).
+export const updatePost = (id: string, i: Omit<PostInput, 'kind' | 'section' | 'fromDraft' | 'recipeConsent'>) =>
+  rpc<void>('community_update_post', {
+    p_id: id,
+    p_topic: i.topicId,
+    p_title: i.title,
+    p_body: i.body,
+    p_photos: i.photos,
+    p_recipe: i.recipe ?? null,
+    p_anecdote_type: i.anecdoteType ?? null,
+  })
 
 export const deletePost = (id: string) => rpc<void>('community_delete_post', { p_id: id })
 
@@ -159,6 +175,7 @@ export const saveDraft = (d: {
   body: string
   photos: string[]
   recipe: RecipeDraftInput | null
+  anecdoteType?: AnecdoteType | null
 }) =>
   rpc<string>('community_save_draft', {
     p_id: d.id,
@@ -169,6 +186,7 @@ export const saveDraft = (d: {
     p_body: d.body,
     p_photos: d.photos,
     p_recipe: d.recipe,
+    p_anecdote_type: d.kind === 'anecdota' ? (d.anecdoteType ?? null) : null,
   })
 export const listDrafts = () => rpc<DraftSummary[]>('community_list_drafts')
 export const getDraft = (id: string) => rpc<Draft | null>('community_get_draft', { p_id: id })

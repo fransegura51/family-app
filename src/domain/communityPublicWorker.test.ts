@@ -323,9 +323,33 @@ describe('sitemap y robots', () => {
 const PROFILE = 'aaaaaaaa-1111-4222-8333-bbbbbbbbbbbb'
 const FILE = '11111111-aaaa-4bbb-8ccc-000000000001'
 const PHOTO = `${PROFILE}/${FILE}.jpg`
-const JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10, 0x4a, 0x46, 0x49, 0x46, 0, 1, 2, 3])
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])
-const WEBP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 1, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50])
+// Imágenes mínimas pero VÁLIDAS (el Worker las revisa y quita los metadatos antes de servirlas: un archivo mal formado se rechaza con 404).
+const u8 = (...n: number[]) => new Uint8Array(n)
+const joinBytes = (...parts: Uint8Array[]) => {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0))
+  let o = 0
+  for (const p of parts) {
+    out.set(p, o)
+    o += p.length
+  }
+  return out
+}
+const ascii = (t: string) => new TextEncoder().encode(t)
+const JFIF_SEGMENT = joinBytes(u8(0xff, 0xe0, 0, 16), ascii('JFIF '), u8(1, 1, 0, 0, 1, 0, 1, 0, 0))
+const SCAN_HEADER = u8(0xff, 0xda, 0, 8, 1, 1, 0, 0, 0x3f, 0)
+// `pad` = bytes de datos de imagen (sin 0xFF) para fabricar archivos de un tamaño exacto.
+const makeJpeg = (pad = 4, ...extra: Uint8Array[]) => joinBytes(u8(0xff, 0xd8), JFIF_SEGMENT, ...extra, SCAN_HEADER, new Uint8Array(pad).fill(0x11), u8(0xff, 0xd9))
+const JPEG = makeJpeg()
+const pngChunk = (type: string, data: Uint8Array) => joinBytes(u8((data.length >>> 24) & 255, (data.length >>> 16) & 255, (data.length >>> 8) & 255, data.length & 255), ascii(type), data, u8(9, 9, 9, 9))
+const PNG_HEAD = joinBytes(u8(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a), pngChunk('IHDR', u8(0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0)), pngChunk('IDAT', u8(1, 2, 3)))
+const PNG = joinBytes(PNG_HEAD, pngChunk('IEND', u8()))
+const riff = (fourcc: string, data: Uint8Array) => joinBytes(ascii(fourcc), u8(data.length & 255, (data.length >>> 8) & 255, 0, 0), data, data.length % 2 ? u8(0) : u8())
+const webpOf = (...chunks: Uint8Array[]) => {
+  const body = joinBytes(...chunks)
+  const size = 4 + body.length
+  return joinBytes(ascii('RIFF'), u8(size & 255, (size >>> 8) & 255, (size >>> 16) & 255, 0), ascii('WEBP'), body)
+}
+const WEBP = webpOf(riff('VP8 ', u8(1, 2, 3, 4, 5, 6)))
 const SVG = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"></svg>')
 const body = (bytes: Uint8Array) => bytes as unknown as BodyInit
 const ok = (bytes: Uint8Array, type = 'image/jpeg') => new Response(body(bytes), { status: 200, headers: { 'content-type': type } })
@@ -371,6 +395,43 @@ describe('fotos (/c/img/<ruta>)', () => {
     expect(await head.text()).toBe('')
   })
 
+  it('EXIF y datos ocultos: lo que sale a internet NUNCA los lleva, aunque la foto se hubiera guardado con ellos (INC-12)', async () => {
+    const exifPayload = ascii('Exif\0\0GPSLatitude=40.4168;GPSLongitude=-3.7038;Make=Xiaomi')
+    const exif = joinBytes(u8(0xff, 0xe1, 0, exifPayload.length + 2), exifPayload)
+    const dirtyJpeg = makeJpeg(4, exif)
+    const dirtyPng = joinBytes(PNG_HEAD, pngChunk('eXIf', ascii('GPSLatitude secreta')), pngChunk('tEXt', ascii('Author\0Maria Lopez')), pngChunk('IEND', u8()))
+    const dirtyWebp = webpOf(riff('VP8X', u8(0x08, 0, 0, 0, 0, 0, 0, 0, 0, 0)), riff('VP8 ', u8(1, 2, 3, 4, 5, 6)), riff('EXIF', ascii('GPSLatitude secreta')))
+    for (const [ext, dirty, type, secret] of [
+      ['jpg', dirtyJpeg, 'image/jpeg', 'GPSLatitude'],
+      ['png', dirtyPng, 'image/png', 'Maria Lopez'],
+      ['webp', dirtyWebp, 'image/webp', 'GPSLatitude'],
+    ] as const) {
+      expect(new TextDecoder('latin1').decode(dirty), `${ext} de partida`).toContain(secret)
+      const s = setup({}, { storage: () => ok(dirty, type) })
+      const res = await s.get(`/c/img/${PROFILE}/${FILE}.${ext}`)
+      expect(res.status, ext).toBe(200)
+      const served = new Uint8Array(await res.arrayBuffer())
+      expect(new TextDecoder('latin1').decode(served), `${ext} servida`).not.toContain(secret)
+      expect(served.length, ext).toBeLessThan(dirty.length)
+      expect(Number(res.headers.get('content-length')), ext).toBe(served.length)
+    }
+    // También lo que se guarda en la caché del Worker va ya limpio.
+    const s = setup({}, { storage: () => ok(dirtyJpeg) })
+    await s.get(`/c/img/${PHOTO}`)
+    s.advance(10)
+    const again = await s.get(`/c/img/${PHOTO}`)
+    expect(new TextDecoder('latin1').decode(new Uint8Array(await again.arrayBuffer()))).not.toContain('GPSLatitude')
+    expect(s.storageCalls).toHaveLength(1)
+  })
+
+  it('un archivo que se dice imagen pero está truncado o mal formado: 404 (no se sirve sin revisar)', async () => {
+    const truncated = makeJpeg(4).slice(0, 12)
+    const s = setup({}, { storage: () => ok(truncated) })
+    expect((await s.get(`/c/img/${PHOTO}`)).status).toBe(404)
+    const noEnd = joinBytes(u8(0xff, 0xd8), JFIF_SEGMENT, SCAN_HEADER, u8(1, 2, 3))
+    expect((await setup({}, { storage: () => ok(noEnd) }).get(`/c/img/${PHOTO}`)).status).toBe(404)
+  })
+
   it('contenido oculto, eliminado, inexistente o sin permiso (Storage responde 400/401/403/404): el MISMO 404 neutro, sin detalle', async () => {
     const bodies = new Set<string>()
     for (const status of [400, 401, 403, 404]) {
@@ -412,8 +473,8 @@ describe('fotos (/c/img/<ruta>)', () => {
     // Con una cabecera que miente (o sin ella): se corta al pasar el límite.
     const lying = setup({}, { storage: () => new Response(body(big), { status: 200, headers: { 'content-type': 'image/jpeg', 'content-length': '10' } }) })
     expect((await lying.get(`/c/img/${PHOTO}`)).status).toBe(404)
-    const exact = new Uint8Array(IMAGE_MAX_BYTES)
-    exact.set(JPEG)
+    const exact = makeJpeg(IMAGE_MAX_BYTES - makeJpeg(0).length)
+    expect(exact.length).toBe(IMAGE_MAX_BYTES)
     const fits = setup({}, { storage: () => ok(exact) })
     expect((await fits.get(`/c/img/${PHOTO}`)).status).toBe(200)
   })

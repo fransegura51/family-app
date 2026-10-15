@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import { UNSAVED_ACTIONS, UNSAVED_MESSAGE } from '@/domain/unsavedChangesGuard'
 import { ConfirmDiscardDialog } from '@/ui/community/ConfirmDiscardDialog'
 import '@/ui/community/communityEditor.css'
@@ -41,9 +42,30 @@ export function UnsavedChangesDialog({
     )
   }
 
+  return <UnsavedMain saveLabel={saveLabel} busy={busy} error={error} onKeep={onKeep} onSave={onSave} onAskDiscard={() => setConfirming(true)} />
+}
+
+// Diálogo principal (componente aparte: al volver de «¿Descartar?» se monta de nuevo y el foco entra otra vez, y el tabulador no se escapa).
+function UnsavedMain({
+  saveLabel,
+  busy,
+  error,
+  onKeep,
+  onSave,
+  onAskDiscard,
+}: {
+  saveLabel: string
+  busy?: boolean
+  error?: string | null
+  onKeep: () => void
+  onSave: () => void
+  onAskDiscard: () => void
+}) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   return (
     <div className="modal-overlay" role="presentation">
       <div
+        ref={dialogRef}
         className="modal-sheet ce-dialog"
         role="alertdialog"
         aria-modal="true"
@@ -65,7 +87,7 @@ export function UnsavedChangesDialog({
           <button type="button" className="ce-btn ce-btn-secondary" disabled={busy} onClick={onSave}>
             {busy ? 'Guardando…' : saveLabel}
           </button>
-          <button type="button" className="ce-btn ce-btn-danger-outline" disabled={busy} onClick={() => setConfirming(true)}>
+          <button type="button" className="ce-btn ce-btn-danger-outline" disabled={busy} onClick={onAskDiscard}>
             {UNSAVED_ACTIONS.discard}
           </button>
         </div>

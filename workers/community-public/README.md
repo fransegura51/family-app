@@ -150,3 +150,6 @@ Dos caminos, ver la guía:
 - El mapa del sitio lista las 5.000 publicaciones más recientes (un solo archivo). Si Comunidad crece más, habría que paginar con un índice de mapas.
 - Hasta 50 comentarios raíz con sus respuestas por página (el resto se lee en la app).
 - La base no distingue «borrada» de «nunca existió»: siempre 404 (Google lo trata igual que 410).
+
+## Fotos sin metadatos (INC-12)
+`/c/img/<ruta>` no sirve el archivo tal cual: `src/domain/communityImageScrub.ts` lo recorre y quita EXIF/GPS, XMP, IPTC, comentarios y los datos añadidos tras el final de la imagen (JPEG, PNG y WebP). Si el archivo está truncado o mal formado responde 404. Pruebas: `src/domain/communityImageScrub.test.ts` y `src/domain/communityPublicWorker.test.ts`.

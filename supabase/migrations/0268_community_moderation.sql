@@ -914,6 +914,8 @@ declare
   v_hash text := left(nullif(btrim(coalesce(p_client_hash, '')), ''), 128);
   v_source text := case when (select auth.uid()) is null then 'visitor' else 'reader' end;
   v_published boolean := false;
+  v_cap_hour integer;
+  v_cap_day integer;
 begin
   if p_type is null or p_type not in ('post', 'comment', 'review') or p_id is null
      or p_reason is null or p_reason not in ('spam', 'acoso', 'violencia', 'sexual', 'ilegal', 'datos_privados', 'enganoso', 'otro') then
@@ -958,9 +960,29 @@ begin
       where v.target_type = p_type and v.target_id = p_id and v.status = 'open' and v.created_at > now() - interval '1 day') >= 5 then
     return jsonb_build_object('ok', true, 'already_reported', true);
   end if;
-  -- Topes globales (60 por hora y 300 por día): frenan una avalancha aunque cambie de huella a cada aviso.
+  -- Topes globales: frenan una avalancha aunque cambie de huella a cada aviso (la huella la manda el cliente y no es de fiar: con claves aleatorias se
+  -- salta el tope por huella). Para que UNA sola fuente no agote todo el cupo y deje sin sitio a los avisos legítimos, el cupo se REPARTE por origen:
+  --   · Anónimos (sin sesión): 40 por hora y 200 al día. De ellos, los que llegan SIN huella (llamada directa a la API, sin pasar por el Worker): 10 por hora
+  --     y 50 al día.
+  --   · Lectores con sesión (cuenta de PEPA sin alias o con permiso de solo lectura): 30 por hora y 150 al día, aparte de los anónimos.
+  --   · Total (techo absoluto): 60 por hora y 300 al día. Como 40 < 60 y 200 < 300, quedan SIEMPRE 20 por hora y 100 al día reservados a lectores con sesión
+  --     aunque los anónimos agoten su cupo.
+  -- Pasado el tope no se guarda nada y la persona ve «vuelve a intentarlo más tarde»; la administración NO se satura. En Cloudflare se recomienda además un límite
+  -- por IP sobre /c/report (ver DESPLIEGUE_Y_PRUEBAS.md), que es lo único que distingue de verdad a un atacante de otro.
   if (select count(*) from public.community_visitor_reports v where v.created_at > now() - interval '1 hour') >= 60
      or (select count(*) from public.community_visitor_reports v where v.created_at > now() - interval '1 day') >= 300 then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
+  end if;
+  -- (Los topes se calculan antes: un CASE con THEN dentro de la condición de un IF confunde al intérprete de PL/pgSQL.)
+  v_cap_hour := case when v_source = 'reader' then 30 else 40 end;
+  v_cap_day := case when v_source = 'reader' then 150 else 200 end;
+  if (select count(*) from public.community_visitor_reports v where v.source = v_source and v.created_at > now() - interval '1 hour') >= v_cap_hour
+     or (select count(*) from public.community_visitor_reports v where v.source = v_source and v.created_at > now() - interval '1 day') >= v_cap_day then
+    raise exception 'RATE_LIMIT' using errcode = 'P0001';
+  end if;
+  if v_hash is null and v_source = 'visitor'
+     and ((select count(*) from public.community_visitor_reports v where v.source = 'visitor' and v.client_hash is null and v.created_at > now() - interval '1 hour') >= 10
+          or (select count(*) from public.community_visitor_reports v where v.source = 'visitor' and v.client_hash is null and v.created_at > now() - interval '1 day') >= 50) then
     raise exception 'RATE_LIMIT' using errcode = 'P0001';
   end if;
 

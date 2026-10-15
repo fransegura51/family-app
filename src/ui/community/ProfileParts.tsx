@@ -3,6 +3,7 @@ import { reportContent } from '@/data/community'
 import { REPORT_REASONS } from '@/domain/community'
 import { avatarText } from '@/domain/communityProfile'
 import { communityErrorText } from '@/domain/communityErrors'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import '@/ui/community/communityProfile.css'
 
 // Piezas compartidas por el perfil público y «Mi perfil»: avatar, diálogo de confirmación y diálogo de denuncia.
@@ -45,9 +46,10 @@ export function ConfirmDialog({
   onCancel: () => void
 }) {
   useEscape(onCancel)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   return (
     <div className="modal-overlay" role="presentation" onClick={onCancel}>
-      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
         {children}
         {error && (
@@ -76,6 +78,7 @@ export function ReportUserDialog({ profileId, onClose }: { profileId: string; on
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<string | null>(null)
   useEscape(onClose)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
 
   async function send() {
     setBusy(true)
@@ -92,7 +95,7 @@ export function ReportUserDialog({ profileId, onClose }: { profileId: string; on
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Denunciar a esta persona" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet" role="dialog" aria-modal="true" aria-label="Denunciar a esta persona" onClick={(e) => e.stopPropagation()}>
         <h2>Denunciar a esta persona</h2>
         {done ? (
           <>

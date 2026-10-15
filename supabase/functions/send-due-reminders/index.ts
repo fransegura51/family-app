@@ -40,9 +40,22 @@ function loadFcmServiceAccount(): Promise<FcmServiceAccount | null> {
   return fcmServiceAccountPromise
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value)
+}
+
+// Enlace profundo de un recordatorio (INC-14): Calendario abre ese evento en la fecha de ESA ocurrencia. Solo un uuid y una fecha AAAA-MM-DD
+// (si alguno no tiene la forma esperada, se cae en /calendario a secas).
+function calendarLink(eventId: unknown, occurrenceDate: unknown): string {
+  return isUuid(eventId) && typeof occurrenceDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(occurrenceDate)
+    ? `/calendario?evento=${eventId}&fecha=${occurrenceDate}`
+    : "/calendario"
+}
+
 async function deliverPush(
   sub: { endpoint: string; p256dh: string; auth: string },
-  payload: { title: string; body: string; tag?: string; url?: string },
+  payload: { title: string; body: string; tag?: string; url?: string; n?: string },
   options: { TTL: number; urgency: "high" },
 ): Promise<void> {
   if (sub.endpoint.startsWith(FCM_PREFIX)) {
@@ -326,7 +339,8 @@ async function sendDueForecastReminders(): Promise<{ checked: number; sent: numb
     try {
       await deliverPush(
         { endpoint: c.out_endpoint, p256dh: c.out_p256dh, auth: c.out_auth },
-        { title: `Previsión: ${c.out_title}`, body: "Vence pronto", url: "/dinero" },
+        // n = id del aviso de su dueño en la campana (claim_due_forecast_reminders): al tocar el push la app lo marca como leído (INC-06).
+        { title: `Previsión: ${c.out_title}`, body: "Vence pronto", url: "/dinero", ...(isUuid(c.out_notification_id) ? { n: c.out_notification_id } : {}) },
         PUSH_OPTIONS_DAY,
       )
       sent++
@@ -375,8 +389,10 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
   let sent = 0
   let expired = 0
 
-  // Historial de la campana: un aviso por persona, evento y ocurrencia (aunque tenga varios móviles). Es independiente del envío y nunca lo bloquea; la
-  // clave anti-repeticiones (la misma etiqueta del recordatorio) evita duplicados. record_notifications solo la puede llamar el servidor (migración 0260).
+  // Historial de la campana: un aviso por persona, evento y ocurrencia (aunque tenga varios móviles, y TAMBIÉN para quien no tiene ninguno: esas filas
+  // llegan sin datos de envío, INC-13). Se anota ANTES de enviar para llevar el id del aviso en el push (clave «n», INC-06). Es independiente del envío y
+  // nunca lo bloquea; la clave anti-repeticiones (la misma etiqueta del recordatorio) evita duplicados. record_notifications solo la puede llamar el
+  // servidor (migración 0260) y devuelve los avisos CREADOS: [{profile_id, dedupe_key, id}].
   const history = new Map<string, Record<string, unknown>>()
   for (const r of reminders ?? []) {
     if (!r.out_profile_id) continue
@@ -395,16 +411,24 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
         localTime: r.out_local_time,
         dayOffset: r.out_day_offset ?? 0,
       }),
-      url: "/calendario",
+      url: calendarLink(r.out_event_id, r.out_occurrence_date),
       dedupe_key: tag,
     })
   }
+  const notificationIds = new Map<string, string>()
   if (history.size > 0) {
-    const { error: historyError } = await supabaseAdmin.rpc("record_notifications", { p_items: [...history.values()] })
+    const { data: created, error: historyError } = await supabaseAdmin.rpc("record_notifications", { p_items: [...history.values()] })
     if (historyError) console.error("record_notifications failed (calendar)", historyError)
+    if (Array.isArray(created)) {
+      for (const c of created as { profile_id?: unknown; dedupe_key?: unknown; id?: unknown }[]) {
+        if (isUuid(c.id) && typeof c.profile_id === "string" && typeof c.dedupe_key === "string") notificationIds.set(`${c.profile_id}|${c.dedupe_key}`, c.id)
+      }
+    }
   }
 
   for (const r of reminders ?? []) {
+    // Quien no tiene ningún móvil dado de alta (INC-13): solo se anotó su campana, no hay a dónde enviar.
+    if (!r.out_endpoint) continue
     // La hora y la fecha vienen ya calculadas en Europe/Madrid por la base (claim_due_reminders, migración 0197).
     // Deno corre en UTC: formatear aquí con toLocaleTimeString sin zona daba la hora UTC (16:30 de verano → «14:30»).
     // Un recordatorio "de fin" (p. ej. "recógelo") dice "Termina", no "Empieza"; uno de un evento de todo el día
@@ -419,10 +443,12 @@ async function sendDueCalendarReminders(): Promise<{ checked: number; sent: numb
     // Etiqueta estable del recordatorio (la misma que calcula la app en src/domain/reminderIdentity.ts): evento +
     // ocurrencia + ancla + minutos. La app abierta la usa para no duplicar este aviso.
     const tag = `reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`
+    // url: el evento y la fecha de ESTA ocurrencia (INC-14). n: el aviso de esa persona en la campana, si se creó ahora (INC-06).
+    const n = r.out_profile_id ? notificationIds.get(`${r.out_profile_id}|${tag}`) : undefined
     try {
       await deliverPush(
         { endpoint: r.out_endpoint, p256dh: r.out_p256dh, auth: r.out_auth },
-        { title: r.out_event_title, body, tag },
+        { title: r.out_event_title, body, tag, url: calendarLink(r.out_event_id, r.out_occurrence_date), ...(n ? { n } : {}) },
         PUSH_OPTIONS_SOON,
       )
       sent++

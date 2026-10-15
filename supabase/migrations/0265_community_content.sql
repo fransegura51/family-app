@@ -420,6 +420,9 @@ end;
 $$;
 revoke execute on function private.community_clean_recipe(jsonb) from public, anon, authenticated;
 
+-- p_anecdote_type: subtipo opcional de una Anécdota (graciosa | bonita | emotiva; null = sin subtipo); en cualquier otro tipo de publicación → BAD_KIND.
+-- p_recipe_consent: true = quien publica ha marcado el consentimiento explícito de hacer pública una copia de una receta de su Cocina (la app lo exige antes de
+-- llamar). Solo se anota la FECHA en la receta pública (INC-24); no se guarda nada más ni se enlaza con la receta privada.
 create or replace function public.community_create_post(
   p_kind text,
   p_section text,
@@ -428,7 +431,9 @@ create or replace function public.community_create_post(
   p_body text,
   p_photos text[] default '{}',
   p_recipe jsonb default null,
-  p_from_draft uuid default null
+  p_from_draft uuid default null,
+  p_anecdote_type text default null,
+  p_recipe_consent boolean default false
 )
 returns uuid
 language plpgsql
@@ -450,6 +455,9 @@ begin
   if p_kind = 'receta' and p_section <> 'recetas' then
     raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
+  if p_anecdote_type is not null and (p_kind <> 'anecdota' or p_anecdote_type not in ('graciosa', 'bonita', 'emotiva')) then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
+  end if;
   perform private.community_rate_check(v_cp, 'post');
   v_title := private.community_clean_text(p_title, 140);
   if char_length(v_title) < 3 then
@@ -460,16 +468,17 @@ begin
 
   if p_kind = 'receta' then
     v_recipe := private.community_clean_recipe(p_recipe);
-    insert into public.community_recipes (author_id, title, servings, ingredients, steps, tags, photo_path)
+    insert into public.community_recipes (author_id, title, servings, ingredients, steps, tags, photo_path, consent_at)
     values (v_cp, v_title, (v_recipe ->> 'servings')::numeric, v_recipe -> 'ingredients', v_recipe ->> 'steps',
-            coalesce(array(select jsonb_array_elements_text(v_recipe -> 'tags')), '{}'), p_photos[1])
+            coalesce(array(select jsonb_array_elements_text(v_recipe -> 'tags')), '{}'), p_photos[1],
+            case when coalesce(p_recipe_consent, false) then now() else null end)
     returning id into v_recipe_id;
     insert into public.community_recipe_versions (recipe_id, version, snapshot)
     values (v_recipe_id, 1, jsonb_build_object('title', v_title) || v_recipe);
   end if;
 
-  insert into public.community_posts (id, author_id, kind, section, topic_id, title, body, recipe_id)
-  values (v_id, v_cp, p_kind, p_section, p_topic, v_title, v_body, v_recipe_id);
+  insert into public.community_posts (id, author_id, kind, section, topic_id, title, body, recipe_id, anecdote_type)
+  values (v_id, v_cp, p_kind, p_section, p_topic, v_title, v_body, v_recipe_id, p_anecdote_type);
 
   for v_i in 1 .. coalesce(cardinality(p_photos), 0) loop
     insert into public.community_post_photos (post_id, storage_path, position) values (v_id, p_photos[v_i], v_i);
@@ -482,13 +491,15 @@ begin
 end;
 $$;
 
+-- p_anecdote_type: la app manda siempre el subtipo actual (null = sin subtipo); en cualquier tipo que no sea Anécdota debe ser null.
 create or replace function public.community_update_post(
   p_id uuid,
   p_topic text,
   p_title text,
   p_body text,
   p_photos text[] default '{}',
-  p_recipe jsonb default null
+  p_recipe jsonb default null,
+  p_anecdote_type text default null
 )
 returns void
 language plpgsql
@@ -508,6 +519,9 @@ begin
   select * into v_post from public.community_posts p where p.id = p_id for update;
   if not found or v_post.author_id <> v_cp or v_post.status = 'deleted' then
     raise exception 'NOT_AVAILABLE' using errcode = 'P0001';
+  end if;
+  if p_anecdote_type is not null and (v_post.kind <> 'anecdota' or p_anecdote_type not in ('graciosa', 'bonita', 'emotiva')) then
+    raise exception 'BAD_KIND' using errcode = 'P0001';
   end if;
   v_title := private.community_clean_text(p_title, 140);
   if char_length(v_title) < 3 then
@@ -536,7 +550,7 @@ begin
   end if;
 
   -- El tema solo puede cambiar dentro de la misma sección.
-  update public.community_posts set topic_id = p_topic, title = v_title, body = v_body, edited_at = now() where id = p_id;
+  update public.community_posts set topic_id = p_topic, title = v_title, body = v_body, anecdote_type = p_anecdote_type, edited_at = now() where id = p_id;
 end;
 $$;
 
@@ -631,6 +645,7 @@ begin
   return jsonb_build_object(
     'id', p.id,
     'kind', p.kind,
+    'anecdote_type', p.anecdote_type,
     'section', p.section,
     'topic_id', p.topic_id,
     'topic_label', (select t.label from public.community_topics t where t.id = p.topic_id),
@@ -917,8 +932,8 @@ $$;
 revoke all on function public.community_get_my_profile() from public, anon;
 revoke all on function public.community_set_alias(text, text, boolean, boolean) from public, anon;
 revoke all on function public.community_list_topics() from public;
-revoke all on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid) from public, anon;
-revoke all on function public.community_update_post(uuid, text, text, text, text[], jsonb) from public, anon;
+revoke all on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid, text, boolean) from public, anon;
+revoke all on function public.community_update_post(uuid, text, text, text, text[], jsonb, text) from public, anon;
 revoke all on function public.community_delete_post(uuid) from public, anon;
 revoke all on function public.community_list_posts(text, text, text, text, integer, integer, text, uuid, boolean, boolean) from public, anon;
 revoke all on function public.community_similar_posts(text, text, text) from public, anon;
@@ -927,8 +942,8 @@ revoke all on function public.community_get_post(uuid) from public, anon;
 grant execute on function public.community_get_my_profile() to authenticated;
 grant execute on function public.community_set_alias(text, text, boolean, boolean) to authenticated;
 grant execute on function public.community_list_topics() to anon, authenticated;
-grant execute on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid) to authenticated;
-grant execute on function public.community_update_post(uuid, text, text, text, text[], jsonb) to authenticated;
+grant execute on function public.community_create_post(text, text, text, text, text, text[], jsonb, uuid, text, boolean) to authenticated;
+grant execute on function public.community_update_post(uuid, text, text, text, text[], jsonb, text) to authenticated;
 grant execute on function public.community_delete_post(uuid) to authenticated;
 grant execute on function public.community_list_posts(text, text, text, text, integer, integer, text, uuid, boolean, boolean) to authenticated;
 grant execute on function public.community_similar_posts(text, text, text) to authenticated;

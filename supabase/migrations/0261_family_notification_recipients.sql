@@ -14,6 +14,10 @@
 --  · public.claim_due_reminders(): mismo cuerpo que en 0197 salvo los destinatarios (ahora vía esa función) y una columna nueva al final
 --    (out_profile_id: la persona destinataria, para anotar el aviso en su historial). Las 15 primeras columnas no cambian, así que la función de
 --    servidor actual sigue funcionando sin redesplegar.
+--    INC-13: además devuelve UNA fila por persona y ocurrencia para quien NO tiene ningún móvil dado de alta (out_subscription_id y datos de envío
+--    vacíos): la función de servidor solo anota ese recordatorio en su campana, sin enviar nada. La fila se «reclama» una sola vez en
+--    notification_dedupe (clave 'nosub:' + etiqueta del recordatorio), así que no hay una llamada nueva por minuto ni avisos duplicados; el reparto
+--    de pushes sigue siendo uno por dispositivo (reminder_deliveries) y el aviso del historial uno por persona y ocurrencia (clave de la etiqueta).
 --  · Aviso de asignación: al asignar una TAREA compartida a otra persona (trigger sobre calendar_event_members) esa persona recibe un aviso
 --    personal «te han asignado una tarea», sin esperar a su vencimiento. Quien asigna no recibe aviso de lo que él mismo asigna. Un menor sin
 --    cuenta asignado avisa a los adultos con cuenta (misma excepción). Editar la tarea no repite el aviso (notification_dedupe).
@@ -178,19 +182,32 @@ begin
   -- Destinatarios: private.event_notification_recipients decide a QUIÉN se avisa de cada evento o tarea según el modo de la familia
   -- (families.task_notify_mode). Con el modo sin elegir (null) da exactamente lo de siempre: asignados + administradores; los privados,
   -- solo quien los creó.
+  -- LEFT JOIN: quien no tiene móvil dado de alta también es destinatario (sub_id vacío) para que su campana lo anote (INC-13).
   candidates as (
     select distinct dr.reminder_id, dr.event_id, dr.title, dr.all_day, dr.anchor, dr.minutes_before, dr.occ_date, dr.anchor_at,
            ps.id as sub_id, ps.endpoint as ep, ps.p256dh as p256dh_key, ps.auth as auth_key, rc.profile_id as recipient_profile_id
     from due_reminders dr
     cross join lateral private.event_notification_recipients(dr.event_id) rc
-    join push_subscriptions ps on ps.profile_id = rc.profile_id
+    left join push_subscriptions ps on ps.profile_id = rc.profile_id
   ),
   claimed as (
     insert into reminder_deliveries (reminder_id, subscription_id, occurrence_date, anchor_at)
-    select c.reminder_id, c.sub_id, c.occ_date, c.anchor_at from candidates c
+    select c.reminder_id, c.sub_id, c.occ_date, c.anchor_at from candidates c where c.sub_id is not null
     on conflict (reminder_id, subscription_id, occurrence_date, anchor_at) do nothing
     returning reminder_deliveries.reminder_id, reminder_deliveries.subscription_id,
               reminder_deliveries.occurrence_date, reminder_deliveries.anchor_at
+  ),
+  -- Sin móvil: se reclama UNA vez por persona y ocurrencia (la misma etiqueta que calcula la función de servidor, con el prefijo 'nosub:').
+  claimed_history as (
+    insert into notification_dedupe (profile_id, dedupe_key)
+    select x.recipient_profile_id, 'nosub:' || x.tag
+    from (
+      select distinct c.recipient_profile_id,
+             'reminder:' || c.event_id || ':' || c.occ_date || ':' || c.anchor || ':' || c.minutes_before as tag
+      from candidates c where c.sub_id is null
+    ) x
+    on conflict do nothing
+    returning notification_dedupe.profile_id, notification_dedupe.dedupe_key
   )
   select
     c.sub_id, c.ep, c.p256dh_key, c.auth_key, c.title, c.anchor, c.anchor_at,
@@ -204,7 +221,20 @@ begin
     on cl.reminder_id = c.reminder_id
    and cl.subscription_id = c.sub_id
    and cl.occurrence_date = c.occ_date
-   and cl.anchor_at = c.anchor_at;
+   and cl.anchor_at = c.anchor_at
+  union all
+  select
+    null::uuid, null::text, null::text, null::text, c.title, c.anchor, c.anchor_at,
+    c.event_id, c.reminder_id, c.minutes_before, c.occ_date, c.all_day,
+    (c.anchor_at at time zone 'Europe/Madrid')::date,
+    to_char(c.anchor_at at time zone 'Europe/Madrid', 'HH24:MI'),
+    ((c.anchor_at at time zone 'Europe/Madrid')::date - v_today),
+    c.recipient_profile_id
+  from candidates c
+  join claimed_history ch
+    on ch.profile_id = c.recipient_profile_id
+   and ch.dedupe_key = 'nosub:reminder:' || c.event_id || ':' || c.occ_date || ':' || c.anchor || ':' || c.minutes_before
+  where c.sub_id is null;
 end;
 $function$;
 
@@ -227,8 +257,10 @@ declare
   m record;
   v_actor uuid := auth.uid();
   r record;
+  v_url text;
 begin
-  select ev.family_id, ev.kind, ev.title, ev.visibility into e from public.calendar_events ev where ev.id = new.event_id;
+  select ev.family_id, ev.kind, ev.title, ev.visibility, ev.recurrence_rule,
+         (ev.start_at at time zone 'Europe/Madrid')::date as start_date into e from public.calendar_events ev where ev.id = new.event_id;
   if not found or e.kind <> 'task' or e.visibility = 'private' then
     return new;
   end if;
@@ -239,16 +271,21 @@ begin
     return new;
   end if;
 
+  -- Enlace profundo (INC-14): abre Calendario en la tarea. Una tarea suelta, en su día; una repetitiva, en su próxima ocurrencia (Calendario busca la más
+  -- cercana a partir de la fecha indicada: hoy, si la serie empezó antes). Las dos partes son un uuid y una fecha, nunca texto libre.
+  v_url := '/calendario?evento=' || new.event_id || '&fecha='
+    || (case when e.recurrence_rule is null then e.start_date else greatest(e.start_date, (now() at time zone 'Europe/Madrid')::date) end)::text;
+
   if m.linked_profile_id is not null then
     if m.linked_profile_id is distinct from v_actor then
-      perform private.notify_user(m.linked_profile_id, 'personal', 'task_assigned', 'Te han asignado una tarea', e.title, '/calendario',
+      perform private.notify_user(m.linked_profile_id, 'personal', 'task_assigned', 'Te han asignado una tarea', e.title, v_url,
         null, 'assign:' || new.event_id || ':' || m.linked_profile_id, true);
     end if;
   elsif m.member_type in ('child', 'baby') then
     -- Menor sin cuenta: lo reciben los adultos con cuenta (menos quien asigna).
     for r in select p.id from public.profiles p where p.family_id = e.family_id and p.role in ('admin', 'adult') and p.id is distinct from v_actor
              and (p.allowed_sections is null or 'calendario' = any(p.allowed_sections)) loop
-      perform private.notify_user(r.id, 'personal', 'task_assigned', 'Tarea asignada a ' || coalesce(m.name, 'un menor'), e.title, '/calendario',
+      perform private.notify_user(r.id, 'personal', 'task_assigned', 'Tarea asignada a ' || coalesce(m.name, 'un menor'), e.title, v_url,
         null, 'assign:' || new.event_id || ':' || new.member_id || ':' || r.id, true);
     end loop;
   end if;

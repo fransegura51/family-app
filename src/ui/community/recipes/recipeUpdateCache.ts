@@ -10,6 +10,12 @@ export interface KeyValueStore {
   removeItem(key: string): void
 }
 
+// ¿Hay que preguntar al servidor si esta receta tiene una versión nueva en Comunidad? Solo si Comunidad está abierta para esta persona (true) y la receta no
+// se sabe ya «no importada». Con `null` (todavía no se sabe) o `false` (cerrada o sin acceso) NO se hace ninguna consulta a Supabase (INC-17).
+export function shouldAskForUpdate(communityVisible: boolean | null, knownNotImported: boolean): boolean {
+  return communityVisible === true && !knownNotImported
+}
+
 // El almacenamiento del navegador puede fallar (ventana privada, bloqueado): nunca debe romper la receta.
 export function isKnownNotImported(store: KeyValueStore | null, privateRecipeId: string): boolean {
   try {

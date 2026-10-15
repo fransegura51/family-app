@@ -4,6 +4,7 @@ import { getCommunityAccess } from '@/data/communityMinors'
 import { ADULT_DECLARATION_HELP, ADULT_DECLARATION_LABEL, needsAdultDeclaration } from '@/domain/communityAccess'
 import { communityErrorText, toCommunityError } from '@/domain/communityErrors'
 import { COMMUNITY_RULES, type MyCommunityProfile } from '@/domain/community'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 
 // Se abre al PRIMER intento de publicar, comentar, valorar o seguir (leer no pide nada). El alias es público, distinto del nombre privado de la familia y se
 // puede cambiar después (la identidad interna no cambia). La primera vez se enseñan las normas y hay que aceptarlas.
@@ -12,6 +13,7 @@ import { COMMUNITY_RULES, type MyCommunityProfile } from '@/domain/community'
 const AVATARS = ['🙂', '😀', '😄', '😎', '🤗', '🧑‍🍳', '👩‍🍳', '👨‍🍳', '🍳', '🥘', '🍰', '🌿', '🏡', '🧺', '🧸', '🎨', '🌻', '🐶', '🐱', '⭐']
 
 export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunityProfile | null; onDone: () => void | Promise<void>; onCancel: () => void }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   const [alias, setAlias] = useState(current?.alias ?? '')
   const [emoji, setEmoji] = useState<string | null>(current?.avatarEmoji ?? null)
   const [accepted, setAccepted] = useState(current?.rulesAccepted === true)
@@ -56,7 +58,7 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onCancel}>
-      <div className="modal-sheet community-touch-scope" role="dialog" aria-modal="true" aria-label="Elige tu alias público" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet community-touch-scope" role="dialog" aria-modal="true" aria-label="Elige tu alias público" onClick={(e) => e.stopPropagation()}>
         <h2>Elige tu alias</h2>
         <p className="muted">
           Es el nombre que verán las demás familias. No es tu nombre real ni el de tu familia, y puedes cambiarlo cuando quieras. Para leer no necesitas alias.

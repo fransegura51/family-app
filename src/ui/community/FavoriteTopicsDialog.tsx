@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import { getFavoriteTopics, setFavoriteTopics } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { SECTIONS, type CommunityTopic } from '@/domain/community'
@@ -15,6 +16,7 @@ export function FavoriteTopicsDialog({ topics, onClose, onSaved }: { topics: Com
   const [loadFailed, setLoadFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const titleRef = useRef<HTMLHeadingElement>(null)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
 
   useEffect(() => {
     let cancelled = false
@@ -72,7 +74,7 @@ export function FavoriteTopicsDialog({ topics, onClose, onSaved }: { topics: Com
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div className="modal-sheet community-fav-dialog" role="dialog" aria-modal="true" aria-labelledby="community-fav-title" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet community-fav-dialog" role="dialog" aria-modal="true" aria-labelledby="community-fav-title" onClick={(e) => e.stopPropagation()}>
         <h2 id="community-fav-title" ref={titleRef} tabIndex={-1}>
           Mis temas favoritos
         </h2>

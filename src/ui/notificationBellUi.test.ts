@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import home from '@/ui/HomeScreen.tsx?raw'
 import bell from '@/ui/NotificationBell.tsx?raw'
 import panel from '@/ui/NotificationPanel.tsx?raw'
+import modalHook from '@/ui/useModalDialog.ts?raw'
 import prefs from '@/ui/NotificationPrefsCard.tsx?raw'
 import mode from '@/ui/TaskNotifyModeCard.tsx?raw'
 import family from '@/ui/FamilyScreen.tsx?raw'
@@ -35,7 +36,9 @@ describe('la campana', () => {
 
 describe('el panel', () => {
   it('se abre sobre Inicio (no navega) y se cierra con Escape y volviendo a la misma posición', () => {
-    expect(panel).toContain("e.key === 'Escape'")
+    // Escape, foco y fondo inerte viven en useModalDialog (INC-20); el panel lo usa.
+    expect(panel).toContain('useModalDialog(panelRef')
+    expect(modalHook).toContain("e.key === 'Escape'")
     expect(panel).toContain('role="dialog"')
     expect(css).toMatch(/\.notification-overlay\s*\{[^}]*position:\s*fixed/)
     expect(css).toMatch(/@media \(min-width: 640px\)\s*\{\s*\.notification-panel\s*\{[^}]*max-width:\s*420px/)

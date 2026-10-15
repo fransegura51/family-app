@@ -58,7 +58,8 @@ export async function requestNativePermission(): Promise<NativePermission> {
 // Al tocar un aviso se abre PEPA en la pantalla que corresponda («?/calendario» es la forma que index.html descodifica a la ruta real).
 function openFromNotification(data: Record<string, unknown> | undefined): void {
   // Un «&» de la ruta (p. ej. «?nuevos=1&c=<id>» de Comunidad) viaja como «~and~» para que index.html no lo rompa (INC-04).
-  window.location.assign(pushEntryUrl(import.meta.env.BASE_URL, data?.url))
+  // «n» (id del aviso de la campana, INC-06) viaja en los mismos datos del aviso: pushEntryUrl lo valida y lo añade como «?aviso=».
+  window.location.assign(pushEntryUrl(import.meta.env.BASE_URL, data))
 }
 
 // Con la app ABIERTA, Android no enseña los avisos de FCM por sí solo: se enseñan como aviso local con el mismo texto.

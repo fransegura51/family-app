@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
-import { KIND_ICONS, KIND_LABELS, type CommunityCardItem } from '@/domain/community'
+import { KIND_ICONS, KIND_LABELS, anecdoteTypeTag, type CommunityCardItem } from '@/domain/community'
 import { paths } from '@/ui/community/communityNav'
 import { useCommunityPhotoUrl } from '@/ui/community/communityPhotoUrl'
 
@@ -45,6 +45,7 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
           <span>
             {KIND_ICONS[item.kind]} {KIND_LABELS[item.kind]}
           </span>
+          {anecdoteTypeTag(item.kind, item.anecdoteType) && <span className="community-tag-subtype">{anecdoteTypeTag(item.kind, item.anecdoteType)}</span>}
           <span>· {item.topicLabel}</span>
           <span>
             · {item.authorAvatar ? `${item.authorAvatar} ` : ''}

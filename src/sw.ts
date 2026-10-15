@@ -4,6 +4,7 @@ import { registerRoute } from 'workbox-routing'
 import { NetworkFirst } from 'workbox-strategies'
 import { recordReminderReceipt } from './services/reminderReceipts'
 import { pushEntryQuery } from './domain/pushEntryRoute'
+import { notificationIdFromPushData } from './domain/notificationDeepLink'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -77,7 +78,7 @@ function scopeUrl(path: string): string {
 // cubría.
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  let payload: { title?: string; body?: string; url?: string; tag?: string }
+  let payload: { title?: string; body?: string; url?: string; tag?: string; n?: string }
   try {
     payload = event.data.json()
   } catch {
@@ -107,7 +108,9 @@ self.addEventListener('push', (event) => {
         // Deep-link opcional del payload (p. ej. "/dinero" para Previsión de pagos) — se guarda en
         // notification.data para leerlo en notificationclick. Si no viene, el aviso sigue yendo a
         // Calendario (comportamiento de siempre, sin romper los avisos ya existentes).
-        data: payload.url ?? null,
+        // INC-06: junto a la ruta va el id del aviso de la campana (clave «n» de la carga) para marcarlo como leído al tocarlo. Un id que no es
+        // un uuid se descarta aquí y la app lo vuelve a validar al leerlo. Los avisos ya mostrados antes de este cambio guardan solo la ruta (texto).
+        data: { url: payload.url ?? null, n: notificationIdFromPushData(payload) },
       })
       // Recibo para que la app abierta sepa que el servidor ya ha avisado aquí (ver services/reminderReceipts.ts).
       if (tag) await recordReminderReceipt(tag)

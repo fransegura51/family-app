@@ -20,6 +20,8 @@ export interface FcmMessage {
   body: string
   tag?: string
   url?: string
+  // Id del aviso del historial de la campana (user_notifications.id): al tocar el aviso, la app lo marca como leído (INC-06).
+  n?: string
   ttlSeconds?: number
 }
 
@@ -97,6 +99,7 @@ export function buildFcmPayload(deviceToken: string, msg: FcmMessage) {
   const data: Record<string, string> = {}
   if (msg.url) data.url = msg.url
   if (msg.tag) data.tag = msg.tag
+  if (msg.n) data.n = msg.n
   return {
     message: {
       token: deviceToken,

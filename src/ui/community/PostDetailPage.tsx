@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
 import { getPost, unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
-import { KIND_ICONS, KIND_LABELS, type BlockedCard, type HiddenPostNotice, type PostDetail } from '@/domain/community'
+import { KIND_ICONS, KIND_LABELS, anecdoteTypeTag, type BlockedCard, type HiddenPostNotice, type PostDetail } from '@/domain/community'
 import { formatLongDate, isBlockedLayer, isHiddenNotice, sortPhotos, type PostLookup } from '@/domain/communityPost'
 import { ArticleSources } from '@/ui/community/ArticleSources'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
@@ -197,6 +197,7 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
           <span>
             {KIND_ICONS[detail.kind]} {KIND_LABELS[detail.kind]}
           </span>
+          {anecdoteTypeTag(detail.kind, detail.anecdoteType) && <span className="community-tag-subtype">{anecdoteTypeTag(detail.kind, detail.anecdoteType)}</span>}
           <span>· {detail.topicLabel}</span>
           {(detail.isOfficial || detail.authorIsOfficial) && <span className="community-tag-official">Oficial</span>}
           {detail.isOfficial && detail.officialLabel && <span className="community-tag-official">{detail.officialLabel}</span>}

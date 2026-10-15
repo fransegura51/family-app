@@ -185,7 +185,8 @@ describe('M/N — ⚙️ abre la gestión de categorías SIN perder el formulari
     expect(CALENDAR_SCREEN_SRC).toContain('{managingCategories &&')
     expect(CALENDAR_SCREEN_SRC).toContain('createPortal(\n          <ManageCategoriesModal')
     // Nunca una navegación de verdad (eso desmontaría CalendarScreen, perdiendo cualquier formulario abierto detrás).
-    expect(CALENDAR_SCREEN_SRC).not.toContain('useNavigate')
+    // (useNavigate SÍ se usa, solo para limpiar de la dirección los parámetros del enlace profundo de un aviso con {replace: true}: INC-14. Nunca para ir a otra pantalla.)
+    expect(CALENDAR_SCREEN_SRC).not.toContain("navigate('/")
     expect(CALENDAR_SCREEN_SRC).not.toContain("navigate('/menu-organizar'")
   })
 })

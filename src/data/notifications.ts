@@ -58,6 +58,20 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   if (error) throw error
 }
 
+// Abrir Novedades de Comunidad cuenta como «abrir el aviso agrupado»: marca como leídos los avisos agrupados de Comunidad (category community_digest)
+// para que la espera hasta el siguiente aviso sea de 1 hora y no de 2 (INC-06, regla de 0271). Solo marca los propios (RLS) y solo el campo «leído».
+export async function markCommunityDigestsRead(): Promise<void> {
+  const { error } = await supabase.from('user_notifications').update({ read_at: new Date().toISOString() }).eq('category', 'community_digest').is('read_at', null)
+  if (error) throw error
+}
+
+// La campana de Inicio cuenta los avisos sin leer una vez al abrir Inicio y al volver a la app (no hay consulta periódica). Cuando algo los cambia fuera del
+// panel (abrir un aviso del sistema, abrir Novedades), se avisa con este evento para que la campana, si está en pantalla, se actualice al momento.
+export const NOTIFICATIONS_CHANGED_EVENT = 'pepa:notifications-changed'
+export function announceNotificationsChanged(): void {
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT))
+}
+
 export async function markAllNotificationsRead(): Promise<void> {
   const { error } = await supabase.from('user_notifications').update({ read_at: new Date().toISOString() }).is('read_at', null)
   if (error) throw error

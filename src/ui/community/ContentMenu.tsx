@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import '@/ui/community/communityPost.css'
 
 // Menú «Más» de una publicación o de un comentario (denunciar, bloquear, editar, eliminar). Se cierra con Escape, tocando fuera o al elegir algo.
@@ -56,6 +57,7 @@ export function ConfirmDialog({
   onConfirm: () => void
   onCancel: () => void
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onCancel()
@@ -66,7 +68,7 @@ export function ConfirmDialog({
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onCancel}>
-      <div className="modal-sheet" role="alertdialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet" role="alertdialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
         <p>{text}</p>
         {error && (

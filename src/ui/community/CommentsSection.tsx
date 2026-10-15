@@ -19,6 +19,7 @@ import {
   DEFAULT_FOLD_THRESHOLD,
   applySeen,
   buildSegments,
+  canRequestSummary,
   collectNewIds,
   containsComment,
   countPublished,
@@ -46,6 +47,7 @@ import { ReportContentDialog } from '@/ui/community/ReportContentDialog'
 import { SummaryBox } from '@/ui/community/SummaryBox'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommentExposure } from '@/ui/community/useCommentExposure'
+import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import '@/ui/community/communityPost.css'
 
 const PAGE_SIZE = 30
@@ -79,7 +81,8 @@ export function CommentsSection({
   refresh: CommentsRefresh
   onReply: (t: ReplyTarget) => void
 }) {
-  const { requireParticipation } = useCommunity()
+  const { requireParticipation, me } = useCommunity()
+  const { access } = useCommunityAccess()
 
   // ---- Estado general
   const [metaReady, setMetaReady] = useState(false)
@@ -191,19 +194,6 @@ export function CommentsSection({
       setMetaReady(true)
       if (cameForComment) setJumpId(targetCommentId ?? 'first-new')
       if (open) await loadFirst(resolveCommentOrder(null, pr.commentOrder), PAGE_SIZE)
-      // El resumen se pide UNA vez al abrir (sin bucles) si hace falta; si la IA falla, no pasa nada.
-      if (!cancelled && plan.needsGenerate && !generatedRef.current) {
-        generatedRef.current = true
-        setSummaryBusy(true)
-        const r = await generateSummary(postId)
-        if (cancelled) return
-        if (r.ok && r.summary) setSummary((cur) => (cur ? { ...cur, summary: r.summary ?? null, stale: false } : cur))
-        else if (r.ok) {
-          const again = await getSummary(postId).catch(() => null)
-          if (!cancelled && again) setSummary(again)
-        } else setSummaryFailed(true)
-        if (!cancelled) setSummaryBusy(false)
-      }
     })()
     return () => {
       cancelled = true
@@ -211,6 +201,36 @@ export function CommentsSection({
     // Solo al abrir esta publicación: los cambios posteriores los gestionan las acciones.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId])
+
+  // ---- Generar el resumen: UNA vez al abrir (sin bucles) y SOLO si esta persona puede pedirlo (INC-21). Quien solo puede leer, o aún no tiene alias, ve el resumen
+  // que ya exista pero no provoca la llamada de generación (el servidor la rechazaría). Si la IA falla, no pasa nada: los comentarios siguen aquí.
+  const aliveRef = useRef(true)
+  useEffect(() => {
+    aliveRef.current = true
+    return () => {
+      aliveRef.current = false
+    }
+  }, [])
+  const mayGenerate = canRequestSummary(access.level, me)
+  const wantsGenerate = metaReady && mayGenerate && planSummary(summary).needsGenerate
+  useEffect(() => {
+    if (!wantsGenerate || generatedRef.current) return
+    generatedRef.current = true
+    void (async () => {
+      setSummaryBusy(true)
+      try {
+        const r = await generateSummary(postId)
+        if (!aliveRef.current) return
+        if (r.ok && r.summary) setSummary((cur) => (cur ? { ...cur, summary: r.summary ?? null, stale: false } : cur))
+        else if (r.ok) {
+          const again = await getSummary(postId).catch(() => null)
+          if (aliveRef.current && again) setSummary(again)
+        } else setSummaryFailed(true)
+      } finally {
+        if (aliveRef.current) setSummaryBusy(false)
+      }
+    })()
+  }, [wantsGenerate, postId])
 
   // ---- Recarga pedida desde fuera (comentario publicado)
   const firstRefresh = useRef(refresh.token)
@@ -264,6 +284,8 @@ export function CommentsSection({
   // ---- Resumen
   async function refreshSummary() {
     if (summaryBusy) return
+    // Pedir el resumen es participar: si aún no tiene alias se le pide ahora (si cancela, no se hace nada).
+    if (!(await requireParticipation())) return
     setSummaryBusy(true)
     setSummaryFailed(false)
     try {

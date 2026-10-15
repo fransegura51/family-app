@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getRecipeUpdate, markRecipeUpdated } from '@/data/community'
+import { communityStatusCache } from '@/data/communityStatusCache'
 import { updateRecipe } from '@/data/food'
-import { communityErrorText } from '@/domain/communityErrors'
+import { CommunityError, communityErrorText } from '@/domain/communityErrors'
 import type { RecipeUpdateInfo } from '@/domain/community'
 import { privateCopyEditedSinceImport, privateRecipeToDiffRecipe, recipeUpdateToKitchenInput } from '@/domain/communityRecipeBridge'
 import { diffRecipes, summarizeDiff, type DiffRecipe } from '@/domain/communityRecipeDiff'
 import type { Recipe } from '@/domain/types'
 import { paths } from '@/ui/community/communityNav'
 import { RecipeVersionCompare } from '@/ui/community/recipes/RecipeVersionCompare'
-import { browserStore, forgetNotImported, isKnownNotImported, rememberNotImported } from '@/ui/community/recipes/recipeUpdateCache'
+import { browserStore, forgetNotImported, isKnownNotImported, rememberNotImported, shouldAskForUpdate } from '@/ui/community/recipes/recipeUpdateCache'
+import { FocusScope } from '@/ui/community/FocusScope'
+import { useCommunityVisible } from '@/ui/community/useCommunityVisible'
 import '@/ui/community/recipes/communityRecipes.css'
 
 // Aviso «Hay una versión nueva» dentro de la ficha de una receta de la Cocina que se importó de Comunidad (CMN-§5.3).
@@ -44,21 +47,28 @@ export function RecipeUpdateBanner({ recipe, onUpdated }: { recipe: Recipe; onUp
   // Si la copia ya se cambió pero no se pudo anotar en Comunidad, solo se reintenta anotar (no se vuelve a tocar la receta).
   const [needsMark, setNeedsMark] = useState(false)
 
+  // Coste (INC-17): si Comunidad no está abierta para esta persona (o aún no se sabe), NO se pregunta nada a Supabase por esta receta. El estado se recuerda
+  // 2 minutos y se comparte con Inicio, así que saberlo no añade consultas.
+  const visible = useCommunityVisible()
+
   useEffect(() => {
-    if (isKnownNotImported(browserStore(), recipeId)) return
+    if (!shouldAskForUpdate(visible, isKnownNotImported(browserStore(), recipeId))) return
     let cancelled = false
     lookup(recipeId).then(
       (info) => {
         if (!cancelled) setResult({ id: recipeId, info })
       },
-      () => {
-        // Sin red o sin Comunidad: la receta se ve igual, sin aviso.
+      (e: unknown) => {
+        // Sin red o sin Comunidad: la receta se ve igual, sin aviso. Si el servidor dice que Comunidad no está abierta o que no hay acceso, se olvida el
+        // estado recordado para que las demás recetas no vuelvan a preguntar.
+        const code = e instanceof CommunityError ? e.code : null
+        if (code === 'NOT_LAUNCHED' || code === 'COMMUNITY_ACCESS_DENIED') communityStatusCache.clear()
       },
     )
     return () => {
       cancelled = true
     }
-  }, [recipeId])
+  }, [recipeId, visible])
 
   const info = result?.id === recipeId ? result.info : null
   const compare = useMemo(() => {
@@ -116,37 +126,39 @@ export function RecipeUpdateBanner({ recipe, onUpdated }: { recipe: Recipe; onUp
       </div>
 
       {open && (
-        <div className="modal-overlay" role="presentation" onClick={() => !busy && setOpen(false)}>
-          <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Comparar versiones de la receta" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                Versión nueva
-              </h2>
-              <button type="button" className="modal-close" aria-label="Cerrar" onClick={() => setOpen(false)} disabled={busy}>
-                ✕
-              </button>
-            </div>
-            <p className="muted">
-              Tú tienes la versión {info.importedVersion ?? '—'} y la actual es la {info.currentVersion ?? '—'}. Esto es lo que ha cambiado:
-            </p>
-            <RecipeVersionCompare diff={compare.diff} />
-            {compare.edited && (
-              <p className="community-notice">
-                Has cambiado tu copia desde que la guardaste. Si actualizas, tu receta quedará como la versión nueva y se perderán esos cambios. Se mantienen tu foto y tus
-                etiquetas.
+        <FocusScope>
+          <div className="modal-overlay" role="presentation" onClick={() => !busy && setOpen(false)}>
+            <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Comparar versiones de la receta" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h2 className="section-title" style={{ margin: 0 }}>
+                  Versión nueva
+                </h2>
+                <button type="button" className="modal-close" aria-label="Cerrar" onClick={() => setOpen(false)} disabled={busy}>
+                  ✕
+                </button>
+              </div>
+              <p className="muted">
+                Tú tienes la versión {info.importedVersion ?? '—'} y la actual es la {info.currentVersion ?? '—'}. Esto es lo que ha cambiado:
               </p>
-            )}
-            {error && <p className="error">{error}</p>}
-            <div className="community-compare-actions">
-              <button type="button" className="primary" onClick={apply} disabled={busy}>
-                {busy ? 'Actualizando…' : needsMark ? 'Reintentar' : 'Actualizar mi copia'}
-              </button>
-              <button type="button" className="link-button" onClick={() => setOpen(false)} disabled={busy}>
-                Dejarla como está
-              </button>
+              <RecipeVersionCompare diff={compare.diff} />
+              {compare.edited && (
+                <p className="community-notice">
+                  Has cambiado tu copia desde que la guardaste. Si actualizas, tu receta quedará como la versión nueva y se perderán esos cambios. Se mantienen tu foto y tus
+                  etiquetas.
+                </p>
+              )}
+              {error && <p className="error">{error}</p>}
+              <div className="community-compare-actions">
+                <button type="button" className="primary" onClick={apply} disabled={busy}>
+                  {busy ? 'Actualizando…' : needsMark ? 'Reintentar' : 'Actualizar mi copia'}
+                </button>
+                <button type="button" className="link-button" onClick={() => setOpen(false)} disabled={busy}>
+                  Dejarla como está
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </FocusScope>
       )}
     </div>
   )

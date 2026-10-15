@@ -73,7 +73,8 @@ describe('2. Identidad (etiqueta) estable del recordatorio', () => {
   })
   it('la Edge Function construye exactamente el mismo formato', () => {
     expect(EDGE).toContain('`reminder:${r.out_event_id}:${r.out_occurrence_date}:${r.out_anchor}:${r.out_minutes_before}`')
-    expect(EDGE).toContain('{ title: r.out_event_title, body, tag },')
+    // INC-14/INC-06: el aviso lleva además la ruta del evento (url) y, si se creó, el id del aviso de la campana (n).
+    expect(EDGE).toContain('{ title: r.out_event_title, body, tag, url: calendarLink(r.out_event_id, r.out_occurrence_date), ...(n ? { n } : {}) },')
   })
 })
 

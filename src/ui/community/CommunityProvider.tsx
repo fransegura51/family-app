@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { communityStatus, getMyCommunityProfile, requestReadmission } from '@/data/community'
+import { communityStatusCache } from '@/data/communityStatusCache'
 import { communityErrorText, onCommunityAccessError, type CommunityAccessErrorCode } from '@/domain/communityErrors'
 import type { CommunityStatus, MyCommunityProfile } from '@/domain/community'
 import {
@@ -11,6 +12,7 @@ import {
   type CommunityAccess,
 } from '@/domain/communityAccess'
 import { AliasDialog } from '@/ui/community/AliasDialog'
+import { useDialogFocus } from '@/ui/community/useDialogFocus'
 
 // Estado de Comunidad para todas las pantallas: si está abierta (o solo para administración), el perfil público de quien mira (alias, expulsión), el ACCESO por
 // edad y permisos de la familia (ninguno / solo lectura / completo; migración 0277) y la forma única de pedir «¿puede participar?» justo antes de publicar,
@@ -55,6 +57,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const [s, p] = await Promise.all([communityStatus(), getMyCommunityProfile()])
+      communityStatusCache.prime(s) // Inicio y Cocina reutilizan este estado (sin otra consulta) durante unos minutos.
       setStatus(s)
       setMe(p)
       meRef.current = p
@@ -73,6 +76,7 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
   const refreshAccess = useCallback(async (): Promise<CommunityAccess> => {
     try {
       const s = await communityStatus()
+      communityStatusCache.prime(s)
       setStatus(s)
       const next = accessFromStatus(s)
       accessRef.current = next
@@ -171,9 +175,10 @@ export function CommunityProvider({ children }: { children: ReactNode }) {
 
 // Aviso amable cuando cambian los permisos (o no se tienen) y se intentó participar. Nunca bloquea la lectura.
 function AccessNoticeDialog({ notice, onClose }: { notice: AccessNotice; onClose: () => void }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div className="modal-sheet" role="alertdialog" aria-modal="true" aria-label={notice.title} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet" role="alertdialog" aria-modal="true" aria-label={notice.title} onClick={(e) => e.stopPropagation()}>
         <h2>{notice.title}</h2>
         <p>{notice.text}</p>
         <div className="modal-actions">
@@ -188,11 +193,12 @@ function AccessNoticeDialog({ notice, onClose }: { notice: AccessNotice; onClose
 
 function BanNotice({ me, onClose, onChanged }: { me: MyCommunityProfile | null; onClose: () => void; onChanged: () => Promise<void> }) {
   const [message, setMessage] = useState<string | null>(null)
+  const dialogRef = useDialogFocus<HTMLDivElement>()
   const readmission = me?.banState === 'readmission'
   const requested = me?.readmissionStatus === 'requested'
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
-      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="No puedes participar ahora" onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet" role="dialog" aria-modal="true" aria-label="No puedes participar ahora" onClick={(e) => e.stopPropagation()}>
         <h2>No puedes participar ahora</h2>
         {!readmission && (
           <p>

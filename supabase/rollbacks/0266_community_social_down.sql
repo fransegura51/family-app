@@ -13,7 +13,7 @@ drop function if exists private.purge_expired_community_drafts();
 drop function if exists public.community_delete_draft(uuid);
 drop function if exists public.community_get_draft(uuid);
 drop function if exists public.community_list_drafts();
-drop function if exists public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb);
+drop function if exists public.community_save_draft(uuid, text, text, text, text, text, jsonb, jsonb, text);
 drop function if exists public.community_get_public_profile(uuid);
 drop function if exists public.community_get_favorite_topics();
 drop function if exists public.community_set_favorite_topics(text[]);

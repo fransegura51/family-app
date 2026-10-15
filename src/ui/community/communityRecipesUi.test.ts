@@ -9,6 +9,7 @@ vi.mock('@/data/supabaseClient', () => ({ supabase: {} }))
 import publishSheet from '@/ui/community/recipes/RecipePublishSheet.tsx?raw'
 import importButton from '@/ui/community/recipes/RecipeImportButton.tsx?raw'
 import updateBanner from '@/ui/community/recipes/RecipeUpdateBanner.tsx?raw'
+import shareButton from '@/ui/community/recipes/ShareToCommunityButton.tsx?raw'
 import ratingBox from '@/ui/community/recipes/RecipeRatingBox.tsx?raw'
 import panel from '@/ui/community/recipes/RecipePanel.tsx?raw'
 import fields from '@/ui/community/recipes/RecipeFields.tsx?raw'
@@ -250,7 +251,8 @@ describe('actualización voluntaria (CMN-§5.3)', () => {
 
   it('se monta en la ficha de la receta de la Cocina y la hoja de publicar se carga solo al pulsar', () => {
     expect(alimentacion).toContain('<RecipeUpdateBanner')
-    expect(alimentacion).toContain('🌍 Compartir en Comunidad')
+    expect(alimentacion).toContain('<ShareToCommunityButton')
+    expect(shareButton).toContain('🌍 Compartir en Comunidad')
     expect(alimentacion).toContain("lazy(() => import('@/ui/community/recipes/RecipePublishSheet')")
     expect(alimentacion).toContain('<RecipePublishHost recipe={sharing}')
   })

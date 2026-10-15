@@ -24,6 +24,25 @@ export const POST_KINDS: { id: PostKind; label: string; icon: string; help: stri
   { id: 'anecdota', label: 'Anécdota', icon: '😄', help: 'Una historia graciosa, bonita o emotiva.' },
 ]
 
+// Subtipo OPCIONAL de una Anécdota (CMN-§4.8): solo una etiqueta; NO crea secciones, pestañas ni filtros (la navegación no se fragmenta).
+export type AnecdoteType = 'graciosa' | 'bonita' | 'emotiva'
+export const ANECDOTE_TYPES: { id: AnecdoteType; label: string; icon: string }[] = [
+  { id: 'graciosa', label: 'Graciosa', icon: '😂' },
+  { id: 'bonita', label: 'Bonita', icon: '🥰' },
+  { id: 'emotiva', label: 'Emotiva', icon: '🥹' },
+]
+
+export function parseAnecdoteType(raw: unknown): AnecdoteType | null {
+  return ANECDOTE_TYPES.find((t) => t.id === raw)?.id ?? null
+}
+
+// Etiqueta corta de una tarjeta o de la cabecera de una publicación («😂 Graciosa»); null si no es una anécdota o no tiene subtipo.
+export function anecdoteTypeTag(kind: AnyPostKind, type: AnecdoteType | null | undefined): string | null {
+  if (kind !== 'anecdota') return null
+  const t = ANECDOTE_TYPES.find((x) => x.id === type)
+  return t ? `${t.icon} ${t.label}` : null
+}
+
 export const KIND_LABELS: Record<AnyPostKind, string> = {
   receta: 'Receta',
   pregunta: 'Pregunta',
@@ -103,6 +122,8 @@ export interface PostCard {
   blockedByMe?: false
   id: string
   kind: AnyPostKind
+  // Subtipo opcional de una Anécdota (null en lo demás). Ausente si el servidor es anterior a este campo.
+  anecdoteType?: AnecdoteType | null
   section: CommunitySection
   topicId: string
   topicLabel: string
@@ -250,6 +271,7 @@ export interface Draft extends DraftSummary {
   body: string
   photos: string[]
   recipe: RecipeDraftInput | null
+  anecdoteType?: AnecdoteType | null
 }
 
 export interface SearchHistoryItem {

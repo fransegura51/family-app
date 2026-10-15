@@ -270,7 +270,8 @@ describe('Contenido oficial', () => {
     const html = render(createElement(ProposalCard, { proposal: poll, topics: [], onDone: noop }))
     expect(html).toContain('Opciones de la encuesta')
     expect(html).toContain('Pasta')
-    expect(html).toContain('abre el sábado a las 10:00')
+    expect(html).toContain('sale sola el próximo sábado a las 10:00')
+    expect(html).toContain('NO se publica al momento')
     expect(html).toContain('Versión 2')
   })
   it('un artículo sin fuentes avisa de que no se puede aprobar (y el servidor lo confirma con NO_SOURCES)', () => {

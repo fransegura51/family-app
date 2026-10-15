@@ -156,7 +156,7 @@ export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Propos
       {editable && mode === 'view' && p.status === 'proposed' && (
         <p className="muted cadm-small">
           {p.kind === 'poll'
-            ? 'Al aprobar, la encuesta se programa: abre el sábado a las 10:00 y cierra el domingo a las 17:00 (hora peninsular); si apruebas dentro de esa ventana, abre al momento.'
+            ? 'Al aprobar, la encuesta NO se publica al momento: se programa y sale sola el próximo sábado a las 10:00 y cierra el domingo a las 17:00 (hora peninsular). Aprobar el mismo sábado a las 10:00 o más tarde la deja para el sábado siguiente.'
             : 'Al aprobar, se publica al momento, con la identidad oficial de Pepa o de Equipo PEPA.'}
         </p>
       )}

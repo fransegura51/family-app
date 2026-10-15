@@ -122,7 +122,20 @@ insert into public.community_blocked_domains (domain, reason) values
   ('iplogger.ru', 'servicio de rastreo de direcciones IP'),
   ('grabify.link', 'servicio de rastreo de direcciones IP'),
   ('yip.su', 'servicio de rastreo de direcciones IP'),
-  ('2no.co', 'servicio de rastreo de direcciones IP')
+  ('2no.co', 'servicio de rastreo de direcciones IP'),
+  -- Acortadores de enlaces: ocultan el destino real (la persona no ve a dónde va). La administración puede quitarlos de la lista si quiere permitirlos.
+  ('bit.ly', 'acortador de enlaces (destino oculto)'),
+  ('tinyurl.com', 'acortador de enlaces (destino oculto)'),
+  ('t.co', 'acortador de enlaces (destino oculto)'),
+  ('goo.gl', 'acortador de enlaces (destino oculto)'),
+  ('ow.ly', 'acortador de enlaces (destino oculto)'),
+  ('is.gd', 'acortador de enlaces (destino oculto)'),
+  ('cutt.ly', 'acortador de enlaces (destino oculto)'),
+  ('rb.gy', 'acortador de enlaces (destino oculto)'),
+  ('shorturl.at', 'acortador de enlaces (destino oculto)'),
+  ('tiny.cc', 'acortador de enlaces (destino oculto)'),
+  ('buff.ly', 'acortador de enlaces (destino oculto)'),
+  ('lnkd.in', 'acortador de enlaces (destino oculto)')
 on conflict (domain) do nothing;
 
 create or replace function private.community_clean_text(p_text text, p_max integer, p_required boolean default true)
@@ -158,7 +171,8 @@ begin
     end if;
     v_host := lower(substring(v_url from '^https?://([^/:?#]+)'));
     v_host := rtrim(regexp_replace(coalesce(v_host, ''), '^.*@', ''), '.');
-    if v_host is null or v_host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' or v_host !~ '\.' then
+    -- También se rechazan los dominios con caracteres internacionales codificados (xn--): se usan para imitar a otras webs.
+    if v_host is null or v_host ~ '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' or v_host !~ '\.' or v_host ~ 'xn--' then
       raise exception 'UNSAFE_LINK' using errcode = 'P0001';
     end if;
     if exists (select 1 from public.community_blocked_domains d where v_host = d.domain or v_host like '%.' || d.domain) then

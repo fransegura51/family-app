@@ -90,7 +90,9 @@ alter table public.community_poll_votes enable row level security;
 revoke all on public.community_poll_votes from anon, authenticated;
 
 -- Sábado a las 10:00 y domingo a las 17:00 hora de Madrid (con el cambio de hora). p_from = instante de aprobación.
--- Si se aprueba DENTRO de la ventana (sábado 10:00 – domingo 17:00), se publica al momento y cierra ese domingo; si no, el sábado siguiente.
+-- REGLA APROBADA (15/10/2026): la aprobación NUNCA publica al instante. La encuesta aprobada se publica automáticamente el PRÓXIMO sábado a las 10:00 (Europe/Madrid)
+-- y se cierra el domingo a las 17:00. Si se aprueba el sábado antes de las 10:00, sale ese mismo sábado; si se aprueba a las 10:00 o después (incluso dentro de la
+-- ventana de ese fin de semana), sale el sábado siguiente.
 create or replace function private.community_poll_window(p_from timestamptz)
 returns table(opens_at timestamptz, closes_at timestamptz)
 language plpgsql
@@ -102,23 +104,13 @@ declare
   v_date date := v_local::date;
   v_dow integer := extract(isodow from v_local)::integer; -- 1 lunes … 7 domingo
   v_sat date;
-  v_sat_open timestamptz;
-  v_sun_close timestamptz;
 begin
-  v_sat := v_date + ((6 - v_dow + 7) % 7);
-  if v_dow = 7 then
-    v_sat := v_date - 1;
-  end if;
-  v_sat_open := ((v_sat + time '10:00') at time zone 'Europe/Madrid');
-  v_sun_close := (((v_sat + 1) + time '17:00') at time zone 'Europe/Madrid');
-  if p_from >= v_sat_open and p_from < v_sun_close then
-    return query select p_from, v_sun_close;
-  elsif p_from >= v_sun_close then
+  -- Sábado de la semana en curso (de lunes a domingo, el que cae dentro de esa semana ISO).
+  v_sat := v_date + (6 - v_dow);
+  if ((v_sat + time '10:00') at time zone 'Europe/Madrid') <= p_from then
     v_sat := v_sat + 7;
-    return query select ((v_sat + time '10:00') at time zone 'Europe/Madrid'), (((v_sat + 1) + time '17:00') at time zone 'Europe/Madrid');
-  else
-    return query select v_sat_open, v_sun_close;
   end if;
+  return query select ((v_sat + time '10:00') at time zone 'Europe/Madrid'), (((v_sat + 1) + time '17:00') at time zone 'Europe/Madrid');
 end;
 $$;
 revoke execute on function private.community_poll_window(timestamptz) from public, anon, authenticated;
@@ -280,10 +272,8 @@ begin
     values (p_id, i.title, i.payload -> 'options', v_win.opens_at, v_win.closes_at)
     on conflict (item_id) do update set question = excluded.question, options = excluded.options, opens_at = excluded.opens_at, closes_at = excluded.closes_at;
     update public.community_official_items set publish_at = v_win.opens_at where id = p_id;
-    if v_win.opens_at <= now() then
-      v_post := private.community_publish_item(p_id);
-    end if;
-    return jsonb_build_object('scheduled', v_post is null, 'opens_at', v_win.opens_at, 'closes_at', v_win.closes_at, 'post_id', v_post);
+    -- Nunca se publica al aprobar: lo hace el trabajo programado (community_run_polls) a la hora de apertura.
+    return jsonb_build_object('scheduled', true, 'opens_at', v_win.opens_at, 'closes_at', v_win.closes_at, 'post_id', v_post);
   end if;
   v_post := private.community_publish_item(p_id);
   return jsonb_build_object('scheduled', false, 'post_id', v_post);

@@ -1,4 +1,5 @@
 import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, useRef, useState } from 'react'
+import { FAB_SAFE_GAP_PX, fabTopCss, safeAreaTopPx } from '@/ui/safeArea'
 
 // Petición real: "hazme un botón que ponga redes sociales y agrupa
 // las cuatro botones de las redes sociales... para que no ocupe lugar
@@ -93,7 +94,7 @@ export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMen
       const maxTop = Math.max(0, window.innerHeight - FAB_SIZE)
       const rect = e.currentTarget.getBoundingClientRect()
       const next = {
-        top: Math.min(Math.max(0, rect.top), maxTop),
+        top: Math.min(Math.max(safeAreaTopPx() + FAB_SAFE_GAP_PX, rect.top), maxTop),
         left: Math.min(Math.max(0, rect.left), maxLeft),
       }
       setPosition(next)
@@ -122,7 +123,7 @@ export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMen
         aria-expanded={open}
         className={'voice-fab-round social-menu-fab' + (dragging ? ' voice-fab-dragging' : '')}
         style={{
-          top: position.top + (dragging ? dragOffset.y : 0),
+          top: fabTopCss(position.top, dragging ? dragOffset.y : 0),
           left: position.left + (dragging ? dragOffset.x : 0),
           width: FAB_SIZE,
           height: FAB_SIZE,
@@ -146,7 +147,7 @@ export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMen
         <div
           className="social-menu-flyout"
           style={{
-            top: position.top + FAB_SIZE + 8,
+            top: fabTopCss(position.top, FAB_SIZE + 8),
             left: position.left,
           }}
         >

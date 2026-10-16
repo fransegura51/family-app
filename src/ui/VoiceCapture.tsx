@@ -39,6 +39,7 @@ import { reverseGeocode, searchAndResolveFirst } from '@/services/geocoding'
 import { requestMemberFocus } from '@/services/mapFocus'
 import { getAutoConfirm } from '@/services/pepaPreferences'
 import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
+import { FAB_SAFE_GAP_PX, fabTopCss, safeAreaTopPx } from '@/ui/safeArea'
 import { canAccessSection } from '@/pepa/sectionAccess'
 import { getDrivingEta } from '@/services/drivingEta'
 import { getWeather } from '@/services/weather'
@@ -1337,7 +1338,7 @@ export function VoiceCapture() {
       const next = {
         ...fabPositions,
         [drag.mode]: {
-          top: Math.min(Math.max(0, rect.top), maxTop),
+          top: Math.min(Math.max(safeAreaTopPx() + FAB_SAFE_GAP_PX, rect.top), maxTop),
           left: Math.min(Math.max(0, rect.left), maxLeft),
         },
       }
@@ -1387,7 +1388,7 @@ export function VoiceCapture() {
             type="button"
             className={'voice-fab-round ' + (kindOf(m) === 'ask' ? 'voice-fab-ask' : 'voice-fab-create') + (m === 'talk' ? ' voice-fab-talk' : '') + (isDragging ? ' voice-fab-dragging' : '')}
             style={{
-              top: pos.top + (isDragging ? buttonDragOffset.y : 0),
+              top: fabTopCss(pos.top, isDragging ? buttonDragOffset.y : 0),
               left: pos.left + (isDragging ? buttonDragOffset.x : 0),
             }}
             aria-label={PANEL_INFO[m].title}

@@ -1007,12 +1007,12 @@ describe('Fase 1E.2 — ajuste del menú de Economía', () => {
     const metaBody = ECONOMIA_MENU.slice(metaIdx, ECONOMIA_MENU.indexOf('\n}', metaIdx))
     expect(metaBody).not.toContain('accion:movimiento')
     expect(metaBody).not.toContain('Nuevo movimiento')
-    expect(ECONOMIA_MENU).toContain("const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento']")
+    expect(ECONOMIA_MENU).toContain("const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento', 'Educación financiera']")
   })
 
-  it('el orden por defecto es el pedido, con "Educación financiera" siempre la última', () => {
+  it('el orden por defecto es el pedido (sin "Educación financiera": desde 2026-10-16 vive en Pequeños Grandes)', () => {
     expect(ECONOMIA_MENU).toMatch(
-      /DEFAULT_KEYS: FixedEconomiaMenuItemKey\[\] = \[\s*'Resumen',\s*'Estadísticas',\s*'Movimientos',\s*'Presupuesto Generales',\s*'Banco',\s*'Previsión de pagos',\s*'Educación financiera',\s*\]/,
+      /DEFAULT_KEYS: FixedEconomiaMenuItemKey\[\] = \[\s*'Resumen',\s*'Estadísticas',\s*'Movimientos',\s*'Presupuesto Generales',\s*'Banco',\s*'Previsión de pagos',\s*\]/,
     )
   })
 

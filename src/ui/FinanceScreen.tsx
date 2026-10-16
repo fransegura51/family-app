@@ -285,7 +285,9 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 // Financiera". Resumen y Conclusiones se combinan en una sola pestaña
 // (van siempre juntas, mismo periodo, misma pantalla) en vez de dos
 // pestañas casi vacías por separado.
-const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera', 'Previsión de pagos'] as const
+// «Educación financiera» ya no es una pestaña de Economía (2026-10-16): su entrada es Pequeños Grandes (/puntos), que reutiliza KidsFinanceTab. Una familia que
+// la tenga guardada en su menú de Economía la pierde sola (ver RETIRED_KEYS en state/economiaMenu.ts); los datos del monedero no se tocan.
+const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Previsión de pagos'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 // El desplegable de Economía mezcla pestañas (SubTab) con accesos
@@ -442,7 +444,8 @@ function isDineroRestricted(profile: Profile): boolean {
 
 export function FinanceScreen({ profile }: { profile: Profile }) {
   const dineroRestricted = isDineroRestricted(profile)
-  const [tab, setTab] = useState<SubTab>(dineroRestricted ? 'Educación financiera' : 'Resumen')
+  // El hijo con Economía restringida no llega a las pestañas: se devuelve antes su monedero (más abajo), así que su valor inicial da igual.
+  const [tab, setTab] = useState<SubTab>('Resumen')
   // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
   useSectionHome(() => setTab('Resumen'))
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
@@ -721,7 +724,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Previsión de pagos' && <PrevisionPagosTab key={refreshKey} categories={categories} />}
-      {tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}
 
       {showNewMovement && (
         <NewMovementModal
@@ -11225,8 +11227,8 @@ const WALLET_SPLIT_HIGHLIGHT: Record<WalletTransactionType, 'ahorro' | 'impuesto
 
 // Pequeños Grandes (prompt maestro, Fase 5) reutiliza este mismo componente
 // como punto de entrada principal para la educación financiera — nunca se
-// duplica su lógica. Sigue usándose también aquí dentro de Economía (vista
-// restringida de un hijo y pestaña "Educación financiera" para un adulto).
+// duplica su lógica. Desde 2026-10-16 ya no hay pestaña "Educación financiera" dentro de Economía (era una segunda puerta al mismo módulo);
+// aquí dentro solo queda la vista restringida de un hijo (standalone), que sigue siendo su monedero.
 //
 // PG-PUNTOS-FINANZAS (Parte B1) — `standalone` es true solo en los dos sitios donde este componente ES
 // la pantalla entera (sin pestañas hermanas alrededor: /puntos y la vista restringida de un hijo en

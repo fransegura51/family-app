@@ -34,9 +34,9 @@ describe('FinanceScreen — KidsFinanceTab se exporta para reutilizarse, nunca s
   it('sigue siendo la misma función, ahora exportada', () => {
     expect(FINANCE_SCREEN).toContain('export function KidsFinanceTab(')
   })
-  it('sigue usándose también dentro de Economía (vista restringida de un hijo, con standalone, y pestaña de un adulto, sin él)', () => {
+  it('dentro de Economía solo queda la vista restringida de un hijo (con standalone): la pestaña de adulto se quitó el 2026-10-16 por ser una segunda puerta al mismo módulo', () => {
     expect(FINANCE_SCREEN).toContain('<KidsFinanceTab profile={profile} standalone />')
-    expect(FINANCE_SCREEN).toContain("{tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}")
+    expect(FINANCE_SCREEN).not.toContain("{tab === 'Educación financiera'")
   })
 })
 

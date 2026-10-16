@@ -539,6 +539,16 @@ Encargo dictado el 2026-10-15 (conversación «Apple nativa»). Decisión acorda
 
 **Pendiente**: nada pasa a **Aprobado** sin confirmación expresa. Antes de dar por cerrado: comprobar que 💬 «Hablar con PEPA» cubre lo que hacían los cuatro botones (calendario, compra) en el móvil real; el uso de los botones clásicos ocultos no se ha cambiado.
 
+## Educación financiera: quitar la pestaña repetida de Economía (PEPA-EDU-ECO)
+
+Encargo dictado el 2026-10-16: «Educación financiera» seguía existiendo como pestaña dentro de Economía, con los mismos cambios que en Pequeños Grandes. Comprobado: **no era código ni datos duplicados** (la pestaña dibujaba el mismo componente `KidsFinanceTab`, que Pequeños Grandes importa de `FinanceScreen.tsx`), sino una segunda puerta al mismo módulo, mantenida a propósito en la Fase 5 de Pequeños Grandes (PG-F5, `72fb6bf`, «sigue usándose también dentro de Economía»). La decisión de la Fase 5 queda **revisada por la usuaria**: se quita la segunda puerta.
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| EDU-ECO-1 | Quitar la pestaña «Educación financiera» de Economía (`SUB_TABS`, entrada fija del menú ☰ de Economía, icono/nombre, orden por defecto y su dibujo en `FinanceScreen`). Se **conserva** `KidsFinanceTab` (exportado), la entrada de Pequeños Grandes (`/puntos`) y la vista restringida de un hijo con Economía bloqueada (`standalone`). **No se toca ningún dato** (`family_members`, `kid_wallet_transactions`, `kid_goals`) ni Supabase | Implementado (sin commit todavía) | `FinanceScreen.tsx`, `state/economiaMenu.ts` (clave retirada en `RETIRED_KEYS`: los menús ya guardados la pierden solos, y los accesos fijados también por `ECONOMIA_FIXED_KEYS`), `AyudaScreen.tsx` (Economía: entrada que explica que ahora está en Pequeños Grandes) | `economiaMenu.test.ts` (caso nuevo de menú guardado + orden por defecto sin la pestaña), `forecastUiWiring.test.ts`, `pequenosGrandesEducacionFase5Ui.test.ts`, `educacionFinancieraBreadcrumbUi.test.ts`, `kidsIncomeSplitFase7Ui.test.ts` (ajustados a la decisión nueva) | PG-F5, PGP-B1 | **Prueba manual con tu sesión real**: Economía ya no muestra «Educación financiera» (menú ☰ abierto y cerrado, y en la fila fijada si estaba), y Pequeños Grandes → Educación financiera sigue abriendo el monedero con los mismos datos. Revisar un hijo cuyo permiso incluya Economía pero no Pequeños Grandes: ya no tendría monedero (la configuración prevista es que lo vea desde Pequeños Grandes) |
+
+**Pendiente**: nada pasa a **Aprobado** sin confirmación expresa.
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

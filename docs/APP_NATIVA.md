@@ -42,8 +42,20 @@ El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla 
 - JS (`src/services/nativeUpload.ts`): pide la llave una vez por arranque al empezar a compartir y la entrega al servicio; al dejar de compartir o
   cerrar sesión la anula. Al volver a abrir la app, el envío nativo se retira y manda JS (sin duplicados).
 - El servidor contesta `ok` / `off` / `revoked` / `invalid`; con `off` o `revoked` el servicio se para y borra su configuración.
-- Pendiente conocido: tras REINICIAR el móvil el servicio no arranca solo hasta abrir PEPA (falta un receptor BOOT_COMPLETED); sin
-  `ACCESS_BACKGROUND_LOCATION` un reinicio del proceso por el sistema puede perder el acceso a la ubicación.
+- Pendiente conocido: tras REINICIAR el móvil el servicio no arranca solo hasta abrir PEPA (falta un receptor BOOT_COMPLETED).
+- Envío nativo robusto (16/10/2026): un fallo real (Paco salió a las 17:45 y el Xiaomi no mandó nada hasta abrir la app, con «Permitir siempre» ya dado y la
+  pausa de actividad apagada) mostró que depender de que el servicio siga vivo no basta (Android 12+ no deja poner en primer plano un servicio
+  reiniciado desde segundo plano). Ahora las posiciones se piden a Play Services con un `PendingIntent` a
+  `android/app/src/main/java/es/pepafamilyapp/app/NativeLocationReceiver.java` (declarado en el manifiesto): Play Services relanza el receptor aunque el
+  proceso haya muerto; el receptor manda a `report_device_location` con 2 intentos y solo se apaga tras 3 respuestas «off»/«revoked» seguidas. El servicio
+  (parche `android-patches/background-geolocation`) solo pone la notificación fija y registra ese aviso; al abrir la app se retira (`appIsBack`).
+  Ambos anotan un registro en las preferencias `pepa_bg_geo_diag` (reinicios, falta de permiso, fallos de envío); `reportNativeDiagnostics`
+  (`services/nativeUpload.ts`) lo sube a `client_errors` con el mensaje «[ubicación nativa] registro del móvil…» al abrir la app, solo si hay algo fuera de lo
+  normal (`domain/nativeDiagnostics.ts`). **Sin probar en un Xiaomi real**; no sobrevive a «Forzar detención» ni a reiniciar el móvil.
+- «Permitir siempre» (15/10/2026): el manifiesto declara `ACCESS_BACKGROUND_LOCATION` y el parche añade `getBackgroundLocationStatus` al complemento;
+  `src/ui/BackgroundLocationCard.tsx` (en Familia) avisa si falta y abre los ajustes de PEPA. Causa detectada: en el Xiaomi de Paco (Android 14) la
+  llave de la noche del 14/10 no mandó ninguna posición — Android reinició el servicio y, sin ese permiso, se quedó sin ubicación (la flecha de la barra
+  desaparece). Android 11+ no permite pedirlo con un diálogo: hay que ir a Ajustes → Permisos → Ubicación → «Permitir todo el tiempo».
 
 ## Ajustes del móvil para que lleguen los avisos con la app cerrada (Xiaomi, comprobado)
 Ajustes → Aplicaciones → botón «Autoinicio en segundo plano» → activar la app; batería «Sin restricciones»; cerrar con el botón de inicio.

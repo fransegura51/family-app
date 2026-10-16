@@ -8,7 +8,7 @@ const SOURCES = import.meta.glob(
     '/src/ui/NotificationsCard.tsx',
     '/src/ui/NotificationsOnboarding.tsx',
     '/src/ui/notificationHelp.tsx',
-    '/src/ui/FamilyScreen.tsx',
+    '/src/ui/MenuSettingsScreen.tsx',
     '/src/ui/HomeScreen.tsx',
     '/src/ui/PushSubscriptionKeeper.tsx',
     '/src/data/push.ts',
@@ -20,7 +20,7 @@ const SOURCES = import.meta.glob(
 const CARD = SOURCES['/src/ui/NotificationsCard.tsx']
 const ONBOARDING = SOURCES['/src/ui/NotificationsOnboarding.tsx']
 const HELP = SOURCES['/src/ui/notificationHelp.tsx']
-const FAMILY = SOURCES['/src/ui/FamilyScreen.tsx']
+const SETTINGS = SOURCES['/src/ui/MenuSettingsScreen.tsx']
 const HOME = SOURCES['/src/ui/HomeScreen.tsx']
 const KEEPER = SOURCES['/src/ui/PushSubscriptionKeeper.tsx']
 const PUSH_DATA = SOURCES['/src/data/push.ts']
@@ -34,9 +34,10 @@ describe('NotificationsCard — botón fijo para activar y desactivar los avisos
     expect(CARD).toContain('Mandarme un aviso de prueba')
   })
 
-  it('está en Familia y la ve CUALQUIER persona, no solo el administrador (el permiso es de cada móvil)', () => {
-    expect(FAMILY).toContain('<NotificationsCard />')
-    expect(FAMILY).not.toMatch(/isAdmin\s*&&\s*<NotificationsCard/)
+  it('está en Configuración (tema «Avisos») y la ve CUALQUIER persona, no solo el administrador (el permiso es de cada móvil)', () => {
+    expect(SETTINGS).toContain('<NotificationsCard />')
+    expect(SETTINGS).not.toMatch(/isAdmin\s*&&\s*<NotificationsCard/)
+    expect(SETTINGS).not.toMatch(/profile\.role === 'admin'\s*&&\s*<NotificationsCard/)
   })
 
   it('explica cada caso: sin soporte (iPhone sin instalar), bloqueado por el móvil, activado, desactivado y sin activar', () => {

@@ -24,3 +24,31 @@ export function setAutoConfirm(value: boolean): void {
     // Sin localStorage no se puede recordar: se queda la opción por defecto.
   }
 }
+
+const CLASSIC_BUTTONS_KEY = 'pepa:show-classic-buttons'
+export const CLASSIC_BUTTONS_EVENT = 'family-app:classic-buttons-changed'
+
+// «Mostrar botones clásicos»: los cinco botones redondos de siempre (🐣 Pepa Calendario, 🐣 Pepa Compra, 🎤 Apuntar Calendario, 🎤 Apuntar Compra y
+// 📍 Buscar sitio). El 💬 «Hablar con PEPA» se ve siempre. Petición real (15/10/2026): poder ocultarlos para no tener la barra de arriba tan cargada,
+// y que cada persona lo elija en su móvil. Por defecto se ven, como hasta ahora.
+export function getShowClassicButtons(): boolean {
+  try {
+    return localStorage.getItem(CLASSIC_BUTTONS_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function setShowClassicButtons(value: boolean): void {
+  try {
+    localStorage.setItem(CLASSIC_BUTTONS_KEY, value ? 'on' : 'off')
+  } catch {
+    // Sin localStorage no se puede recordar: se quedan visibles.
+  }
+  // Aviso a quien dibuja los botones (VoiceCapture, redes sociales), para que cambien al momento, sin recargar.
+  try {
+    window.dispatchEvent(new CustomEvent(CLASSIC_BUTTONS_EVENT))
+  } catch {
+    // Sin window (pruebas, servidor) no hay nadie a quien avisar.
+  }
+}

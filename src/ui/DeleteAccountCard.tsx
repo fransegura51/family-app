@@ -5,7 +5,7 @@ import { supabase } from '@/data/supabaseClient'
 import { errorMessage } from '@/domain/errorMessage'
 import { disableNativeUpload } from '@/services/nativeUpload'
 
-// «Borrar mi cuenta» (Familia). Apple exige poder iniciar el borrado desde dentro de la app. Dos opciones:
+// «Borrar mi cuenta» (Configuración → Mi cuenta; antes en Familia). Apple exige poder iniciar el borrado desde dentro de la app. Dos opciones:
 //   · solo mi cuenta: la familia sigue con todo lo suyo (mi ficha de familiar se queda, sin cuenta; mi ubicación se borra);
 //   · toda la familia: se borra TODO (datos, fotos, documentos y los accesos de todas las cuentas). Solo administradoras.
 // Siempre hay que escribir BORRAR. La función de servidor lo vuelve a comprobar todo (data/accountDeletion.ts).

@@ -115,15 +115,11 @@ describe('tarjeta abierta', () => {
 })
 
 describe('colocación y coste', () => {
-  it('Familia la enseña solo a administradores y ANTES de NotificationsCard (respeta batteryGuide.test.ts)', () => {
+  it('Familia la enseña solo a administradores, después del botón de invitar (los avisos viven ahora en Configuración)', () => {
     expect(familySrc).toContain('{isAdmin && <CommunityPermissionsCard />}')
     const iCard = familySrc.indexOf('<CommunityPermissionsCard />')
-    const iNotifications = familySrc.indexOf('<NotificationsCard />')
-    const iBattery = familySrc.indexOf('<BatteryGuideCard />')
     expect(iCard).toBeGreaterThan(familySrc.indexOf('<InviteFriendsButton />'))
-    expect(iCard).toBeLessThan(iNotifications)
-    expect(iNotifications).toBeLessThan(iBattery)
-    expect(familySrc).toMatch(/<NotificationsCard \/>\s*(?:<NotificationPrefsCard \/>\s*)?(?:<TaskNotifyModeCard [^>]*\/>\s*)?(?:<PepaPreferencesCard \/>\s*)?<BatteryGuideCard \/>/)
+    expect(familySrc).not.toContain('<NotificationsCard />')
   })
 
   it('una sola consulta al abrir (la primera vez) y ninguna periódica', () => {

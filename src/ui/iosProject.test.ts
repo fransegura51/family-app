@@ -8,6 +8,9 @@ import appDelegate from '../../ios/App/App/AppDelegate.swift?raw'
 import entitlements from '../../ios/App/App/App.entitlements?raw'
 import pbxproj from '../../ios/App/App.xcodeproj/project.pbxproj?raw'
 import testflight from '../../.github/workflows/ios-testflight.yml?raw'
+import nativeLocation from '../../ios-patches/background-geolocation/PepaNativeLocation.swift?raw'
+import iosPatch from '../../scripts/patch-background-geolocation-ios.mjs?raw'
+import pkg from '../../package.json?raw'
 
 describe('app de iPhone: Info.plist', () => {
   it('pide los permisos con textos claros en español (Apple rechaza los permisos sin explicación)', () => {
@@ -81,20 +84,57 @@ describe('app de iPhone: avisos (Firebase + Apple)', () => {
   })
 })
 
-describe('app de iPhone: envío a TestFlight (borrador, sin probar hasta tener la cuenta de Apple)', () => {
+describe('app de iPhone: envío a TestFlight (probado el 15/10/2026: sube con el Apple ID de Paco y firma manual)', () => {
   it('solo se lanza a mano y los secretos entran por variables de entorno, nunca escritos en el archivo', () => {
     expect(testflight).toMatch(/on:\s*workflow_dispatch:/)
-    expect(testflight).toContain('runs-on: macos-15')
-    for (const name of ['APPLE_TEAM_ID', 'ASC_KEY_ID', 'ASC_ISSUER_ID', 'ASC_KEY_P8_B64', 'GOOGLE_SERVICE_INFO_PLIST_B64']) {
+    // Apple exige el SDK de iOS 26 (Xcode 26) para subir a App Store Connect.
+    expect(testflight).toContain('runs-on: macos-26')
+    expect(testflight).toContain('Xcode_26')
+    for (const name of [
+      'APPLE_TEAM_ID',
+      'GOOGLE_SERVICE_INFO_PLIST_B64',
+      'APPLE_ID',
+      'APPLE_APP_PASSWORD',
+      'IOS_DIST_KEY_B64',
+      'IOS_DIST_CERT_PEM_B64',
+      'IOS_APPSTORE_PROFILE_B64',
+      'IOS_APPSTORE_PROFILE_NAME',
+    ]) {
       expect(testflight).toContain(`secrets.${name}`)
     }
     expect(testflight).not.toMatch(/BEGIN (PRIVATE|EC PRIVATE|RSA PRIVATE) KEY/)
   })
 
-  it('firma en la nube de Apple con la llave de la API y sube con un número de compilación que sube en cada envío', () => {
-    expect(testflight).toContain('-allowProvisioningUpdates')
-    expect(testflight).toContain('-authenticationKeyPath')
-    expect(testflight).toContain('<key>destination</key><string>upload</string>')
+  it('firma a mano con el certificado de distribución (la firma en la nube con la llave de la API falla con el error 3004 de JWT) y sube con un número de compilación que sube en cada envío', () => {
+    expect(testflight).toContain('"CODE_SIGN_STYLE"] = "Manual"')
+    expect(testflight).toContain('PROVISIONING_PROFILE_SPECIFIER')
+    expect(testflight).toContain('<key>signingStyle</key><string>manual</string>')
+    expect(testflight).toContain('<key>destination</key><string>export</string>')
+    expect(testflight).toContain('xcrun altool --upload-app')
     expect(testflight).toContain('CURRENT_PROJECT_VERSION="${{ github.run_number }}"')
+    // Si no se firma el archivo, la app se queda sin el permiso de avisos (aps-environment).
+    expect(testflight).not.toContain('CODE_SIGNING_ALLOWED=NO')
+  })
+})
+
+describe('app de iPhone: ubicación con la app cerrada', () => {
+  it('AppDelegate retoma la vigilancia al arrancar (también cuando iOS relanza la app por un cambio de ubicación)', () => {
+    expect(appDelegate).toContain('import CapacitorCommunityBackgroundGeolocation')
+    expect(appDelegate).toContain('PepaNativeLocation.shared.resumeIfConfigured()')
+  })
+
+  it('el código nativo vigila cambios significativos, manda cada posición a report_device_location y se para con «off» o «revoked»', () => {
+    expect(nativeLocation).toContain('startMonitoringSignificantLocationChanges()')
+    expect(nativeLocation).toContain('allowsBackgroundLocationUpdates = true')
+    expect(nativeLocation).toContain('/rest/v1/rpc/report_device_location')
+    for (const field of ['p_token', 'p_latitude', 'p_longitude', 'p_recorded_at']) expect(nativeLocation).toContain(field)
+    expect(nativeLocation).toContain('\\"off\\"')
+    expect(nativeLocation).toContain('\\"revoked\\"')
+    expect(nativeLocation).toContain('beginBackgroundTask')
+  })
+
+  it('el parche añade los tres métodos al complemento y corre tras cada npm install', () => {
+    for (const method of ['setNativeUpload', 'clearNativeUpload', 'getBackgroundLocationStatus']) expect(iosPatch).toContain(method)
+    expect(pkg).toContain('patch-background-geolocation-ios.mjs --soft')
   })
 })

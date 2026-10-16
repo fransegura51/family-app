@@ -7,7 +7,7 @@ import { getPermissionState, hasPushSubscription, isNotificationsDisabledByUser,
 // Petición real: "¿Dónde se activan los recordatorios en la app? No sé dónde se activan... añade un
 // botón para activar los avisos desde la aplicación de Pepa, para activarlo o desactivarlo". Antes solo
 // había una tarjeta en Inicio que desaparecía para siempre en cuanto el móvil contestaba "Permitir" o
-// "Bloquear". Esta es fija, está en Familia, y cada persona la ve y la maneja para SU propio móvil
+// "Bloquear". Esta es fija, está en Configuración → Avisos (antes en Familia), y cada persona la ve y la maneja para SU propio móvil
 // (el permiso y el envío de avisos son por dispositivo, no por cuenta).
 export function NotificationsCard() {
   const [permission, setPermission] = useState<NotificationPermissionState>(getPermissionState())

@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
-    "postinstall": "node scripts/patch-speech-plugin.mjs --soft && node scripts/patch-background-geolocation.mjs --soft"
+    "postinstall": "node scripts/patch-speech-plugin.mjs --soft && node scripts/patch-background-geolocation.mjs --soft && node scripts/patch-background-geolocation-ios.mjs --soft"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",

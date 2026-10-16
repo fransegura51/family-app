@@ -18,18 +18,10 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { effectiveMemberType } from '@/domain/growth'
-import { supabase } from '@/data/supabaseClient'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
-import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { CommunityPermissionsCard } from '@/ui/CommunityPermissionsCard'
-import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { canSeeDietarySection, FamilyDietarySection } from '@/ui/FamilyDietarySection'
-import { disableNativeUpload } from '@/services/nativeUpload'
-import { NotificationsCard } from '@/ui/NotificationsCard'
-import { NotificationPrefsCard } from '@/ui/NotificationPrefsCard'
-import { TaskNotifyModeCard } from '@/ui/TaskNotifyModeCard'
-import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
@@ -209,28 +201,12 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         <Link to="/actividad" className="link-button">
           🕘 Actividad reciente
         </Link>
-      {/* Hace falta para que cada persona pueda tener su PROPIA cuenta en
-          su propio móvil en vez de compartir el login de otra (p. ej.
-          Paco entrando siempre como Jennifer, lo que confundía su
-          ubicación con la de ella) — cierra esta sesión para poder
-          entrar con la cuenta nueva creada con el código de invitación. */}
-        <button type="button" className="link-button" onClick={async () => {
-            // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
-            await disableNativeUpload()
-            await supabase.auth.signOut()
-          }}>
-          Cerrar sesión ({profile.displayName})
-        </button>
       </div>
       <InviteFriendsButton />
-      {/* Permisos de Comunidad de las personas de 15 a 17 años: solo para administradores de la familia. Va ANTES de NotificationsCard (el orden
-          NotificationsCard … BatteryGuideCard lo exige batteryGuide.test.ts) y consulta solo al abrirla. */}
+      {/* 16/10/2026: el cierre de sesión, los avisos, el permiso «Permitir siempre», la guía de batería, las preferencias de Pepa y el borrado de cuenta no son de la
+          familia: viven en Configuración (☰ Menú → Configuración), en los temas «Avisos», «Pepa» y «Mi cuenta». */}
+      {/* Permisos de Comunidad de las personas de 15 a 17 años: solo para administradores de la familia; consulta solo al abrirla. */}
       {isAdmin && <CommunityPermissionsCard />}
-      <NotificationsCard />
-      <NotificationPrefsCard />
-      <TaskNotifyModeCard familyId={profile.familyId} isAdmin={isAdmin} />
-      <PepaPreferencesCard />
-      <BatteryGuideCard />
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {order.map((m) =>
@@ -321,7 +297,6 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             + Añadir miembro
           </button>
         ))}
-      <DeleteAccountCard isAdmin={isAdmin} />
         </>
       )}
     </div>

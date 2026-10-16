@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import FirebaseCore
 import FirebaseMessaging
+import CapacitorCommunityBackgroundGeolocation
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,6 +15,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
             FirebaseApp.configure()
         }
+        // Ubicación con la app cerrada: si ya hay llave guardada, se retoma la vigilancia. Es lo que hace iOS al relanzar la app en segundo plano
+        // por un cambio significativo de ubicación (launchOptions[.location]), aunque la persona la hubiera deslizado para cerrarla.
+        PepaNativeLocation.shared.resumeIfConfigured()
         return true
     }
 
@@ -26,17 +30,33 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             return
         }
         Messaging.messaging().apnsToken = deviceToken
+        // Si Firebase no contesta, que el aviso de la pantalla diga en qué paso se ha quedado (Apple ya respondió; el que falla es Firebase).
+        var finished = false
+        let limit = DispatchWorkItem {
+            guard !finished else { return }
+            finished = true
+            NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                            object: NSError(domain: "PEPA", code: 2, userInfo: [NSLocalizedDescriptionKey: "Apple ya ha registrado este iPhone, pero Firebase no ha devuelto el token en 10 segundos"]))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: limit)
         Messaging.messaging().token { token, error in
-            if let error = error {
-                NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
-            } else if let token = token {
-                NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: token)
+            DispatchQueue.main.async {
+                guard !finished else { return }
+                finished = true
+                limit.cancel()
+                if let error = error {
+                    NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                                    object: NSError(domain: "PEPA", code: 3, userInfo: [NSLocalizedDescriptionKey: "Firebase no ha dado el token: \(error.localizedDescription)"]))
+                } else if let token = token {
+                    NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: token)
+                }
             }
         }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications,
+                                        object: NSError(domain: "PEPA", code: 4, userInfo: [NSLocalizedDescriptionKey: "Apple no ha podido registrar este iPhone para avisos: \(error.localizedDescription)"]))
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

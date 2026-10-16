@@ -1326,6 +1326,10 @@ as $$
 declare
   p public.community_polls%rowtype;
 begin
+  -- Como el resto de la lectura pública (0272): con Comunidad sin lanzar no se enseña nada a visitantes sin sesión.
+  if not private.community_launched() then
+    return null;
+  end if;
   select pl.* into p from public.community_polls pl join public.community_posts po on po.id = pl.post_id where pl.post_id = p_post and po.status = 'published';
   if not found then
     return null;

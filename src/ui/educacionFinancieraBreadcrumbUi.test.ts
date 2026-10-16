@@ -59,7 +59,9 @@ describe('B1 — ambos puntos de acceso dedicados pasan standalone, nunca pintan
     const fn = window_(PG, 'function EducacionFinancieraTab(', '\n}')
     expect(fn).not.toContain('<SectionBreadcrumb')
   })
-  it('la pestaña dentro de Economía (un adulto navegando por tabs) NO pasa standalone — sigue cubierta por la miga de pan genérica de esa pantalla, nunca dos a la vez', () => {
-    expect(FINANCE).toContain("{tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}")
+  it('Economía ya no tiene pestaña "Educación financiera" (2026-10-16, era una segunda puerta al mismo módulo): solo queda la vista restringida de un hijo, con standalone', () => {
+    expect(FINANCE).not.toContain("{tab === 'Educación financiera'")
+    expect(FINANCE.match(/<KidsFinanceTab /g)?.length).toBe(1)
+    expect(FINANCE).toContain('<KidsFinanceTab profile={profile} standalone />')
   })
 })

@@ -66,10 +66,13 @@ body {
 /* Hueco reservado arriba del todo para la fila de botones de Pepa
    (position: fixed, ver .voice-fab-round) — petición real: "en el
    móvil se tapan [con el título]... que se queden justo en la parte
-   superior [sin tapar nada]". */
+   superior [sin tapar nada]". En el iPhone la app se dibuja por debajo de la barra
+   del sistema (hora, batería), así que ese hueco empieza DEBAJO de ella (16/10/2026:
+   los botones quedaban tapados y no se podían tocar); sin barra, env() vale 0 y
+   queda en los 54px de siempre. */
 .app-content {
   flex: 1;
-  padding-top: 54px;
+  padding-top: calc(54px + env(safe-area-inset-top, 0px));
   padding-bottom: 80px;
 }
 

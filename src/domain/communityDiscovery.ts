@@ -27,7 +27,7 @@ export const MIN_SEARCH_CHARS = 2
 export const SUGGEST_DELAY_MS = 300
 export const MAX_QUERY_CHARS = 120
 
-export const ALL_KINDS: AnyPostKind[] = ['receta', 'pregunta', 'consejo', 'anecdota', 'encuesta', 'articulo']
+export const ALL_KINDS: AnyPostKind[] = ['receta', 'pregunta', 'consejo', 'anecdota', 'encuesta', 'articulo', 'menu']
 
 export type HomeBlockId = 'recientes' | 'comentados' | 'sin_respuesta' | 'para_mi'
 

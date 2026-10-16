@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest'
 import sql from '../../supabase/migrations/0253_location_device_tokens.sql?raw'
 import rollback from '../../supabase/rollbacks/0253_location_device_tokens_down.sql?raw'
 import service from '../../android-patches/background-geolocation/BackgroundGeolocationService.java?raw'
+import receiver from '../../android/app/src/main/java/es/pepafamilyapp/app/NativeLocationReceiver.java?raw'
 import patchScript from '../../scripts/patch-background-geolocation.mjs?raw'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import packageJson from '../../package.json?raw'
 import sharing from '@/services/locationSharing.ts?raw'
-import family from '@/ui/FamilyScreen.tsx?raw'
+import settings from '@/ui/MenuSettingsScreen.tsx?raw'
+import manifest from '../../android/app/src/main/AndroidManifest.xml?raw'
 import locationActions from '@/pepa/actions/locationActions.ts?raw'
 import locationScreen from '@/ui/LocationScreen.tsx?raw'
 
@@ -74,24 +76,48 @@ describe('servicio de Android que sigue con la app cerrada', () => {
     expect(service).toMatch(/if \(!hasNativeUpload\(\)\) \{\s*BackgroundGeolocationService\.this\.stopSelf\(\);/)
   })
 
-  it('manda a report_device_location con la llave, sin más datos que la posición', () => {
-    expect(service).toContain('/rest/v1/rpc/report_device_location')
-    for (const field of ['p_token', 'p_latitude', 'p_longitude', 'p_recorded_at']) expect(service).toContain(`"${field}"`)
+  it('el receptor manda a report_device_location con la llave, sin más datos que la posición, y reintenta una vez', () => {
+    expect(receiver).toContain('/rest/v1/rpc/report_device_location')
+    for (const field of ['p_token', 'p_latitude', 'p_longitude', 'p_recorded_at']) expect(receiver).toContain(`"${field}"`)
+    expect(receiver).toContain('attempt <= 2')
   })
 
-  it('se para solo si el servidor dice que ya no se comparte o que la llave se anuló', () => {
-    expect(service).toContain('answer.contains("\\"off\\"") || answer.contains("\\"revoked\\"")')
-    expect(service).toContain('stopNativeTracking();')
+  it('las posiciones llegan por un PendingIntent que sobrevive a que Android mate el proceso, y el receptor está declarado', () => {
+    expect(service).toContain('client.requestLocationUpdates(locationRequest, pendingIntent)')
+    expect(service).toContain('es.pepafamilyapp.app.NativeLocationReceiver')
+    expect(manifest).toContain('android:name=".NativeLocationReceiver"')
+    expect(receiver).toContain('goAsync()')
+    expect(receiver).toContain('LocationResult.hasResult(intent)')
+  })
+
+  it('no se apaga por una sola respuesta «off»/«revoked»: hacen falta varias seguidas', () => {
+    expect(receiver).toContain('MAX_BAD_ANSWERS = 3')
+    expect(receiver).toContain('answer.contains("\\"off\\"") || answer.contains("\\"revoked\\"")')
+    expect(receiver).toContain('bad >= MAX_BAD_ANSWERS')
   })
 
   it('descarta posiciones imprecisas y respeta un mínimo entre envíos', () => {
-    expect(service).toContain('MAX_ACCURACY_M = 100f')
-    expect(service).toContain('MIN_UPLOAD_GAP_MS = 10_000L')
+    expect(receiver).toContain('MAX_ACCURACY_M = 100f')
+    expect(receiver).toContain('MIN_UPLOAD_GAP_MS = 10_000L')
+  })
+
+  it('anota en un registro del móvil los reinicios, los permisos que faltan y los errores, para subirlos al abrir la app', () => {
+    for (const line of ['Android reinicia el servicio tras matar el proceso', 'SIN PERMISO de ubicación para el envío nativo', 'no se pudo pasar a primer plano', 'app deslizada de recientes']) {
+      expect(service).toContain(line)
+    }
+    expect(receiver).toContain('receptor: envío fallido')
+    expect(patchScript).toContain('getNativeDiagnostics')
   })
 
   it('al volver a abrir la app se retira el envío nativo (no hay envíos duplicados)', () => {
     expect(service).toContain('removeWatcherById(NATIVE_WATCHER_ID);')
     expect(service).toMatch(/public IBinder onBind\(Intent intent\) \{\s*appIsBack\(\);/)
+  })
+
+  it('pide «Permitir siempre»: permiso en el manifiesto, método nativo para comprobarlo y tarjeta en Configuración → Avisos', () => {
+    expect(manifest).toContain('android.permission.ACCESS_BACKGROUND_LOCATION')
+    expect(patchScript).toContain('getBackgroundLocationStatus')
+    expect(settings).toContain('<BackgroundLocationCard />')
   })
 
   it('el parche comprueba la versión y la huella del original, y se aplica al instalar y al construir el APK', () => {
@@ -108,7 +134,7 @@ describe('la app entrega y retira la llave en el momento justo', () => {
     expect(sharing).toContain('void disableNativeUpload()')
   })
   it('al cerrar sesión se anula la llave antes de salir', () => {
-    expect(family).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
   })
 })
 

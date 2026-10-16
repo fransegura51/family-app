@@ -4,7 +4,7 @@ import { decideDeletion } from '../../supabase/functions/_shared/accountDeletion
 import fn from '../../supabase/functions/delete-account/index.ts?raw'
 import migration from '../../supabase/migrations/0256_account_deletion.sql?raw'
 import card from '@/ui/DeleteAccountCard.tsx?raw'
-import family from '@/ui/FamilyScreen.tsx?raw'
+import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 
 const base = { scope: 'me', confirm: 'BORRAR', role: 'adult', otherAdmins: 1, otherProfiles: 2 }
 
@@ -81,8 +81,8 @@ describe('0256: las funciones de la base solo las puede llamar el servidor', () 
 })
 
 describe('la pantalla', () => {
-  it('Familia tiene «Borrar mi cuenta» y solo ofrece borrar la familia entera a las administradoras', () => {
-    expect(family).toContain('<DeleteAccountCard isAdmin={isAdmin} />')
+  it('Configuración (tema «Mi cuenta») tiene «Borrar mi cuenta» y solo ofrece borrar la familia entera a las administradoras', () => {
+    expect(settings).toContain("<DeleteAccountCard isAdmin={profile.role === 'admin'} />")
     expect(card).toContain('{isAdmin && (')
     expect(card).toContain('Borrar toda la familia')
   })

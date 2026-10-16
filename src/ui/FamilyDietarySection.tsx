@@ -30,6 +30,7 @@ import {
 } from '@/domain/dietaryRestrictions'
 import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import { useFamilyDietary } from '@/ui/useFamilyDietary'
+import { isDietaryFeatureEnabled } from '@/domain/dietaryFeature'
 import type { FamilyMember, Profile } from '@/domain/types'
 import * as T from '@/ui/familyDietaryText'
 import '@/ui/familyDietary.css'
@@ -46,6 +47,8 @@ import '@/ui/familyDietary.css'
 // ¿Esta persona que mira Familia ve la ficha de ese miembro? Administradores y adultos, la de todos; niño o invitado, solo la suya (el servidor le enviará
 // únicamente lo suyo, sin poder cambiarlo). Con esto las fichas ajenas ni se ofrecen a una cuenta que no puede ver nada en ellas.
 export function canSeeDietarySection(profile: Pick<Profile, 'id' | 'role'>, member: Pick<FamilyMember, 'linkedProfileId'>): boolean {
+  // Interruptor apagado (domain/dietaryFeature.ts): la sección no existe para nadie.
+  if (!isDietaryFeatureEnabled()) return false
   if (profile.role === 'admin' || profile.role === 'adult') return true
   return member.linkedProfileId === profile.id
 }

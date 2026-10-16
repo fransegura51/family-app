@@ -1,4 +1,5 @@
 import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, useRef, useState } from 'react'
+import { FAB_SAFE_GAP_PX, fabTopCss, safeAreaTopPx } from '@/ui/safeArea'
 
 // Petición real: "hazme un botón que ponga redes sociales y agrupa
 // las cuatro botones de las redes sociales... para que no ocupe lugar
@@ -11,9 +12,9 @@ import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, React
 const FAB_SIZE = 42
 const FAB_GAP = 7
 const FAB_DEFAULT_TOP = 8
-// Los 4 primeros huecos de la fila son los botones de Pepa — este
-// botón ocupa el quinto, justo después.
-const PEPA_SLOTS = 4
+// Con los botones clásicos a la vista, los 5 primeros huecos de la fila son los de Pepa (4 de siempre + 📍) y este botón ocupa el sexto;
+// sin ellos (Configuración → Pepa → «Mostrar botones clásicos» destickado), solo queda el 💬 y este botón va justo detrás. Un hueco elegido arrastrando manda.
+const DEFAULT_SLOT = 5
 const TAP_THRESHOLD_PX = 8
 const STORAGE_KEY = 'familyapp:social-menu-fab-position'
 
@@ -29,17 +30,20 @@ export interface SocialMenuItem {
   icon: ReactNode
 }
 
-const DEFAULT_POSITION: FabPosition = { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + PEPA_SLOTS * (FAB_SIZE + FAB_GAP) }
+function defaultPosition(slot: number): FabPosition {
+  return { top: FAB_DEFAULT_TOP, left: FAB_DEFAULT_TOP + slot * (FAB_SIZE + FAB_GAP) }
+}
 
-function loadPosition(): FabPosition {
+// null = nunca se ha arrastrado: se usa el hueco por defecto que toque en cada momento.
+function loadPosition(): FabPosition | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return DEFAULT_POSITION
+    if (!raw) return null
     const parsed = JSON.parse(raw)
     if (typeof parsed?.top === 'number' && typeof parsed?.left === 'number') return parsed
-    return DEFAULT_POSITION
+    return null
   } catch {
-    return DEFAULT_POSITION
+    return null
   }
 }
 
@@ -52,8 +56,9 @@ function savePosition(position: FabPosition) {
   }
 }
 
-export function SocialMenuFab({ items }: { items: SocialMenuItem[] }) {
-  const [position, setPosition] = useState<FabPosition>(() => loadPosition())
+export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMenuItem[]; slot?: number }) {
+  const [savedPosition, setPosition] = useState<FabPosition | null>(() => loadPosition())
+  const position = savedPosition ?? defaultPosition(slot)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [open, setOpen] = useState(false)
@@ -89,7 +94,7 @@ export function SocialMenuFab({ items }: { items: SocialMenuItem[] }) {
       const maxTop = Math.max(0, window.innerHeight - FAB_SIZE)
       const rect = e.currentTarget.getBoundingClientRect()
       const next = {
-        top: Math.min(Math.max(0, rect.top), maxTop),
+        top: Math.min(Math.max(safeAreaTopPx() + FAB_SAFE_GAP_PX, rect.top), maxTop),
         left: Math.min(Math.max(0, rect.left), maxLeft),
       }
       setPosition(next)
@@ -118,7 +123,7 @@ export function SocialMenuFab({ items }: { items: SocialMenuItem[] }) {
         aria-expanded={open}
         className={'voice-fab-round social-menu-fab' + (dragging ? ' voice-fab-dragging' : '')}
         style={{
-          top: position.top + (dragging ? dragOffset.y : 0),
+          top: fabTopCss(position.top, dragging ? dragOffset.y : 0),
           left: position.left + (dragging ? dragOffset.x : 0),
           width: FAB_SIZE,
           height: FAB_SIZE,
@@ -142,7 +147,7 @@ export function SocialMenuFab({ items }: { items: SocialMenuItem[] }) {
         <div
           className="social-menu-flyout"
           style={{
-            top: position.top + FAB_SIZE + 8,
+            top: fabTopCss(position.top, FAB_SIZE + 8),
             left: position.left,
           }}
         >

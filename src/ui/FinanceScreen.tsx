@@ -191,6 +191,7 @@ import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
+import { isCreditLine, partitionCreditLines } from '@/domain/ticketCreditLines'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
@@ -285,7 +286,9 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 // Financiera". Resumen y Conclusiones se combinan en una sola pestaña
 // (van siempre juntas, mismo periodo, misma pantalla) en vez de dos
 // pestañas casi vacías por separado.
-const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Educación financiera', 'Previsión de pagos'] as const
+// «Educación financiera» ya no es una pestaña de Economía (2026-10-16): su entrada es Pequeños Grandes (/puntos), que reutiliza KidsFinanceTab. Una familia que
+// la tenga guardada en su menú de Economía la pierde sola (ver RETIRED_KEYS en state/economiaMenu.ts); los datos del monedero no se tocan.
+const SUB_TABS = ['Resumen', 'Estadísticas', 'Movimientos', 'Presupuesto Generales', 'Banco', 'Previsión de pagos'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 // El desplegable de Economía mezcla pestañas (SubTab) con accesos
@@ -442,7 +445,8 @@ function isDineroRestricted(profile: Profile): boolean {
 
 export function FinanceScreen({ profile }: { profile: Profile }) {
   const dineroRestricted = isDineroRestricted(profile)
-  const [tab, setTab] = useState<SubTab>(dineroRestricted ? 'Educación financiera' : 'Resumen')
+  // El hijo con Economía restringida no llega a las pestañas: se devuelve antes su monedero (más abajo), así que su valor inicial da igual.
+  const [tab, setTab] = useState<SubTab>('Resumen')
   // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
   useSectionHome(() => setTab('Resumen'))
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
@@ -721,7 +725,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       )}
       {tab === 'Banco' && <BankTab key={refreshKey} openConnectSignal={openConnectSignal} focusAccountId={focusAccountId} />}
       {tab === 'Previsión de pagos' && <PrevisionPagosTab key={refreshKey} categories={categories} />}
-      {tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}
 
       {showNewMovement && (
         <NewMovementModal
@@ -6029,6 +6032,7 @@ function ReceiptForm({
   const [lines, setLines] = useState<DraftLine[]>([])
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
+  const uploadedReceiptId = useRef<string | null>(null)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
   const [error, setError] = useState<string | null>(null)
@@ -6105,8 +6109,11 @@ function ReceiptForm({
       if (parsed.total != null) setTotalAmount(String(parsed.total))
       // Las líneas que no son productos (PARKING de Mercadona...) no llegan ni a la revisión: el ticket conserva su total y su foto.
       const { products: productLines, skipped } = partitionTicketLines(readStore, parsed.items)
-      setSkippedLines(skipped.map((s) => s.line.name.trim()))
-      setLines(productLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2) })))
+      // Las líneas con importe NEGATIVO (abono de portes, descuento, cupón...) tampoco son una compra: no llegan al historial de precios, que no admite
+      // precios negativos (antes, con una de ellas, el ticket entero no se podía guardar). Se avisa igual que con PARKING.
+      const { kept: purchaseLines, credits } = partitionCreditLines(productLines)
+      setSkippedLines([...skipped.map((s) => s.line.name.trim()), ...credits.map((c) => c.name.trim())])
+      setLines(purchaseLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
@@ -6133,7 +6140,9 @@ function ReceiptForm({
     // al probar con un ticket de varias líneas.
     await Promise.all(
       lines
-        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.unitPrice)))
+        // Una línea con precio negativo (abono, descuento) no se guarda en el historial de precios, que no la admite: antes hacía fallar el guardado
+        // del ticket entero, ya subido (ver isCreditLine).
+        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.unitPrice)) && !isCreditLine(Number(line.unitPrice)))
         .map(async (line) => {
           // Corrección PESO — line.unitPrice YA es el precio por unidad, o por kg cuando line.unit==='kg'
           // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
@@ -6184,15 +6193,24 @@ function ReceiptForm({
     setError(null)
     try {
       if (mode === 'add') {
-        const receiptId = await uploadReceipt({
-          file: file!,
-          store,
-          receiptDate,
-          totalAmount: totalAmount ? Number(totalAmount) : null,
-          category: category || null,
-          purchasedByMemberId: purchasedByMemberId || null,
-        })
+        // Si el ticket ya se subió y falló después el guardado de las líneas, al reintentar NO se vuelve a subir (saldría duplicado):
+        // se reutiliza y se rehacen solo sus líneas.
+        let receiptId = uploadedReceiptId.current
+        if (receiptId) {
+          await deleteProductPricesByReceipt(receiptId)
+        } else {
+          receiptId = await uploadReceipt({
+            file: file!,
+            store,
+            receiptDate,
+            totalAmount: totalAmount ? Number(totalAmount) : null,
+            category: category || null,
+            purchasedByMemberId: purchasedByMemberId || null,
+          })
+          uploadedReceiptId.current = receiptId
+        }
         await saveLines(receiptId)
+        uploadedReceiptId.current = null
         setFile(null)
         setStore('')
         setTotalAmount('')
@@ -6248,6 +6266,7 @@ function ReceiptForm({
             sheetTitle="Añadir ticket"
             onChange={(f) => {
               setFile(f)
+              uploadedReceiptId.current = null
               setLines([])
               setOcrStatus('idle')
             }}
@@ -6336,6 +6355,11 @@ function ReceiptForm({
         <p className="muted">
           Se {skippedLines.length === 1 ? 'ha omitido 1 línea que no es' : 'han omitido ' + skippedLines.length + ' líneas que no son'} un producto
           ({[...new Set(skippedLines)].join(', ')}): no se guarda en Historial de precios ni cuenta en las estadísticas.
+        </p>
+      )}
+      {lines.some((l) => l.name.trim() && isCreditLine(Number(l.unitPrice))) && (
+        <p className="muted">
+          Hay líneas con importe negativo (un abono, un descuento): no se guardan en Historial de precios, que solo admite precios de 0 en adelante. El ticket se guarda igual, con su total.
         </p>
       )}
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
@@ -11225,8 +11249,8 @@ const WALLET_SPLIT_HIGHLIGHT: Record<WalletTransactionType, 'ahorro' | 'impuesto
 
 // Pequeños Grandes (prompt maestro, Fase 5) reutiliza este mismo componente
 // como punto de entrada principal para la educación financiera — nunca se
-// duplica su lógica. Sigue usándose también aquí dentro de Economía (vista
-// restringida de un hijo y pestaña "Educación financiera" para un adulto).
+// duplica su lógica. Desde 2026-10-16 ya no hay pestaña "Educación financiera" dentro de Economía (era una segunda puerta al mismo módulo);
+// aquí dentro solo queda la vista restringida de un hijo (standalone), que sigue siendo su monedero.
 //
 // PG-PUNTOS-FINANZAS (Parte B1) — `standalone` es true solo en los dos sitios donde este componente ES
 // la pantalla entera (sin pestañas hermanas alrededor: /puntos y la vista restringida de un hijo en

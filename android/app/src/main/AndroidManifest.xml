@@ -36,6 +36,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Posiciones de la ubicación nativa con la app cerrada: Google Play Services lanza este receptor aunque Android haya matado el proceso (ver NativeLocationReceiver). -->
+        <receiver
+            android:name=".NativeLocationReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -48,4 +53,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- «Permitir siempre»: sin él, si Android reinicia el servicio de ubicación en segundo plano (Android 11+), se queda sin acceso a la posición. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 </manifest>

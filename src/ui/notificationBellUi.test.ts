@@ -8,7 +8,7 @@ import panel from '@/ui/NotificationPanel.tsx?raw'
 import modalHook from '@/ui/useModalDialog.ts?raw'
 import prefs from '@/ui/NotificationPrefsCard.tsx?raw'
 import mode from '@/ui/TaskNotifyModeCard.tsx?raw'
-import family from '@/ui/FamilyScreen.tsx?raw'
+import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 import calendar from '@/ui/CalendarScreen.tsx?raw'
 
 const css = readFileSync(join(process.cwd(), 'src/ui/styles.css'), 'utf8')
@@ -72,9 +72,9 @@ describe('el panel', () => {
 })
 
 describe('ajustes', () => {
-  it('los ajustes por persona y el ajuste familiar están en Familia', () => {
-    expect(family).toContain('<NotificationPrefsCard />')
-    expect(family).toContain('<TaskNotifyModeCard familyId={profile.familyId} isAdmin={isAdmin} />')
+  it('los ajustes por persona y el ajuste familiar están en Configuración (grupo Avisos)', () => {
+    expect(settings).toContain('<NotificationPrefsCard />')
+    expect(settings).toContain("<TaskNotifyModeCard familyId={profile.familyId} isAdmin={profile.role === 'admin'} />")
   })
 
   it('el ajuste familiar solo lo cambia un administrador y ofrece exactamente los dos modos aprobados', () => {

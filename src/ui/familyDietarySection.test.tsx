@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/data/supabaseClient', () => ({ supabase: { rpc: vi.fn(), auth: { onAuthStateChange: vi.fn() } } }))
 
 import { a11yProblems } from '@/domain/staticA11y'
+import { DIETARY_FEATURE_DEFAULT, setDietaryFeatureEnabledForTests } from '@/domain/dietaryFeature'
 import type { DietaryRestriction } from '@/domain/dietaryRestrictions'
 import { DIETARY_ERROR_TEXT } from '@/data/dietaryRestrictions'
 import {
@@ -259,7 +260,14 @@ describe('formulario de alta', () => {
 })
 
 describe('quién ve cada ficha', () => {
-  it('administradores y adultos ven todas; niño e invitado solo la suya', () => {
+  it('el interruptor viene APAGADO por defecto y, apagado, nadie ve la sección', () => {
+    expect(DIETARY_FEATURE_DEFAULT).toBe(false)
+    expect(canSeeDietarySection({ id: 'yo', role: 'admin' }, { linkedProfileId: 'yo' })).toBe(false)
+    expect(canSeeDietarySection({ id: 'yo', role: 'adult' }, { linkedProfileId: 'otra' })).toBe(false)
+  })
+
+  it('administradores y adultos ven todas; niño e invitado solo la suya (con el interruptor encendido)', () => {
+    setDietaryFeatureEnabledForTests(true)
     const other = { linkedProfileId: 'otra' }
     const mine = { linkedProfileId: 'yo' }
     expect(canSeeDietarySection({ id: 'yo', role: 'admin' }, other)).toBe(true)
@@ -269,6 +277,7 @@ describe('quién ve cada ficha', () => {
     expect(canSeeDietarySection({ id: 'yo', role: 'child' }, mine)).toBe(true)
     expect(canSeeDietarySection({ id: 'yo', role: 'guest' }, mine)).toBe(true)
     expect(canSeeDietarySection({ id: 'yo', role: 'child' }, { linkedProfileId: null })).toBe(false)
+    setDietaryFeatureEnabledForTests(false)
   })
 })
 

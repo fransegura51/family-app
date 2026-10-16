@@ -4,12 +4,18 @@
 import { registerPlugin } from '@capacitor/core'
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 import { LocalNotifications } from '@capacitor/local-notifications'
+import type { NativeRegion } from '@/domain/nativeRegions'
 
 // Métodos que añade el parche scripts/patch-background-geolocation.mjs (android-patches/background-geolocation): el servicio nativo sigue mandando la
 // ubicación al servidor aunque la app esté cerrada, con una llave propia de este móvil (migración 0253).
 interface PepaNativeUploadPlugin {
   setNativeUpload(options: { url: string; apikey: string; token: string; backgroundTitle: string; backgroundMessage: string; distanceFilter: number }): Promise<void>
   clearNativeUpload(): Promise<void>
+  getBackgroundLocationStatus(): Promise<{ granted: boolean }>
+  // Solo iPhone: lista de bordes de lugares (JSON) que iOS vigila aunque la app esté cerrada. Ver domain/nativeRegions.ts.
+  setNativeRegions(options: { regionsJson: string }): Promise<void>
+  // Registro que anota el servicio nativo (parche de Android): una app nativa anterior no lo tiene y la llamada falla.
+  getNativeDiagnostics(): Promise<{ log?: string; lastOkAt?: number }>
 }
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin & PepaNativeUploadPlugin>('BackgroundGeolocation')
@@ -44,6 +50,36 @@ export async function configureNativeUpload(token: string): Promise<void> {
 
 export async function clearNativeUpload(): Promise<void> {
   await BackgroundGeolocation.clearNativeUpload()
+}
+
+export async function configureNativeRegions(regions: readonly NativeRegion[]): Promise<void> {
+  await BackgroundGeolocation.setNativeRegions({ regionsJson: JSON.stringify(regions) })
+}
+
+// ¿Tiene la app el permiso de ubicación «Permitir siempre»? Sin él, si Android reinicia el servicio con la app cerrada, se queda sin posición y los
+// avisos de llegada no salen hasta abrir PEPA. Una app nativa anterior a esta función no responde: se da por buena para no avisar en falso.
+export async function hasBackgroundLocationPermission(): Promise<boolean> {
+  try {
+    const { granted } = await BackgroundGeolocation.getBackgroundLocationStatus()
+    return granted
+  } catch {
+    return true
+  }
+}
+
+// Registro que anota el servicio nativo (se entrega una vez y se vacía en el móvil). Una app nativa anterior a esta función no lo tiene: se devuelve vacío.
+export async function takeNativeDiagnostics(): Promise<{ log: string; lastOkAt: number }> {
+  try {
+    const { log, lastOkAt } = await BackgroundGeolocation.getNativeDiagnostics()
+    return { log: log ?? '', lastOkAt: lastOkAt ?? 0 }
+  } catch {
+    return { log: '', lastOkAt: 0 }
+  }
+}
+
+// Abre los ajustes de PEPA en Android (Permisos → Ubicación → Permitir todo el tiempo).
+export async function openLocationSettings(): Promise<void> {
+  await BackgroundGeolocation.openSettings()
 }
 
 // Android 13+ necesita el permiso de notificaciones para poder enseñar el aviso fijo del servicio de ubicación.

@@ -79,6 +79,7 @@ import {
 } from '@/domain/calendar'
 import { toPastel } from '@/domain/colors'
 import { madridParts } from '@/domain/reminderIdentity'
+import { isDaySwipeBlockedTarget } from '@/domain/swipeGuard'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import {
@@ -138,6 +139,11 @@ function useSwipeHandlers(onSwipeLeft: () => void, onSwipeRight: () => void) {
   const startRef = useRef<{ x: number; y: number } | null>(null)
   return {
     onTouchStart: (e: TouchEvent) => {
+      // Si el dedo empieza en un campo de escritura o en un formulario (editar un apunte), el arrastre es para mover el texto, no para cambiar de día.
+      if (isDaySwipeBlockedTarget(e.target)) {
+        startRef.current = null
+        return
+      }
       const t = e.touches[0]
       startRef.current = { x: t.clientX, y: t.clientY }
     },

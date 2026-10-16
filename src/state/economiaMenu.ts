@@ -20,7 +20,6 @@ export type FixedEconomiaMenuItemKey =
   | 'Movimientos'
   | 'Presupuesto Generales'
   | 'Banco'
-  | 'Educación financiera'
   | 'Previsión de pagos'
 
 export type EconomiaMenuItemKey = FixedEconomiaMenuItemKey | `custom:${string}`
@@ -52,7 +51,6 @@ export const ECONOMIA_MENU_ITEM_META: Record<FixedEconomiaMenuItemKey, { icon: s
   'Presupuesto Generales': { icon: '💰', label: 'Presupuesto(s)' },
   Banco: { icon: '🏦', label: 'Banco' },
   'Previsión de pagos': { icon: '🔮', label: 'Previsión de pagos' },
-  'Educación financiera': { icon: '🎓', label: 'Educación financiera' },
 }
 
 // Icono/nombre a mostrar para cualquier entrada, fija o personalizada.
@@ -61,8 +59,8 @@ export function economiaMenuEntryMeta(entry: EconomiaMenuEntry): { icon: string;
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-// Fase 1E.2 — petición real: "Educación financiera" siempre la última; "Nuevo movimiento" deja de ser
-// una entrada del menú (es una acción, no una sección) — ver "+ Nuevo movimiento" dentro de Movimientos.
+// Fase 1E.2 — petición real: "Nuevo movimiento" deja de ser una entrada del menú (es una acción, no una sección) — ver "+ Nuevo movimiento"
+// dentro de Movimientos. ("Educación financiera" salió de este menú el 2026-10-16: vive en Pequeños Grandes.)
 const DEFAULT_KEYS: FixedEconomiaMenuItemKey[] = [
   'Resumen',
   'Estadísticas',
@@ -70,7 +68,6 @@ const DEFAULT_KEYS: FixedEconomiaMenuItemKey[] = [
   'Presupuesto Generales',
   'Banco',
   'Previsión de pagos',
-  'Educación financiera',
 ]
 
 const KEY = 'familyapp:economia-menu-layout'
@@ -79,7 +76,8 @@ const KEY = 'familyapp:economia-menu-layout'
 // atajo en cada sitio donde se usan): se quitan de los menús ya guardados.
 // "accion:movimiento" (Fase 1E.2) pasa a vivir como botón "+ Nuevo movimiento" dentro de Movimientos —
 // se retira igual que los otros dos, para que desaparezca de los menús ya personalizados por la familia.
-const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento']
+// "Educación financiera" (2026-10-16): era una segunda puerta al módulo de Pequeños Grandes; se retira de los menús ya personalizados.
+const RETIRED_KEYS = ['accion:categorias', 'accion:etiquetas', 'accion:movimiento', 'Educación financiera']
 
 function defaultLayout(): EconomiaMenuGroup[] {
   return [{ id: 'default', name: null, items: DEFAULT_KEYS.map((key) => ({ key })) }]

@@ -13,6 +13,7 @@ vi.mock('@/data/dietaryRestrictions', async (importOriginal) => {
 })
 
 import { a11yProblems } from '@/domain/staticA11y'
+import { setDietaryFeatureEnabledForTests } from '@/domain/dietaryFeature'
 import { DIETARY_GENERAL_DISCLAIMER, NO_MATCH_DISCLAIMER, type DietaryRestriction } from '@/domain/dietaryRestrictions'
 import { DietaryError, DIETARY_ERROR_TEXT, type DietaryOverview } from '@/data/dietaryRestrictions'
 import { DietaryWarnings, DietaryWarningsView } from '@/ui/DietaryWarnings'
@@ -138,6 +139,7 @@ describe('lenguaje: nunca «segura», «libre de», «apta para» ni «sin alér
 
 describe('coste: una sola lectura compartida', () => {
   beforeEach(() => {
+    setDietaryFeatureEnabledForTests(true)
     vi.useFakeTimers()
     vi.setSystemTime(NOW)
     loadMock.mockReset()
@@ -146,6 +148,16 @@ describe('coste: una sola lectura compartida', () => {
   })
   afterEach(() => {
     vi.useRealTimers()
+    setDietaryFeatureEnabledForTests(false)
+  })
+
+  it('con el interruptor APAGADO (valor por defecto de producción) no se hace ninguna lectura ni se pinta nada', async () => {
+    setDietaryFeatureEnabledForTests(false)
+    await ensureFamilyDietaryLoaded()
+    await reloadFamilyDietary()
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(getFamilyDietaryState().status).toBe('idle')
+    expect(renderToStaticMarkup(<DietaryWarnings ingredients={[{ name: 'queso' }]} />)).toBe('')
   })
 
   it('muchas peticiones a la vez (varias recetas o tarjetas) hacen UNA lectura', async () => {

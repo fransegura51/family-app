@@ -74,9 +74,9 @@ describe('KidsFinanceTab — ahora recibe profile (para saber si isAdult puede e
     // Parte B1 añade `standalone` (para la propia miga de pan) sin quitar `profile` — sigue incluido.
     expect(FS).toContain('export function KidsFinanceTab({ profile, standalone = false }: { profile: Profile; standalone?: boolean }) {')
   })
-  it('las 2 llamadas dentro de FinanceScreen (Economía restringida, con standalone, y pestaña de adulto, sin él) pasan profile', () => {
+  it('la llamada dentro de FinanceScreen (Economía restringida, con standalone) pasa profile; ya no hay pestaña de adulto (2026-10-16)', () => {
     expect(FS).toContain('<KidsFinanceTab profile={profile} standalone />')
-    expect(FS).toContain("{tab === 'Educación financiera' && <KidsFinanceTab profile={profile} />}")
+    expect(FS).not.toContain("{tab === 'Educación financiera'")
   })
   it('la llamada desde Pequeños Grandes también pasa profile (y standalone, Parte B1)', () => {
     expect(PG_SCREEN).toContain('<KidsFinanceTab profile={profile} standalone />')

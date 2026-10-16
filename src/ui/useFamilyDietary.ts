@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react'
 import { supabase } from '@/data/supabaseClient'
 import { DIETARY_ERROR_TEXT, DietaryError, loadDietaryOverview, type DietaryOverview } from '@/data/dietaryRestrictions'
+import { isDietaryFeatureEnabled } from '@/domain/dietaryFeature'
 
 export type FamilyDietaryStatus = 'idle' | 'loading' | 'ready' | 'error'
 export interface FamilyDietaryState {
@@ -63,6 +64,8 @@ export function resetFamilyDietary(): void {
 }
 
 function load(): Promise<void> {
+  // Interruptor apagado (domain/dietaryFeature.ts): ninguna llamada al servidor.
+  if (!isDietaryFeatureEnabled()) return Promise.resolve()
   if (inflight) return inflight
   watchSignOut()
   const gen = generation
@@ -89,6 +92,7 @@ function load(): Promise<void> {
 
 // Pide la lectura si hace falta: nunca si ya hay una en curso; con datos recientes tampoco.
 export function ensureFamilyDietaryLoaded(options: { maxAgeMs?: number } = {}): Promise<void> {
+  if (!isDietaryFeatureEnabled()) return Promise.resolve()
   if (inflight) return inflight
   const { maxAgeMs = Number.POSITIVE_INFINITY } = options
   const age = state.settledAt === null ? Number.POSITIVE_INFINITY : Date.now() - state.settledAt

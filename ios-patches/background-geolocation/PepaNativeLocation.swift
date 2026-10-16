@@ -7,6 +7,11 @@
 //  3. cada posición se manda sola a report_device_location (migración 0253), igual que en Android;
 //  4. si el servidor contesta «off» o «revoked», se para y se borra la configuración.
 // AppDelegate llama a resumeIfConfigured() al arrancar, también cuando el arranque lo provoca un cambio de ubicación.
+//
+// BORDES DE LUGARES (16/10/2026): los cambios significativos solo despiertan la app tras ~500 m, y casa y el cole pueden estar a menos (439 m: no salió ningún
+// aviso). Por eso JavaScript también entrega la lista de lugares con aviso de llegada/salida (setNativeRegions) y aquí se vigilan como regiones circulares:
+// iOS relanza la app cerrada al cruzar el borde de cualquiera y entonces se pide ubicación continua para mandar la posición hasta llegar (el servidor decide
+// el aviso con el radio real del lugar). Para no gastar batería, la ubicación continua se apaga sola tras unos minutos sin moverse.
 import CoreLocation
 import Foundation
 import UIKit
@@ -18,12 +23,18 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     private static let keyApikey = "pepa.nativeUpload.apikey"
     private static let keyToken = "pepa.nativeUpload.token"
     private static let keyDistance = "pepa.nativeUpload.distance"
+    private static let keyRegions = "pepa.nativeUpload.regions"
+    // Prefijo de las regiones propias: así solo se tocan estas y nunca las de otro complemento.
+    private static let regionPrefix = "pepa-"
+    // Sin ninguna posición nueva durante este tiempo (estás quieta), se apaga la ubicación continua; los bordes y los cambios significativos siguen vigilando.
+    private static let idleStopSeconds: TimeInterval = 180
     // Mismos límites que Android: no más de un envío cada 10 s y se descartan posiciones peores de 100 m de precisión.
     private static let minUploadGap: TimeInterval = 10
     private static let maxAccuracy: CLLocationAccuracy = 100
 
     private var manager: CLLocationManager?
     private var lastUploadAt: Date = .distantPast
+    private var idleTimer: Timer?
     private let defaults = UserDefaults.standard
 
     public var isConfigured: Bool {
@@ -39,10 +50,16 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     }
 
     public func clear() {
-        for key in [PepaNativeLocation.keyUrl, PepaNativeLocation.keyApikey, PepaNativeLocation.keyToken, PepaNativeLocation.keyDistance] {
+        for key in [PepaNativeLocation.keyUrl, PepaNativeLocation.keyApikey, PepaNativeLocation.keyToken, PepaNativeLocation.keyDistance, PepaNativeLocation.keyRegions] {
             defaults.removeObject(forKey: key)
         }
         DispatchQueue.main.async { self.stop() }
+    }
+
+    // Lista de bordes (JSON: [{id, latitude, longitude, radius}]). Se guarda y se vigila ya; al relanzar iOS la app se retoma sola en start().
+    public func setRegions(json: String) {
+        defaults.set(json, forKey: PepaNativeLocation.keyRegions)
+        DispatchQueue.main.async { self.syncRegions() }
     }
 
     // ¿Tiene la app el permiso «Siempre»? Sin él iOS no la relanza con la app cerrada.
@@ -73,21 +90,85 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
             manager.startMonitoringSignificantLocationChanges()
         }
         manager.startUpdatingLocation()
+        scheduleIdleStop()
+        syncRegions()
     }
 
     private func stop() {
-        manager?.stopMonitoringSignificantLocationChanges()
-        manager?.stopUpdatingLocation()
+        idleTimer?.invalidate()
+        idleTimer = nil
+        if let manager = manager {
+            for region in manager.monitoredRegions where region.identifier.hasPrefix(PepaNativeLocation.regionPrefix) {
+                manager.stopMonitoring(for: region)
+            }
+            manager.stopMonitoringSignificantLocationChanges()
+            manager.stopUpdatingLocation()
+        }
         manager = nil
+    }
+
+    // Registra (o vuelve a registrar) los bordes guardados. Máximo 20 (límite de iOS) y radio mínimo de 100 m (ver domain/nativeRegions.ts).
+    private func syncRegions() {
+        guard let manager = manager else { return }
+        for region in manager.monitoredRegions where region.identifier.hasPrefix(PepaNativeLocation.regionPrefix) {
+            manager.stopMonitoring(for: region)
+        }
+        guard CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self),
+              let json = defaults.string(forKey: PepaNativeLocation.keyRegions),
+              let data = json.data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
+        let limit = manager.maximumRegionMonitoringDistance > 0 ? manager.maximumRegionMonitoringDistance : 100000
+        for item in list.prefix(20) {
+            guard let id = item["id"] as? String,
+                  let latitude = (item["latitude"] as? NSNumber)?.doubleValue,
+                  let longitude = (item["longitude"] as? NSNumber)?.doubleValue else { continue }
+            let radius = min(max((item["radius"] as? NSNumber)?.doubleValue ?? 100, 100), limit)
+            let region = CLCircularRegion(
+                center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+                radius: radius,
+                identifier: PepaNativeLocation.regionPrefix + id
+            )
+            region.notifyOnEntry = true
+            region.notifyOnExit = true
+            manager.startMonitoring(for: region)
+        }
+    }
+
+    // iOS acaba de despertar la app por cruzar un borde: ubicación continua para mandar la posición hasta llegar (o irse del todo).
+    private func wakeForRegion() {
+        guard isConfigured else { return }
+        manager?.startUpdatingLocation()
+        scheduleIdleStop()
+    }
+
+    // Reinicia la cuenta atrás: sin posiciones nuevas durante un rato, la ubicación continua se apaga (los bordes siguen vigilando).
+    private func scheduleIdleStop() {
+        idleTimer?.invalidate()
+        idleTimer = Timer.scheduledTimer(withTimeInterval: PepaNativeLocation.idleStopSeconds, repeats: false) { [weak self] _ in
+            self?.manager?.stopUpdatingLocation()
+        }
     }
 
     public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let location = locations.last else { return }
+        scheduleIdleStop()
         let now = Date()
         if now.timeIntervalSince(lastUploadAt) < PepaNativeLocation.minUploadGap { return }
         if location.horizontalAccuracy < 0 || location.horizontalAccuracy > PepaNativeLocation.maxAccuracy { return }
         lastUploadAt = now
         upload(location)
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
+        wakeForRegion()
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+        wakeForRegion()
+    }
+
+    public func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {
+        // Si iOS rechaza un borde (por ejemplo, por pasarse de 20), los demás y los cambios significativos siguen funcionando.
     }
 
     public func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

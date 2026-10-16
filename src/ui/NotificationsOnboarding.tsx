@@ -87,7 +87,7 @@ export function NotificationsOnboarding() {
       <div className="card banner">
         <p>
           ✓ Avisos activados en este móvil. Te acabamos de mandar un aviso de prueba: debería llegarte en unos segundos. Si
-          no lo ves, entra en Familia, "Avisos en este móvil".
+          no lo ves, entra en ☰ Menú → Configuración → Avisos.
         </p>
         <button type="button" onClick={() => setStage('closed')}>
           Entendido

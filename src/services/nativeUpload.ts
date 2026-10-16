@@ -4,7 +4,8 @@
 //
 // Una sola llave por persona: pedir una nueva (otro móvil nativo) anula la anterior. Se pide UNA vez por arranque de la app (no en cada reinicio del
 // vigilante), para no gastar llamadas.
-import { isNativeApp } from '@/services/nativeApp'
+import { isIosApp, isNativeApp } from '@/services/nativeApp'
+import { placesToNativeRegions } from '@/domain/nativeRegions'
 
 let enabledFor: string | null = null
 
@@ -23,9 +24,24 @@ export async function enableNativeUpload(memberId: string): Promise<void> {
   try {
     const { configureNativeUpload } = await import('@/services/nativeLocation')
     await configureNativeUpload(token)
+    void syncNativeRegions()
   } catch {
     // Una app nativa ANTERIOR a esta función no tiene el servicio nuevo: no se vuelve a pedir llave en cada reinicio del vigilante (cada una es una
     // llamada), hasta el próximo arranque de la app.
+  }
+}
+
+// Solo iPhone: le pasa al código nativo los lugares con aviso de llegada/salida, para que iOS despierte la app cerrada al cruzar su borde. Se llama al empezar a
+// compartir y cada vez que cambian los lugares. Sin lugares, sin app nueva o sin red, no pasa nada: quedan los cambios significativos de ubicación.
+export async function syncNativeRegions(): Promise<void> {
+  if (!isNativeApp() || !isIosApp()) return
+  try {
+    const { listPlaces } = await import('@/data/location')
+    const regions = placesToNativeRegions(await listPlaces())
+    const { configureNativeRegions } = await import('@/services/nativeLocation')
+    await configureNativeRegions(regions)
+  } catch {
+    // Una app anterior a esta función, o sin red: se reintentará en el próximo cambio de lugares o al volver a empezar.
   }
 }
 

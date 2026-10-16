@@ -64,6 +64,11 @@ interface PlaceRow {
   notify_arrivals: boolean
 }
 
+// iPhone con la app cerrada: al cambiar los lugares se actualizan los bordes que vigila iOS (ver services/nativeUpload.ts). Import dinámico para no cruzar módulos.
+function resyncNativeRegions(): Promise<void> {
+  return import('@/services/nativeUpload').then((m) => m.syncNativeRegions()).catch(() => undefined)
+}
+
 export async function listPlaces(): Promise<LocationPlace[]> {
   let data: PlaceRow[]
   if (isNativeApp()) {
@@ -114,6 +119,7 @@ export async function setPlaceNotifyArrivals(placeId: string, enabled: boolean):
   if (error) throw error
   if (enabled) await createPlaceNotifyRules(placeId)
   else await deletePlaceNotifyRules(placeId)
+  void resyncNativeRegions()
 }
 
 export async function addPlace(input: {
@@ -140,6 +146,7 @@ export async function addPlace(input: {
     .single()
   if (error) throw error
   if (input.notifyArrivals) await createPlaceNotifyRules(data.id)
+  void resyncNativeRegions()
   return data.id
 }
 
@@ -153,11 +160,13 @@ export async function updatePlace(id: string, input: { name: string; category: s
     .update({ name: input.name, category: input.category, radius_m: input.radiusM })
     .eq('id', id)
   if (error) throw error
+  void resyncNativeRegions()
 }
 
 export async function deletePlace(id: string): Promise<void> {
   const { error } = await supabase.from('location_places').delete().eq('id', id)
   if (error) throw error
+  void resyncNativeRegions()
 }
 
 // ---------------------------------------------------------------------

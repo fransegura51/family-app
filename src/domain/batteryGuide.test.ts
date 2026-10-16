@@ -40,11 +40,11 @@ describe('guía de batería: reconocer la marca por el código de modelo', () =>
   })
 })
 
-describe('guía de batería: conectada en la pantalla de Familia, solo en la app nativa', () => {
-  it('Familia la enseña justo debajo de los avisos, y la tarjeta se oculta fuera de la app nativa', async () => {
-    const family = (await import('@/ui/FamilyScreen.tsx?raw')).default
+describe('guía de batería: conectada en Configuración → Avisos, solo en la app nativa', () => {
+  it('Configuración la enseña justo debajo de los avisos, y la tarjeta se oculta fuera de la app nativa', async () => {
+    const settings = (await import('@/ui/MenuSettingsScreen.tsx?raw')).default
     const card = (await import('@/ui/BatteryGuideCard.tsx?raw')).default
-    expect(family).toMatch(/<NotificationsCard \/>\s*(?:<PepaPreferencesCard \/>\s*)?(?:<BackgroundLocationCard \/>\s*)?<BatteryGuideCard \/>/)
+    expect(settings).toMatch(/<NotificationsCard \/>\s*(?:<BackgroundLocationCard \/>\s*)?<BatteryGuideCard \/>/)
     expect(card).toContain('if (!isNativeApp()) return null')
   })
 })

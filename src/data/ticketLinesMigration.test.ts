@@ -144,7 +144,7 @@ describe('Fase 6A: TODOS los caminos que crean products / product_prices filtran
   it('al leer un ticket, las líneas no-producto ni llegan a la revisión (y se avisa), conservando el total y la foto', () => {
     const src = APP['/src/ui/FinanceScreen.tsx']
     expect(src).toContain('partitionTicketLines(readStore, parsed.items)')
-    expect(src).toContain('setSkippedLines(skipped.map')
+    expect(src).toContain('setSkippedLines([...skipped.map')
     expect(src).toContain("if (parsed.total != null) setTotalAmount(String(parsed.total))") // el total del ticket sigue viniendo entero
   })
 

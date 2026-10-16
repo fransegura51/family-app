@@ -160,7 +160,7 @@ function AuthedApp() {
             <Route path="/galeria" element={<GalleryScreen />} />
             <Route path="/documentos" element={<DocumentsScreen />} />
             <Route path="/peso" element={<Navigate to="/familia" replace state={{ tab: 'Peso y medidas' }} />} />
-            <Route path="/menu-organizar" element={<MenuSettingsScreen />} />
+            <Route path="/menu-organizar" element={<MenuSettingsScreen profile={profile} />} />
             <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />

@@ -7,7 +7,7 @@ import patchScript from '../../scripts/patch-background-geolocation.mjs?raw'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import packageJson from '../../package.json?raw'
 import sharing from '@/services/locationSharing.ts?raw'
-import family from '@/ui/FamilyScreen.tsx?raw'
+import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 import manifest from '../../android/app/src/main/AndroidManifest.xml?raw'
 import locationActions from '@/pepa/actions/locationActions.ts?raw'
 import locationScreen from '@/ui/LocationScreen.tsx?raw'
@@ -95,10 +95,10 @@ describe('servicio de Android que sigue con la app cerrada', () => {
     expect(service).toMatch(/public IBinder onBind\(Intent intent\) \{\s*appIsBack\(\);/)
   })
 
-  it('pide «Permitir siempre»: permiso en el manifiesto, método nativo para comprobarlo y tarjeta en Familia', () => {
+  it('pide «Permitir siempre»: permiso en el manifiesto, método nativo para comprobarlo y tarjeta en Configuración → Avisos', () => {
     expect(manifest).toContain('android.permission.ACCESS_BACKGROUND_LOCATION')
     expect(patchScript).toContain('getBackgroundLocationStatus')
-    expect(family).toContain('<BackgroundLocationCard />')
+    expect(settings).toContain('<BackgroundLocationCard />')
   })
 
   it('el parche comprueba la versión y la huella del original, y se aplica al instalar y al construir el APK', () => {
@@ -115,7 +115,7 @@ describe('la app entrega y retira la llave en el momento justo', () => {
     expect(sharing).toContain('void disableNativeUpload()')
   })
   it('al cerrar sesión se anula la llave antes de salir', () => {
-    expect(family).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
   })
 })
 

@@ -2,7 +2,8 @@
 //
 // El complemento original solo da posiciones mientras el proceso está vivo; al deslizar la app, iOS la mata y no hay más. Este parche:
 //  1. copia ios-patches/background-geolocation/PepaNativeLocation.swift dentro del complemento (cambios significativos de ubicación + envío nativo);
-//  2. añade a Plugin.swift y Plugin.m los métodos setNativeUpload, clearNativeUpload y getBackgroundLocationStatus (los mismos que en Android).
+//  2. añade a Plugin.swift y Plugin.m los métodos setNativeUpload, clearNativeUpload y getBackgroundLocationStatus (los mismos que en Android) y
+//     setNativeRegions (solo iPhone: bordes de los lugares, para que iOS despierte la app cerrada al cruzarlos).
 // AppDelegate.swift llama a PepaNativeLocation.shared.resumeIfConfigured() al arrancar.
 //
 // Se ejecuta tras cada «npm install/ci» (postinstall) y de forma explícita en el flujo de iPhone. Es idempotente. Si el complemento cambia, FALLA en
@@ -55,7 +56,8 @@ if (swiftSrc.includes(MARK)) {
   const list = `CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setNativeUpload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearNativeUpload", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "getBackgroundLocationStatus", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "getBackgroundLocationStatus", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setNativeRegions", returnType: CAPPluginReturnPromise)
 `
   const methods = `    // ${MARK}: configuración del envío nativo (ver PepaNativeLocation.swift). Queda guardada en UserDefaults y se retoma al relanzar iOS la app.
     @objc func setNativeUpload(_ call: CAPPluginCall) {
@@ -74,6 +76,15 @@ if (swiftSrc.includes(MARK)) {
 
     @objc func clearNativeUpload(_ call: CAPPluginCall) {
         PepaNativeLocation.shared.clear()
+        call.resolve()
+    }
+
+    // ${MARK}: bordes de los lugares con aviso de llegada/salida (JSON), que iOS vigila aunque la app esté cerrada y con los que relanza la app al cruzarlos.
+    @objc func setNativeRegions(_ call: CAPPluginCall) {
+        guard let json = call.getString("regionsJson") else {
+            return call.reject("Faltan los lugares.")
+        }
+        PepaNativeLocation.shared.setRegions(json: json)
         call.resolve()
     }
 
@@ -99,6 +110,7 @@ if (objcSrc.includes(MARK)) {
   const added = `    CAP_PLUGIN_METHOD(setNativeUpload, CAPPluginReturnPromise); // ${MARK}
     CAP_PLUGIN_METHOD(clearNativeUpload, CAPPluginReturnPromise);
     CAP_PLUGIN_METHOD(getBackgroundLocationStatus, CAPPluginReturnPromise);
+    CAP_PLUGIN_METHOD(setNativeRegions, CAPPluginReturnPromise);
 `
   writeFileSync(objcFile, objcSrc.replace(anchor, anchor + added))
   console.log('patch-background-geolocation-ios: Plugin.m parcheado')

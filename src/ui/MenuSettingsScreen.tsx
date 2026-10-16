@@ -28,7 +28,7 @@ import {
   type CalendarColorMode,
   type CalendarTaskOrder,
 } from '@/data/calendar'
-import type { CalendarCategory, FamilyMember } from '@/domain/types'
+import type { CalendarCategory, FamilyMember, Profile } from '@/domain/types'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { getGoogleCalendarStatus, disconnectGoogleCalendar, startGoogleConnect, type GoogleCalendarStatus } from '@/data/googleCalendarSync'
@@ -54,6 +54,13 @@ import {
 import { DISABLEABLE_SPEND_RANGE_PRESETS, PRESET_LABELS, type SpendRangePreset } from '@/domain/dateRanges'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { ClassicButtonsCard } from '@/ui/ClassicButtonsCard'
+import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
+import { NotificationsCard } from '@/ui/NotificationsCard'
+import { BackgroundLocationCard } from '@/ui/BackgroundLocationCard'
+import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
+import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
+import { supabase } from '@/data/supabaseClient'
+import { disableNativeUpload } from '@/services/nativeUpload'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import {
@@ -1888,9 +1895,32 @@ function CalendarExternalLinksSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'pepa' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
+type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'pepa' | 'avisos' | 'cuenta' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
-export function MenuSettingsScreen() {
+// «Cerrar sesión» (antes en Familia, 16/10/2026). Hace falta para que cada persona pueda tener su PROPIA cuenta en su propio móvil en vez de compartir el login
+// de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella): cierra esta sesión para poder entrar con la cuenta nueva
+// creada con el código de invitación.
+function SignOutCard({ displayName }: { displayName: string }) {
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <strong>🚪 Cerrar sesión</strong>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.</p>
+      <button
+        type="button"
+        className="link-button"
+        onClick={async () => {
+          // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
+          await disableNativeUpload()
+          await supabase.auth.signOut()
+        }}
+      >
+        Cerrar sesión ({displayName})
+      </button>
+    </div>
+  )
+}
+
+export function MenuSettingsScreen({ profile }: { profile: Profile }) {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
   // limpia y recogida, y al tocar un tema se abre su sección.
   const location = useLocation()
@@ -1900,7 +1930,7 @@ export function MenuSettingsScreen() {
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
   // (pastelPalette reparte los tonos por posición: pedir uno más no cambia el color de los ocho de antes.)
-  const groupColors = pastelPalette(9)
+  const groupColors = pastelPalette(11)
 
   return (
     <div className="screen">
@@ -1938,7 +1968,21 @@ export function MenuSettingsScreen() {
         open={openGroup === 'pepa'}
         onToggle={() => toggle('pepa')}
       >
+        <PepaPreferencesCard />
         <ClassicButtonsCard />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[9]}
+        icon="🔔"
+        title="Avisos"
+        summary="Avisos de este móvil, permiso de ubicación y ahorro de batería"
+        open={openGroup === 'avisos'}
+        onToggle={() => toggle('avisos')}
+      >
+        <NotificationsCard />
+        <BackgroundLocationCard />
+        <BatteryGuideCard />
       </SettingsGroup>
 
       <SettingsGroup
@@ -2009,6 +2053,18 @@ export function MenuSettingsScreen() {
         <CalendarPreferencesSection />
         <CalendarCategoriesSection />
         <CalendarExternalLinksSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[10]}
+        icon="👤"
+        title="Mi cuenta"
+        summary="Cerrar sesión y borrar mi cuenta"
+        open={openGroup === 'cuenta'}
+        onToggle={() => toggle('cuenta')}
+      >
+        <SignOutCard displayName={profile.displayName} />
+        <DeleteAccountCard isAdmin={profile.role === 'admin'} />
       </SettingsGroup>
 
       <AdminUsageLink />

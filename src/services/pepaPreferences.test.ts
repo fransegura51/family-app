@@ -55,9 +55,10 @@ describe('preferencia de la tarjeta de confirmación', () => {
     expect(getAutoConfirm()).toBe(false)
   })
 
-  it('«Hablar con PEPA» lee la preferencia y Familia deja cambiarla', () => {
+  it('«Hablar con PEPA» lee la preferencia y Configuración (tema «Pepa») deja cambiarla; ya no está en Familia', () => {
     expect(voiceCapture).toContain('autoConfirm: () => getAutoConfirm()')
-    expect(family).toContain('<PepaPreferencesCard />')
+    expect(settings).toContain('<PepaPreferencesCard />')
+    expect(family).not.toContain('PepaPreferencesCard')
   })
 })
 

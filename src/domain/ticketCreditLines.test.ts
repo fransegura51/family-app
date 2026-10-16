@@ -74,4 +74,10 @@ describe('la pantalla de tickets no deja que un abono rompa el guardado', () => 
     expect(screen).toContain('uploadedReceiptId.current = receiptId')
     expect(screen).toContain('let receiptId = uploadedReceiptId.current')
   })
+
+  it('«Subir ticket» tiene Cancelar cuando ya hay foto o líneas leídas: deja el formulario como nuevo, sin guardar nada', () => {
+    expect(screen).toContain('function resetAddForm()')
+    expect(screen).toContain("{mode === 'add' && (file || lines.length > 0) && (")
+    expect(screen).toContain('onClick={resetAddForm}')
+  })
 })

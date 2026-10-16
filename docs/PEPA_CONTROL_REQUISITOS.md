@@ -549,6 +549,16 @@ Encargo dictado el 2026-10-16: «Educación financiera» seguía existiendo como
 
 **Pendiente**: nada pasa a **Aprobado** sin confirmación expresa.
 
+## Calendario: deslizar sobre el texto de un apunte no debe cambiar de día (PEPA-CAL-SWIPE)
+
+Encargo dictado el 2026-10-16 (app nativa de iPhone): al abrir un apunte de un día y editarlo, arrastrar el dedo hacia la derecha para mover el texto cambiaba de día. La usuaria recordaba que ya estaba arreglado; en el historial solo consta el arreglo del 16/09 (`82edc9b`: deslizar una fila para BORRAR también cambiaba de día), que es otro caso y sigue intacto. No se encontró un arreglo previo para escribir en un campo, así que no se puede afirmar que sea una regresión.
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| CAL-SWIPE-1 | El gesto de deslizar para cambiar de día/3 días/semana/mes (`useSwipeHandlers`) ignora el toque si el dedo empieza en un campo de escritura (`input`, `textarea`, `select`, texto editable), en cualquier formulario o en algo marcado `data-no-swipe`. Causa: el gesto vive en el contenedor del día y se activaba con cualquier arrastre horizontal, también el de mover el cursor dentro de un campo | Implementado (sin commit todavía) | `src/domain/swipeGuard.ts`, `CalendarScreen.tsx` (`useSwipeHandlers`), `AyudaScreen.tsx` | `swipeGuard.test.ts` (7 tests: selector, bloqueo, no bloqueo, los cuatro gestos usan la protección, la fila de borrar sigue igual) | CAL-SWIPE-0 (`82edc9b`) | **Prueba manual en el iPhone (app nativa) y en la web**: editar un apunte y arrastrar sobre el texto no cambia de día; deslizar por un hueco del día SÍ sigue cambiando de día; deslizar una fila para borrar sigue funcionando. Probar con un Evento y con una Tarea |
+
+**Pendiente**: nada pasa a **Aprobado** sin confirmación expresa.
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

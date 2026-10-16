@@ -14,6 +14,8 @@ import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { PhotoLightbox } from '@/ui/community/PhotoLightbox'
 import { PollBox } from '@/ui/community/PollBox'
 import { PostActions } from '@/ui/community/PostActions'
+import { MenuPostPanel } from '@/ui/community/menu/MenuPostPanel'
+import { MenuDietaryWarnings } from '@/ui/MenuDietaryWarnings'
 import { RecipePanel } from '@/ui/community/recipes/RecipePanel'
 import { pageCrumbs, paths, postCrumbs } from '@/ui/community/communityNav'
 import { useCommunityPhotoUrls } from '@/ui/community/communityPhotoUrl'
@@ -228,7 +230,8 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
         </div>
       )}
 
-      {detail.body && <CommunityRichText text={detail.body} className="community-post-body" />}
+      {/* Menú semanal oficial: el plan con sus acciones sustituye al cuerpo solo-texto (que queda como introducción plegable). */}
+      {detail.kind === 'menu' ? <MenuPostPanel detail={detail} renderWarnings={(items) => <MenuDietaryWarnings items={items} />} /> : detail.body && <CommunityRichText text={detail.body} className="community-post-body" />}
 
       {detail.kind === 'receta' && <RecipePanel detail={detail} onChanged={reload} />}
       {detail.kind === 'encuesta' && <PollBox postId={detail.id} canInteract={canInteract} />}

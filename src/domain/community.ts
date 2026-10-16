@@ -4,7 +4,7 @@ import type { CommunityAccessLevel, CommunityAccessReason } from './communityAcc
 
 export type PostKind = 'receta' | 'pregunta' | 'consejo' | 'anecdota'
 // Tipos de publicación OFICIAL (de Pepa o Equipo PEPA): no son un quinto tipo de publicación de personas.
-export type OfficialKind = 'encuesta' | 'articulo'
+export type OfficialKind = 'encuesta' | 'articulo' | 'menu'
 export type AnyPostKind = PostKind | OfficialKind
 export type CommunitySection = 'recetas' | 'hogar'
 export type PostOrder = 'recientes' | 'comentados' | 'valoradas' | 'sin_respuesta' | 'para_mi'
@@ -50,6 +50,7 @@ export const KIND_LABELS: Record<AnyPostKind, string> = {
   anecdota: 'Anécdota',
   encuesta: 'Encuesta',
   articulo: 'Artículo',
+  menu: 'Menú semanal',
 }
 
 export const KIND_ICONS: Record<AnyPostKind, string> = {
@@ -59,6 +60,7 @@ export const KIND_ICONS: Record<AnyPostKind, string> = {
   anecdota: '😄',
   encuesta: '📊',
   articulo: '📰',
+  menu: '🗓️',
 }
 
 export const ORDER_LABELS: Record<PostOrder, string> = {
@@ -196,6 +198,8 @@ export interface PostDetail extends Omit<PostCard, 'blockedByMe'> {
   body: string
   photos: PostPhoto[]
   recipe: PublicRecipe | null
+  // Menú semanal oficial (solo en las publicaciones de tipo `menu`): 7 días × comida y cena, con sus recetas. Sin leer: se normaliza con parseMenu().
+  menu?: unknown
   articleSources: unknown
   isMine: boolean
   followingConversation: boolean

@@ -288,7 +288,15 @@ export const adminListProposals = (status: 'proposed' | 'approved' | 'rejected' 
   rpc<Record<string, unknown>[]>('community_admin_list_proposals', { p_status: status })
 export const adminEditProposal = (id: string, title: string, body: string, payload: Record<string, unknown> | null, topic: string | null) =>
   rpc<number>('community_admin_edit_proposal', { p_id: id, p_title: title, p_body: body, p_payload: payload, p_topic: topic })
-export const adminApproveProposal = (id: string) => rpc<Record<string, unknown>>('community_admin_approve_proposal', { p_id: id })
+// `confirmText`: solo para un menú cuyo texto se editó sin revisar sus datos (el servidor responde MENU_TEXT_STALE si no se confirma).
+export const adminApproveProposal = (id: string, confirmText = false) =>
+  rpc<Record<string, unknown>>('community_admin_approve_proposal', confirmText ? { p_id: id, p_confirm_text: true } : { p_id: id })
+// Menú semanal oficial: lista (todos los estados + valor de weekly_menu_autopublish), detalle con revisión de calidad, reprogramar (fecha = sábado 10:00 de
+// Madrid futuro; null cancela la programación) y reintentar una publicación con error.
+export const adminListMenus = (limit = 50) => rpc<Record<string, unknown>>('community_admin_list_menus', { p_limit: limit })
+export const adminGetMenu = (id: string) => rpc<Record<string, unknown>>('community_admin_get_menu', { p_id: id })
+export const adminRescheduleMenu = (id: string, publishAt: string | null) => rpc<Record<string, unknown>>('community_admin_reschedule_menu', { p_id: id, p_publish_at: publishAt })
+export const adminRetryPublish = (id: string) => rpc<Record<string, unknown>>('community_admin_retry_publish', { p_id: id })
 export const adminRejectProposal = (id: string, note: string | null) => rpc<void>('community_admin_reject_proposal', { p_id: id, p_note: note })
 export const adminSetLaunch = (enabled: boolean) => rpc<void>('community_admin_set_launch', { p_enabled: enabled })
 

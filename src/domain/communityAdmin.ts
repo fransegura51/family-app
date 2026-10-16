@@ -69,6 +69,10 @@ export const ADMIN_TEXT = {
   logReadOnly:
     'Este historial es solo de lectura: no se puede editar ni borrar desde aquí. Es independiente del historial de avisos (las notificaciones se borran solas a los 30 días; este no).',
   settingsAuthorized: 'Solo se pueden cambiar los parámetros autorizados. Cada cambio queda en el historial.',
+  menuAutopublishOff: 'La publicación automática está DESACTIVADA hasta que se valide',
+  menuAutopublishOn: 'La publicación automática está ACTIVADA: cada sábado a las 10:00 (hora peninsular) sale el menú aprobado para la semana siguiente',
+  menuAutopublishHelp:
+    'Un menú aprobado no se publica al momento: se programa para el próximo sábado a las 10:00 y cubre la semana siguiente (de lunes a domingo). Solo hay un menú por semana. Si el sábado no hay un menú aprobado, no se publica nada y se avisa a la administración. El interruptor no se cambia desde aquí: es un ajuste técnico.',
 } as const
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
@@ -781,11 +785,11 @@ export function warnResultText(result: unknown): string {
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Contenido oficial
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
-export type ProposalKind = 'tip' | 'poll' | 'article'
+export type ProposalKind = 'tip' | 'poll' | 'article' | 'menu'
 export type ProposalStatus = 'proposed' | 'approved' | 'rejected' | 'published'
 
-export const PROPOSAL_KIND_TEXT: Record<ProposalKind, string> = { tip: 'Consejo de Pepa', poll: 'Encuesta', article: 'Artículo de Equipo PEPA' }
-export const PROPOSAL_KIND_ICON: Record<ProposalKind, string> = { tip: '💡', poll: '🗳️', article: '📰' }
+export const PROPOSAL_KIND_TEXT: Record<ProposalKind, string> = { tip: 'Consejo de Pepa', poll: 'Encuesta', article: 'Artículo de Equipo PEPA', menu: 'Menú semanal de Pepa' }
+export const PROPOSAL_KIND_ICON: Record<ProposalKind, string> = { tip: '💡', poll: '🗳️', article: '📰', menu: '🍽️' }
 
 export const PROPOSAL_STATUS_TEXT: Record<ProposalStatus, string> = {
   proposed: 'Pendiente de revisar',
@@ -845,9 +849,14 @@ export interface Proposal {
   reviewNote: string | null
   publishAt: string | null
   publishedPostId: string | null
+  // Solo menús (null/0/false en el resto): semana (lunes), intentos de publicación, último error y texto sin revisar.
+  menuWeekStart: string | null
+  publishAttempts: number
+  publishError: string | null
+  menuTextStale: boolean
 }
 
-const asKind = (v: unknown): ProposalKind => (v === 'poll' || v === 'article' ? v : 'tip')
+const asKind = (v: unknown): ProposalKind => (v === 'poll' || v === 'article' || v === 'menu' ? v : 'tip')
 const asProposalStatus = (v: unknown): ProposalStatus => (v === 'approved' || v === 'rejected' || v === 'published' ? v : 'proposed')
 
 export function toProposals(raw: unknown): Proposal[] {
@@ -871,6 +880,10 @@ export function toProposals(raw: unknown): Proposal[] {
       reviewNote: strOrNull(r.reviewNote),
       publishAt: strOrNull(r.publishAt),
       publishedPostId: strOrNull(r.publishedPostId),
+      menuWeekStart: strOrNull(r.menuWeekStart),
+      publishAttempts: num(r.publishAttempts),
+      publishError: strOrNull(r.publishError),
+      menuTextStale: bool(r.menuTextStale),
     }))
 }
 
@@ -943,7 +956,8 @@ export function validateProposalForm(kind: ProposalKind, f: ProposalForm): strin
 
 // Carga útil para `adminEditProposal`: solo los consejos mandan null (el servidor deja la que había). Se conservan las claves que no editamos.
 export function buildProposalPayload(kind: ProposalKind, original: ProposalPayload, f: ProposalForm): Record<string, unknown> | null {
-  if (kind === 'tip') return null
+  // Los datos del menú NO se editan desde el panel: se manda null y el servidor conserva los datos (y anota que el texto puede haber dejado de coincidir).
+  if (kind === 'tip' || kind === 'menu') return null
   if (kind === 'poll') return { ...original.raw, options: f.options.map((o) => o.trim()).filter(Boolean) }
   const sources = f.sources
     .map((s) => ({ title: s.title.trim(), publisher: s.publisher.trim(), url: s.url.trim(), date: s.date.trim() }))
@@ -959,7 +973,223 @@ export function approveResultText(kind: ProposalKind, result: unknown): string {
     if (bool(r.scheduled) && opens && closes) return `Encuesta aprobada. Abre el ${formatMadrid(opens, 'full')} y cierra el ${formatMadrid(closes, 'full')} (hora peninsular).`
     return 'Encuesta aprobada y publicada ahora: ya está abierta a votos.'
   }
+  if (kind === 'menu') return menuApproveText(result)
   return kind === 'article' ? 'Artículo aprobado y publicado.' : 'Consejo aprobado y publicado.'
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Menú semanal oficial («Menú semanal de Pepa»)
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+export type MenuState = 'draft' | 'scheduled' | 'published' | 'error' | 'rejected'
+
+export const MENU_STATE_TEXT: Record<MenuState, string> = {
+  draft: 'Borrador (pendiente de revisar)',
+  scheduled: 'Programado',
+  published: 'Publicado',
+  error: 'Con error',
+  rejected: 'Rechazado',
+}
+
+export const MENU_AUTOPUBLISH_KEY = 'weekly_menu_autopublish'
+export const MENU_MAX_ATTEMPTS = 3
+
+const asMenuState = (v: unknown): MenuState => (v === 'scheduled' || v === 'published' || v === 'error' || v === 'rejected' ? v : 'draft')
+
+// Aviso de la revisión de calidad: «error» = el menú no es válido (no se puede aprobar); «warning» = aviso que decide la persona.
+export interface MenuCheckItem {
+  code: string
+  severity: 'error' | 'warning'
+  message: string
+  day: string | null
+  meal: string | null
+  recipe: string | null
+}
+
+export function toMenuCheck(raw: unknown): MenuCheckItem[] {
+  return rows(raw)
+    .filter((c) => str(c.message) !== '')
+    .map((c) => ({
+      code: str(c.code),
+      severity: c.severity === 'error' ? ('error' as const) : ('warning' as const),
+      message: str(c.message),
+      day: strOrNull(c.day),
+      meal: strOrNull(c.meal),
+      recipe: strOrNull(c.recipe),
+    }))
+}
+
+export interface MenuRow {
+  id: string
+  title: string
+  state: MenuState
+  version: number
+  seedKey: string | null
+  // true = menú SEMANAL (se programa y sale el sábado a las 10:00); false = publicación puntual (se publica al aprobar).
+  weekly: boolean
+  source: string | null
+  weekStart: string | null
+  weekEnd: string | null
+  publishAt: string | null
+  publishedPostId: string | null
+  publishAttempts: number
+  publishError: string | null
+  lastPublishAttemptAt: string | null
+  textStale: boolean
+  proposedAt: string | null
+  approvedAt: string | null
+  approvedByName: string | null
+  reviewNote: string | null
+  checkErrors: number | null
+  checkWarnings: number | null
+}
+
+export interface MenuList {
+  // Valor de weekly_menu_autopublish (solo lectura).
+  autopublish: boolean
+  menus: MenuRow[]
+}
+
+export function toMenuRow(r: Rec): MenuRow {
+  return {
+    id: str(r.id),
+    title: str(r.title),
+    state: asMenuState(r.state),
+    version: num(r.version, 1),
+    seedKey: strOrNull(r.seedKey),
+    weekly: bool(r.scheduledWeekly),
+    source: strOrNull(r.source),
+    weekStart: strOrNull(r.weekStart),
+    weekEnd: strOrNull(r.weekEnd),
+    publishAt: strOrNull(r.publishAt),
+    publishedPostId: strOrNull(r.publishedPostId),
+    publishAttempts: num(r.publishAttempts),
+    publishError: strOrNull(r.publishError),
+    lastPublishAttemptAt: strOrNull(r.lastPublishAttemptAt),
+    textStale: bool(r.textStale),
+    proposedAt: strOrNull(r.proposedAt),
+    approvedAt: strOrNull(r.approvedAt),
+    approvedByName: strOrNull(r.approvedByName),
+    reviewNote: strOrNull(r.reviewNote),
+    checkErrors: typeof r.checkErrors === 'number' ? r.checkErrors : null,
+    checkWarnings: typeof r.checkWarnings === 'number' ? r.checkWarnings : null,
+  }
+}
+
+export function toMenuList(raw: unknown): MenuList {
+  const r = asRec(raw)
+  return {
+    autopublish: bool(r.autopublish),
+    menus: rows(r.menus)
+      .filter((m) => str(m.id) !== '')
+      .map(toMenuRow),
+  }
+}
+
+export interface MenuRecipeData {
+  title: string
+  servings: number
+  ingredientCount: number
+  stepCount: number
+}
+export interface MenuMealData {
+  title: string
+  side: string | null
+  recipes: MenuRecipeData[]
+}
+export interface MenuDayData {
+  day: string
+  comida: MenuMealData | null
+  cena: MenuMealData | null
+}
+export interface MenuData {
+  servings: number
+  days: MenuDayData[]
+}
+
+function toMenuMeal(v: unknown): MenuMealData | null {
+  const m = asRec(v)
+  if (str(m.title) === '') return null
+  return {
+    title: str(m.title),
+    side: strOrNull(m.side),
+    recipes: rows(m.recipes).map((r) => ({ title: str(r.title), servings: num(r.servings), ingredientCount: asArr(r.ingredients).length, stepCount: asArr(r.steps).length })),
+  }
+}
+
+// Resumen del menú para el panel (días, platos, nº de ingredientes y pasos): el detalle completo de las recetas no se pinta.
+export function toMenuData(raw: unknown): MenuData | null {
+  const m = asRec(raw)
+  const days = rows(m.days).map((d) => {
+    const meals = asRec(d.meals)
+    return { day: str(d.day), comida: toMenuMeal(meals.comida), cena: toMenuMeal(meals.cena) }
+  })
+  return days.length === 0 ? null : { servings: num(m.servings), days }
+}
+
+// Un menú completo para revisarlo antes de aprobar: fila + texto + resumen de los datos + avisos de calidad.
+export interface MenuDetail extends MenuRow {
+  body: string
+  section: string
+  topicId: string
+  menu: MenuData | null
+  check: MenuCheckItem[]
+  itemError: string | null
+}
+
+export function toMenuDetail(raw: unknown): MenuDetail | null {
+  const r = asRec(raw)
+  if (str(r.id) === '') return null
+  return { ...toMenuRow(r), body: str(r.body), section: str(r.section), topicId: str(r.topicId), menu: toMenuData(r.menu), check: toMenuCheck(r.check), itemError: strOrNull(r.itemError) }
+}
+
+// Semana de lunes a domingo: «Semana del 26 de octubre al 1 de noviembre de 2026».
+export function menuWeekText(start: string | null, end: string | null): string {
+  const a = start ? toDate(`${start}T12:00:00Z`) : null
+  const b = end ? toDate(`${end}T12:00:00Z`) : null
+  if (!a || !b) return 'Sin semana asignada'
+  return `Semana del ${formatMadrid(a, 'date').replace(/ de \d{4}$/, '')} al ${formatMadrid(b, 'date')}`
+}
+
+// Línea de estado de un menú: semana + hora programada. Nunca se inventa una hora.
+export function menuStateLine(m: Pick<MenuRow, 'state' | 'weekStart' | 'weekEnd' | 'publishAt' | 'weekly'>): string {
+  if (m.state === 'published') return m.weekStart ? `Publicado · ${menuWeekText(m.weekStart, m.weekEnd)}` : 'Publicado'
+  if (m.state === 'scheduled' && m.publishAt) return `Sale el ${formatMadrid(m.publishAt, 'full')} (hora peninsular) · ${menuWeekText(m.weekStart, m.weekEnd)}`
+  if (m.state === 'error') return m.publishAt ? `Debía salir el ${formatMadrid(m.publishAt, 'full')} (hora peninsular)` : 'No se ha podido publicar'
+  if (m.state === 'draft') return m.weekly ? 'Al aprobarlo se programa para el próximo sábado a las 10:00' : 'Al aprobarlo se publica al momento (no es semanal)'
+  return ''
+}
+
+// Próximos sábados a las 10:00 de Madrid (con el cambio de hora), estrictamente posteriores a `now`: para reprogramar un menú.
+export function nextMenuSaturdays(now: Date, count = 8): { value: string; label: string }[] {
+  const p = madridParts(now)
+  const out: { value: string; label: string }[] = []
+  let add = (6 - p.isoWeekday + 7) % 7
+  for (let guard = 0; out.length < count && guard < count + 3; guard++, add += 7) {
+    const d = new Date(Date.UTC(p.year, p.month - 1, p.day + add))
+    const at = madridWallToInstant(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), 10, 0)
+    if (at.getTime() > now.getTime()) out.push({ value: at.toISOString(), label: formatMadrid(at, 'full') })
+  }
+  return out
+}
+
+export function menuApproveText(result: unknown): string {
+  const r = asRec(result)
+  const at = toDate(r.publishAt)
+  if (bool(r.scheduled) && at) return `Menú aprobado. NO se publica ahora: sale el ${formatMadrid(at, 'full')} (hora peninsular). ${menuWeekText(strOrNull(r.weekStart), strOrNull(r.weekEnd))}.`
+  return 'Menú aprobado y publicado.'
+}
+
+export function menuRetryText(result: unknown): { ok: boolean; text: string } {
+  const r = asRec(result)
+  if (bool(r.ok)) return { ok: true, text: 'Menú publicado.' }
+  return { ok: false, text: `Sigue sin poder publicarse (intento ${num(r.attempts, 1)}). ${str(r.error)}`.trim() }
+}
+
+export function menuRescheduleText(result: unknown): string {
+  const r = asRec(result)
+  const at = toDate(r.publishAt)
+  if (bool(r.scheduled) && at) return `Menú reprogramado: sale el ${formatMadrid(at, 'full')} (hora peninsular).`
+  return 'Programación cancelada: el menú vuelve a «Borrador».'
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1077,6 +1307,8 @@ export const SETTING_META: Record<string, SettingMeta> = {
   admin_log_retention_years: { label: 'Años que se conserva el historial de administración', unit: 'años', editable: false },
   participants_adults_only: { label: 'Solo participan personas adultas', editable: false },
   [LAUNCH_KEY]: { label: 'Comunidad abierta a todos', editable: false },
+  // Solo lectura: se activa con un ajuste técnico cuando la dueña valide el menú semanal.
+  weekly_menu_autopublish: { label: 'Publicación automática del menú semanal (0 = desactivada, 1 = activada)', editable: false },
 }
 
 export type SettingKind = 'number' | 'switch' | 'other'
@@ -1203,6 +1435,12 @@ export const LOG_ACTION_TEXT: Record<string, string> = {
   proposal_approved: 'Aprobó una propuesta oficial',
   proposal_edit: 'Editó una propuesta oficial',
   proposal_rejected: 'Rechazó una propuesta oficial',
+  menu_published: 'Se publicó un menú semanal',
+  menu_publish_failed: 'Falló la publicación de un menú semanal',
+  menu_rescheduled: 'Reprogramó un menú semanal',
+  menu_unscheduled: 'Canceló la programación de un menú semanal',
+  menu_retry_published: 'Publicó un menú semanal tras reintentar',
+  menu_retry_failed: 'Reintentó publicar un menú semanal y falló',
 }
 
 export const LOG_TARGET_TEXT: Record<string, string> = {

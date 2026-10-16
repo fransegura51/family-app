@@ -906,6 +906,9 @@ begin
     'photos', v_photos,
     'recipe', v_recipe,
     'article_sources', p.article_sources,
+    -- Menú semanal oficial: los datos estructurados SOLO salen aquí (detalle, con acceso de lectura) y la semana aparte para pintarla sin recorrer el menú.
+    'menu', p.menu,
+    'menu_week', case when p.menu ->> 'week_start' is not null then jsonb_build_object('start', p.menu ->> 'week_start', 'end', p.menu ->> 'week_end') end,
     'is_mine', p_viewer is not null and p.author_id = p_viewer,
     'following_conversation', p_viewer is not null and exists (select 1 from public.community_conversation_follows f where f.post_id = p.id and f.profile_id = p_viewer),
     'following_author', p_viewer is not null and exists (select 1 from public.community_user_follows f where f.follower_id = p_viewer and f.followed_id = p.author_id)

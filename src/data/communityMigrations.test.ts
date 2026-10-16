@@ -60,7 +60,7 @@ describe('funciones de Comunidad', () => {
     for (const h of headers) {
       const name = /function ((?:public|private)\.[a-z_]+)/.exec(h)?.[1]
       const isTrigger = /returns trigger/.test(h)
-      if (/community_(admin_log_immutable|posts_check_topic|comments_one_level|profile_on_unlink)|validate_notification_prefs|plain_excerpt|poll_window|medal_catalog/.test(name ?? '')) {
+      if (/community_(admin_log_immutable|posts_check_topic|comments_one_level|profile_on_unlink)|validate_notification_prefs|plain_excerpt|poll_window|medal_catalog|community_menu_(text_key|warn|quality|state|publish_window)|community_validate_menu/.test(name ?? '')) {
         expect(h, name).toMatch(/set search_path = ''/)
         continue
       }

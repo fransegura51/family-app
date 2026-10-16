@@ -203,6 +203,8 @@ create table public.community_posts (
   official_label text,
   official_item_id uuid,
   article_sources jsonb,
+  -- Menú semanal oficial (datos estructurados; solo kind = 'menu', se activa en 0270). Nunca sale en tarjetas ni en la lectura pública sin sesión.
+  menu jsonb,
   featured_at timestamptz,
   featured_removed_at timestamptz,
   like_count integer not null default 0,

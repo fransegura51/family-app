@@ -27,6 +27,7 @@ import { SECTIONS } from '@/domain/community'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { paths } from '@/ui/community/communityNav'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox, NoteForm, TwoTapButton } from '@/ui/community/admin/AdminShared'
+import { MenusSection } from '@/ui/community/admin/MenusSection'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
 // Contenido oficial: lo que Pepa propone cada semana (consejos, encuesta y, si hay datos externos fiables, un artículo).
@@ -34,7 +35,8 @@ import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 export function OfficialTab({ onChanged }: { onChanged: () => void }) {
   const [status, setStatus] = useState<ProposalStatus>('proposed')
   const [notice, setNotice] = useState<string | null>(null)
-  const loader = useCallback(async () => toProposals(await adminListProposals(status)), [status])
+  // Los menús semanales tienen su propia sección (estado, semana, hora programada, error y revisión de calidad): no se repiten entre las propuestas.
+  const loader = useCallback(async () => toProposals(await adminListProposals(status)).filter((p) => p.kind !== 'menu'), [status])
   const { data, loading, error, reload, setData } = useAdminData(loader)
   // Los temas (para el nombre bonito y para cambiar el tema al editar) se piden UNA vez, al abrir esta pestaña.
   const topicsLoader = useCallback(() => listCommunityTopics(), [])
@@ -43,6 +45,8 @@ export function OfficialTab({ onChanged }: { onChanged: () => void }) {
   return (
     <div className="cadm-stack">
       <InfoBox tone="warn">{ADMIN_TEXT.noPublishWithoutApproval}</InfoBox>
+      <MenusSection topics={topics.data ?? []} onChanged={onChanged} />
+      <h3>Consejos, encuestas y artículos</h3>
       <div className="cadm-filter" role="group" aria-label="Qué propuestas ver">
         {PROPOSAL_FILTERS.map((f) => (
           <button

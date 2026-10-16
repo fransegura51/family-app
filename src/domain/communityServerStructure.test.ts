@@ -15,7 +15,9 @@ import eurostat from '../../supabase/functions/community-weekly-proposals/eurost
 import weeklyIndex from '../../supabase/functions/community-weekly-proposals/index.ts?raw'
 import proposals from '../../supabase/functions/community-weekly-proposals/proposals.ts?raw'
 import migration0264 from '../../supabase/migrations/0264_community_core.sql?raw'
+import migration0265 from '../../supabase/migrations/0265_community_content.sql?raw'
 import migration0270 from '../../supabase/migrations/0270_community_official.sql?raw'
+import migration0272 from '../../supabase/migrations/0272_community_public_read.sql?raw'
 import migration0273 from '../../supabase/migrations/0273_community_maintenance.sql?raw'
 import migration0275Raw from '../../supabase/migrations/0275_community_cron_functions.sql?raw'
 import rollback0275 from '../../supabase/rollbacks/0275_community_cron_functions_down.sql?raw'
@@ -201,5 +203,46 @@ describe('migración 0275 (trabajos programados)', () => {
   })
   it('no toca tablas ni datos: solo trabajos programados', () => {
     expect(sql(migration0275)).not.toMatch(/\b(create|alter|drop)\s+table|insert into|update\s+public|delete from/i)
+  })
+})
+
+describe('menú semanal oficial: candados de la migración 0270', () => {
+  const fn = (name: string) => migration0270.slice(migration0270.indexOf(`function ${name}`), migration0270.indexOf('$$;', migration0270.indexOf(`function ${name}`)))
+  it('la publicación automática nace DESACTIVADA y el panel no puede cambiarla (no está en la lista blanca de ajustes)', () => {
+    expect(migration0270).toContain("('weekly_menu_autopublish', '0',")
+    expect(migration0270).not.toMatch(/\('weekly_menu_autopublish', '1'/)
+  })
+  it('el trabajo del menú no hace nada si el ajuste no vale 1, bloquea con skip locked, limita a 3 intentos y no publica sin aprobar', () => {
+    const run = fn('private.community_run_menus')
+    expect(run).toContain("private.community_setting_int('weekly_menu_autopublish', 0) <> 1")
+    expect(run).toContain('for update skip locked')
+    expect(run).toContain('publish_attempts < 3')
+    expect(run).toContain("i.status = 'approved'")
+    expect(run).toContain('private.community_notify_admins')
+  })
+  it('una sola publicación por semana: índices únicos parciales en los elementos y en las publicaciones', () => {
+    expect(migration0270).toContain('create unique index uq_community_official_menu_week on public.community_official_items (menu_week_start)')
+    expect(migration0270).toContain("where kind = 'menu' and menu_week_start is not null and status <> 'rejected'")
+    expect(migration0270).toContain('create unique index uq_community_posts_menu_week')
+  })
+  it('aprobar un menú semanal programa (no publica) y vuelve a validar; el servidor rechaza menús inválidos; publicar también valida', () => {
+    const approve = fn('public.community_admin_approve_proposal')
+    expect(approve).toContain('private.community_validate_menu_item(i.payload)')
+    expect(approve.indexOf("i.payload ->> 'schedule' = 'saturday'")).toBeLessThan(approve.indexOf('private.community_publish_item(p_id)'))
+    expect(approve).toContain("'scheduled', true")
+    expect(fn('public.community_service_create_proposals')).toContain("raise exception 'MENU_INVALID'")
+    expect(fn('private.community_publish_item')).toContain('private.community_validate_menu_item(i.payload)')
+  })
+  it('las herramientas de intervención son de administración y el trabajo de cada 5 minutos es uno solo', () => {
+    for (const f of ['community_admin_list_menus', 'community_admin_get_menu', 'community_admin_reschedule_menu', 'community_admin_retry_publish']) expect(fn(`public.${f}`), f).toContain('private.community_require_admin()')
+    expect(migration0270).toContain("cron.schedule('community-run-polls', '*/5 * * * *', 'select private.community_run_official()')")
+  })
+  it('los datos del menú solo salen por el detalle con sesión (0265): ni la tarjeta ni la lectura pública los llevan', () => {
+    const detail = migration0265.slice(migration0265.indexOf('function private.community_post_detail'), migration0265.indexOf('function public.community_get_post'))
+    expect(detail).toContain("'menu', p.menu")
+    const card = migration0265.slice(migration0265.indexOf('function private.community_card'), migration0265.indexOf('function public.community_list_posts'))
+    expect(card).not.toMatch(/p\.menu/)
+    const pub = migration0272.slice(migration0272.indexOf('function public.community_public_get_post'), migration0272.indexOf('function public.community_public_get_comments'))
+    expect(pub).not.toMatch(/p\.menu|'menu'/)
   })
 })

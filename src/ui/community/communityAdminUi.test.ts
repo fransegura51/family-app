@@ -33,6 +33,7 @@ const { ReportGroupCard } = await import('@/ui/community/admin/ModerationReports
 const { HiddenCard, ReadmissionCard, RemovalCard } = await import('@/ui/community/admin/ModerationLists')
 const { UserCard } = await import('@/ui/community/admin/UsersTab')
 const { ProposalCard, ProposalEditForm } = await import('@/ui/community/admin/OfficialTab')
+const { MenuCard, MenuReview } = await import('@/ui/community/admin/MenusSection')
 const { PollCard } = await import('@/ui/community/admin/PollsTab')
 const { FeaturedCard } = await import('@/ui/community/admin/FeaturedTab')
 const { SettingRow } = await import('@/ui/community/admin/SettingsTab')
@@ -314,6 +315,122 @@ describe('Contenido oficial', () => {
     for (const f of ['Pendientes', 'Aprobadas', 'Rechazadas', 'Publicadas']) expect(html).toContain(f)
     expect(officialSource).toContain('adminEditProposal')
     expect(officialSource).toContain('adminRejectProposal')
+  })
+})
+
+describe('Menú semanal de Pepa (Contenido oficial)', () => {
+  const menu = (over: Record<string, unknown>) =>
+    dom.toMenuList({
+      menus: [
+        {
+          id: 'm1',
+          title: 'Menú de la semana del 26 de octubre',
+          state: 'draft',
+          version: 2,
+          scheduledWeekly: true,
+          source: 'Banco editorial · menú 12',
+          weekStart: null,
+          weekEnd: null,
+          publishAt: null,
+          publishAttempts: 0,
+          checkErrors: 0,
+          checkWarnings: 2,
+          ...over,
+        },
+      ],
+    }).menus[0]
+  it('la pestaña enseña la sección del menú con su aviso y la propia lista de propuestas sigue debajo', () => {
+    const html = page('oficial')
+    expect(html).toContain('Menú semanal de Pepa')
+    expect(html).toContain('Cargando los menús')
+    expect(html).toContain('Consejos, encuestas y artículos')
+    expect(officialSource).toContain('MenusSection')
+    expect(officialSource).toContain("p.kind !== 'menu'")
+  })
+  it('el aviso fijo de la publicación automática viene del texto del dominio y no hay forma de cambiarla desde el panel', async () => {
+    const section = (await import('@/ui/community/admin/MenusSection.tsx?raw')).default
+    expect(section).toContain('ADMIN_TEXT.menuAutopublishOff')
+    expect(dom.ADMIN_TEXT.menuAutopublishOff).toBe('La publicación automática está DESACTIVADA hasta que se valide')
+    expect(section).not.toContain('adminSetSetting')
+  })
+  it('un borrador enseña su estado, la fuente, la revisión de calidad y las acciones: revisar, editar, aprobar y rechazar', () => {
+    const html = render(createElement(MenuCard, { menu: menu({}), topics: [], onDone: noop }))
+    expect(html).toContain('Borrador (pendiente de revisar)')
+    expect(html).toContain('Fuente: Banco editorial · menú 12')
+    expect(html).toContain('La revisión de calidad tiene 2 avisos')
+    for (const b of ['Revisar el menú', 'Editar el texto', 'Aprobar', 'Rechazar']) expect(html).toContain(`>${b}<`)
+    expect(html).toContain('NO se publica al momento')
+    expect(html).toContain('próximo sábado a las 10:00')
+  })
+  it('un menú con texto editado sin revisar los datos exige confirmarlo antes de poder aprobar', () => {
+    const html = render(createElement(MenuCard, { menu: menu({ textStale: true }), topics: [], onDone: noop }))
+    expect(html).toContain('Has cambiado el texto sin tocar los datos del menú')
+    expect(html).toContain('He revisado que el texto y los datos del menú dicen lo mismo')
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Aprobar<\/button>/)
+  })
+  it('un menú inválido no se puede aprobar (el botón está desactivado) y explica por qué', () => {
+    const html = render(createElement(MenuCard, { menu: menu({ checkErrors: 1, checkWarnings: 0 }), topics: [], onDone: noop }))
+    expect(html).toContain('El menú no es válido y no se puede aprobar')
+    expect(html).toMatch(/<button[^>]*disabled[^>]*>Aprobar<\/button>/)
+  })
+  it('un menú programado enseña la semana y la hora de Madrid, y ofrece reprogramar, cancelar la programación y rechazar (no aprobar)', () => {
+    const html = render(
+      createElement(MenuCard, {
+        menu: menu({ state: 'scheduled', weekStart: '2026-10-26', weekEnd: '2026-11-01', publishAt: '2026-10-24T08:00:00Z', approvedAt: '2026-10-20T08:00:00Z', approvedByName: 'Jennifer' }),
+        topics: [],
+        onDone: noop,
+      }),
+    )
+    expect(html).toContain('Programado')
+    expect(html).toContain('Sale el sábado, 24 de octubre de 2026, 10:00')
+    expect(html).toContain('Semana del 26 de octubre al 1 de noviembre de 2026')
+    expect(html).toContain('Aprobada por Jennifer')
+    for (const b of ['Reprogramar', 'Cancelar la programación', 'Rechazar']) expect(html).toContain(b)
+    expect(html).not.toContain('>Aprobar<')
+  })
+  it('un menú con error enseña el error, los intentos y ofrece reintentar y reprogramar', () => {
+    const html = render(
+      createElement(MenuCard, {
+        menu: menu({ state: 'error', publishAttempts: 3, publishError: 'P0001: fallo forzado', weekStart: '2026-10-26', weekEnd: '2026-11-01', publishAt: '2026-10-24T08:00:00Z' }),
+        topics: [],
+        onDone: noop,
+      }),
+    )
+    expect(html).toContain('Con error')
+    expect(html).toContain('Error al publicar (intento 3 de 3): P0001: fallo forzado')
+    expect(html).toContain('Reintentar ahora')
+    expect(html).toContain('Reprogramar')
+  })
+  it('un menú publicado enlaza a la publicación y no ofrece acciones', () => {
+    const html = render(createElement(MenuCard, { menu: menu({ state: 'published', publishedPostId: 'post-1', weekStart: '2026-10-26', weekEnd: '2026-11-01' }), topics: [], onDone: noop }))
+    expect(html).toContain('Ver el menú en Comunidad')
+    expect(html).not.toContain('>Aprobar<')
+    expect(html).not.toContain('Reprogramar')
+  })
+  it('la revisión enseña los errores y avisos de calidad, el resumen de los 7 días y el texto, y avisa de los límites de la revisión', () => {
+    const detail = dom.toMenuDetail({
+      id: 'm1',
+      title: 'Menú',
+      body: 'Texto del menú',
+      check: [
+        { code: 'INVALID', severity: 'error', message: 'Faltan días' },
+        { code: 'QUANTITY_ABSURD', severity: 'warning', message: 'Cantidad rara', day: 'lunes', meal: 'comida', recipe: 'Lentejas' },
+      ],
+      menu: { servings: 4, days: [{ day: 'lunes', meals: { comida: { title: 'Lentejas', side: 'Fruta', recipes: [] }, cena: { title: 'Crema', recipes: [] } } }] },
+    })!
+    const html = render(createElement(MenuReview, { detail }))
+    expect(html).toContain('Faltan días')
+    expect(html).toContain('lunes · comida · Lentejas: Cantidad rara')
+    expect(html).toContain('lunes</strong> — comida: Lentejas (+ Fruta); cena: Crema')
+    expect(html).toContain('Texto del menú')
+    expect(html).toContain('no comprueba seguridad alimentaria, alérgenos ni valores nutricionales')
+  })
+  it('el detalle (menú completo) solo se pide al abrir la revisión o la edición, nunca al pintar la lista', async () => {
+    const section = (await import('@/ui/community/admin/MenusSection.tsx?raw')).default
+    expect(section.match(/adminGetMenu\(/g)).toHaveLength(1)
+    expect(section).toContain("loadDetail('review')")
+    expect(section).not.toContain('setInterval')
+    expect(section).not.toContain('dangerouslySetInnerHTML')
   })
 })
 

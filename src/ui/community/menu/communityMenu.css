@@ -1,0 +1,475 @@
+/* Comunidad PEPA — menú semanal oficial: plan por días, hojas de importar y de Compras.
+   Móvil primero (375 px): objetivos táctiles de al menos 44 px, sin desplazamiento horizontal. */
+
+.community-menu {
+  display: block;
+  margin: 8px 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.community-menu button,
+.community-menu-sheet button:not(.modal-close):not(.link-button) {
+  min-height: 44px;
+}
+
+.community-menu-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.community-menu-weeks {
+  margin: 0;
+  font-weight: 600;
+}
+
+.community-menu-small {
+  margin: 0;
+  font-size: 13px;
+}
+
+.community-menu-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.community-menu-actions button {
+  flex: 1 1 200px;
+}
+
+.community-menu-locked p {
+  margin: 0;
+}
+
+.community-menu-intro {
+  margin: 8px 0;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 0 12px;
+}
+
+.community-menu-intro summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* ---- Pestañas de los días: siete columnas iguales (caben en 343 px) */
+.community-menu-tabs {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: 12px 0 8px;
+}
+
+.community-menu-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 4px 0;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  cursor: pointer;
+}
+
+.community-menu-tab.active {
+  background: var(--primary, #4f46e5);
+  border-color: var(--primary, #4f46e5);
+  color: #fff;
+}
+
+.community-menu-tab-date {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.community-menu-day-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.community-menu-day-head h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.community-menu-day-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.community-menu-day-actions button {
+  flex: 1 1 150px;
+}
+
+/* ---- Tarjetas de comida y cena */
+.community-menu-meal {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 12px;
+  background: #fff;
+  padding: 12px;
+  margin: 10px 0;
+}
+
+.community-menu-meal-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted, #6b7280);
+}
+
+.community-menu-meal-title {
+  margin: 2px 0 4px;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.community-menu-side {
+  margin: 0 0 8px;
+}
+
+.community-menu-meal-actions,
+.community-menu-recipe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.community-menu-meal-actions button,
+.community-menu-recipe-actions button {
+  flex: 1 1 130px;
+}
+
+.community-menu-recipes {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.community-menu-recipe {
+  border-top: 1px solid var(--border, #e3e7ef);
+  padding-top: 10px;
+}
+
+.community-menu-recipe h4 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.community-menu-recipe h5 {
+  margin: 10px 0 4px;
+  font-size: 15px;
+}
+
+.community-menu-recipe-role {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted, #6b7280);
+}
+
+/* ---- Hojas inferiores (importar y Compras) */
+.community-menu-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 16px);
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.community-menu-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 14px 16px 8px;
+  border-bottom: 1px solid var(--border, #e3e7ef);
+}
+
+.community-menu-sheet-head h2 {
+  margin: 0;
+  font-size: 19px;
+}
+
+.community-menu-sheet-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.community-menu-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.community-menu-sticky {
+  position: sticky;
+  bottom: 0;
+  margin: 4px -16px -12px;
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: #fff;
+  border-top: 1px solid var(--border, #e3e7ef);
+  z-index: 1;
+}
+
+.community-menu-sticky .primary {
+  flex: 1 1 200px;
+}
+
+.community-menu-sheet-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.community-menu-sheet-links a,
+.community-menu-sheet-links .link-button {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  text-align: left;
+}
+
+.community-menu-fieldset {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  padding: 8px 12px 10px;
+  margin: 0;
+}
+
+.community-menu-fieldset legend {
+  font-weight: 700;
+  padding: 0 4px;
+}
+
+.community-menu-radio {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.community-menu-radio input,
+.community-menu-confirm-replace input,
+.community-menu-shop-check input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+}
+
+.community-menu-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.community-menu-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.community-menu-fields select {
+  min-height: 44px;
+  width: 100%;
+  max-width: 100%;
+}
+
+.community-menu-h3 {
+  margin: 4px 0 0;
+  font-size: 16px;
+}
+
+.community-menu-summary {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.community-menu-slots,
+.community-menu-result,
+.community-menu-shop-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.community-menu-result {
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.community-menu-slot {
+  border: 1px solid var(--border, #e3e7ef);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.community-menu-slot.skipped {
+  opacity: 0.7;
+  background: #f6f7fa;
+}
+
+.community-menu-slot p {
+  margin: 0;
+}
+
+.community-menu-slot-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.community-menu-slot-title::first-letter {
+  text-transform: uppercase;
+}
+
+.community-menu-slot-status {
+  font-size: 13px;
+  margin-top: 2px !important;
+}
+
+.community-menu-slot-status.warn {
+  color: #8a4b00;
+}
+
+.community-menu-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #eef0f6;
+}
+
+.community-menu-badge.reuse {
+  background: #fff3d6;
+}
+
+.community-menu-badge.new {
+  background: #e3f6e8;
+}
+
+.community-menu-confirm-replace {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff3d6;
+  min-height: 44px;
+}
+
+.community-menu-selectall {
+  display: flex;
+  gap: 12px;
+}
+
+.community-menu-selectall .link-button {
+  min-height: 44px;
+}
+
+.community-menu-shop-item {
+  border: 1px solid var(--border, #e3e7ef);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.community-menu-shop-check {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+}
+
+.community-menu-shop-for,
+.community-menu-shop-notes {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+.community-menu-shop-notes {
+  color: #8a4b00;
+}
+
+@media (min-width: 640px) {
+  .community-menu-head,
+  .community-menu-day-head {
+    flex-direction: column;
+  }
+  .community-menu-sheet {
+    max-width: 640px;
+    max-height: 90vh;
+  }
+  .community-menu-fields {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .community-menu-fields label {
+    flex: 1 1 220px;
+  }
+}
+
+/* Botones secundarios en contorno (solo el principal de cada grupo va relleno): se lee mejor qué es lo importante. */
+.community-menu-actions button:not(.primary),
+.community-menu-day-actions button,
+.community-menu-meal-actions button,
+.community-menu-recipe-actions button:not(.primary),
+.community-menu-sheet-actions button:not(.primary):not(.link-button) {
+  background: #fff;
+  color: var(--primary, #3b5bdb);
+  border: 1.5px solid var(--primary, #3b5bdb);
+}
+.community-menu-meal-actions .community-menu-toggle {
+  background: #eef1ff;
+}
+
+/* La barra de botones que cuelga directamente de la hoja (fuera del cuerpo que se desplaza) siempre queda a la vista, sin márgenes negativos. */
+.community-menu-sheet > .community-menu-sticky {
+  position: static;
+  margin: 0;
+  flex: none;
+}
+
+.community-menu-sticky .link-button {
+  flex: none;
+  padding: 12px 8px;
+}
+
+.community-menu-sheet-links .link-button {
+  justify-content: flex-start;
+  padding: 0;
+}

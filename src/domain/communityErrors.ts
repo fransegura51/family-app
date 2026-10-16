@@ -32,6 +32,11 @@ export type CommunityErrorCode =
   | 'RECIPE_INGREDIENTS'
   | 'ALREADY_VOTED'
   | 'NO_SOURCES'
+  | 'MENU_INVALID'
+  | 'MENU_TEXT_STALE'
+  | 'MENU_WEEK_TAKEN'
+  | 'MENU_WEEK_PAST'
+  | 'BAD_PUBLISH_AT'
   | 'UNKNOWN'
 
 export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
@@ -68,6 +73,11 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   RECIPE_INGREDIENTS: 'La receta necesita al menos un ingrediente con nombre.',
   ALREADY_VOTED: 'Ya has votado en esta encuesta.',
   NO_SOURCES: 'Un artículo necesita fuentes externas para poder publicarse.',
+  MENU_INVALID: 'El menú no es válido (7 días con comida y cena, recetas completas, sin platos repetidos de más…). Mira los avisos de la revisión del menú.',
+  MENU_TEXT_STALE: 'Has cambiado el texto del menú sin revisar sus datos. Comprueba que el texto y el menú dicen lo mismo y confírmalo para aprobarlo.',
+  MENU_WEEK_TAKEN: 'Esa semana ya tiene otro menú aprobado o publicado. Solo puede haber uno por semana: rechaza o reprograma el otro.',
+  MENU_WEEK_PAST: 'La semana de este menú ya ha terminado: ya no se puede publicar. Reprográmalo a otro sábado o recházalo.',
+  BAD_PUBLISH_AT: 'La fecha tiene que ser un sábado futuro a las 10:00 (hora peninsular).',
   UNKNOWN: 'Algo ha fallado. Inténtalo de nuevo.',
 }
 

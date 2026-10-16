@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { eventMenuPath } from '@/domain/eventMenuHub'
 import { paletteByName, pastelPalette } from '@/domain/colors'
@@ -50,6 +50,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
+import { DietaryWarnings } from '@/ui/DietaryWarnings'
 // EL editor de campos de receta (raciones, etiquetas, ingredientes y pasos) es el MISMO que usa Comunidad: ver src/ui/recipeEditor/RecipeEditorFields.tsx.
 import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
 // Comunidad: «Compartir en Comunidad» (hoja para publicar una copia pública, solo se descarga al pulsar) y el aviso «Hay una versión nueva» de las recetas
@@ -88,8 +89,11 @@ function weekdayColor(dateStr: string): string {
   return WEEKDAY_COLORS[(jsDay + 6) % 7]
 }
 
-function weekDates(): string[] {
-  const today = new Date()
+// `from` (opcional, «AAAA-MM-DD»): empezar en esa fecha en vez de hoy. Lo usa Comunidad tras importar un menú semanal («Ver mi menú»), para enseñar justo
+// la semana importada. Una fecha inválida se ignora (se enseña desde hoy, como siempre).
+function weekDates(from?: string | null): string[] {
+  const parsed = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? new Date(from + 'T00:00') : null
+  const today = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date()
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today)
     d.setDate(today.getDate() + i)
@@ -585,7 +589,9 @@ function AlimentacionMenuDropdown({
 // ---------------------------------------------------------------------
 
 function MenuTab() {
-  const dates = useMemo(weekDates, [])
+  const [searchParams] = useSearchParams()
+  const from = searchParams.get('desde')
+  const dates = useMemo(() => weekDates(from), [from])
   const [entries, setEntries] = useState<MenuEntry[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -626,12 +632,16 @@ function MenuTab() {
             {new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
           </strong>
           {MEAL_TYPES.filter((m) => m.value !== 'snack').map((meal) => {
-            const entry = entries.find((e) => e.entryDate === date && e.mealType === meal.value)
+            const slotEntries = entries.filter((e) => e.entryDate === date && e.mealType === meal.value)
+            const entry = slotEntries[0]
+            // Platos de más en el mismo hueco (p. ej. el acompañamiento de un menú importado de Comunidad): se enseñan debajo del primero.
+            const extraEntries = slotEntries.slice(1)
             const recipe = entry?.recipeId ? recipes.find((r) => r.id === entry.recipeId) : null
             const isAdding = addingFor?.date === date && addingFor.meal === meal.value
             const isEditing = entry && editingId === entry.id
             return (
-              <div key={meal.value} className="menu-row">
+              <Fragment key={meal.value}>
+              <div className="menu-row">
                 <span className="muted menu-meal-label">{meal.label}</span>
                 {entry && isEditing ? (
                   <MenuEntryPicker
@@ -673,6 +683,16 @@ function MenuTab() {
                   </button>
                 )}
               </div>
+              {extraEntries.map((extra) => (
+                <div key={extra.id} className="menu-row">
+                  <span className="muted menu-meal-label" aria-hidden="true">
+                    +
+                  </span>
+                  <span>{(extra.recipeId ? recipes.find((r) => r.id === extra.recipeId)?.title : null) ?? extra.freeText}</span>
+                  <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(extra.id).then(reload)} />
+                </div>
+              ))}
+              </Fragment>
             )
           })}
         </div>
@@ -696,6 +716,7 @@ function MenuEntryPicker({
 }) {
   const [recipeId, setRecipeId] = useState(initialRecipeId ?? '')
   const [freeText, setFreeText] = useState(initialFreeText ?? '')
+  const pickedRecipe = recipeId ? recipes.find((r) => r.id === recipeId) : null
 
   return (
     <span className="menu-picker">
@@ -707,6 +728,8 @@ function MenuEntryPicker({
           </option>
         ))}
       </select>
+      {/* Mismo aviso al elegir la receta para el menú (solo informa: «OK» sigue funcionando igual). */}
+      {pickedRecipe && <DietaryWarnings ingredients={pickedRecipe.ingredients} className="fd-warnings-picker" />}
       <input
         type="text"
         placeholder="o texto libre"
@@ -1096,6 +1119,8 @@ function RecipesTab() {
                 </p>
               ) : null
             })()}
+            {/* Aviso de alergias e intolerancias (solo lo ven administradores y adultos con datos anotados; no bloquea ni cambia la receta). */}
+            <DietaryWarnings ingredients={viewing.ingredients} />
             {viewing.ingredients.length > 0 && (
               <div className="day-modal-group">
                 <h3>Ingredientes</h3>

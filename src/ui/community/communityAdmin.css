@@ -610,3 +610,17 @@
     padding: 8px 16px;
   }
 }
+
+/* Casilla de confirmación del menú (texto editado sin revisar los datos). */
+.cadm-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 14px;
+}
+.cadm-check input {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}

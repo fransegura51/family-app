@@ -244,6 +244,8 @@ export async function listMenuEntries(startDate: string, endDate: string): Promi
     .select('id, family_id, entry_date, meal_type, recipe_id, free_text')
     .gte('entry_date', startDate)
     .lte('entry_date', endDate)
+    // Orden estable: el primer plato de una comida es el más antiguo (en un menú importado de Comunidad, el principal va antes que su acompañamiento).
+    .order('created_at', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
     id: r.id,

@@ -24,4 +24,14 @@ export default [
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
+  // PRIVACIDAD (datos de salud, migración 0279): las alergias e intolerancias de la ficha privada no se pueden importar desde los servicios de IA, la voz
+  // de Pepa, Comunidad ni los avisos. Además lo comprueba src/data/dietaryPrivacyLock.test.ts.
+  {
+    files: ['src/services/**/*.{ts,tsx}', 'src/pepa/**/*.{ts,tsx}', 'src/ui/community/**/*.{ts,tsx}', 'src/data/community*.ts', 'src/domain/community*.ts', 'src/data/notification*.ts', 'src/data/errorReports.ts'],
+    // Las pruebas de la propia barrera sí necesitan importarlas.
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    rules: {
+      'no-restricted-imports': ['error', { patterns: [{ group: ['**/dietaryRestrictions*', '**/dietaryRestrictionsRules*'], message: 'Las alergias y intolerancias son datos de salud privados: no se importan desde IA, voz, Comunidad ni avisos.' }] }],
+    },
+  },
 ]

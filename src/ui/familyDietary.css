@@ -1,0 +1,353 @@
+/* Alergias e intolerancias: ficha de Familia (.fd-section) y aviso en recetas (.fd-warnings). Móvil primero (375 px): objetivos táctiles de al menos 44 px,
+   sin scroll horizontal. Sin verdes: nada de lo que se pinta aquí da a entender que algo «está bien». */
+
+/* ─── Ficha de Familia ─── */
+.fd-section {
+  width: 100%;
+  border-top: 1px solid #eee;
+  padding-top: 4px;
+  box-sizing: border-box;
+}
+.fd-heading {
+  margin: 0;
+  font-size: 15px;
+}
+.fd-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.fd-toggle-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+.fd-toggle-opt {
+  font-size: 12px;
+  font-weight: 500;
+}
+.fd-toggle:focus-visible,
+.fd-section button:focus-visible,
+.fd-section select:focus-visible,
+.fd-section input:focus-visible,
+.fd-section textarea:focus-visible {
+  outline: 3px solid var(--primary, #4c6ef5);
+  outline-offset: 2px;
+}
+.fd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 8px;
+  min-width: 0;
+}
+.fd-body p {
+  margin: 0;
+}
+.fd-privacy,
+.fd-disclaimer,
+.fd-help {
+  font-size: 13px;
+  line-height: 1.4;
+}
+.fd-help-strong {
+  color: var(--text);
+}
+.fd-main-btn {
+  min-height: 44px;
+  margin-top: 8px;
+}
+.fd-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fd-item {
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 10px;
+  min-width: 0;
+}
+.fd-item-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.fd-item-label {
+  overflow-wrap: anywhere;
+}
+.fd-pill {
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: #eef0f4;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fd-pill-severity {
+  background: #fff4e5;
+  color: #8a4b00;
+}
+.fd-item-note {
+  margin-top: 4px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.fd-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 4px;
+}
+.fd-item-actions .link-button,
+.fd-confirm .link-button,
+.fd-revoke,
+.fd-suggestion {
+  min-height: 44px;
+  padding: 0;
+}
+.fd-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+.fd-add-btn {
+  min-height: 44px;
+}
+.fd-revoke {
+  align-self: flex-start;
+  color: #b42318;
+}
+
+/* Formulario de alta y edición */
+.fd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+.fd-form select,
+.fd-form input[type='text'],
+.fd-form textarea {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.fd-form p {
+  margin: 0;
+}
+.fd-kind {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 10px;
+  min-width: 0;
+}
+.fd-kind legend {
+  padding: 0 6px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.fd-kind-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fd-radio {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+.fd-radio input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+  padding: 0;
+}
+.fd-radio-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  min-width: 0;
+}
+.fd-radio-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.fd-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.fd-actions button {
+  min-height: 44px;
+}
+.fd-danger {
+  background: #b42318;
+  color: #fff;
+}
+
+/* Diálogos (consentimiento y retirada): hoja inferior en móvil, centrada en pantallas grandes. */
+.fd-overlay {
+  z-index: 70;
+}
+.fd-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--text, #1d2433);
+  box-sizing: border-box;
+}
+.fd-dialog h2,
+.fd-dialog p {
+  margin: 0;
+}
+.fd-provisional {
+  padding: 8px 10px;
+  border: 1px dashed #b54708;
+  border-radius: 8px;
+  background: #fffaeb;
+  color: #7a2e0e;
+  font-weight: 700;
+  font-size: 13px;
+}
+.fd-consent-par {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.fd-consent-version {
+  font-size: 12px;
+}
+.fd-declaration {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d0d5dd);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.fd-declaration input[type='checkbox'] {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+/* ─── Aviso en recetas ─── */
+.fd-warnings {
+  margin: 10px 0;
+  padding: 12px;
+  border: 2px solid #b54708;
+  border-radius: 12px;
+  background: #fffaeb;
+  color: var(--text, #1d2433);
+  min-width: 0;
+}
+.fd-warnings-sin_datos {
+  border-color: #667085;
+  background: #f4f5f7;
+}
+.fd-warnings-ninguna_coincidencia {
+  border: 1px solid #98a2b3;
+  background: #f4f5f7;
+}
+.fd-warnings p {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.fd-warnings-title {
+  margin: 0;
+  font-size: 16px;
+}
+.fd-group {
+  margin-top: 10px;
+}
+.fd-group-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+.fd-group-conflicto .fd-group-title {
+  color: #b42318;
+}
+.fd-group-revisar .fd-group-title {
+  color: #93370d;
+}
+.fd-findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fd-finding {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-left: 4px solid currentColor;
+  border-radius: 6px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.fd-group-conflicto .fd-finding {
+  border-left-color: #b42318;
+}
+.fd-group-revisar .fd-finding {
+  border-left-color: #b54708;
+}
+.fd-group-sin_datos .fd-finding {
+  border-left-color: #667085;
+}
+.fd-finding-reason,
+.fd-finding-who {
+  font-size: 13px;
+  color: var(--text, #1d2433);
+}
+.fd-finding-who {
+  color: var(--muted);
+}
+.fd-warnings-disclaimer {
+  font-size: 12px;
+}
+.fd-warnings-error {
+  margin: 8px 0;
+  font-size: 13px;
+}
+/* Dentro del selector del menú semanal (fila flexible): el aviso ocupa todo el ancho y es más compacto. */
+.fd-warnings-picker {
+  flex: 1 1 100%;
+  margin: 4px 0;
+  padding: 8px 10px;
+}

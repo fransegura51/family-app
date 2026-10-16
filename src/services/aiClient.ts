@@ -6,6 +6,7 @@
 import { supabase } from '@/data/supabaseClient'
 import { listFamilyMembers } from '@/data/family'
 import { createAliasMap, type AliasMap } from '@/pepa/alias'
+import { assertNoHealthData } from '../../supabase/functions/_shared/ai/healthGuard'
 
 export class AiUnavailableError extends Error {
   readonly reason: string
@@ -16,6 +17,8 @@ export class AiUnavailableError extends Error {
 }
 
 export async function callAiFunction(name: string, body: Record<string, unknown>): Promise<unknown> {
+  // Barrera de privacidad: ninguna petición a la IA puede llevar claves de datos de salud (alergias e intolerancias de la ficha privada, migración 0279).
+  assertNoHealthData(body)
   const { data: sessionData } = await supabase.auth.getSession()
   const token = sessionData.session?.access_token
   if (!token) throw new Error('No autenticado')

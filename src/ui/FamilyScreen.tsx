@@ -24,6 +24,7 @@ import { ConfirmButton } from '@/ui/ConfirmButton'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { CommunityPermissionsCard } from '@/ui/CommunityPermissionsCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
+import { canSeeDietarySection, FamilyDietarySection } from '@/ui/FamilyDietarySection'
 import { disableNativeUpload } from '@/services/nativeUpload'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import { NotificationPrefsCard } from '@/ui/NotificationPrefsCard'
@@ -293,6 +294,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   {m.linkedProfileId !== profile.id && <ConfirmButton label="🗑 Borrar" onConfirm={() => handleDelete(m.id)} />}
                 </div>
               )}
+              {/* Alergias e intolerancias (datos de salud): ficha privada, opcional y plegada. Plegada no consulta nada al servidor. */}
+              {canSeeDietarySection(profile, m) && <FamilyDietarySection memberId={m.id} memberName={m.name} />}
             </div>
           ),
         )}

@@ -97,6 +97,18 @@ if (pluginSrc.includes(MARK)) {
         call.resolve(result);
     }
 
+    // ${MARK}: registro del servicio de ubicación nativa (arranques, reinicios, permisos, errores de envío). Se entrega UNA vez y se vacía; JavaScript lo
+    // sube al servidor al abrir la app para poder ver por qué se paró cuando falla.
+    @PluginMethod()
+    public void getNativeDiagnostics(PluginCall call) {
+        android.content.SharedPreferences diag = getContext().getSharedPreferences(BackgroundGeolocationService.DIAG_PREFS, Context.MODE_PRIVATE);
+        com.getcapacitor.JSObject result = new com.getcapacitor.JSObject();
+        result.put("log", diag.getString("log", ""));
+        result.put("lastOkAt", diag.getLong("last_ok_at", 0L));
+        diag.edit().remove("log").apply();
+        call.resolve(result);
+    }
+
     @PluginMethod()
     public void clearNativeUpload(PluginCall call) {
         getContext().getSharedPreferences(BackgroundGeolocationService.PREFS, Context.MODE_PRIVATE).edit().clear().apply();

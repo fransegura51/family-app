@@ -65,6 +65,16 @@ export async function hasBackgroundLocationPermission(): Promise<boolean> {
   }
 }
 
+// Registro que anota el servicio nativo (se entrega una vez y se vacía en el móvil). Una app nativa anterior a esta función no lo tiene: se devuelve vacío.
+export async function takeNativeDiagnostics(): Promise<{ log: string; lastOkAt: number }> {
+  try {
+    const { log, lastOkAt } = await BackgroundGeolocation.getNativeDiagnostics()
+    return { log: log ?? '', lastOkAt: lastOkAt ?? 0 }
+  } catch {
+    return { log: '', lastOkAt: 0 }
+  }
+}
+
 // Abre los ajustes de PEPA en Android (Permisos → Ubicación → Permitir todo el tiempo).
 export async function openLocationSettings(): Promise<void> {
   await BackgroundGeolocation.openSettings()

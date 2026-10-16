@@ -25,6 +25,7 @@ export async function enableNativeUpload(memberId: string): Promise<void> {
     const { configureNativeUpload } = await import('@/services/nativeLocation')
     await configureNativeUpload(token)
     void syncNativeRegions()
+    void reportNativeDiagnostics()
   } catch {
     // Una app nativa ANTERIOR a esta función no tiene el servicio nuevo: no se vuelve a pedir llave en cada reinicio del vigilante (cada una es una
     // llamada), hasta el próximo arranque de la app.
@@ -59,5 +60,26 @@ export async function disableNativeUpload(): Promise<void> {
     await revokeLocationDeviceTokens()
   } catch {
     // Sin red: la llave seguirá existiendo pero solo manda ubicación mientras se comparta; se anula al crear otra.
+  }
+}
+
+// Sube al servidor lo que anotó el servicio nativo mientras la app estaba cerrada, solo si cuenta algo fuera de lo normal (reinicios, permisos, errores de
+// envío). Nunca lanza: es una ayuda para entender por qué se paró, no puede romper nada.
+async function reportNativeDiagnostics(): Promise<void> {
+  if (isIosApp()) return
+  try {
+    const [{ takeNativeDiagnostics, hasBackgroundLocationPermission }, { isNotableNativeLog, describeNativeLog }] = await Promise.all([
+      import('@/services/nativeLocation'),
+      import('@/domain/nativeDiagnostics'),
+    ])
+    const { log, lastOkAt } = await takeNativeDiagnostics()
+    if (!isNotableNativeLog(log)) return
+    const { message, detail } = describeNativeLog(log, lastOkAt, await hasBackgroundLocationPermission())
+    const error = new Error(message)
+    error.stack = detail
+    const { reportClientError } = await import('@/data/errorReports')
+    await reportClientError(error)
+  } catch {
+    // Silencio a propósito.
   }
 }

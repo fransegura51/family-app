@@ -3,7 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const native = vi.hoisted(() => ({ value: true, ios: false }))
 const data = vi.hoisted(() => ({ createLocationDeviceToken: vi.fn(), revokeLocationDeviceTokens: vi.fn(), listPlaces: vi.fn() }))
-const location = vi.hoisted(() => ({ configureNativeUpload: vi.fn(), clearNativeUpload: vi.fn(), configureNativeRegions: vi.fn() }))
+const location = vi.hoisted(() => ({
+  configureNativeUpload: vi.fn(),
+  clearNativeUpload: vi.fn(),
+  configureNativeRegions: vi.fn(),
+  takeNativeDiagnostics: vi.fn(),
+  hasBackgroundLocationPermission: vi.fn(),
+}))
 
 vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value, isIosApp: () => native.ios }))
 vi.mock('@/data/location', () => data)
@@ -20,6 +26,8 @@ beforeEach(async () => {
   location.configureNativeUpload.mockResolvedValue(undefined)
   location.clearNativeUpload.mockResolvedValue(undefined)
   location.configureNativeRegions.mockResolvedValue(undefined)
+  location.takeNativeDiagnostics.mockResolvedValue({ log: '', lastOkAt: 0 })
+  location.hasBackgroundLocationPermission.mockResolvedValue(true)
   data.listPlaces.mockResolvedValue([])
   await disableNativeUpload() // deja el estado interno limpio
   vi.clearAllMocks()

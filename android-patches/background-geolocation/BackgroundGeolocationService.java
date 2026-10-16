@@ -11,9 +11,7 @@ import android.content.SharedPreferences;
 import android.location.Location;
 import android.os.Binder;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 
 import com.getcapacitor.Logger;
 import com.google.android.gms.location.FusedLocationProviderClient;
@@ -23,20 +21,10 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 
-import org.json.JSONObject;
-
-import java.io.ByteArrayOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.Locale;
-import java.util.TimeZone;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
@@ -47,8 +35,12 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 // nativo» (dirección del servidor + llave propia de este móvil, ver setNativeUpload en BackgroundGeolocation.java), al cerrarse la app el servicio:
 //   1. sigue vivo y en primer plano (misma notificación fija), y
 //   2. manda cada posición él solo al servidor (función report_device_location, migración 0253) con esa llave.
-// Si el sistema mata el proceso, START_STICKY lo vuelve a levantar y retoma el envío. Al volver a abrir la app, el envío nativo se apaga y vuelve a
-// mandar JavaScript como siempre (sin duplicados). Si el servidor contesta que la persona ya no comparte o la llave está anulada, el servicio se para.
+// Las posiciones del envío nativo NO se piden con una función de este servicio sino con un PendingIntent a es.pepafamilyapp.app.NativeLocationReceiver:
+// Google Play Services lo mantiene registrado aunque Android mate el proceso (o no deje reiniciar este servicio en segundo plano, Android 12+) y vuelve
+// a lanzar el receptor él solo con cada posición nueva; el receptor las manda al servidor con reintentos. Este servicio solo pone la notificación fija y
+// registra ese aviso. Al volver a abrir la app, el envío nativo se apaga y vuelve a mandar JavaScript como siempre (sin duplicados). Si el servidor
+// contesta varias veces seguidas que la persona ya no comparte o la llave está anulada, el receptor lo para todo.
+// Todo lo importante (arranques, reinicios, permisos, errores) queda anotado en «pepa_bg_geo_diag» y la app lo sube al servidor al abrirse.
 public class BackgroundGeolocationService extends Service {
     static final String ACTION_BROADCAST = (
             BackgroundGeolocationService.class.getPackage().getName() + ".broadcast"
@@ -60,11 +52,11 @@ public class BackgroundGeolocationService extends Service {
     static final String KEY_TITLE = "title";
     static final String KEY_MESSAGE = "message";
     static final String KEY_DISTANCE = "distance";
+    static final String DIAG_PREFS = "pepa_bg_geo_diag";
     private static final String NATIVE_WATCHER_ID = "pepa-native";
-    // Mínimo entre dos envíos nativos (el servidor aplica además su propio freno de 8 s).
-    private static final long MIN_UPLOAD_GAP_MS = 10_000L;
-    // Posiciones muy imprecisas (en interiores, sin GPS) se descartan: un salto falso podría disparar un aviso de «se ha ido de casa».
-    private static final float MAX_ACCURACY_M = 100f;
+    private static final String RECEIVER_CLASS = "es.pepafamilyapp.app.NativeLocationReceiver";
+    private static final String RECEIVER_ACTION = "es.pepafamilyapp.app.NATIVE_LOCATION";
+    private static final int MAX_DIAG_LINES = 60;
 
     private final IBinder binder = new LocalBinder();
 
@@ -77,12 +69,10 @@ public class BackgroundGeolocationService extends Service {
         public LocationRequest locationRequest;
         public LocationCallback locationCallback;
         public Notification backgroundNotification;
+        // Envío nativo: las posiciones llegan por este aviso al receptor (sin LocationCallback).
+        public PendingIntent pendingIntent;
     }
     private HashSet<Watcher> watchers = new HashSet<Watcher>();
-
-    private final ExecutorService uploader = Executors.newSingleThreadExecutor();
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private long lastUploadAt = 0L;
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -102,9 +92,10 @@ public class BackgroundGeolocationService extends Service {
     @Override
     public boolean onUnbind(Intent intent) {
         for (Watcher watcher : watchers) {
-            watcher.client.removeLocationUpdates(watcher.locationCallback);
+            removeUpdates(watcher);
         }
         watchers = new HashSet<Watcher>();
+        diag("app cerrada: " + (hasNativeUpload() ? "el servicio sigue con el envío nativo" : "sin configuración de envío nativo, el servicio se para"));
         if (hasNativeUpload()) {
             startNativeWatcher();
             return true; // para que se llame a onRebind cuando se vuelva a abrir la app
@@ -117,6 +108,7 @@ public class BackgroundGeolocationService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) {
+            diag("Android reinicia el servicio tras matar el proceso (" + (hasNativeUpload() ? "con" : "sin") + " configuración de envío)");
             if (hasNativeUpload()) {
                 startNativeWatcher();
             } else {
@@ -126,10 +118,49 @@ public class BackgroundGeolocationService extends Service {
         return START_STICKY;
     }
 
+    // Quitan la app de «recientes» (deslizar): el servicio y el aviso al receptor siguen, solo queda anotado.
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        diag("app deslizada de recientes");
+        super.onTaskRemoved(rootIntent);
+    }
+
     @Override
     public void onDestroy() {
-        uploader.shutdownNow();
+        diag("servicio detenido (onDestroy)");
         super.onDestroy();
+    }
+
+    // Anota una línea en el registro del móvil (últimas 60). La app lo sube al servidor al abrirse (ver getNativeDiagnostics en BackgroundGeolocation).
+    void diag(String line) {
+        try {
+            SharedPreferences p = getSharedPreferences(DIAG_PREFS, Context.MODE_PRIVATE);
+            String stamp = new SimpleDateFormat("dd/MM HH:mm:ss", Locale.US).format(new Date());
+            String all = p.getString("log", "") + stamp + " " + line + "\n";
+            String[] lines = all.split("\n");
+            if (lines.length > MAX_DIAG_LINES) {
+                StringBuilder trimmed = new StringBuilder();
+                for (int i = lines.length - MAX_DIAG_LINES; i < lines.length; i++) {
+                    trimmed.append(lines[i]).append('\n');
+                }
+                all = trimmed.toString();
+            }
+            p.edit().putString("log", all).commit();
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // Quita las peticiones de posición de un vigilante, sea de los de JavaScript (con LocationCallback) o el nativo (con PendingIntent).
+    private void removeUpdates(Watcher watcher) {
+        try {
+            if (watcher.pendingIntent != null) {
+                watcher.client.removeLocationUpdates(watcher.pendingIntent);
+            } else {
+                watcher.client.removeLocationUpdates(watcher.locationCallback);
+            }
+        } catch (Exception e) {
+            diag("error al quitar un vigilante: " + e.getClass().getSimpleName());
+        }
     }
 
     private SharedPreferences prefs() {
@@ -146,12 +177,14 @@ public class BackgroundGeolocationService extends Service {
 
     private void appIsBack() {
         removeWatcherById(NATIVE_WATCHER_ID);
+        removeNativeRegistration();
+        diag("app abierta: JavaScript retoma el envío");
     }
 
     private void removeWatcherById(String id) {
         for (Watcher watcher : new HashSet<Watcher>(watchers)) {
             if (watcher.id.equals(id)) {
-                watcher.client.removeLocationUpdates(watcher.locationCallback);
+                removeUpdates(watcher);
                 watchers.remove(watcher);
             }
         }
@@ -200,7 +233,27 @@ public class BackgroundGeolocationService extends Service {
         return builder.build();
     }
 
-    // Vigila la ubicación SIN JavaScript: cada posición se manda directamente al servidor.
+    // El aviso al receptor es SIEMPRE el mismo (mismo intent): así se puede quitar aunque este servicio sea una instancia nueva, tras haber muerto el proceso.
+    private PendingIntent nativePendingIntent() {
+        Intent receiverIntent = new Intent(RECEIVER_ACTION).setClassName(getPackageName(), RECEIVER_CLASS);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        // Play Services rellena la posición dentro del propio intent: tiene que ser mutable (Android 12+).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags |= PendingIntent.FLAG_MUTABLE;
+        }
+        return PendingIntent.getBroadcast(this, 0, receiverIntent, flags);
+    }
+
+    // Quita el aviso al receptor registrado en Play Services, lo haya registrado esta instancia del servicio o una anterior (proceso muerto y vuelto a abrir).
+    private void removeNativeRegistration() {
+        try {
+            LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(nativePendingIntent());
+        } catch (Exception e) {
+            diag("error al quitar el aviso al receptor: " + e.getClass().getSimpleName());
+        }
+    }
+
+    // Vigila la ubicación SIN JavaScript: Play Services entrega cada posición al receptor por un PendingIntent (sobrevive a que Android mate el proceso).
     private void startNativeWatcher() {
         removeWatcherById(NATIVE_WATCHER_ID);
         float distanceFilter = prefs().getFloat(KEY_DISTANCE, 25f);
@@ -211,129 +264,32 @@ public class BackgroundGeolocationService extends Service {
         locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
         locationRequest.setSmallestDisplacement(distanceFilter);
 
-        LocationCallback callback = new LocationCallback() {
-            @Override
-            public void onLocationResult(LocationResult locationResult) {
-                uploadLocation(locationResult.getLastLocation());
-            }
-        };
+        PendingIntent pendingIntent = nativePendingIntent();
 
         Watcher watcher = new Watcher();
         watcher.id = NATIVE_WATCHER_ID;
         watcher.client = client;
         watcher.locationRequest = locationRequest;
-        watcher.locationCallback = callback;
+        watcher.pendingIntent = pendingIntent;
         watcher.backgroundNotification = buildNativeNotification();
         watchers.add(watcher);
 
         try {
-            client.requestLocationUpdates(locationRequest, callback, Looper.getMainLooper());
+            client.requestLocationUpdates(locationRequest, pendingIntent);
+            diag("envío nativo registrado (aviso al receptor)");
         } catch (SecurityException e) {
             Logger.error("Sin permiso de ubicación para el envío nativo", e);
+            diag("SIN PERMISO de ubicación para el envío nativo");
+        } catch (Exception e) {
+            diag("no se pudo registrar el envío nativo: " + e.getClass().getSimpleName() + " " + e.getMessage());
         }
         try {
             startForeground(NOTIFICATION_ID, watcher.backgroundNotification);
         } catch (Exception exception) {
             Logger.error("Failed to foreground service", exception);
+            // Android 12+ no deja poner en primer plano un servicio reiniciado desde segundo plano: no es grave, el aviso al receptor sigue.
+            diag("no se pudo pasar a primer plano: " + exception.getClass().getSimpleName() + " " + exception.getMessage());
         }
-    }
-
-    private void uploadLocation(final Location location) {
-        if (location == null) {
-            return;
-        }
-        long now = System.currentTimeMillis();
-        if (now - lastUploadAt < MIN_UPLOAD_GAP_MS) {
-            return;
-        }
-        if (location.hasAccuracy() && location.getAccuracy() > MAX_ACCURACY_M) {
-            return;
-        }
-        lastUploadAt = now;
-        SharedPreferences p = prefs();
-        final String url = p.getString(KEY_URL, null);
-        final String apikey = p.getString(KEY_APIKEY, null);
-        final String token = p.getString(KEY_TOKEN, null);
-        if (url == null || apikey == null || token == null) {
-            return;
-        }
-        final double latitude = location.getLatitude();
-        final double longitude = location.getLongitude();
-        final long time = location.getTime();
-        try {
-            uploader.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        SimpleDateFormat iso = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
-                        iso.setTimeZone(TimeZone.getTimeZone("UTC"));
-                        JSONObject body = new JSONObject();
-                        body.put("p_token", token);
-                        body.put("p_latitude", latitude);
-                        body.put("p_longitude", longitude);
-                        body.put("p_recorded_at", iso.format(new Date(time > 0 ? time : System.currentTimeMillis())));
-                        String answer = post(url + "/rest/v1/rpc/report_device_location", apikey, body.toString());
-                        // «off» = esa persona ya no comparte; «revoked» = llave anulada: no tiene sentido seguir.
-                        if (answer.contains("\"off\"") || answer.contains("\"revoked\"")) {
-                            mainHandler.post(new Runnable() {
-                                @Override
-                                public void run() {
-                                    stopNativeTracking();
-                                }
-                            });
-                        }
-                    } catch (Exception e) {
-                        // Sin red o servidor caído: se pierde esta posición, llegará la siguiente.
-                        Logger.debug("Envío nativo de ubicación fallido: " + e.getMessage());
-                    }
-                }
-            });
-        } catch (Exception ignored) {
-            // El servicio se está apagando.
-        }
-    }
-
-    private String post(String urlString, String apikey, String json) throws Exception {
-        HttpURLConnection connection = (HttpURLConnection) new URL(urlString).openConnection();
-        try {
-            connection.setRequestMethod("POST");
-            connection.setConnectTimeout(15000);
-            connection.setReadTimeout(15000);
-            connection.setDoOutput(true);
-            connection.setRequestProperty("Content-Type", "application/json");
-            connection.setRequestProperty("apikey", apikey);
-            if (apikey.startsWith("eyJ")) {
-                // Las claves antiguas son un JWT y también van en Authorization; las nuevas (sb_publishable_…) solo en apikey.
-                connection.setRequestProperty("Authorization", "Bearer " + apikey);
-            }
-            byte[] bytes = json.getBytes("UTF-8");
-            connection.setFixedLengthStreamingMode(bytes.length);
-            OutputStream out = connection.getOutputStream();
-            out.write(bytes);
-            out.close();
-            int code = connection.getResponseCode();
-            InputStream in = code >= 400 ? connection.getErrorStream() : connection.getInputStream();
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            if (in != null) {
-                byte[] chunk = new byte[1024];
-                int n;
-                while ((n = in.read(chunk)) > 0) {
-                    buffer.write(chunk, 0, n);
-                }
-                in.close();
-            }
-            return buffer.toString("UTF-8");
-        } finally {
-            connection.disconnect();
-        }
-    }
-
-    // El servidor ha dicho que hay que dejar de compartir: se borra la configuración y se apaga todo.
-    private void stopNativeTracking() {
-        prefs().edit().clear().apply();
-        removeWatcherById(NATIVE_WATCHER_ID);
-        stopForeground(true);
-        stopSelf();
     }
 
     // Handles requests from the activity.
@@ -419,7 +375,7 @@ public class BackgroundGeolocationService extends Service {
         void removeWatcher(String id) {
             for (Watcher watcher : watchers) {
                 if (watcher.id.equals(id)) {
-                    watcher.client.removeLocationUpdates(watcher.locationCallback);
+                    removeUpdates(watcher);
                     watchers.remove(watcher);
                     if (getNotification() == null) {
                         stopForeground(true);
@@ -433,6 +389,11 @@ public class BackgroundGeolocationService extends Service {
             // If permissions were granted while the app was in the background, for example in
             // the Settings app, the watchers need restarting.
             for (Watcher watcher : watchers) {
+                if (watcher.pendingIntent != null) {
+                    watcher.client.removeLocationUpdates(watcher.pendingIntent);
+                    watcher.client.requestLocationUpdates(watcher.locationRequest, watcher.pendingIntent);
+                    continue;
+                }
                 watcher.client.removeLocationUpdates(watcher.locationCallback);
                 watcher.client.requestLocationUpdates(
                         watcher.locationRequest,
@@ -446,6 +407,7 @@ public class BackgroundGeolocationService extends Service {
         // ninguno con notificación, se quita la notificación fija.
         void nativeUploadCleared() {
             removeWatcherById(NATIVE_WATCHER_ID);
+            removeNativeRegistration();
             if (getNotification() == null) {
                 stopForeground(true);
             }

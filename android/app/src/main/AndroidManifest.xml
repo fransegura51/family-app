@@ -36,6 +36,11 @@
             </intent-filter>
         </activity>
 
+        <!-- Posiciones de la ubicación nativa con la app cerrada: Google Play Services lanza este receptor aunque Android haya matado el proceso (ver NativeLocationReceiver). -->
+        <receiver
+            android:name=".NativeLocationReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

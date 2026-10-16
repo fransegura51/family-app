@@ -11,7 +11,12 @@
 --  - Idempotente: la misma clave de importación (p_idempotency_key) devuelve lo ya hecho sin volver a crear nada (pulsaciones repetidas, reintentos de red).
 --    Las claves caducan a los 7 días y son de cada familia.
 --  - Solo se trabaja sobre la familia de quien llama (auth.uid()). Nunca se acepta un identificador de familia desde fuera.
---  - Nada de la lista de la compra: eso se suma y revisa en la app con el código de Compras de siempre (menuShoppingPlan.ts).
+--  - ELEMENTOS SENCILLOS (`simple: true` en la receta del menú: una pieza de fruta, pan tostado…): al importar una semana, un día o una comida/cena se APUNTAN en el
+--    menú de la familia como texto libre (menu_entries.free_text = título, sin receta) y NO crean ninguna receta de Cocina. Respetan 'skip' / 'replace' / 'append' y la
+--    idempotencia como cualquier otro plato. Guardar uno solo como receta (alcance 'recipe') se rechaza con NOT_A_RECIPE. En la vista previa salen como acción 'note'.
+--  - Campos opcionales de la receta (tip, freeze, time): al crear la receta de Cocina se añaden a `notes` (ver private.community_menu_clean_recipe).
+--  - Nada de la lista de la compra: eso se suma y revisa en la app con el código de Compras de siempre (menuShoppingPlan.ts); los ingredientes de los elementos sencillos
+--    llegan a Compras igual que los demás (la selección sale del menú oficial, no de las recetas creadas).
 --  - La importación solo LEE el menú oficial publicado; no envía nada de la familia a Comunidad.
 --
 -- Dónde está el menú: `community_posts.menu` de la publicación oficial de tipo `menu` (0270). ÚNICO punto que lee ese sitio: private.community_menu_of_post().
@@ -210,12 +215,18 @@ begin
            or jsonb_typeof(r -> 'title') is distinct from 'string'
            or char_length(btrim(r ->> 'title')) not between 1 and 140
            or jsonb_typeof(r -> 'ingredients') is distinct from 'array' or jsonb_array_length(r -> 'ingredients') > 80
-           or jsonb_typeof(r -> 'steps') is distinct from 'array' or jsonb_array_length(r -> 'steps') > 40
-           or (r ? 'tags' and jsonb_typeof(r -> 'tags') is distinct from 'array') then
+           or (r ? 'tags' and jsonb_typeof(r -> 'tags') is distinct from 'array')
+           -- Campos opcionales del contrato ampliado: `simple` booleano; los pasos solo pueden faltar en un elemento sencillo; tip texto; freeze y time objetos.
+           or (r ? 'simple' and jsonb_typeof(r -> 'simple') is distinct from 'boolean')
+           or (r ? 'steps' and jsonb_typeof(r -> 'steps') <> 'null' and (jsonb_typeof(r -> 'steps') is distinct from 'array' or jsonb_array_length(r -> 'steps') > 40))
+           or ((not r ? 'steps' or jsonb_typeof(r -> 'steps') = 'null') and coalesce(r ->> 'simple', 'false') <> 'true')
+           or (r ? 'tip' and jsonb_typeof(r -> 'tip') not in ('string', 'null'))
+           or (r ? 'freeze' and jsonb_typeof(r -> 'freeze') not in ('object', 'null'))
+           or (r ? 'time' and jsonb_typeof(r -> 'time') not in ('object', 'null')) then
           raise exception 'BAD_MENU' using errcode = 'P0001';
         end if;
         if exists (select 1 from jsonb_array_elements(r -> 'ingredients') x where jsonb_typeof(x) <> 'object' or jsonb_typeof(x -> 'name') is distinct from 'string')
-           or exists (select 1 from jsonb_array_elements(r -> 'steps') x where jsonb_typeof(x) <> 'string')
+           or exists (select 1 from jsonb_array_elements(case when jsonb_typeof(r -> 'steps') = 'array' then r -> 'steps' else '[]'::jsonb end) x where jsonb_typeof(x) <> 'string')
            or exists (select 1 from jsonb_array_elements(coalesce(r -> 'tags', '[]'::jsonb)) x where jsonb_typeof(x) <> 'string') then
           raise exception 'BAD_MENU' using errcode = 'P0001';
         end if;
@@ -279,6 +290,10 @@ begin
       if jsonb_array_length(v_recipes) = 0 then
         continue;
       end if;
+      -- Un elemento sencillo (fruta, pan tostado…) no es una receta de Cocina: no se puede guardar solo como receta.
+      if p_scope = 'recipe' and coalesce(v_recipes -> 0 -> 'recipe' ->> 'simple', 'false') = 'true' then
+        raise exception 'NOT_A_RECIPE' using errcode = 'P0001';
+      end if;
       v_out := v_out || jsonb_build_array(jsonb_build_object(
         'day', private.community_menu_day_name(v_d), 'day_index', v_d, 'meal', v_m,
         'title', left(btrim(coalesce(m ->> 'title', '')), 140), 'side', left(btrim(coalesce(m ->> 'side', '')), 140),
@@ -296,7 +311,10 @@ revoke execute on function private.community_menu_slots(jsonb, text, text, text,
 -- Una receta del menú lista para la Cocina: mismos arreglos que communityRecipeBridge.ts (publicRecipeToKitchenInput + createRecipe):
 --  - ingredientes: las comas se ven como espacios y «1,5» pasa a «1.5»; nombre ≤ 120, cantidad y unidad ≤ 30; cantidad o unidad vacía = null; sin nombre = se quita;
 --  - pasos: «1. …\n2. …» (una línea por paso, sin numeración repetida); etiquetas en minúsculas, sin repetir, ≤ 12 de ≤ 30 letras;
---  - raciones: las de la receta (o las del menú); si la familia cocina para otro número, se escalan las cantidades y se guardan sus raciones.
+--  - raciones: las de la receta (o las del menú); si la familia cocina para otro número, se escalan las cantidades y se guardan sus raciones;
+--  - `notes` = (1) si hay `time`: «Tiempo de trabajo: X min · Tiempo total: Y min»; (2) los pasos numerados; (3) si hay `tip`: «Truco de Pepa: …»; (4) si `freeze.ideal`
+--    es true: «❄️ Ideal para cocinar de más y congelar.» (+ « <nota>»). Cada bloque separado por una línea en blanco; los que no existen no se escriben. (La Cocina trata
+--    unas notas con esas líneas como texto libre al editarlas: no se pierde nada.) También devuelve `simple` (true = apunte sin receta: la importación no crea receta).
 create or replace function private.community_menu_clean_recipe(p_recipe jsonb, p_menu_servings numeric, p_target numeric)
 returns jsonb
 language plpgsql
@@ -316,6 +334,14 @@ declare
   v_step text;
   v_tags text[] := '{}';
   v_tag text;
+  v_simple boolean := coalesce(p_recipe ->> 'simple', 'false') = 'true';
+  v_steps_text text;
+  v_time text;
+  v_tip text;
+  v_freeze text;
+  v_note text;
+  v_a numeric;
+  v_b numeric;
 begin
   for v_ing in select value from jsonb_array_elements(p_recipe -> 'ingredients') loop
     v_name := left(btrim(regexp_replace(replace(coalesce(v_ing ->> 'name', ''), ',', ' '), '\s+', ' ', 'g')), 120);
@@ -330,7 +356,7 @@ begin
     v_unit := left(btrim(regexp_replace(replace(coalesce(v_scaled ->> 'unit', ''), ',', ' '), '\s+', ' ', 'g')), 30);
     v_ings := v_ings || jsonb_build_array(jsonb_build_object('name', v_name, 'quantity', nullif(v_qty, ''), 'unit', nullif(v_unit, '')));
   end loop;
-  for v_step in select value #>> '{}' from jsonb_array_elements(p_recipe -> 'steps') loop
+  for v_step in select value #>> '{}' from jsonb_array_elements(case when jsonb_typeof(p_recipe -> 'steps') = 'array' then p_recipe -> 'steps' else '[]'::jsonb end) loop
     v_step := btrim(regexp_replace(btrim(regexp_replace(v_step, '\s*\n\s*', ' ', 'g')), '^\d+[.)]\s*', ''));
     if v_step <> '' then
       v_steps := v_steps || left(v_step, 2000);
@@ -342,9 +368,29 @@ begin
       v_tags := v_tags || v_tag;
     end if;
   end loop;
+  v_steps_text := (select string_agg(i::text || '. ' || s, E'\n' order by i) from unnest(v_steps) with ordinality as t(s, i));
+  -- Tiempo de trabajo y tiempo total (solo si el dato es válido: enteros, total >= trabajo activo).
+  if jsonb_typeof(p_recipe -> 'time') = 'object' and jsonb_typeof(p_recipe -> 'time' -> 'active') = 'number' and jsonb_typeof(p_recipe -> 'time' -> 'total') = 'number' then
+    v_a := round((p_recipe -> 'time' ->> 'active')::numeric);
+    v_b := round((p_recipe -> 'time' ->> 'total')::numeric);
+    if v_a between 1 and 600 and v_b between 1 and 1440 and v_b >= v_a then
+      v_time := 'Tiempo de trabajo: ' || v_a::bigint || ' min · Tiempo total: ' || v_b::bigint || ' min';
+    end if;
+  end if;
+  -- Truco de Pepa.
+  if jsonb_typeof(p_recipe -> 'tip') = 'string' then
+    v_tip := left(btrim(regexp_replace(p_recipe ->> 'tip', '\s+', ' ', 'g')), 400);
+    v_tip := case when v_tip = '' then null else 'Truco de Pepa: ' || v_tip end;
+  end if;
+  -- Congelación: solo si la receta se marca como ideal.
+  if jsonb_typeof(p_recipe -> 'freeze') = 'object' and p_recipe -> 'freeze' -> 'ideal' = 'true'::jsonb then
+    v_note := case when jsonb_typeof(p_recipe -> 'freeze' -> 'note') = 'string' then left(btrim(regexp_replace(p_recipe -> 'freeze' ->> 'note', '\s+', ' ', 'g')), 300) else '' end;
+    v_freeze := '❄️ Ideal para cocinar de más y congelar.' || case when v_note <> '' then ' ' || v_note else '' end;
+  end if;
   return jsonb_build_object(
     'title', left(btrim(p_recipe ->> 'title'), 140),
-    'notes', (select string_agg(i::text || '. ' || s, E'\n' order by i) from unnest(v_steps) with ordinality as t(s, i)),
+    'simple', v_simple,
+    'notes', nullif(concat_ws(E'\n\n', nullif(v_time, ''), nullif(v_steps_text, ''), nullif(v_tip, ''), nullif(v_freeze, '')), ''),
     'tags', to_jsonb(v_tags),
     'servings', case when v_from is null then null else p_target end,
     'ingredients', v_ings);
@@ -415,6 +461,7 @@ declare
   v_new integer := 0;
   v_known integer := 0;
   v_busy integer := 0;
+  v_notes integer := 0;
 begin
   perform private.community_require_reader();
   perform private.community_require_participation_access();
@@ -446,6 +493,14 @@ begin
     v_recipes := '[]'::jsonb;
     for v_item in select value from jsonb_array_elements(v_slot -> 'recipes') loop
       v_clean := private.community_menu_clean_recipe(v_item -> 'recipe', v_menu_servings, p_servings);
+      -- Elemento sencillo: se apunta como texto en el menú, sin crear receta ni mirar las recetas de la familia (acción 'note' = «apunte sin receta»).
+      if (v_clean ->> 'simple')::boolean then
+        v_notes := v_notes + 1;
+        v_recipes := v_recipes || jsonb_build_array(jsonb_build_object(
+          'index', (v_item ->> 'idx')::integer, 'role', v_item ->> 'role', 'title', v_clean ->> 'title',
+          'ingredient_count', jsonb_array_length(v_clean -> 'ingredients'), 'existing_recipes', '[]'::jsonb, 'action', 'note'));
+        continue;
+      end if;
       v_norm := private.community_menu_norm(v_clean ->> 'title');
       -- Recetas de la familia con el mismo título; «es igual» si tienen los mismos ingredientes (por nombre) y los mismos pasos.
       select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'title', x.title, 'same_content', x.same) order by x.created_at, x.id), '[]'::jsonb)
@@ -483,7 +538,7 @@ begin
     'target_end', case when p_target_start is null then null else p_target_start + 6 end,
     'servings', p_servings, 'menu_servings', v_menu_servings, 'duplicate_recipes', p_duplicate_recipes,
     'slots', v_rows,
-    'summary', jsonb_build_object('slots', jsonb_array_length(v_rows), 'slots_busy', v_busy, 'recipes_new', v_new, 'recipes_known', v_known));
+    'summary', jsonb_build_object('slots', jsonb_array_length(v_rows), 'slots_busy', v_busy, 'recipes_new', v_new, 'recipes_known', v_known, 'notes', v_notes));
 end;
 $$;
 
@@ -520,6 +575,8 @@ declare
   v_listed jsonb := '[]'::jsonb;     -- recetas distintas de esta importación: {id, title, created}
   v_created integer := 0;
   v_reused integer := 0;
+  v_notes_created integer := 0;
+  v_ts timestamptz;                  -- created_at del último plato apuntado: cada plato nuevo lleva uno ESTRICTAMENTE posterior (orden estable aunque el reloj no avance)
   v_slots_done integer := 0;
   v_slots_skipped integer := 0;
   v_slots_replaced integer := 0;
@@ -582,6 +639,16 @@ begin
 
     for v_item in select value from jsonb_array_elements(v_slot -> 'recipes') loop
       v_clean := private.community_menu_clean_recipe(v_item -> 'recipe', v_menu_servings, p_servings);
+      -- Elemento sencillo: se apunta en el menú como texto libre (título) y NO crea receta. (Con alcance 'recipe' ya se rechazó con NOT_A_RECIPE al calcular los huecos.)
+      if (v_clean ->> 'simple')::boolean then
+        if v_date is not null then
+          v_ts := case when v_ts is null then clock_timestamp() else greatest(clock_timestamp(), v_ts + interval '1 microsecond') end;
+          insert into public.menu_entries (family_id, entry_date, meal_type, free_text, created_at) values (v_family, v_date, v_slot ->> 'meal', v_clean ->> 'title', v_ts);
+          v_entries := v_entries + 1;
+          v_notes_created := v_notes_created + 1;
+        end if;
+        continue;
+      end if;
       v_norm := private.community_menu_norm(v_clean ->> 'title');
       v_recipe_id := null;
       if v_map ? v_norm then
@@ -609,8 +676,9 @@ begin
       end if;
       -- Una receta suelta solo va a la Cocina: no se apunta en el menú.
       if v_date is not null then
-        -- created_at con el reloj real (no el de la transacción): así el plato principal queda SIEMPRE antes que el acompañamiento al leer el menú.
-        insert into public.menu_entries (family_id, entry_date, meal_type, recipe_id, created_at) values (v_family, v_date, v_slot ->> 'meal', v_recipe_id, clock_timestamp());
+        -- created_at con el reloj real (no el de la transacción) y siempre creciente: así el plato principal queda SIEMPRE antes que el acompañamiento al leer el menú.
+        v_ts := case when v_ts is null then clock_timestamp() else greatest(clock_timestamp(), v_ts + interval '1 microsecond') end;
+        insert into public.menu_entries (family_id, entry_date, meal_type, recipe_id, created_at) values (v_family, v_date, v_slot ->> 'meal', v_recipe_id, v_ts);
         v_entries := v_entries + 1;
       end if;
     end loop;
@@ -621,7 +689,7 @@ begin
     'ok', true, 'replayed', false, 'scope', p_scope, 'target_start', p_target_start,
     'target_end', case when p_target_start is null then null else p_target_start + 6 end,
     'servings', p_servings, 'on_conflict', p_on_conflict,
-    'recipes_created', v_created, 'recipes_reused', v_reused, 'recipes', v_listed,
+    'recipes_created', v_created, 'recipes_reused', v_reused, 'notes_created', v_notes_created, 'recipes', v_listed,
     'slots_imported', v_slots_done, 'slots_skipped', v_slots_skipped, 'slots_replaced', v_slots_replaced, 'slots_appended', v_slots_appended,
     'skipped', v_skipped_list, 'entries_created', v_entries, 'entries_removed', v_entries_removed);
 

@@ -6,17 +6,22 @@
       "day": "lunes",
       "meals": {
         "comida": {
-          "title": "Lentejas estofadas con verduras",
+          "title": "Lentejas estofadas con verduras y huevo duro",
           "side": "Fruta de temporada",
           "recipes": [
             {
-              "title": "Lentejas estofadas con verduras",
+              "title": "Lentejas estofadas con verduras y huevo duro",
               "servings": 4,
               "ingredients": [
                 {
                   "name": "lentejas",
                   "quantity": "320",
                   "unit": "g"
+                },
+                {
+                  "name": "huevo",
+                  "quantity": "4",
+                  "unit": "unidades"
                 },
                 {
                   "name": "cebolla",
@@ -65,24 +70,37 @@
                 }
               ],
               "steps": [
-                "Pica la cebolla, el pimiento y la zanahoria en dados pequeños y lamina los ajos. Lava las lentejas en un colador (las pardinas no necesitan remojo).",
+                "Pica la cebolla, el pimiento y la zanahoria en dados pequeños y lamina los ajos. Lava las lentejas en un colador y revísalas por si hubiera alguna piedrecita (las pardinas no necesitan remojo).",
                 "En una olla, calienta el aceite y sofríe la cebolla, el pimiento, la zanahoria y el ajo a fuego medio unos 8 minutos, hasta que estén blandos.",
                 "Aparta la olla del fuego, añade el pimentón y remueve 20 segundos (si se quema amarga). Vuelve al fuego e incorpora las lentejas y el laurel.",
                 "Cubre con agua fría hasta dos dedos por encima de las lentejas. Cuando hierva, baja el fuego y cuece tapado a fuego suave unos 20 minutos.",
-                "Añade la patata pelada y cortada en dados y la sal. Cuece 20 minutos más, hasta que las lentejas y la patata estén tiernas.",
-                "Retira el laurel y deja reposar 10 minutos antes de servir. Si te gusta más espeso, chafa un cucharón de lentejas contra la pared de la olla."
+                "Añade la patata pelada y cortada en dados y la sal. Cuece 20 minutos más, hasta que las lentejas y la patata estén tiernas; si se queda seco, añade un poco de agua caliente.",
+                "Mientras tanto, pon los huevos en un cazo con agua fría, llévalos a ebullición y cuécelos 10 minutos desde que hierva, hasta que clara y yema estén bien cuajadas. Pásalos por agua fría, pélalos y córtalos en cuartos.",
+                "Retira el laurel y deja reposar las lentejas 10 minutos. Sirve con el huevo duro por encima. Si te gusta más espeso, chafa un cucharón de lentejas contra la pared de la olla.",
+                "Alérgenos presentes: huevo. Guarda las sobras en la nevera antes de dos horas, tómalas en 3 días como máximo y recaliéntalas hasta que hiervan."
               ],
               "tags": [
                 "menú semanal",
                 "comida",
                 "plato principal",
                 "legumbres",
-                "cuchara"
-              ]
+                "cuchara",
+                "huevo"
+              ],
+              "tip": "Truco de Pepa: con lentejas cocidas de bote (unos 800 g ya escurridas) ahorras más de una hora y la receta queda en unos 30 minutos. Sofríe las verduras, añade la patata con 400 ml de agua y cuece 15 minutos; incorpora las lentejas aclaradas y cuece 5 minutos más. Los huevos se cuecen mientras tanto.",
+              "freeze": {
+                "ideal": true,
+                "note": "Congela las lentejas sin el huevo duro (se vuelve gomoso): cuécelo al servir. Deja enfriar el guiso en menos de dos horas, repártelo en raciones en tarros o bolsas aptas para congelar y guárdalo hasta 3 meses. Descongela en la nevera y recalienta hasta que hierva, una sola vez."
+              },
+              "time": {
+                "active": 25,
+                "total": 70
+              }
             },
             {
               "title": "Fruta de temporada",
               "servings": 4,
+              "simple": true,
               "ingredients": [
                 {
                   "name": "fruta de temporada",
@@ -90,9 +108,7 @@
                   "unit": "unidades"
                 }
               ],
-              "steps": [
-                "Lava la fruta. Pela y trocea la que lo necesite y sírvela fresca, a una pieza por persona."
-              ],
+              "steps": [],
               "tags": [
                 "menú semanal",
                 "acompañamiento",
@@ -104,7 +120,7 @@
         },
         "cena": {
           "title": "Crema de calabaza y zanahoria",
-          "side": "Tostadas con queso fresco y tomate",
+          "side": "Tostadas con queso fresco, tomate y albahaca fresca",
           "recipes": [
             {
               "title": "Crema de calabaza y zanahoria",
@@ -155,10 +171,19 @@
                 "verdura",
                 "cena ligera",
                 "crema"
-              ]
+              ],
+              "tip": "Truco de Pepa: la calabaza y la zanahoria ya peladas y troceadas, frescas en bolsa o congeladas, te ahorran la parte más pesada. Si son congeladas, no hace falta descongelarlas: añádelas directas a la olla y calcula unos 5 minutos más de cocción.",
+              "freeze": {
+                "ideal": true,
+                "note": "Cuando la crema esté fría (en menos de dos horas), repártela en raciones en tarros o bolsas aptas para congelar, dejando un dedo libre arriba, y guárdala hasta 3 meses. Descongela en la nevera y recalienta removiendo hasta que hierva, una sola vez."
+              },
+              "time": {
+                "active": 20,
+                "total": 40
+              }
             },
             {
-              "title": "Tostadas con queso fresco y tomate",
+              "title": "Tostadas con queso fresco, tomate y albahaca fresca",
               "servings": 4,
               "ingredients": [
                 {
@@ -177,6 +202,11 @@
                   "unit": "unidades"
                 },
                 {
+                  "name": "albahaca fresca",
+                  "quantity": "12",
+                  "unit": "hojas"
+                },
+                {
                   "name": "aceite de oliva",
                   "quantity": "1",
                   "unit": "cucharadas"
@@ -188,16 +218,22 @@
                 }
               ],
               "steps": [
-                "Tuesta las rebanadas de pan.",
-                "Unta o reparte el queso fresco sobre cada tostada y coloca encima rodajas finas de tomate.",
-                "Termina con un hilo de aceite y una pizca de sal."
+                "Lava los tomates y las hojas de albahaca y sécalos bien. Corta el tomate en rodajas finas.",
+                "Tuesta las rebanadas de pan integral.",
+                "Unta el queso fresco sobre cada tostada y coloca encima las rodajas de tomate.",
+                "Reparte las hojas de albahaca (enteras o rotas con la mano), un hilo de aceite y una pizca de sal. Sirve enseguida para que el pan no se reblandezca.",
+                "Alérgenos presentes: gluten (pan) y lácteos (queso fresco). Comprueba que el queso fresco esté elaborado con leche pasteurizada."
               ],
               "tags": [
                 "menú semanal",
                 "acompañamiento",
                 "sin cocinar",
                 "rápida"
-              ]
+              ],
+              "time": {
+                "active": 10,
+                "total": 10
+              }
             }
           ]
         }
@@ -207,11 +243,11 @@
       "day": "martes",
       "meals": {
         "comida": {
-          "title": "Arroz tres delicias",
-          "side": "Ensalada de tomate y pepino",
+          "title": "Arroz tres delicias con pollo y verduras",
+          "side": "",
           "recipes": [
             {
-              "title": "Arroz tres delicias",
+              "title": "Arroz tres delicias con pollo y verduras",
               "servings": 4,
               "ingredients": [
                 {
@@ -220,23 +256,23 @@
                   "unit": "g"
                 },
                 {
+                  "name": "pechuga de pollo",
+                  "quantity": "400",
+                  "unit": "g"
+                },
+                {
                   "name": "huevo",
                   "quantity": "3",
                   "unit": "unidades"
                 },
                 {
-                  "name": "jamón cocido",
-                  "quantity": "100",
-                  "unit": "g"
-                },
-                {
                   "name": "guisantes",
-                  "quantity": "100",
+                  "quantity": "150",
                   "unit": "g"
                 },
                 {
                   "name": "zanahoria",
-                  "quantity": "1",
+                  "quantity": "2",
                   "unit": "unidades"
                 },
                 {
@@ -252,74 +288,46 @@
               ],
               "steps": [
                 "Cuece el arroz en abundante agua con sal durante el tiempo que marque el paquete (unos 12 minutos). Escúrrelo, pásalo por agua fría y resérvalo.",
-                "Pela la zanahoria y córtala en dados muy pequeños. Cuécela 5 minutos con los guisantes (si son congelados, vale con descongelarlos) y escurre.",
+                "Pela la zanahoria y córtala en dados muy pequeños. Cuécela 5 minutos con los guisantes (congelados o de bote) y escurre.",
                 "Bate los huevos con una pizca de sal y haz una tortilla fina en una sartén con una cucharada de aceite, bien cuajada por los dos lados. Córtala en tiras.",
-                "Corta el jamón en dados. En una sartén grande, calienta el resto del aceite y saltea el jamón 1 minuto.",
-                "Añade la zanahoria y los guisantes y saltea 2 minutos. Incorpora el arroz y saltea a fuego fuerte 3-4 minutos, removiendo.",
-                "Mezcla con la tortilla en tiras, prueba y ajusta de sal. Sirve enseguida."
+                "Corta la pechuga en dados de 1-2 cm y sálala. En una sartén grande, calienta el resto del aceite y cocina el pollo a fuego medio-alto 6-8 minutos, removiendo, hasta que no quede nada rosado por dentro (corta un trozo grande para comprobarlo).",
+                "Añade la zanahoria y los guisantes y saltea 2 minutos. Incorpora el arroz y saltea a fuego fuerte 3-4 minutos, removiendo, hasta que esté bien caliente.",
+                "Mezcla con la tortilla en tiras, prueba y ajusta de sal. Sirve enseguida.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo. Si sobra arroz, enfríalo rápido, guárdalo en la nevera en menos de una hora, tómalo al día siguiente y recaliéntalo una sola vez, hasta que esté muy caliente.",
+                "Alérgenos presentes: huevo."
               ],
               "tags": [
                 "menú semanal",
                 "comida",
                 "plato principal",
                 "arroz",
+                "pollo",
                 "con niños"
-              ]
-            },
-            {
-              "title": "Ensalada de tomate y pepino",
-              "servings": 4,
-              "ingredients": [
-                {
-                  "name": "tomate",
-                  "quantity": "3",
-                  "unit": "unidades"
-                },
-                {
-                  "name": "pepino",
-                  "quantity": "1",
-                  "unit": "unidades"
-                },
-                {
-                  "name": "aceite de oliva",
-                  "quantity": "2",
-                  "unit": "cucharadas"
-                },
-                {
-                  "name": "vinagre",
-                  "quantity": "1",
-                  "unit": "cucharadas"
-                },
-                {
-                  "name": "sal",
-                  "quantity": "1",
-                  "unit": "pizca"
-                }
               ],
-              "steps": [
-                "Lava el tomate y el pepino. Corta el tomate en gajos y el pepino en rodajas finas (pélalo si a los peques no les gusta la piel).",
-                "Aliña con el aceite, el vinagre y la sal justo antes de servir."
-              ],
-              "tags": [
-                "menú semanal",
-                "acompañamiento",
-                "ensalada",
-                "sin cocinar"
-              ]
+              "tip": "Truco de Pepa para ahorrar tiempo. ¿No tienes tiempo de preparar el arroz? También puedes comprar arroz tres delicias congelado o arroz precocinado en vasitos que se calientan en el microondas en aproximadamente un minuto, según el producto. Añade el pollo y las verduras que necesites para completar el plato.",
+              "time": {
+                "active": 30,
+                "total": 40
+              }
             }
           ]
         },
         "cena": {
-          "title": "Salmón a la plancha",
-          "side": "Puré de patata",
+          "title": "Salmón con calabacín y limón",
+          "side": "",
           "recipes": [
             {
-              "title": "Salmón a la plancha",
+              "title": "Salmón con calabacín y limón",
               "servings": 4,
               "ingredients": [
                 {
                   "name": "lomos de salmón",
                   "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "calabacín",
+                  "quantity": "2",
                   "unit": "unidades"
                 },
                 {
@@ -329,7 +337,7 @@
                 },
                 {
                   "name": "aceite de oliva",
-                  "quantity": "1",
+                  "quantity": "2",
                   "unit": "cucharadas"
                 },
                 {
@@ -339,10 +347,12 @@
                 }
               ],
               "steps": [
-                "Saca el salmón de la nevera 10 minutos antes. Sécalo con papel de cocina y sálalo ligeramente.",
-                "Calienta una plancha o sartén con el aceite a fuego medio-alto. Cocina los lomos primero por el lado de la piel 4 minutos.",
-                "Dales la vuelta y cocina 2-3 minutos más, hasta que por dentro esté opaco y se separe en lascas (no debe quedar crudo).",
-                "Revisa con un tenedor que no queden espinas, sobre todo en los platos de los pequeños, y sirve con unas gotas de limón."
+                "Lava los calabacines y córtalos en rodajas de 1 cm. Exprime medio limón y corta el otro medio en gajos para servir.",
+                "En una sartén grande, calienta una cucharada de aceite a fuego medio-alto y saltea el calabacín 6-8 minutos, removiendo, hasta que esté tierno y con algo de color. Sálalo, pásalo a una fuente y mantenlo caliente.",
+                "Seca los lomos de salmón con papel de cocina y sálalos ligeramente. En la misma sartén, calienta el aceite restante a fuego medio-alto y cocina los lomos primero por el lado de la piel 4 minutos.",
+                "Dales la vuelta y cocina 2-3 minutos más, hasta que por dentro estén opacos y se separen en lascas (no debe quedar crudo, sobre todo en los platos de los pequeños).",
+                "Rocía el salmón con el zumo de limón, revisa con un tenedor que no queden espinas y sirve sobre el calabacín, con los gajos de limón.",
+                "Alérgenos presentes: pescado. Si sobra, guárdalo en la nevera en menos de dos horas y tómalo en 1 o 2 días."
               ],
               "tags": [
                 "menú semanal",
@@ -351,43 +361,12 @@
                 "pescado",
                 "cena ligera",
                 "rápida"
-              ]
-            },
-            {
-              "title": "Puré de patata",
-              "servings": 4,
-              "ingredients": [
-                {
-                  "name": "patata",
-                  "quantity": "600",
-                  "unit": "g"
-                },
-                {
-                  "name": "leche",
-                  "quantity": "100",
-                  "unit": "ml"
-                },
-                {
-                  "name": "mantequilla",
-                  "quantity": "20",
-                  "unit": "g"
-                },
-                {
-                  "name": "sal",
-                  "quantity": "1",
-                  "unit": "pizca"
-                }
               ],
-              "steps": [
-                "Pela las patatas y trocéalas. Cuécelas en agua con sal 20 minutos, hasta que un cuchillo las atraviese sin esfuerzo.",
-                "Escúrrelas y chafa con un tenedor o un pasapurés mientras estén calientes.",
-                "Añade la leche templada y la mantequilla y mezcla hasta que quede cremoso. Ajusta de sal."
-              ],
-              "tags": [
-                "menú semanal",
-                "acompañamiento",
-                "con niños"
-              ]
+              "tip": "Truco de Pepa: el salmón se vende congelado en lomos sueltos y puedes tenerlo en el congelador para usarlo cuando te convenga. Sigue las instrucciones del envase para descongelarlo (lo habitual es pasarlo a la nevera con antelación) o para cocinarlo directamente desde congelado, si el producto lo permite.",
+              "time": {
+                "active": 15,
+                "total": 20
+              }
             }
           ]
         }
@@ -397,11 +376,11 @@
       "day": "miércoles",
       "meals": {
         "comida": {
-          "title": "Merluza al horno con verduras",
-          "side": "Cuscús con pasas",
+          "title": "Merluza al horno con patatas y verduras",
+          "side": "",
           "recipes": [
             {
-              "title": "Merluza al horno con verduras",
+              "title": "Merluza al horno con patatas y verduras",
               "servings": 4,
               "ingredients": [
                 {
@@ -410,9 +389,9 @@
                   "unit": "unidades"
                 },
                 {
-                  "name": "calabacín",
-                  "quantity": "1",
-                  "unit": "unidades"
+                  "name": "patata",
+                  "quantity": "600",
+                  "unit": "g"
                 },
                 {
                   "name": "pimiento rojo",
@@ -430,8 +409,13 @@
                   "unit": "unidades"
                 },
                 {
+                  "name": "ajo",
+                  "quantity": "2",
+                  "unit": "dientes"
+                },
+                {
                   "name": "aceite de oliva",
-                  "quantity": "3",
+                  "quantity": "4",
                   "unit": "cucharadas"
                 },
                 {
@@ -441,11 +425,12 @@
                 }
               ],
               "steps": [
-                "Precalienta el horno a 200 ºC, con calor arriba y abajo.",
-                "Corta el calabacín, el pimiento, la cebolla y el tomate en rodajas o tiras finas y extiéndelos en una fuente con dos cucharadas de aceite y sal.",
-                "Hornea las verduras 15 minutos.",
-                "Sala los lomos de merluza, colócalos sobre las verduras y riega con la cucharada de aceite restante. Hornea 12-15 minutos más.",
-                "Está lista cuando la carne es blanca y opaca y se separa en lascas. Comprueba que no haya espinas antes de servir."
+                "Precalienta el horno a 200 ºC, con calor arriba y abajo. Pela las patatas, córtalas en rodajas de 1 cm y cuécelas en agua con sal 10-12 minutos, hasta que estén casi tiernas. Escúrrelas. (Si las cocinaste con antelación o usas patatas cocidas envasadas, sáltate este paso.)",
+                "Corta el pimiento y la cebolla en tiras finas y el tomate en rodajas, y lamina los ajos.",
+                "Extiende las patatas y las verduras con el ajo en una fuente grande, riégalas con tres cucharadas de aceite y añade sal. Hornea 20 minutos, removiendo a mitad de tiempo.",
+                "Sala los lomos de merluza, colócalos sobre las verduras y riégalos con la cucharada de aceite restante. Hornea 12-15 minutos más, según el grosor.",
+                "Está lista cuando la carne es blanca y opaca y se separa en lascas. Aunque compres lomos sin espinas, revisa con un tenedor antes de servir, sobre todo los platos de los pequeños.",
+                "Alérgenos presentes: pescado. Guarda las sobras en la nevera en menos de dos horas, tómalas en 1 o 2 días y recaliéntalas hasta que estén calientes por dentro."
               ],
               "tags": [
                 "menú semanal",
@@ -453,54 +438,28 @@
                 "plato principal",
                 "pescado",
                 "horno"
-              ]
-            },
-            {
-              "title": "Cuscús con pasas",
-              "servings": 4,
-              "ingredients": [
-                {
-                  "name": "cuscús",
-                  "quantity": "200",
-                  "unit": "g"
-                },
-                {
-                  "name": "pasas",
-                  "quantity": "30",
-                  "unit": "g"
-                },
-                {
-                  "name": "aceite de oliva",
-                  "quantity": "1",
-                  "unit": "cucharadas"
-                },
-                {
-                  "name": "sal",
-                  "quantity": "1",
-                  "unit": "pizca"
-                }
               ],
-              "steps": [
-                "Pon el cuscús en un bol con el aceite y la sal y remueve.",
-                "Cúbrelo con 250 ml de agua hirviendo, tapa y deja reposar 5 minutos.",
-                "Desgrana con un tenedor y mezcla las pasas. Para menores de 4 años, mejor sin pasas enteras (se pueden atragantar)."
-              ],
-              "tags": [
-                "menú semanal",
-                "acompañamiento",
-                "rápida"
-              ]
+              "tip": "Truco de Pepa: cuece las patatas con antelación (hasta 2 días antes), déjalas enfriar, guárdalas tapadas en la nevera y caliéntalas directamente en el horno con las verduras. También hay patatas cocidas envasadas, muy prácticas cuando vas con prisa: mira en la etiqueta si hay que escurrirlas.",
+              "time": {
+                "active": 25,
+                "total": 60
+              }
             }
           ]
         },
         "cena": {
-          "title": "Sopa de fideos con verduras",
-          "side": "Sándwich mixto a la plancha",
+          "title": "Sopa de verduras con fideos y pollo desmenuzado",
+          "side": "",
           "recipes": [
             {
-              "title": "Sopa de fideos con verduras",
+              "title": "Sopa de verduras con fideos y pollo desmenuzado",
               "servings": 4,
               "ingredients": [
+                {
+                  "name": "pechuga de pollo",
+                  "quantity": "300",
+                  "unit": "g"
+                },
                 {
                   "name": "fideos finos",
                   "quantity": "120",
@@ -517,8 +476,13 @@
                   "unit": "unidades"
                 },
                 {
+                  "name": "puerro",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
                   "name": "caldo de verduras",
-                  "quantity": "1000",
+                  "quantity": "1500",
                   "unit": "ml"
                 },
                 {
@@ -533,56 +497,28 @@
                 }
               ],
               "steps": [
-                "Pica la cebolla y la zanahoria en dados muy pequeños.",
-                "En una olla, rehoga la cebolla con el aceite 3 minutos y añade la zanahoria. Sofríe 2 minutos más.",
-                "Vierte el caldo y deja que hierva 10 minutos, hasta que la zanahoria esté tierna.",
-                "Añade los fideos y cuece el tiempo que indique el paquete (3-4 minutos). Ajusta de sal y sirve caliente."
+                "Pica la cebolla, el puerro bien lavado y la zanahoria pelada en dados muy pequeños.",
+                "En una olla, rehoga la cebolla y el puerro con el aceite 3 minutos y añade la zanahoria. Sofríe 2 minutos más.",
+                "Vierte el caldo, añade la pechuga entera con una pizca de sal y, cuando hierva, cuece a fuego suave 15 minutos, hasta que la zanahoria esté tierna y el pollo hecho por dentro (corta la parte más gruesa: debe ser blanca, sin nada rosado).",
+                "Saca la pechuga, déjala templar un par de minutos y desmenúzala con dos tenedores.",
+                "Devuelve el pollo a la olla, añade los fideos y cuece el tiempo que indique el paquete (3-4 minutos). Prueba, ajusta de sal y sirve caliente.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo. Alérgenos presentes: gluten (fideos).",
+                "Si sobra, guárdala en la nevera en menos de dos horas, tómala en 2 días y recaliéntala hasta que hierva; los fideos seguirán absorbiendo caldo."
               ],
               "tags": [
                 "menú semanal",
                 "cena",
                 "plato principal",
                 "sopa",
+                "pollo",
                 "cena ligera",
                 "con niños"
-              ]
-            },
-            {
-              "title": "Sándwich mixto a la plancha",
-              "servings": 4,
-              "ingredients": [
-                {
-                  "name": "pan de molde",
-                  "quantity": "8",
-                  "unit": "rebanadas"
-                },
-                {
-                  "name": "jamón cocido",
-                  "quantity": "100",
-                  "unit": "g"
-                },
-                {
-                  "name": "queso en lonchas",
-                  "quantity": "4",
-                  "unit": "lonchas"
-                },
-                {
-                  "name": "mantequilla",
-                  "quantity": "20",
-                  "unit": "g"
-                }
               ],
-              "steps": [
-                "Reparte el jamón y el queso sobre cuatro rebanadas y tápalas con las otras cuatro.",
-                "Unta la parte de fuera con un poco de mantequilla.",
-                "Dóralos en una sartén o plancha a fuego medio 2-3 minutos por lado, hasta que el queso se derrita. Córtalos en triángulos."
-              ],
-              "tags": [
-                "menú semanal",
-                "acompañamiento",
-                "con niños",
-                "rápida"
-              ]
+              "tip": "Truco de Pepa: si tienes pollo ya cocido (restos de otro día o pechuga cocida envasada), desmenúzalo y añádelo con los fideos: te ahorras los 15 minutos de cocción del pollo. Con caldo de verduras de brik, la cena queda lista en unos 25 minutos.",
+              "time": {
+                "active": 20,
+                "total": 40
+              }
             }
           ]
         }
@@ -592,11 +528,11 @@
       "day": "jueves",
       "meals": {
         "comida": {
-          "title": "Macarrones con tomate y pavo",
+          "title": "Macarrones con tomate, pavo y verduras",
           "side": "Zanahoria rallada con limón y maíz",
           "recipes": [
             {
-              "title": "Macarrones con tomate y pavo",
+              "title": "Macarrones con tomate, pavo y verduras",
               "servings": 4,
               "ingredients": [
                 {
@@ -620,13 +556,18 @@
                   "unit": "unidades"
                 },
                 {
+                  "name": "pimiento verde",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
                   "name": "ajo",
                   "quantity": "1",
                   "unit": "dientes"
                 },
                 {
                   "name": "tomate triturado",
-                  "quantity": "400",
+                  "quantity": "500",
                   "unit": "g"
                 },
                 {
@@ -651,20 +592,32 @@
                 }
               ],
               "steps": [
-                "Pica muy fina la cebolla y el ajo y ralla la zanahoria (así los peques no la ven).",
-                "En una sartén grande, calienta el aceite y sofríe la cebolla, el ajo y la zanahoria 6-7 minutos a fuego medio.",
+                "Pica muy fina la cebolla, el pimiento y el ajo y ralla la zanahoria (así los peques casi no las ven).",
+                "En una sartén grande, calienta el aceite y sofríe la cebolla, el pimiento, el ajo y la zanahoria 8 minutos a fuego medio, hasta que estén blandos.",
                 "Añade el pavo y cocínalo desmenuzándolo hasta que no quede nada rosado (unos 6 minutos).",
-                "Incorpora el tomate, el orégano y la sal y cuece a fuego suave 10 minutos.",
-                "Mientras, cuece los macarrones en agua con sal según el paquete. Escúrrelos y mézclalos con la salsa.",
-                "Sirve con el queso rallado por encima."
+                "Incorpora el tomate, el orégano y la sal y cuece a fuego suave 15 minutos, removiendo de vez en cuando.",
+                "Mientras, cuece los macarrones en agua con sal según el paquete (unos 10 minutos). Escúrrelos y mézclalos con la salsa.",
+                "Sirve con el queso rallado por encima.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pavo crudo. Alérgenos presentes: gluten (pasta) y lácteos (queso rallado).",
+                "Si sobra, guárdalo en la nevera en menos de dos horas, tómalo en 2 o 3 días y recaliéntalo hasta que esté muy caliente."
               ],
               "tags": [
                 "menú semanal",
                 "comida",
                 "plato principal",
                 "pasta",
+                "pavo",
                 "con niños"
-              ]
+              ],
+              "tip": "Truco de Pepa: la salsa se puede hacer el día antes (aguanta 2 o 3 días en la nevera) y el día que toca solo cueces la pasta, unos 10 minutos. Si vas con prisa, usa zanahoria ya rallada de bolsa o pásala por el rallador grueso.",
+              "freeze": {
+                "ideal": true,
+                "note": "Congela solo la salsa (con el pavo y las verduras), sin la pasta ni el queso: la pasta recalentada pierde la textura. Una vez fría, repártela en raciones en bolsas o tarros aptos y guárdala hasta 3 meses. Descongela en la nevera, recalienta hasta que hierva y mézclala con pasta recién cocida."
+              },
+              "time": {
+                "active": 25,
+                "total": 40
+              }
             },
             {
               "title": "Zanahoria rallada con limón y maíz",
@@ -705,26 +658,30 @@
                 "acompañamiento",
                 "ensalada",
                 "sin cocinar"
-              ]
+              ],
+              "time": {
+                "active": 5,
+                "total": 5
+              }
             }
           ]
         },
         "cena": {
-          "title": "Tortilla de patata",
-          "side": "Ensalada de lechuga y tomate",
+          "title": "Tortilla de calabacín",
+          "side": "Ensalada de tomate",
           "recipes": [
             {
-              "title": "Tortilla de patata",
+              "title": "Tortilla de calabacín",
               "servings": 4,
               "ingredients": [
                 {
-                  "name": "patata",
-                  "quantity": "500",
-                  "unit": "g"
-                },
-                {
                   "name": "huevo",
                   "quantity": "6",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "calabacín",
+                  "quantity": "2",
                   "unit": "unidades"
                 },
                 {
@@ -734,7 +691,7 @@
                 },
                 {
                   "name": "aceite de oliva",
-                  "quantity": "6",
+                  "quantity": "4",
                   "unit": "cucharadas"
                 },
                 {
@@ -744,32 +701,33 @@
                 }
               ],
               "steps": [
-                "Pela las patatas, córtalas en láminas finas y pica la cebolla en trozos pequeños.",
-                "En una sartén de unos 24 cm, calienta el aceite a fuego medio-bajo y cocina la patata y la cebolla con una pizca de sal unos 15-20 minutos, removiendo, hasta que estén tiernas sin dorarse.",
-                "Bate los huevos con una pizca de sal en un bol grande. Escurre la patata y la cebolla y mézclalas con el huevo.",
-                "Vuelve a poner un poco de aceite en la sartén, vierte la mezcla y cuaja a fuego medio 4-5 minutos.",
-                "Dale la vuelta con un plato y cuaja 3-4 minutos más. Debe quedar bien cuajada por dentro. Deja reposar 5 minutos antes de cortar."
+                "Lava los calabacines y córtalos en rodajas finas o en dados pequeños. Pica la cebolla en trozos pequeños.",
+                "En una sartén de unos 24 cm, calienta tres cucharadas de aceite a fuego medio-bajo y cocina el calabacín y la cebolla con una pizca de sal 12-15 minutos, removiendo, hasta que estén muy tiernos sin dorarse.",
+                "Bate los huevos con una pizca de sal en un bol grande. Escurre las verduras del exceso de aceite y mézclalas con el huevo.",
+                "Vuelve a poner la cucharada de aceite restante en la sartén, vierte la mezcla y cuaja a fuego medio 4-5 minutos.",
+                "Dale la vuelta con un plato y cuaja 3-4 minutos más. Debe quedar bien cuajada por dentro, sin partes líquidas. Deja reposar 5 minutos antes de cortar.",
+                "Alérgenos presentes: huevo. Si sobra, guárdala en la nevera en menos de dos horas y tómala en 2 días."
               ],
               "tags": [
                 "menú semanal",
                 "cena",
                 "plato principal",
                 "huevos",
-                "clásico"
-              ]
+                "verdura",
+                "cena ligera"
+              ],
+              "time": {
+                "active": 20,
+                "total": 40
+              }
             },
             {
-              "title": "Ensalada de lechuga y tomate",
+              "title": "Ensalada de tomate",
               "servings": 4,
               "ingredients": [
                 {
-                  "name": "lechuga",
-                  "quantity": "0.5",
-                  "unit": "unidades"
-                },
-                {
                   "name": "tomate",
-                  "quantity": "2",
+                  "quantity": "4",
                   "unit": "unidades"
                 },
                 {
@@ -789,15 +747,19 @@
                 }
               ],
               "steps": [
-                "Lava y trocea la lechuga. Corta el tomate en gajos.",
-                "Mezcla y aliña con el aceite, el vinagre y la sal justo antes de servir."
+                "Lava los tomates y córtalos en gajos o en rodajas.",
+                "Aliña con el aceite, el vinagre y la sal justo antes de servir."
               ],
               "tags": [
                 "menú semanal",
                 "acompañamiento",
                 "ensalada",
                 "sin cocinar"
-              ]
+              ],
+              "time": {
+                "active": 5,
+                "total": 5
+              }
             }
           ]
         }
@@ -807,11 +769,11 @@
       "day": "viernes",
       "meals": {
         "comida": {
-          "title": "Garbanzos con espinacas",
-          "side": "Pan integral tostado",
+          "title": "Garbanzos con espinacas y bacalao",
+          "side": "Fruta de temporada",
           "recipes": [
             {
-              "title": "Garbanzos con espinacas",
+              "title": "Garbanzos con espinacas y bacalao",
               "servings": 4,
               "ingredients": [
                 {
@@ -822,6 +784,11 @@
                 {
                   "name": "espinacas",
                   "quantity": "300",
+                  "unit": "g"
+                },
+                {
+                  "name": "bacalao desalado",
+                  "quantity": "400",
                   "unit": "g"
                 },
                 {
@@ -851,57 +818,65 @@
                 }
               ],
               "steps": [
-                "Pica la cebolla y lamina los ajos. Aclara los garbanzos cocidos (unos 600 g ya escurridos, de bote o cocidos en casa) bajo el grifo y escúrrelos.",
+                "Si has comprado bacalao salado seco, desálalo con antelación: ponlo en agua fría en la nevera, con la piel hacia arriba, y cambia el agua tres veces al día durante uno o dos días, según el grosor. Más cómodo: el bacalao ya desalado, que se vende refrigerado o congelado (descongélalo en la nevera, siguiendo las instrucciones del envase).",
+                "Quita la piel y las espinas del bacalao y córtalo en trozos de 2-3 cm; pasa los dedos por cada trozo para asegurarte de que no queda ninguna espina. Pica la cebolla y lamina los ajos. Aclara los garbanzos cocidos (unos 600 g ya escurridos, de bote o cocidos en casa) bajo el grifo y escúrrelos.",
                 "En una cazuela, calienta el aceite y sofríe la cebolla 6 minutos a fuego medio. Añade el ajo 1 minuto más.",
                 "Retira del fuego, añade el pimentón y remueve unos segundos. Vuelve al fuego e incorpora las espinacas (si son frescas, en tandas; si son congeladas, directas).",
-                "Cuando las espinacas se reduzcan, añade los garbanzos, 200 ml de agua y la sal.",
-                "Cuece a fuego suave 10 minutos. Chafa unos pocos garbanzos contra la cazuela para que ligue el caldo. Sirve caliente."
+                "Cuando las espinacas se reduzcan, añade los garbanzos y 200 ml de agua. Cuece a fuego suave 10 minutos y chafa unos pocos garbanzos contra la cazuela para que ligue el caldo.",
+                "Añade el bacalao, tapa y cuece 4-5 minutos más, hasta que esté opaco y se separe en lascas. Prueba antes de salar, porque el bacalao desalado aún puede llevar sal; ajusta de sal y sirve caliente.",
+                "Alérgenos presentes: pescado (bacalao). Para menores de 4 años, chafa los garbanzos. Guarda las sobras en la nevera en menos de dos horas, tómalas en 2 días y recaliéntalas hasta que hiervan."
               ],
               "tags": [
                 "menú semanal",
                 "comida",
                 "plato principal",
                 "legumbres",
+                "pescado",
                 "cuchara"
-              ]
+              ],
+              "tip": "Truco de Pepa: con garbanzos cocidos de bote y bacalao ya desalado (lo hay refrigerado y congelado, en lomos o en migas) te ahorras dos días de desalado y más de una hora de cocción. Si es congelado, descongélalo en la nevera, siguiendo las instrucciones del envase.",
+              "time": {
+                "active": 20,
+                "total": 35
+              }
             },
             {
-              "title": "Pan integral tostado",
+              "title": "Fruta de temporada",
               "servings": 4,
+              "simple": true,
               "ingredients": [
                 {
-                  "name": "pan integral",
+                  "name": "fruta de temporada",
                   "quantity": "4",
-                  "unit": "rebanadas"
+                  "unit": "unidades"
                 }
               ],
-              "steps": [
-                "Tuesta las rebanadas y sírvelas calientes para mojar en los garbanzos."
-              ],
+              "steps": [],
               "tags": [
                 "menú semanal",
                 "acompañamiento",
-                "rápida"
+                "postre",
+                "sin cocinar"
               ]
             }
           ]
         },
         "cena": {
-          "title": "Pizzas rápidas en tortilla de trigo",
-          "side": "Bastones de zanahoria y pepino",
+          "title": "Pizzas pequeñas de tortilla de trigo con verduras y queso",
+          "side": "",
           "recipes": [
             {
-              "title": "Pizzas rápidas en tortilla de trigo",
+              "title": "Pizzas pequeñas de tortilla de trigo con verduras y queso",
               "servings": 4,
               "ingredients": [
                 {
                   "name": "tortillas de trigo",
-                  "quantity": "4",
+                  "quantity": "8",
                   "unit": "unidades"
                 },
                 {
                   "name": "tomate triturado",
-                  "quantity": "200",
+                  "quantity": "250",
                   "unit": "g"
                 },
                 {
@@ -913,6 +888,11 @@
                   "name": "champiñones",
                   "quantity": "150",
                   "unit": "g"
+                },
+                {
+                  "name": "pimiento rojo",
+                  "quantity": "1",
+                  "unit": "unidades"
                 },
                 {
                   "name": "orégano",
@@ -931,10 +911,11 @@
                 }
               ],
               "steps": [
-                "Precalienta el horno a 220 ºC y prepara una o dos bandejas con papel de horno.",
-                "Mezcla el tomate con el aceite, la sal y el orégano. Lamina los champiñones.",
-                "Coloca las tortillas en las bandejas, reparte el tomate por encima, luego el queso y por último los champiñones.",
-                "Hornea 6-8 minutos, hasta que el queso se derrita y los bordes estén dorados. Deja templar un minuto y corta en porciones."
+                "Precalienta el horno a 220 ºC y prepara dos bandejas con papel de horno.",
+                "Mezcla el tomate con el aceite, la sal y el orégano. Lamina los champiñones y corta el pimiento en tiras muy finas.",
+                "Coloca las tortillas pequeñas (de unos 20 cm) en las bandejas, reparte el tomate por encima, luego la mitad del queso, las verduras y el resto del queso.",
+                "Hornea 6-8 minutos, hasta que el queso se derrita y los bordes estén dorados. Deja templar un minuto y corta en porciones.",
+                "Alérgenos presentes: gluten (tortillas) y lácteos (queso). Si sobran, guárdalas en la nevera en menos de dos horas, tómalas en 1 o 2 días y recaliéntalas hasta que estén calientes por dentro."
               ],
               "tags": [
                 "menú semanal",
@@ -943,33 +924,11 @@
                 "con niños",
                 "horno",
                 "rápida"
-              ]
-            },
-            {
-              "title": "Bastones de zanahoria y pepino",
-              "servings": 4,
-              "ingredients": [
-                {
-                  "name": "zanahoria",
-                  "quantity": "2",
-                  "unit": "unidades"
-                },
-                {
-                  "name": "pepino",
-                  "quantity": "1",
-                  "unit": "unidades"
-                }
               ],
-              "steps": [
-                "Pela la zanahoria y el pepino y córtalos en bastones.",
-                "Para menores de 4 años, mejor rallar la zanahoria o cocerla un poco, porque cruda en trozos duros se puede atragantar."
-              ],
-              "tags": [
-                "menú semanal",
-                "acompañamiento",
-                "sin cocinar",
-                "con niños"
-              ]
+              "time": {
+                "active": 15,
+                "total": 25
+              }
             }
           ]
         }
@@ -980,7 +939,7 @@
       "meals": {
         "comida": {
           "title": "Hamburguesas caseras de ternera",
-          "side": "Gajos de patata al horno",
+          "side": "Patatas al horno y ensalada de lechuga y tomate",
           "recipes": [
             {
               "title": "Hamburguesas caseras de ternera",
@@ -1051,10 +1010,18 @@
                 "plato principal",
                 "carne",
                 "con niños"
-              ]
+              ],
+              "freeze": {
+                "ideal": true,
+                "note": "Congela las hamburguesas crudas, ya formadas y separadas con papel de horno, en una bolsa o recipiente cerrado (hasta 3 meses). Descongélalas en la nevera, nunca en la encimera, y cocínalas bien hechas, sin nada rosado dentro."
+              },
+              "time": {
+                "active": 20,
+                "total": 30
+              }
             },
             {
-              "title": "Gajos de patata al horno",
+              "title": "Patatas al horno",
               "servings": 4,
               "ingredients": [
                 {
@@ -1088,22 +1055,76 @@
                 "acompañamiento",
                 "horno",
                 "con niños"
-              ]
+              ],
+              "time": {
+                "active": 10,
+                "total": 50
+              }
+            },
+            {
+              "title": "Ensalada de lechuga y tomate",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lechuga",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "vinagre",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lava y trocea la lechuga. Corta el tomate en gajos.",
+                "Mezcla y aliña con el aceite, el vinagre y la sal justo antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar"
+              ],
+              "time": {
+                "active": 5,
+                "total": 5
+              }
             }
           ]
         },
         "cena": {
-          "title": "Quesadillas de pimiento y queso",
+          "title": "Quesadillas de pollo, pimiento y queso",
           "side": "Ensalada de lechuga y maíz",
           "recipes": [
             {
-              "title": "Quesadillas de pimiento y queso",
+              "title": "Quesadillas de pollo, pimiento y queso",
               "servings": 4,
               "ingredients": [
                 {
                   "name": "tortillas de trigo",
-                  "quantity": "4",
+                  "quantity": "8",
                   "unit": "unidades"
+                },
+                {
+                  "name": "pechuga de pollo",
+                  "quantity": "300",
+                  "unit": "g"
                 },
                 {
                   "name": "pimiento rojo",
@@ -1117,23 +1138,36 @@
                 },
                 {
                   "name": "aceite de oliva",
-                  "quantity": "1",
+                  "quantity": "2",
                   "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
                 }
               ],
               "steps": [
-                "Corta el pimiento en tiras finas y saltéalo con el aceite 5 minutos, hasta que esté blando. Resérvalo.",
-                "Calienta una sartén sin aceite. Pon una tortilla, reparte el queso sobre una mitad y añade el pimiento.",
+                "Corta la pechuga en dados de 1 cm y el pimiento en tiras finas. Sala el pollo.",
+                "En una sartén, calienta el aceite a fuego medio-alto y cocina el pollo 6-7 minutos, removiendo, hasta que no quede nada rosado (corta un trozo para comprobarlo). Añade el pimiento y cocina 5 minutos más, hasta que esté blando. Reserva el relleno.",
+                "Limpia la sartén y caliéntala sin aceite. Pon una tortilla pequeña (de unos 20 cm), reparte queso sobre una mitad y añade un poco de relleno.",
                 "Dobla la tortilla por la mitad y cocina 2 minutos por lado a fuego medio, hasta que esté dorada y el queso fundido.",
-                "Repite con las demás y corta cada quesadilla en triángulos."
+                "Repite con las demás y corta cada quesadilla en triángulos.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo. Alérgenos presentes: gluten (tortillas) y lácteos (queso)."
               ],
               "tags": [
                 "menú semanal",
                 "cena",
                 "plato principal",
+                "pollo",
                 "con niños",
                 "rápida"
-              ]
+              ],
+              "tip": "Truco de Pepa: el relleno de pollo y pimiento se puede hacer por la mañana o el día antes y guardar en la nevera, tapado, hasta 2 días. A la hora de cenar solo queda montar y dorar las quesadillas; el relleno debe calentarse bien dentro de la tortilla.",
+              "time": {
+                "active": 30,
+                "total": 40
+              }
             },
             {
               "title": "Ensalada de lechuga y maíz",
@@ -1174,7 +1208,11 @@
                 "acompañamiento",
                 "ensalada",
                 "sin cocinar"
-              ]
+              ],
+              "time": {
+                "active": 5,
+                "total": 5
+              }
             }
           ]
         }
@@ -1184,17 +1222,22 @@
       "day": "domingo",
       "meals": {
         "comida": {
-          "title": "Pollo asado con verduras",
+          "title": "Pollo asado con patatas y verduras",
           "side": "Ensalada de lechuga y manzana",
           "recipes": [
             {
-              "title": "Pollo asado con verduras",
+              "title": "Pollo asado con patatas y verduras",
               "servings": 4,
               "ingredients": [
                 {
                   "name": "muslos de pollo",
                   "quantity": "8",
                   "unit": "unidades"
+                },
+                {
+                  "name": "patata",
+                  "quantity": "800",
+                  "unit": "g"
                 },
                 {
                   "name": "zanahoria",
@@ -1228,7 +1271,7 @@
                 },
                 {
                   "name": "aceite de oliva",
-                  "quantity": "3",
+                  "quantity": "4",
                   "unit": "cucharadas"
                 },
                 {
@@ -1238,12 +1281,12 @@
                 }
               ],
               "steps": [
-                "Precalienta el horno a 200 ºC. Pela las zanahorias y córtalas en rodajas gruesas; corta las cebollas en gajos y el pimiento en tiras.",
-                "Extiende las verduras con los ajos sin pelar en una fuente grande y riega con la mitad del aceite.",
-                "Sala los muslos, mézclalos con el pimentón, el zumo de medio limón y el resto del aceite y colócalos sobre las verduras, con la piel hacia arriba.",
-                "Hornea 50-60 minutos, dándoles la vuelta a mitad de tiempo y regando con su jugo.",
-                "Está listo cuando el jugo sale claro y la carne junto al hueso no está rosada (74 ºC en el centro si tienes termómetro). Reposa 5 minutos y sirve con el limón restante.",
-                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo."
+                "Precalienta el horno a 200 ºC. Lava las patatas y córtalas en gajos gruesos; pela las zanahorias y córtalas en rodajas gruesas; corta las cebollas en gajos y el pimiento en tiras.",
+                "Extiende las patatas y las verduras con los ajos sin pelar en una fuente grande o en dos bandejas, para que no se amontonen, añade sal y riégalas con dos cucharadas de aceite.",
+                "Sala los muslos, mézclalos con el pimentón, el zumo de medio limón y el aceite restante y colócalos sobre las verduras, con la piel hacia arriba.",
+                "Hornea 55-60 minutos, dando la vuelta a las patatas y a los muslos a mitad de tiempo y regándolos con su jugo.",
+                "Está listo cuando el jugo sale claro, la carne junto al hueso no está rosada (74 ºC en el centro si tienes termómetro) y las patatas están tiernas. Reposa 5 minutos y sirve con el limón restante.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo. Si sobra, guarda el pollo y las verduras en la nevera en menos de dos horas, tómalos en 2 o 3 días y recaliéntalos hasta que estén calientes por dentro, una sola vez."
               ],
               "tags": [
                 "menú semanal",
@@ -1252,7 +1295,11 @@
                 "pollo",
                 "horno",
                 "domingo"
-              ]
+              ],
+              "time": {
+                "active": 20,
+                "total": 80
+              }
             },
             {
               "title": "Ensalada de lechuga y manzana",
@@ -1294,13 +1341,17 @@
                 "ensalada",
                 "sin cocinar",
                 "con niños"
-              ]
+              ],
+              "time": {
+                "active": 5,
+                "total": 5
+              }
             }
           ]
         },
         "cena": {
           "title": "Revuelto de champiñones y calabacín",
-          "side": "Tostadas con tomate",
+          "side": "Tostada integral",
           "recipes": [
             {
               "title": "Revuelto de champiñones y calabacín",
@@ -1350,37 +1401,24 @@
                 "verdura",
                 "cena ligera",
                 "rápida"
-              ]
+              ],
+              "time": {
+                "active": 15,
+                "total": 20
+              }
             },
             {
-              "title": "Tostadas con tomate",
+              "title": "Tostada integral",
               "servings": 4,
+              "simple": true,
               "ingredients": [
                 {
                   "name": "pan integral",
-                  "quantity": "8",
+                  "quantity": "4",
                   "unit": "rebanadas"
-                },
-                {
-                  "name": "tomate",
-                  "quantity": "2",
-                  "unit": "unidades"
-                },
-                {
-                  "name": "aceite de oliva",
-                  "quantity": "2",
-                  "unit": "cucharadas"
-                },
-                {
-                  "name": "sal",
-                  "quantity": "1",
-                  "unit": "pizca"
                 }
               ],
-              "steps": [
-                "Tuesta las rebanadas de pan.",
-                "Ralla el tomate (sin la piel) y repártelo sobre las tostadas. Termina con un hilo de aceite y una pizca de sal."
-              ],
+              "steps": [],
               "tags": [
                 "menú semanal",
                 "acompañamiento",

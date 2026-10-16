@@ -107,11 +107,24 @@ describe('detalle y revisión de calidad', () => {
   it('toMenuDetail resume el menú (sin pintar las recetas enteras) y trae los avisos', () => {
     const d = toMenuDetail(raw)!
     expect(d.body).toBe('Texto del menú')
-    expect(d.menu?.days[0].comida).toEqual({ title: 'Lentejas', side: 'Fruta', recipes: [{ title: 'Lentejas', servings: 4, ingredientCount: 2, stepCount: 1 }] })
+    expect(d.menu?.days[0].comida).toEqual({ title: 'Lentejas', side: 'Fruta', recipes: [{ title: 'Lentejas', servings: 4, ingredientCount: 2, stepCount: 1, simple: false }] })
     expect(d.menu?.days[0].cena?.side).toBeNull()
     expect(d.check).toHaveLength(2)
     expect(d.check[0]).toMatchObject({ severity: 'warning', day: 'lunes', meal: 'comida', recipe: 'Lentejas' })
     expect(d.check[1]).toMatchObject({ severity: 'error', day: null })
+  })
+  it('los elementos sencillos (sin pasos) se marcan en el resumen y los avisos de repetición y de tiempo llegan como avisos normales', () => {
+    const d = toMenuDetail({
+      ...raw,
+      check: [
+        { code: 'RECENT_REPEAT', severity: 'warning', message: 'El plato «Lentejas» ya estuvo en un menú reciente (semana del 12/10/2026).', day: 'lunes', meal: 'comida', recipe: 'Lentejas' },
+        { code: 'TIME_UNREALISTIC', severity: 'warning', message: 'El tiempo total indicado (400 min) supera las 6 horas.', day: 'lunes', meal: 'comida', recipe: 'Lentejas' },
+      ],
+      menu: { servings: 4, days: [{ day: 'lunes', meals: { comida: { title: 'Lentejas', recipes: [{ title: 'Lentejas', servings: 4, ingredients: [{}], steps: ['a'] }, { title: 'Fruta', servings: 4, ingredients: [{}], simple: true }] } } }] },
+    })!
+    expect(d.menu?.days[0].comida?.recipes.map((r) => [r.title, r.simple, r.stepCount])).toEqual([['Lentejas', false, 1], ['Fruta', true, 0]])
+    expect(d.check.map((c) => c.code)).toEqual(['RECENT_REPEAT', 'TIME_UNREALISTIC'])
+    expect(d.check.every((c) => c.severity === 'warning')).toBe(true)
   })
   it('sin id o sin menú no rompe', () => {
     expect(toMenuDetail({})).toBeNull()

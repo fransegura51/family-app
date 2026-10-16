@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { previewMenuImport, runMenuImport } from '@/data/communityMenu'
 import { communityErrorText } from '@/domain/communityErrors'
 import {
+  MENU_ERROR_MESSAGES,
   MENU_MAX_SERVINGS,
   MENU_MEALS,
   MENU_MIN_SERVINGS,
@@ -37,6 +38,8 @@ import '@/ui/community/menu/communityMenu.css'
 //   6. confirmar → una sola operación en el servidor, todo o nada, y el resultado en claro.
 // Pulsar dos veces o reintentar no duplica nada: cada confirmación lleva una clave de importación y el servidor devuelve lo ya hecho.
 // Solo se LEE el menú oficial: no se envía nada de tu familia a Comunidad.
+// Los acompañamientos SENCILLOS (fruta, pan tostado…) cuentan como «apunte sin receta»: se anotan en tu menú como texto y no crean ninguna receta; por eso no se pueden
+// guardar solos como receta (la opción «Una sola receta» los deja fuera).
 export interface MenuImportSheetProps {
   postId: string
   menu: CommunityMenu
@@ -96,7 +99,11 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
   const mealsOfDay = MENU_MEALS.filter((m) => dayData.meals[m.key])
   const mealEff: MenuMealKey = mealsOfDay.some((m) => m.key === meal) ? meal : (mealsOfDay[0]?.key ?? 'comida')
   const recipesOfMeal = dayData.meals[mealEff]?.recipes ?? []
-  const indexEff = Math.min(recipeIndex, Math.max(recipesOfMeal.length - 1, 0))
+  const indexRaw = Math.min(recipeIndex, Math.max(recipesOfMeal.length - 1, 0))
+  // Con «Una sola receta» solo se puede elegir una receta de verdad: si la elegida es un apunte sencillo se pasa a la primera receta de esa comida.
+  const firstSavable = recipesOfMeal.findIndex((r) => !r.simple)
+  const indexEff = scope === 'recipe' && recipesOfMeal[indexRaw]?.simple && firstSavable >= 0 ? firstSavable : indexRaw
+  const recipeIsSimple = scope === 'recipe' && !!recipesOfMeal[indexEff]?.simple
   const selection: MenuSelection = useMemo(
     () => ({ scope, day: dayData.day, meal: mealEff, recipeIndex: indexEff }),
     [scope, dayData.day, mealEff, indexEff],
@@ -119,6 +126,11 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
   // Vista previa: una llamada de solo lectura cada vez que cambian las opciones (con una pequeña espera para no pedir mientras se está tocando).
   useEffect(() => {
     if (phase !== 'edit') return
+    // Una comida que solo tiene apuntes sencillos no tiene ninguna receta que guardar sola: no se pide nada al servidor.
+    if (recipeIsSimple) {
+      setPreview({ status: 'error', message: MENU_ERROR_MESSAGES.NOT_A_RECIPE })
+      return
+    }
     let cancelled = false
     setPreview({ status: 'loading' })
     const timer = window.setTimeout(() => {
@@ -144,12 +156,13 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
   // Lo que se escribirá de verdad según lo elegido para los huecos ocupados.
   const writeSlots = data ? (onConflict === 'skip' ? data.slots.filter((s) => s.existing.length === 0) : data.slots) : []
   const dishCount = writeSlots.reduce((n, s) => n + s.recipes.length, 0)
+  const noteCount = writeSlots.reduce((n, s) => n + s.recipes.filter((r) => r.action === 'note').length, 0)
   const newRecipes = new Set(writeSlots.flatMap((s) => s.recipes.filter((r) => r.action === 'create').map((r) => normalizeKey(r.title)))).size
   const reusedRecipes = new Set(writeSlots.flatMap((s) => s.recipes.filter((r) => r.action === 'reuse').map((r) => normalizeKey(r.title)))).size
   const warnings = renderWarnings ? renderWarnings(selectRecipes(menu, selection)) : null
 
   const needsReplaceOk = onConflict === 'replace' && hasBusy
-  const canConfirm = phase === 'edit' && data !== null && (scope === 'recipe' ? data.slots.length > 0 : writeSlots.length > 0) && (!needsReplaceOk || confirmReplace)
+  const canConfirm = phase === 'edit' && !recipeIsSimple && data !== null && (scope === 'recipe' ? data.slots.length > 0 : writeSlots.length > 0) && (!needsReplaceOk || confirmReplace)
   const nothingToDo = data !== null && scope !== 'recipe' && onConflict === 'skip' && writeSlots.length === 0
 
   async function confirm() {
@@ -267,8 +280,9 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
                       Receta
                       <select value={indexEff} onChange={(e) => setRecipeIndex(Number(e.target.value))} disabled={phase === 'working'}>
                         {recipesOfMeal.map((r, i) => (
-                          <option key={i} value={i}>
+                          <option key={i} value={i} disabled={r.simple}>
                             {i === 0 ? 'Plato principal' : 'Acompañamiento'}: {r.title}
+                            {r.simple ? ' (apunte sencillo: no es una receta)' : ''}
                           </option>
                         ))}
                       </select>
@@ -324,7 +338,7 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
                         ? data.slots[0]?.recipes[0]?.action === 'reuse'
                           ? 'Ya tienes una receta con este nombre: no se creará otra, se usará la tuya.'
                           : 'Se guardará 1 receta nueva en tu Cocina.'
-                        : `${dishCount} ${dishCount === 1 ? 'plato' : 'platos'} en tu menú · ${newRecipes} ${newRecipes === 1 ? 'receta nueva' : 'recetas nuevas'}${reusedRecipes > 0 ? ` · ${reusedRecipes} que ya tienes` : ''}`}
+                        : `${dishCount} ${dishCount === 1 ? 'plato' : 'platos'} en tu menú · ${newRecipes} ${newRecipes === 1 ? 'receta nueva' : 'recetas nuevas'}${reusedRecipes > 0 ? ` · ${reusedRecipes} que ya tienes` : ''}${noteCount > 0 ? ` · ${noteCount} ${noteCount === 1 ? 'apunte sin receta' : 'apuntes sin receta'}` : ''}`}
                     </p>
                     {scope !== 'recipe' && (
                       <ul className="community-menu-slots">
@@ -427,6 +441,7 @@ export function MenuImportSheet({ postId, menu, initial, initialServings, render
 }
 
 function RecipeStatus({ recipe }: { recipe: PreviewSlot['recipes'][number] }) {
+  if (recipe.action === 'note') return <span className="community-menu-badge">Apunte sin receta: se anota en tu menú</span>
   if (recipe.action === 'reuse' && recipe.existingRecipes[0]) {
     return (
       <span className="community-menu-badge reuse">
@@ -456,6 +471,11 @@ function SlotRow({ slot, willSkip, conflict }: { slot: PreviewSlot; willSkip: bo
         </p>
       ) : (
         <p className="community-menu-slot-status">Libre: se apuntará.</p>
+      )}
+      {!willSkip && slot.recipes.some((r) => r.action === 'note') && (
+        <p className="community-menu-slot-status">
+          Apunte sin receta (no se crea ninguna receta): {slot.recipes.filter((r) => r.action === 'note').map((r) => `«${r.title}»`).join(', ')}.
+        </p>
       )}
       {!willSkip && slot.recipes.some((r) => r.existingRecipes.length > 0) && (
         <p className="community-menu-slot-status">

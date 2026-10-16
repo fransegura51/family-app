@@ -473,3 +473,59 @@
   justify-content: flex-start;
   padding: 0;
 }
+
+/* ---- Campos opcionales de la receta: tiempos, congelación, truco de Pepa y elementos sencillos (informativos y discretos) */
+.community-menu-time {
+  margin: 4px 0 0;
+}
+
+.community-menu-freeze {
+  margin: 6px 0 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #e8f3fa;
+  color: #0b3f5e;
+}
+
+.community-menu-freeze-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.community-menu-freeze > p + p {
+  margin: 2px 0 0;
+}
+
+/* En la tarjeta cerrada la insignia es solo una línea, sin caja. */
+p.community-menu-freeze {
+  background: none;
+  padding: 0;
+  font-weight: 600;
+}
+
+.community-menu-tip {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-left: 4px solid #e0a800;
+  border-radius: 8px;
+  background: #fff7dc;
+  color: #3d3000;
+}
+
+.community-menu-tip p {
+  margin: 0;
+}
+
+.community-menu-tip-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 2px !important;
+}
+
+.community-menu-recipe.simple {
+  background: #fafbfd;
+  border-radius: 8px;
+  padding-left: 8px;
+  padding-right: 8px;
+}

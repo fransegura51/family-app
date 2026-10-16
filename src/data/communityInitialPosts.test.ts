@@ -37,7 +37,7 @@ const TITLES: Record<string, string> = {
   '02': 'Plátanos muy maduros: no los tires',
   '03': 'Pelar ajos sin esfuerzo',
   '04': 'Tortilla francesa: mucho más que huevo batido',
-  '05': 'Menú semanal en familia',
+  '05': 'Menú semanal para personas con poco tiempo para cocinar \u{1F37D}️⏱️',
   '06': 'Más verdura sin que nadie se queje',
   '07': 'Caldo casero con restos de verduras',
   '08': 'Hierbas frescas que duran meses',
@@ -224,16 +224,379 @@ describe('decisiones editoriales concretas', () => {
   })
 })
 
-describe('menú semanal (publicación 05): contenido editorial, sin prometer funciones que no existen', () => {
-  it('existe, es de menus-planificacion y presenta siete comidas y siete cenas', () => {
-    const p = byNum(5)
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+// Publicación 05: «Menú semanal para personas con poco tiempo para cocinar». Revisión de la dueña del 16/10/2026 (ORDEN_REVISION_MENU_16-10.md):
+// título e introducción literales, los 7+7 platos acordados, acompañamientos sencillos sin pasos, consejos de ahorro de tiempo, congelación solo donde procede,
+// seguridad alimentaria y ningún plato sustituido.
+// ---------------------------------------------------------------------------------------------------------------------------------------------
+
+interface MenuIngredient {
+  name: string
+  quantity: string
+  unit: string
+}
+interface MenuRecipe {
+  title: string
+  servings: number
+  simple?: boolean
+  ingredients: MenuIngredient[]
+  steps: string[]
+  tags: string[]
+  tip?: string
+  freeze?: { ideal: boolean; note: string }
+  time?: { active: number; total: number }
+}
+interface MenuMeal {
+  title: string
+  side: string
+  recipes: MenuRecipe[]
+}
+interface Menu {
+  version: number
+  servings: number
+  days: { day: string; meals: { comida: MenuMeal; cena: MenuMeal } }[]
+}
+
+const payloadFile = join(dir, '05-menu-semanal.payload.json')
+const payloadText = readFileSync(payloadFile, 'utf8')
+const menu = JSON.parse(payloadText) as Menu
+const DAYS = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+const meals: { day: string; kind: 'comida' | 'cena'; meal: MenuMeal }[] = menu.days.flatMap((d) => (['comida', 'cena'] as const).map((kind) => ({ day: d.day, kind, meal: d.meals[kind] })))
+const allRecipes: MenuRecipe[] = meals.flatMap((m) => m.meal.recipes)
+const recipeByTitle = (title: string) => {
+  const r = allRecipes.filter((x) => x.title === title)
+  expect(r.length, title).toBeGreaterThan(0)
+  return r[0]
+}
+
+// Tabla definitiva de la dueña (orden §5): plato principal de cada comida y cena, y las recetas de cada plato (la primera es el principal).
+const TABLE: [string, 'comida' | 'cena', string, string[]][] = [
+  ['lunes', 'comida', 'Lentejas estofadas con verduras y huevo duro', ['Lentejas estofadas con verduras y huevo duro', 'Fruta de temporada']],
+  ['lunes', 'cena', 'Crema de calabaza y zanahoria', ['Crema de calabaza y zanahoria', 'Tostadas con queso fresco, tomate y albahaca fresca']],
+  ['martes', 'comida', 'Arroz tres delicias con pollo y verduras', ['Arroz tres delicias con pollo y verduras']],
+  ['martes', 'cena', 'Salmón con calabacín y limón', ['Salmón con calabacín y limón']],
+  ['miércoles', 'comida', 'Merluza al horno con patatas y verduras', ['Merluza al horno con patatas y verduras']],
+  ['miércoles', 'cena', 'Sopa de verduras con fideos y pollo desmenuzado', ['Sopa de verduras con fideos y pollo desmenuzado']],
+  ['jueves', 'comida', 'Macarrones con tomate, pavo y verduras', ['Macarrones con tomate, pavo y verduras', 'Zanahoria rallada con limón y maíz']],
+  ['jueves', 'cena', 'Tortilla de calabacín', ['Tortilla de calabacín', 'Ensalada de tomate']],
+  ['viernes', 'comida', 'Garbanzos con espinacas y bacalao', ['Garbanzos con espinacas y bacalao', 'Fruta de temporada']],
+  ['viernes', 'cena', 'Pizzas pequeñas de tortilla de trigo con verduras y queso', ['Pizzas pequeñas de tortilla de trigo con verduras y queso']],
+  ['sábado', 'comida', 'Hamburguesas caseras de ternera', ['Hamburguesas caseras de ternera', 'Patatas al horno', 'Ensalada de lechuga y tomate']],
+  ['sábado', 'cena', 'Quesadillas de pollo, pimiento y queso', ['Quesadillas de pollo, pimiento y queso', 'Ensalada de lechuga y maíz']],
+  ['domingo', 'comida', 'Pollo asado con patatas y verduras', ['Pollo asado con patatas y verduras', 'Ensalada de lechuga y manzana']],
+  ['domingo', 'cena', 'Revuelto de champiñones y calabacín', ['Revuelto de champiñones y calabacín', 'Tostada integral']],
+]
+const SIMPLE_TITLES = ['Fruta de temporada', 'Tostada integral']
+// Recetas del menú anterior que no cambian (solo se ajustan time / tip / freeze); el resto se ha reescrito o es nueva.
+const CONSERVED = ['Crema de calabaza y zanahoria', 'Zanahoria rallada con limón y maíz', 'Hamburguesas caseras de ternera', 'Patatas al horno', 'Ensalada de lechuga y tomate', 'Ensalada de lechuga y maíz', 'Ensalada de lechuga y manzana', 'Revuelto de champiñones y calabacín']
+// Congelación: solo estas (orden §7). Los garbanzos con bacalao NO se marcan: cuestión pendiente de decisión de la dueña.
+const FREEZE_TITLES = ['Lentejas estofadas con verduras y huevo duro', 'Crema de calabaza y zanahoria', 'Macarrones con tomate, pavo y verduras', 'Hamburguesas caseras de ternera']
+
+const INTRO = [
+  'Comer bien en casa no debería significar pasar horas entre fogones.',
+  'Entre el trabajo, los estudios, los recados, las tareas de casa y todo lo que surge durante el día, muchas veces llegamos a la hora de comer sin tiempo ni ganas de complicarnos.',
+  'Por eso, todos los sábados Pepa te propondrá para la siguiente semana 7 comidas y 7 cenas fáciles, variadas y pensadas para la vida real.',
+  'Encontrarás platos que se preparan rápidamente, recetas que puedes dejar hechas con antelación y pequeños trucos para ahorrar tiempo: desde utilizar verduras congeladas hasta recurrir a ingredientes precocinados cuando te venga mejor.',
+  'Además, señalaremos las recetas que son ideales para cocinar más cantidad y congelar, porque preparar una buena olla de lentejas hoy también puede solucionarte la comida de otro día.',
+  'Y recuerda: tú decides cómo organizarte. Puedes importar el menú completo a tu Cocina, elegir solo algunos platos, ajustar las raciones y seleccionar qué ingredientes necesitas añadir a la lista de la compra.',
+  'Pepa te da las ideas. Tú las adaptas a tu ritmo y a tu forma de vivir. ❤️',
+]
+// Platos y detalles del menú anterior que ya no están (no deben quedar en el texto, los datos ni los documentos de la semilla).
+const REPLACED: [string, RegExp][] = [
+  ['jamón cocido', /jam[oó]n/i],
+  ['puré de patata', /pur[eé] de patata/i],
+  ['cuscús', /cusc[uú]s/i],
+  ['pasas', /\bpasas\b/i],
+  ['sándwich mixto', /s[aá]ndwich/i],
+  ['pan de molde', /pan de molde/i],
+  ['bastones', /bastones/i],
+  ['pan integral tostado como receta', /pan integral tostado/i],
+  ['tortilla de patata', /tortilla de patata/i],
+  ['pizzas rápidas', /pizzas r[aá]pidas/i],
+  ['salmón a la plancha', /salm[oó]n a la plancha/i],
+  ['sopa de fideos con verduras (la antigua)', /sopa de fideos con verduras/i],
+  ['gajos de patata', /gajos de patata/i],
+  ['ensalada de tomate y pepino', /tomate y pepino/i],
+  ['tostadas con tomate (sin queso)', /tostadas con tomate/i],
+  ['macarrones con tomate y pavo (sin verduras)', /macarrones con tomate y pavo/i],
+  ['quesadillas sin pollo', /quesadillas de pimiento y queso/i],
+  ['pollo asado sin patatas', /pollo asado con verduras/i],
+  ['merluza sin patatas', /merluza al horno con verduras/i],
+  ['garbanzos sin bacalao', /garbanzos con espinacas(?! y bacalao)/i],
+  ['lentejas sin huevo', /lentejas estofadas con verduras(?! y huevo)/i],
+  ['"28 recetas"', /28 recetas/i],
+]
+
+const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+const STOP = new Set(['del', 'las', 'los', 'con', 'sin', 'para', 'por', 'una', 'uno', 'unos', 'unas', 'que'])
+// ¿Se menciona el ingrediente en los pasos? Mismo criterio que el aviso INGREDIENT_NOT_IN_STEPS del servidor, pero por palabras enteras (la «sal» no vale por «salteado»).
+function mentioned(ingredient: string, steps: string[]): boolean {
+  const words = norm(steps.join(' ')).split(/[^a-z0-9]+/).filter(Boolean)
+  const tokens = norm(ingredient).split(/[^a-z0-9]+/).filter((t) => t.length >= 3 && !STOP.has(t))
+  return tokens.some((t) => {
+    if (t === 'sal') return words.some((w) => /^sal(a|alo|alos|ala|alas|ar|ada|ado|ados|adas)?$/.test(w))
+    const stem = t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t
+    return words.some((w) => w.startsWith(stem))
+  })
+}
+
+describe('menú semanal (publicación 05): texto', () => {
+  const p = byNum(5)
+
+  it('lleva el título exacto de la dueña y las claves de siempre', () => {
+    expect(p.title).toBe('Menú semanal para personas con poco tiempo para cocinar \u{1F37D}️⏱️')
+    expect(p.key).toBe('inicial-05-menu-semanal')
+    expect(p.section).toBe('recetas')
     expect(p.topic).toBe('menus-planificacion')
-    for (const d of ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']) expect(p.body.toLowerCase()).toContain(d)
-    expect((p.body.match(/comida/gi) ?? []).length).toBeGreaterThanOrEqual(7)
-    expect((p.body.match(/cena/gi) ?? []).length).toBeGreaterThanOrEqual(7)
   })
 
-  it('no afirma que ya se pueda importar o guardar en Cocina (todavía no existe)', () => {
-    expect(byNum(5).body.toLowerCase()).not.toMatch(/importa(r|d) (el )?men|guarda(r)? (la receta )?en (tu )?cocina|añade(n)? (los )?ingredientes a (tu )?(lista|compras)/)
+  it('empieza por la introducción literal de la orden, sin cambiar una coma', () => {
+    expect(p.body.startsWith(INTRO.join('\n\n') + '\n\n')).toBe(true)
+  })
+
+  it('tiene los siete días, las siete comidas y las siete cenas con los platos definitivos', () => {
+    const lower = p.body.toLowerCase()
+    for (const d of DAYS) expect(p.body).toContain(`**${d.charAt(0).toUpperCase()}${d.slice(1)}**`)
+    for (const [, kind, dish] of TABLE) expect(lower, dish).toContain(`${kind}: ${dish.charAt(0).toLowerCase()}${dish.slice(1)}`)
+    expect((p.body.match(/^- \*\*Comida:/gm) ?? []).length).toBe(7)
+    expect((p.body.match(/^- \*\*Cena:/gm) ?? []).length).toBe(7)
+  })
+
+  it('incluye trucos para ahorrar tiempo, la sección de congelación solo con las recetas marcadas, seguridad y pregunta final', () => {
+    expect(p.body).toContain('**Trucos para ahorrar tiempo**')
+    expect(p.body).toContain('**❄️ Ideal para cocinar de más y congelar**')
+    expect(p.body).toContain('**Seguridad en la cocina**')
+    const freezeSection = p.body.split('**❄️ Ideal para cocinar de más y congelar**')[1].split('**Seguridad en la cocina**')[0]
+    const bullets = freezeSection.split('\n').filter((l) => l.startsWith('- '))
+    expect(bullets).toHaveLength(4)
+    for (const w of ['Lentejas', 'Crema de calabaza', 'Salsa de los macarrones', 'Hamburguesas']) expect(freezeSection).toContain(w)
+    for (const w of ['garbanzos', 'bacalao', 'salmón:']) expect(bullets.join('\n').toLowerCase()).not.toContain(w)
+    expect(p.body.trim().endsWith('?  👇') || p.body.trim().endsWith('? 👇')).toBe(true)
+  })
+
+  it('cumple las reglas de Comunidad: sin enlaces, sin títulos ni tablas, máximo 10.000 caracteres', () => {
+    expect(p.body.length).toBeLessThanOrEqual(10000)
+    expect(p.body).not.toMatch(/https?:\/\//)
+    expect(p.body).not.toMatch(/^#{1,6}\s/m)
+    expect(p.body).not.toMatch(/^\s*\|.*\|\s*$/m)
+  })
+
+  it('no afirma que el menú esté validado nutricionalmente ni da consejos médicos', () => {
+    expect(p.body).not.toMatch(/validad[oa]s? (nutricional|por (un |una )?(nutri|dietista|m[eé]dic))|nutricionalmente (validad|aprobad|equilibrad)|aprobad[oa] por (nutri|dietista|m[eé]dic)|avalad/i)
+    expect(p.body).toMatch(/no una dieta ni un plan nutricional/i)
+  })
+
+  it('no menciona platos sustituidos', () => {
+    for (const [name, re] of REPLACED) expect(p.body, name).not.toMatch(re)
+  })
+
+  it('el tiempo de cada plato del texto coincide con el de su receta', () => {
+    for (const [, kind, dish, recipes] of TABLE) {
+      const r = recipeByTitle(recipes[0])
+      expect(r.time, dish).toBeTruthy()
+      const line = p.body.split('\n').find((l) => l.toLowerCase().startsWith(`- **${kind}: ${dish.charAt(0).toLowerCase()}${dish.slice(1)}`.toLowerCase()))
+      expect(line, dish).toBeTruthy()
+      expect(line, dish).toContain(`${r.time!.active} min de trabajo, ${r.time!.total} en total`)
+    }
+  })
+
+  it('la semilla SQL generada lleva este título y estos datos (se regenera con scripts/build-community-seed.mjs)', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/seed/community_seed_proposals.sql'), 'utf8').replace(/\r\n/g, '\n')
+    expect(sql).toContain(p.title)
+    expect(sql).toContain(JSON.stringify({ menu }))
+  })
+})
+
+describe('menú semanal (publicación 05): datos del menú (payload)', () => {
+  it('versión 1, 4 raciones, 7 días de lunes a domingo y comida y cena con título, acompañamiento y de 1 a 6 recetas', () => {
+    expect(menu.version).toBe(1)
+    expect(menu.servings).toBe(4)
+    expect(menu.days.map((d) => d.day)).toEqual(DAYS)
+    expect(meals).toHaveLength(14)
+    for (const m of meals) {
+      expect(typeof m.meal.title, `${m.day} ${m.kind}`).toBe('string')
+      expect(m.meal.title.length).toBeGreaterThan(0)
+      expect(typeof m.meal.side).toBe('string')
+      expect(m.meal.side.length).toBeLessThanOrEqual(120)
+      expect(m.meal.recipes.length).toBeGreaterThanOrEqual(1)
+      expect(m.meal.recipes.length).toBeLessThanOrEqual(6)
+    }
+  })
+
+  it('los 14 platos son exactamente los de la tabla de la dueña, con sus acompañamientos', () => {
+    expect(meals.map((m) => [m.day, m.kind, m.meal.title, m.meal.recipes.map((r) => r.title)])).toEqual(TABLE)
+    for (const m of meals) expect(m.meal.recipes[0].title, `${m.day} ${m.kind}`).toBe(m.meal.title)
+  })
+
+  it('no queda ningún plato sustituido en los datos', () => {
+    for (const [name, re] of REPLACED) expect(payloadText, name).not.toMatch(re)
+  })
+
+  it('cumple las reglas del servidor: un plato no se repite más de 2 veces, comida y cena distintas, ingredientes sin repetir y límites de longitud', () => {
+    const count = new Map<string, number>()
+    for (const m of meals) count.set(norm(m.meal.title), (count.get(norm(m.meal.title)) ?? 0) + 1)
+    for (const [t, n] of count) expect(n, t).toBeLessThanOrEqual(2)
+    for (const d of menu.days) {
+      expect(norm(d.meals.comida.title)).not.toBe(norm(d.meals.cena.title))
+      expect(norm(d.meals.comida.recipes[0].ingredients[0].name), d.day).not.toBe(norm(d.meals.cena.recipes[0].ingredients[0].name))
+    }
+    for (const r of allRecipes) {
+      expect(r.title.length, r.title).toBeLessThanOrEqual(120)
+      expect(Number.isInteger(r.servings) && r.servings === 4, r.title).toBe(true)
+      expect(r.ingredients.length, r.title).toBeGreaterThanOrEqual(1)
+      expect(new Set(r.ingredients.map((i) => norm(i.name))).size, r.title).toBe(r.ingredients.length)
+      expect(r.tags.length, r.title).toBeLessThanOrEqual(12)
+      for (const t of r.tags) expect(t.length).toBeLessThanOrEqual(40)
+      for (const s of r.steps) {
+        expect(s.trim().length, r.title).toBeGreaterThan(0)
+        expect(s.length, r.title).toBeLessThanOrEqual(1000)
+      }
+      expect(r.steps.length, r.title).toBeLessThanOrEqual(30)
+    }
+  })
+
+  it('cantidades para 4 personas: numéricas, positivas y razonables, con unidad y sin comas en los nombres', () => {
+    for (const r of allRecipes) {
+      for (const i of r.ingredients) {
+        const where = `${r.title} · ${i.name}`
+        expect(i.name, where).not.toContain(',')
+        expect(i.name.length, where).toBeLessThanOrEqual(120)
+        expect(i.quantity, where).toMatch(/^\d+(\.\d+)?$/)
+        const q = Number(i.quantity)
+        expect(q, where).toBeGreaterThan(0)
+        expect(i.unit.length, where).toBeGreaterThan(0)
+        expect(i.unit.length, where).toBeLessThanOrEqual(30)
+        const limit = ['g', 'ml'].includes(i.unit) ? 2000 : 60
+        expect(q, where).toBeLessThanOrEqual(limit)
+      }
+    }
+  })
+
+  it('cada ingrediente usa siempre la misma unidad en todo el menú (para que la lista de la compra los junte)', () => {
+    const units = new Map<string, Set<string>>()
+    for (const r of allRecipes) for (const i of r.ingredients) units.set(norm(i.name), (units.get(norm(i.name)) ?? new Set()).add(i.unit))
+    for (const [name, u] of units) expect([...u], name).toHaveLength(1)
+  })
+
+  it('los acompañamientos sencillos (fruta, tostada) llevan ingredientes con cantidad y NINGÚN paso; las demás recetas llevan pasos', () => {
+    const simples = allRecipes.filter((r) => r.simple)
+    expect(simples.map((r) => r.title).sort()).toEqual([...SIMPLE_TITLES, 'Fruta de temporada'].sort())
+    for (const r of simples) {
+      expect(r.steps, r.title).toEqual([])
+      expect(r.ingredients.length, r.title).toBeGreaterThanOrEqual(1)
+      expect(r.freeze, r.title).toBeUndefined()
+      expect(r.tip, r.title).toBeUndefined()
+    }
+    for (const r of allRecipes.filter((x) => !x.simple)) {
+      expect(r.steps.length, r.title).toBeGreaterThanOrEqual(2)
+      expect(SIMPLE_TITLES, r.title).not.toContain(r.title)
+    }
+  })
+
+  it('pasos coherentes con ingredientes: todo ingrediente de una receta con pasos se menciona en ellos (sin ingredientes huérfanos)', () => {
+    for (const r of allRecipes.filter((x) => !x.simple)) for (const i of r.ingredients) expect(mentioned(i.name, r.steps), `${r.title} · ${i.name}`).toBe(true)
+  })
+
+  it('tiempos: enteros, trabajo activo > 0, total ≥ activo y realistas', () => {
+    for (const r of allRecipes.filter((x) => !x.simple)) {
+      expect(r.time, r.title).toBeTruthy()
+      const { active, total } = r.time!
+      expect(Number.isInteger(active) && Number.isInteger(total), r.title).toBe(true)
+      expect(active, r.title).toBeGreaterThan(0)
+      expect(total, r.title).toBeGreaterThanOrEqual(active)
+      expect(total, r.title).toBeLessThanOrEqual(120)
+    }
+    const total = (t: string) => recipeByTitle(t).time!.total
+    // Las que llevan cocción larga no pueden prometer menos de lo que dicen sus propios pasos.
+    expect(total('Lentejas estofadas con verduras y huevo duro')).toBeGreaterThanOrEqual(60)
+    expect(total('Pollo asado con patatas y verduras')).toBeGreaterThanOrEqual(70)
+    expect(total('Patatas al horno')).toBeGreaterThanOrEqual(45)
+    expect(total('Merluza al horno con patatas y verduras')).toBeGreaterThanOrEqual(55)
+    expect(total('Salmón con calabacín y limón')).toBeLessThanOrEqual(30)
+    for (const t of ['Ensalada de tomate', 'Ensalada de lechuga y tomate', 'Ensalada de lechuga y maíz', 'Zanahoria rallada con limón y maíz', 'Ensalada de lechuga y manzana']) expect(total(t), t).toBeLessThanOrEqual(10)
+  })
+
+  it('consejos de ahorro de tiempo: los pedidos por la dueña (arroz literal, salmón congelado, patatas de la merluza) y ninguno genérico ni repetido', () => {
+    const tips = allRecipes.filter((r) => r.tip)
+    for (const r of tips) {
+      expect(r.tip!.length, r.title).toBeGreaterThanOrEqual(1)
+      expect(r.tip!.length, r.title).toBeLessThanOrEqual(400)
+      expect(r.tip!, r.title).toMatch(/^Truco de Pepa/)
+    }
+    expect(new Set(tips.map((r) => r.tip)).size).toBe(tips.length)
+    expect(recipeByTitle('Arroz tres delicias con pollo y verduras').tip).toBe(
+      'Truco de Pepa para ahorrar tiempo. ¿No tienes tiempo de preparar el arroz? También puedes comprar arroz tres delicias congelado o arroz precocinado en vasitos que se calientan en el microondas en aproximadamente un minuto, según el producto. Añade el pollo y las verduras que necesites para completar el plato.',
+    )
+    const salmon = recipeByTitle('Salmón con calabacín y limón').tip!
+    expect(salmon).toMatch(/congelad/)
+    expect(salmon).toMatch(/instrucciones del envase/)
+    const merluza = recipeByTitle('Merluza al horno con patatas y verduras').tip!
+    expect(merluza).toMatch(/patatas/)
+    expect(merluza).toMatch(/antelaci/)
+    expect(merluza).toMatch(/nevera/)
+    expect(merluza).toMatch(/envasadas/)
+    // Solo van en platos con preparación (nunca en un acompañamiento sin pasos ni en una ensalada).
+    for (const r of tips) expect(r.simple, r.title).not.toBe(true)
+    for (const t of ['Ensalada de tomate', 'Ensalada de lechuga y tomate', 'Ensalada de lechuga y maíz', 'Ensalada de lechuga y manzana', 'Zanahoria rallada con limón y maíz']) expect(recipeByTitle(t).tip, t).toBeUndefined()
+  })
+
+  it('congelación: SOLO lentejas, crema, macarrones (la salsa por separado) y hamburguesas crudas; nada más y con cómo dividir, descongelar y recalentar', () => {
+    const frozen = allRecipes.filter((r) => r.freeze)
+    expect(frozen.map((r) => r.title).sort()).toEqual([...FREEZE_TITLES].sort())
+    for (const r of frozen) {
+      expect(r.freeze!.ideal, r.title).toBe(true)
+      expect(r.freeze!.note.length, r.title).toBeGreaterThanOrEqual(1)
+      expect(r.freeze!.note.length, r.title).toBeLessThanOrEqual(300)
+      expect(r.freeze!.note, r.title).toMatch(/nevera/)
+    }
+    const note = (t: string) => recipeByTitle(t).freeze!.note
+    for (const t of ['Lentejas estofadas con verduras y huevo duro', 'Crema de calabaza y zanahoria', 'Macarrones con tomate, pavo y verduras']) expect(note(t), t).toMatch(/hierva/)
+    expect(note('Lentejas estofadas con verduras y huevo duro')).toMatch(/sin el huevo/)
+    expect(note('Macarrones con tomate, pavo y verduras')).toMatch(/solo la salsa/)
+    expect(note('Hamburguesas caseras de ternera')).toMatch(/crudas/)
+    expect(note('Hamburguesas caseras de ternera')).toMatch(/papel/)
+    expect(note('Hamburguesas caseras de ternera')).toMatch(/nada rosado/)
+    // Nunca en platos que no lo piden.
+    for (const t of ['Salmón con calabacín y limón', 'Tortilla de calabacín', 'Pizzas pequeñas de tortilla de trigo con verduras y queso', 'Quesadillas de pollo, pimiento y queso', 'Sopa de verduras con fideos y pollo desmenuzado', 'Revuelto de champiñones y calabacín', 'Garbanzos con espinacas y bacalao', 'Ensalada de tomate', 'Ensalada de lechuga y tomate']) {
+      expect(recipeByTitle(t).freeze, t).toBeUndefined()
+    }
+  })
+
+  it('seguridad alimentaria: carne y huevo bien hechos, pescado sin espinas, bacalao desalado y conservación', () => {
+    const steps = (t: string) => recipeByTitle(t).steps.join(' ')
+    for (const t of ['Arroz tres delicias con pollo y verduras', 'Quesadillas de pollo, pimiento y queso', 'Sopa de verduras con fideos y pollo desmenuzado', 'Macarrones con tomate, pavo y verduras', 'Pollo asado con patatas y verduras']) {
+      expect(steps(t), t).toMatch(/rosad/)
+      expect(steps(t), t).toMatch(/Lávate las manos/)
+    }
+    for (const t of ['Salmón con calabacín y limón', 'Merluza al horno con patatas y verduras', 'Garbanzos con espinacas y bacalao']) {
+      expect(steps(t), t).toMatch(/espinas/)
+      expect(steps(t), t).toMatch(/nevera/)
+    }
+    expect(steps('Garbanzos con espinacas y bacalao')).toMatch(/salado seco/)
+    expect(steps('Garbanzos con espinacas y bacalao')).toMatch(/ya desalado/)
+    expect(steps('Garbanzos con espinacas y bacalao')).toMatch(/refrigerado o congelado/)
+    expect(steps('Garbanzos con espinacas y bacalao')).toMatch(/menores de 4 años/)
+    expect(steps('Lentejas estofadas con verduras y huevo duro')).toMatch(/bien cuajadas/)
+    expect(steps('Tortilla de calabacín')).toMatch(/bien cuajada/)
+    expect(steps('Arroz tres delicias con pollo y verduras')).toMatch(/una hora/)
+    expect(steps('Pollo asado con patatas y verduras')).toMatch(/74 ºC/)
+    expect(steps('Merluza al horno con patatas y verduras')).toMatch(/envasadas/)
+  })
+
+  it('alérgenos presentes: las recetas reescritas o nuevas los señalan sin prometer seguridad', () => {
+    const ALLERGENS: [string, RegExp][] = [
+      ['huevo', /huevo/],
+      ['gluten', /^(pan integral|pan de hamburguesa|fideos finos|macarrones|tortillas de trigo|pan rallado)$/],
+      ['lácteos', /^(queso fresco|queso rallado|queso en lonchas)$/],
+      ['pescado', /^(lomos de salmón|lomos de merluza|bacalao desalado)$/],
+    ]
+    for (const r of allRecipes.filter((x) => !x.simple && !CONSERVED.includes(x.title))) {
+      const present = ALLERGENS.filter(([, re]) => r.ingredients.some((i) => re.test(i.name)))
+      const text = r.steps.join(' ')
+      if (present.length === 0) continue
+      expect(text, r.title).toMatch(/Alérgenos presentes:/)
+      for (const [name] of present) expect(text.toLowerCase(), `${r.title} · ${name}`).toContain(name)
+      expect(text, r.title).not.toMatch(/apto para|sin alérgenos|libre de|seguro para al[eé]rgicos/i)
+    }
   })
 })

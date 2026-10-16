@@ -23,12 +23,29 @@ export interface MenuIngredient {
   quantity: string
   unit: string
 }
+// Congelación (opcional): `ideal` = «Ideal para cocinar de más y congelar»; `note` = consejo breve (qué congelar, cómo dividir y recalentar).
+export interface MenuFreeze {
+  ideal: boolean
+  note: string
+}
+// Tiempos en minutos: trabajo activo (manos en la cocina) y tiempo total (con horno, reposo, cocción…). total >= active.
+export interface MenuTime {
+  active: number
+  total: number
+}
 export interface MenuRecipe {
   title: string
   servings: number | null
   ingredients: MenuIngredient[]
   steps: string[]
   tags: string[]
+  // Elemento SENCILLO (una pieza de fruta, pan tostado…): lleva ingredientes con cantidades pero NO pasos, no es una receta de Cocina y no se guarda como tal:
+  // al importar se apunta en el menú como texto. Sus ingredientes sí van a Compras.
+  simple: boolean
+  // «Truco de Pepa» (texto de hasta 400 caracteres), si lo hay.
+  tip: string | null
+  freeze: MenuFreeze | null
+  time: MenuTime | null
 }
 export interface MenuMeal {
   title: string
@@ -86,7 +103,55 @@ function parseRecipe(raw: unknown): MenuRecipe | null {
     ingredients,
     steps: (Array.isArray(r.steps) ? r.steps : []).map((s) => str(s).trim()).filter(Boolean),
     tags: (Array.isArray(r.tags) ? r.tags : []).map((t) => str(t).trim()).filter(Boolean),
+    simple: r.simple === true,
+    tip: parseTip(r.tip),
+    freeze: parseFreeze(r.freeze),
+    time: parseTime(r.time),
   }
+}
+
+// Campos opcionales del contrato ampliado: se leen con cuidado (el servidor ya los valida; aquí solo se evita que un dato raro rompa la pantalla).
+function parseTip(v: unknown): string | null {
+  const t = typeof v === 'string' ? v.trim() : ''
+  return t ? t : null
+}
+
+// Solo se guarda si la receta se marca como ideal para congelar: sin `ideal: true` no hay nada que enseñar.
+function parseFreeze(v: unknown): MenuFreeze | null {
+  if (!v || typeof v !== 'object') return null
+  const f = v as Record<string, unknown>
+  return f.ideal === true ? { ideal: true, note: typeof f.note === 'string' ? f.note.trim() : '' } : null
+}
+
+function parseTime(v: unknown): MenuTime | null {
+  if (!v || typeof v !== 'object') return null
+  const t = v as Record<string, unknown>
+  const a = t.active
+  const b = t.total
+  if (typeof a !== 'number' || typeof b !== 'number' || !Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < a) return null
+  return { active: a, total: b }
+}
+
+// «25 min», «90 min», «2 h», «2 h 15 min»: minutos escritos para leer, no para calcular (hasta 2 horas se dice en minutos).
+export function formatMinutes(min: number): string {
+  if (min < 120) return `${min} min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m === 0 ? `${h} h` : `${h} h ${m} min`
+}
+
+// «Trabajo activo 20 min · Total 90 min».
+export function formatRecipeTime(t: MenuTime): string {
+  return `Trabajo activo ${formatMinutes(t.active)} · Total ${formatMinutes(t.total)}`
+}
+
+// Texto fijo de la insignia de congelación (el mismo en la pantalla y en lo que se guarda en la Cocina).
+export const FREEZE_BADGE_TEXT = 'Ideal para cocinar de más y congelar'
+
+// Cuántos elementos de una selección son apuntes sin receta (sencillos) y cuántos son recetas de verdad.
+export function countSelection(items: readonly { recipe: Pick<MenuRecipe, 'simple'> }[]): { notes: number; recipes: number } {
+  const notes = items.filter((i) => i.recipe.simple).length
+  return { notes, recipes: items.length - notes }
 }
 
 export function parseMenu(raw: unknown): CommunityMenu | null {
@@ -268,7 +333,8 @@ export interface PreviewRecipe {
   title: string
   ingredientCount: number
   existingRecipes: PreviewExistingRecipe[]
-  action: 'create' | 'reuse'
+  // 'note' = elemento sencillo: se apunta en el menú como texto, sin crear receta («apunte sin receta»).
+  action: 'create' | 'reuse' | 'note'
 }
 export interface PreviewSlot {
   day: MenuDayName
@@ -288,7 +354,7 @@ export interface MenuImportPreview {
   menuServings: number | null
   duplicateRecipes: DuplicateMode
   slots: PreviewSlot[]
-  summary: { slots: number; slotsBusy: number; recipesNew: number; recipesKnown: number }
+  summary: { slots: number; slotsBusy: number; recipesNew: number; recipesKnown: number; notes: number }
 }
 export interface MenuImportResult {
   ok: true
@@ -300,6 +366,8 @@ export interface MenuImportResult {
   onConflict: ConflictMode
   recipesCreated: number
   recipesReused: number
+  // Platos sencillos apuntados en el menú como texto (ya contados en entriesCreated); sin receta de Cocina.
+  notesCreated: number
   recipes: { id: string; title: string; created: boolean }[]
   slotsImported: number
   slotsSkipped: number
@@ -318,6 +386,7 @@ export function importResultLines(r: MenuImportResult): string[] {
   if (r.recipesCreated > 0) lines.push(`${plural(r.recipesCreated, 'receta nueva guardada', 'recetas nuevas guardadas')} en tu Cocina.`)
   if (r.recipesReused > 0) lines.push(`${plural(r.recipesReused, 'receta que ya tenías se ha reutilizado', 'recetas que ya tenías se han reutilizado')} (no se han duplicado).`)
   if (r.entriesCreated > 0) lines.push(`${plural(r.entriesCreated, 'plato apuntado', 'platos apuntados')} en tu menú${r.targetStart ? ` de la semana ${formatWeekRange(r.targetStart)}` : ''}.`)
+  if ((r.notesCreated ?? 0) > 0) lines.push(`${plural(r.notesCreated, 'de ellos es un apunte sin receta', 'de ellos son apuntes sin receta')} (fruta, pan tostado…): no se crea ninguna receta, pero sus ingredientes se pueden añadir a Compras.`)
   if (r.slotsReplaced > 0) lines.push(`${plural(r.slotsReplaced, 'comida o cena sustituida', 'comidas o cenas sustituidas')} (${plural(r.entriesRemoved, 'plato quitado', 'platos quitados')} de tu menú; tus recetas siguen ahí).`)
   if (r.slotsAppended > 0) lines.push(`${plural(r.slotsAppended, 'comida o cena con platos añadidos', 'comidas o cenas con platos añadidos')} detrás de lo que ya tenías.`)
   if (r.slotsSkipped > 0) lines.push(`${plural(r.slotsSkipped, 'comida o cena omitida', 'comidas o cenas omitidas')} porque ya tenías algo apuntado (no se ha tocado).`)
@@ -326,8 +395,9 @@ export function importResultLines(r: MenuImportResult): string[] {
 }
 
 // ---- Errores del servidor de la importación (además de los de Comunidad)
-export type MenuErrorCode = 'BAD_MENU' | 'BAD_SCOPE' | 'BAD_TARGET_START' | 'BAD_SERVINGS' | 'BAD_CONFLICT' | 'BAD_DUPLICATES' | 'BAD_KEY' | 'KEY_REUSED' | 'NO_FAMILY'
+export type MenuErrorCode = 'NOT_A_RECIPE' | 'BAD_MENU' | 'BAD_SCOPE' | 'BAD_TARGET_START' | 'BAD_SERVINGS' | 'BAD_CONFLICT' | 'BAD_DUPLICATES' | 'BAD_KEY' | 'KEY_REUSED' | 'NO_FAMILY'
 export const MENU_ERROR_MESSAGES: Record<MenuErrorCode, string> = {
+  NOT_A_RECIPE: 'Este elemento es un acompañamiento sencillo (por ejemplo, una pieza de fruta): no es una receta y no se guarda en Recetas. Se apunta en tu menú al importar el día o la comida.',
   BAD_MENU: 'Este menú no se puede importar ahora mismo porque tiene algún dato incorrecto. No se ha guardado nada.',
   BAD_SCOPE: 'Lo que has elegido importar no existe en este menú. Elígelo de nuevo.',
   BAD_TARGET_START: 'La semana elegida no es válida. Elige una semana de la lista.',

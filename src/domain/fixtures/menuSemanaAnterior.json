@@ -1,0 +1,1396 @@
+{
+  "version": 1,
+  "servings": 4,
+  "days": [
+    {
+      "day": "lunes",
+      "meals": {
+        "comida": {
+          "title": "Lentejas estofadas con verduras",
+          "side": "Fruta de temporada",
+          "recipes": [
+            {
+              "title": "Lentejas estofadas con verduras",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lentejas",
+                  "quantity": "320",
+                  "unit": "g"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pimiento rojo",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "patata",
+                  "quantity": "300",
+                  "unit": "g"
+                },
+                {
+                  "name": "ajo",
+                  "quantity": "2",
+                  "unit": "dientes"
+                },
+                {
+                  "name": "pimentón dulce",
+                  "quantity": "1",
+                  "unit": "cucharaditas"
+                },
+                {
+                  "name": "hoja de laurel",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pica la cebolla, el pimiento y la zanahoria en dados pequeños y lamina los ajos. Lava las lentejas en un colador (las pardinas no necesitan remojo).",
+                "En una olla, calienta el aceite y sofríe la cebolla, el pimiento, la zanahoria y el ajo a fuego medio unos 8 minutos, hasta que estén blandos.",
+                "Aparta la olla del fuego, añade el pimentón y remueve 20 segundos (si se quema amarga). Vuelve al fuego e incorpora las lentejas y el laurel.",
+                "Cubre con agua fría hasta dos dedos por encima de las lentejas. Cuando hierva, baja el fuego y cuece tapado a fuego suave unos 20 minutos.",
+                "Añade la patata pelada y cortada en dados y la sal. Cuece 20 minutos más, hasta que las lentejas y la patata estén tiernas.",
+                "Retira el laurel y deja reposar 10 minutos antes de servir. Si te gusta más espeso, chafa un cucharón de lentejas contra la pared de la olla."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "legumbres",
+                "cuchara"
+              ]
+            },
+            {
+              "title": "Fruta de temporada",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "fruta de temporada",
+                  "quantity": "4",
+                  "unit": "unidades"
+                }
+              ],
+              "steps": [
+                "Lava la fruta. Pela y trocea la que lo necesite y sírvela fresca, a una pieza por persona."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "postre",
+                "sin cocinar"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Crema de calabaza y zanahoria",
+          "side": "Tostadas con queso fresco y tomate",
+          "recipes": [
+            {
+              "title": "Crema de calabaza y zanahoria",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "calabaza",
+                  "quantity": "500",
+                  "unit": "g"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "3",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "patata",
+                  "quantity": "150",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pela la calabaza, la zanahoria, la patata y la cebolla y trocéalas en dados de unos 2 cm.",
+                "En una olla, calienta el aceite y rehoga la cebolla 3 minutos. Añade el resto de las verduras y remueve 2 minutos.",
+                "Cubre con agua justo hasta el nivel de las verduras (unos 700 ml), añade la sal y cuece tapado 20 minutos, hasta que todo esté muy tierno.",
+                "Tritura hasta que quede fina. Si ha quedado muy espesa, añade un poco de agua caliente; prueba y ajusta de sal.",
+                "Sirve caliente con un hilo de aceite. Se conserva en la nevera hasta 3 días."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "verdura",
+                "cena ligera",
+                "crema"
+              ]
+            },
+            {
+              "title": "Tostadas con queso fresco y tomate",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "pan integral",
+                  "quantity": "8",
+                  "unit": "rebanadas"
+                },
+                {
+                  "name": "queso fresco",
+                  "quantity": "150",
+                  "unit": "g"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Tuesta las rebanadas de pan.",
+                "Unta o reparte el queso fresco sobre cada tostada y coloca encima rodajas finas de tomate.",
+                "Termina con un hilo de aceite y una pizca de sal."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "sin cocinar",
+                "rápida"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "martes",
+      "meals": {
+        "comida": {
+          "title": "Arroz tres delicias",
+          "side": "Ensalada de tomate y pepino",
+          "recipes": [
+            {
+              "title": "Arroz tres delicias",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "arroz",
+                  "quantity": "300",
+                  "unit": "g"
+                },
+                {
+                  "name": "huevo",
+                  "quantity": "3",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "jamón cocido",
+                  "quantity": "100",
+                  "unit": "g"
+                },
+                {
+                  "name": "guisantes",
+                  "quantity": "100",
+                  "unit": "g"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Cuece el arroz en abundante agua con sal durante el tiempo que marque el paquete (unos 12 minutos). Escúrrelo, pásalo por agua fría y resérvalo.",
+                "Pela la zanahoria y córtala en dados muy pequeños. Cuécela 5 minutos con los guisantes (si son congelados, vale con descongelarlos) y escurre.",
+                "Bate los huevos con una pizca de sal y haz una tortilla fina en una sartén con una cucharada de aceite, bien cuajada por los dos lados. Córtala en tiras.",
+                "Corta el jamón en dados. En una sartén grande, calienta el resto del aceite y saltea el jamón 1 minuto.",
+                "Añade la zanahoria y los guisantes y saltea 2 minutos. Incorpora el arroz y saltea a fuego fuerte 3-4 minutos, removiendo.",
+                "Mezcla con la tortilla en tiras, prueba y ajusta de sal. Sirve enseguida."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "arroz",
+                "con niños"
+              ]
+            },
+            {
+              "title": "Ensalada de tomate y pepino",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "tomate",
+                  "quantity": "3",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pepino",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "vinagre",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lava el tomate y el pepino. Corta el tomate en gajos y el pepino en rodajas finas (pélalo si a los peques no les gusta la piel).",
+                "Aliña con el aceite, el vinagre y la sal justo antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Salmón a la plancha",
+          "side": "Puré de patata",
+          "recipes": [
+            {
+              "title": "Salmón a la plancha",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lomos de salmón",
+                  "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "limón",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Saca el salmón de la nevera 10 minutos antes. Sécalo con papel de cocina y sálalo ligeramente.",
+                "Calienta una plancha o sartén con el aceite a fuego medio-alto. Cocina los lomos primero por el lado de la piel 4 minutos.",
+                "Dales la vuelta y cocina 2-3 minutos más, hasta que por dentro esté opaco y se separe en lascas (no debe quedar crudo).",
+                "Revisa con un tenedor que no queden espinas, sobre todo en los platos de los pequeños, y sirve con unas gotas de limón."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "pescado",
+                "cena ligera",
+                "rápida"
+              ]
+            },
+            {
+              "title": "Puré de patata",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "patata",
+                  "quantity": "600",
+                  "unit": "g"
+                },
+                {
+                  "name": "leche",
+                  "quantity": "100",
+                  "unit": "ml"
+                },
+                {
+                  "name": "mantequilla",
+                  "quantity": "20",
+                  "unit": "g"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pela las patatas y trocéalas. Cuécelas en agua con sal 20 minutos, hasta que un cuchillo las atraviese sin esfuerzo.",
+                "Escúrrelas y chafa con un tenedor o un pasapurés mientras estén calientes.",
+                "Añade la leche templada y la mantequilla y mezcla hasta que quede cremoso. Ajusta de sal."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "con niños"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "miércoles",
+      "meals": {
+        "comida": {
+          "title": "Merluza al horno con verduras",
+          "side": "Cuscús con pasas",
+          "recipes": [
+            {
+              "title": "Merluza al horno con verduras",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lomos de merluza",
+                  "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "calabacín",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pimiento rojo",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Precalienta el horno a 200 ºC, con calor arriba y abajo.",
+                "Corta el calabacín, el pimiento, la cebolla y el tomate en rodajas o tiras finas y extiéndelos en una fuente con dos cucharadas de aceite y sal.",
+                "Hornea las verduras 15 minutos.",
+                "Sala los lomos de merluza, colócalos sobre las verduras y riega con la cucharada de aceite restante. Hornea 12-15 minutos más.",
+                "Está lista cuando la carne es blanca y opaca y se separa en lascas. Comprueba que no haya espinas antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "pescado",
+                "horno"
+              ]
+            },
+            {
+              "title": "Cuscús con pasas",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "cuscús",
+                  "quantity": "200",
+                  "unit": "g"
+                },
+                {
+                  "name": "pasas",
+                  "quantity": "30",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pon el cuscús en un bol con el aceite y la sal y remueve.",
+                "Cúbrelo con 250 ml de agua hirviendo, tapa y deja reposar 5 minutos.",
+                "Desgrana con un tenedor y mezcla las pasas. Para menores de 4 años, mejor sin pasas enteras (se pueden atragantar)."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "rápida"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Sopa de fideos con verduras",
+          "side": "Sándwich mixto a la plancha",
+          "recipes": [
+            {
+              "title": "Sopa de fideos con verduras",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "fideos finos",
+                  "quantity": "120",
+                  "unit": "g"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "caldo de verduras",
+                  "quantity": "1000",
+                  "unit": "ml"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pica la cebolla y la zanahoria en dados muy pequeños.",
+                "En una olla, rehoga la cebolla con el aceite 3 minutos y añade la zanahoria. Sofríe 2 minutos más.",
+                "Vierte el caldo y deja que hierva 10 minutos, hasta que la zanahoria esté tierna.",
+                "Añade los fideos y cuece el tiempo que indique el paquete (3-4 minutos). Ajusta de sal y sirve caliente."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "sopa",
+                "cena ligera",
+                "con niños"
+              ]
+            },
+            {
+              "title": "Sándwich mixto a la plancha",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "pan de molde",
+                  "quantity": "8",
+                  "unit": "rebanadas"
+                },
+                {
+                  "name": "jamón cocido",
+                  "quantity": "100",
+                  "unit": "g"
+                },
+                {
+                  "name": "queso en lonchas",
+                  "quantity": "4",
+                  "unit": "lonchas"
+                },
+                {
+                  "name": "mantequilla",
+                  "quantity": "20",
+                  "unit": "g"
+                }
+              ],
+              "steps": [
+                "Reparte el jamón y el queso sobre cuatro rebanadas y tápalas con las otras cuatro.",
+                "Unta la parte de fuera con un poco de mantequilla.",
+                "Dóralos en una sartén o plancha a fuego medio 2-3 minutos por lado, hasta que el queso se derrita. Córtalos en triángulos."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "con niños",
+                "rápida"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "jueves",
+      "meals": {
+        "comida": {
+          "title": "Macarrones con tomate y pavo",
+          "side": "Zanahoria rallada con limón y maíz",
+          "recipes": [
+            {
+              "title": "Macarrones con tomate y pavo",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "macarrones",
+                  "quantity": "320",
+                  "unit": "g"
+                },
+                {
+                  "name": "carne picada de pavo",
+                  "quantity": "300",
+                  "unit": "g"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "ajo",
+                  "quantity": "1",
+                  "unit": "dientes"
+                },
+                {
+                  "name": "tomate triturado",
+                  "quantity": "400",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "orégano",
+                  "quantity": "1",
+                  "unit": "pizca"
+                },
+                {
+                  "name": "queso rallado",
+                  "quantity": "40",
+                  "unit": "g"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pica muy fina la cebolla y el ajo y ralla la zanahoria (así los peques no la ven).",
+                "En una sartén grande, calienta el aceite y sofríe la cebolla, el ajo y la zanahoria 6-7 minutos a fuego medio.",
+                "Añade el pavo y cocínalo desmenuzándolo hasta que no quede nada rosado (unos 6 minutos).",
+                "Incorpora el tomate, el orégano y la sal y cuece a fuego suave 10 minutos.",
+                "Mientras, cuece los macarrones en agua con sal según el paquete. Escúrrelos y mézclalos con la salsa.",
+                "Sirve con el queso rallado por encima."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "pasta",
+                "con niños"
+              ]
+            },
+            {
+              "title": "Zanahoria rallada con limón y maíz",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "zanahoria",
+                  "quantity": "3",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "maíz dulce",
+                  "quantity": "100",
+                  "unit": "g"
+                },
+                {
+                  "name": "limón",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pela y ralla las zanahorias.",
+                "Mézclalas con el maíz escurrido y aliña con el zumo del limón, el aceite y la sal."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Tortilla de patata",
+          "side": "Ensalada de lechuga y tomate",
+          "recipes": [
+            {
+              "title": "Tortilla de patata",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "patata",
+                  "quantity": "500",
+                  "unit": "g"
+                },
+                {
+                  "name": "huevo",
+                  "quantity": "6",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "6",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pela las patatas, córtalas en láminas finas y pica la cebolla en trozos pequeños.",
+                "En una sartén de unos 24 cm, calienta el aceite a fuego medio-bajo y cocina la patata y la cebolla con una pizca de sal unos 15-20 minutos, removiendo, hasta que estén tiernas sin dorarse.",
+                "Bate los huevos con una pizca de sal en un bol grande. Escurre la patata y la cebolla y mézclalas con el huevo.",
+                "Vuelve a poner un poco de aceite en la sartén, vierte la mezcla y cuaja a fuego medio 4-5 minutos.",
+                "Dale la vuelta con un plato y cuaja 3-4 minutos más. Debe quedar bien cuajada por dentro. Deja reposar 5 minutos antes de cortar."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "huevos",
+                "clásico"
+              ]
+            },
+            {
+              "title": "Ensalada de lechuga y tomate",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lechuga",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "vinagre",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lava y trocea la lechuga. Corta el tomate en gajos.",
+                "Mezcla y aliña con el aceite, el vinagre y la sal justo antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "viernes",
+      "meals": {
+        "comida": {
+          "title": "Garbanzos con espinacas",
+          "side": "Pan integral tostado",
+          "recipes": [
+            {
+              "title": "Garbanzos con espinacas",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "garbanzos cocidos",
+                  "quantity": "600",
+                  "unit": "g"
+                },
+                {
+                  "name": "espinacas",
+                  "quantity": "300",
+                  "unit": "g"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "ajo",
+                  "quantity": "3",
+                  "unit": "dientes"
+                },
+                {
+                  "name": "pimentón dulce",
+                  "quantity": "1",
+                  "unit": "cucharaditas"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pica la cebolla y lamina los ajos. Aclara los garbanzos cocidos (unos 600 g ya escurridos, de bote o cocidos en casa) bajo el grifo y escúrrelos.",
+                "En una cazuela, calienta el aceite y sofríe la cebolla 6 minutos a fuego medio. Añade el ajo 1 minuto más.",
+                "Retira del fuego, añade el pimentón y remueve unos segundos. Vuelve al fuego e incorpora las espinacas (si son frescas, en tandas; si son congeladas, directas).",
+                "Cuando las espinacas se reduzcan, añade los garbanzos, 200 ml de agua y la sal.",
+                "Cuece a fuego suave 10 minutos. Chafa unos pocos garbanzos contra la cazuela para que ligue el caldo. Sirve caliente."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "legumbres",
+                "cuchara"
+              ]
+            },
+            {
+              "title": "Pan integral tostado",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "pan integral",
+                  "quantity": "4",
+                  "unit": "rebanadas"
+                }
+              ],
+              "steps": [
+                "Tuesta las rebanadas y sírvelas calientes para mojar en los garbanzos."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "rápida"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Pizzas rápidas en tortilla de trigo",
+          "side": "Bastones de zanahoria y pepino",
+          "recipes": [
+            {
+              "title": "Pizzas rápidas en tortilla de trigo",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "tortillas de trigo",
+                  "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "tomate triturado",
+                  "quantity": "200",
+                  "unit": "g"
+                },
+                {
+                  "name": "queso rallado",
+                  "quantity": "200",
+                  "unit": "g"
+                },
+                {
+                  "name": "champiñones",
+                  "quantity": "150",
+                  "unit": "g"
+                },
+                {
+                  "name": "orégano",
+                  "quantity": "1",
+                  "unit": "pizca"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Precalienta el horno a 220 ºC y prepara una o dos bandejas con papel de horno.",
+                "Mezcla el tomate con el aceite, la sal y el orégano. Lamina los champiñones.",
+                "Coloca las tortillas en las bandejas, reparte el tomate por encima, luego el queso y por último los champiñones.",
+                "Hornea 6-8 minutos, hasta que el queso se derrita y los bordes estén dorados. Deja templar un minuto y corta en porciones."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "con niños",
+                "horno",
+                "rápida"
+              ]
+            },
+            {
+              "title": "Bastones de zanahoria y pepino",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "zanahoria",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pepino",
+                  "quantity": "1",
+                  "unit": "unidades"
+                }
+              ],
+              "steps": [
+                "Pela la zanahoria y el pepino y córtalos en bastones.",
+                "Para menores de 4 años, mejor rallar la zanahoria o cocerla un poco, porque cruda en trozos duros se puede atragantar."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "sin cocinar",
+                "con niños"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "sábado",
+      "meals": {
+        "comida": {
+          "title": "Hamburguesas caseras de ternera",
+          "side": "Gajos de patata al horno",
+          "recipes": [
+            {
+              "title": "Hamburguesas caseras de ternera",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "carne picada de ternera",
+                  "quantity": "600",
+                  "unit": "g"
+                },
+                {
+                  "name": "huevo",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pan rallado",
+                  "quantity": "40",
+                  "unit": "g"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pan de hamburguesa",
+                  "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "lechuga",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "queso en lonchas",
+                  "quantity": "4",
+                  "unit": "lonchas"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Pica la cebolla muy fina. Mezcla en un bol la carne, el huevo, el pan rallado, la cebolla y la sal sin amasar demasiado.",
+                "Forma 4 hamburguesas de unos 2 cm de grosor y apriétalas bien.",
+                "Cocínalas en una plancha o sartén con el aceite, a fuego medio-alto, unos 5 minutos por lado. Deben quedar hechas por dentro, sin nada rosado y con el jugo claro.",
+                "Añade una loncha de queso sobre cada una el último minuto para que se funda.",
+                "Tuesta ligeramente los panes y monta con la hamburguesa, la lechuga y el tomate en rodajas.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar la carne cruda."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "carne",
+                "con niños"
+              ]
+            },
+            {
+              "title": "Gajos de patata al horno",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "patata",
+                  "quantity": "800",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "pimentón dulce",
+                  "quantity": "1",
+                  "unit": "cucharaditas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Precalienta el horno a 200 ºC. Lava bien las patatas y córtalas en gajos con piel.",
+                "Mézclalas en un bol con el aceite, el pimentón y la sal y extiéndelas en una bandeja sin que se amontonen.",
+                "Hornea 35-40 minutos, dándoles la vuelta a mitad de tiempo, hasta que estén doradas y blandas por dentro."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "horno",
+                "con niños"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Quesadillas de pimiento y queso",
+          "side": "Ensalada de lechuga y maíz",
+          "recipes": [
+            {
+              "title": "Quesadillas de pimiento y queso",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "tortillas de trigo",
+                  "quantity": "4",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pimiento rojo",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "queso rallado",
+                  "quantity": "200",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                }
+              ],
+              "steps": [
+                "Corta el pimiento en tiras finas y saltéalo con el aceite 5 minutos, hasta que esté blando. Resérvalo.",
+                "Calienta una sartén sin aceite. Pon una tortilla, reparte el queso sobre una mitad y añade el pimiento.",
+                "Dobla la tortilla por la mitad y cocina 2 minutos por lado a fuego medio, hasta que esté dorada y el queso fundido.",
+                "Repite con las demás y corta cada quesadilla en triángulos."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "con niños",
+                "rápida"
+              ]
+            },
+            {
+              "title": "Ensalada de lechuga y maíz",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lechuga",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "maíz dulce",
+                  "quantity": "100",
+                  "unit": "g"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "vinagre",
+                  "quantity": "1",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lava y trocea la lechuga y mézclala con el maíz escurrido.",
+                "Aliña con el aceite, el vinagre y la sal justo antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "day": "domingo",
+      "meals": {
+        "comida": {
+          "title": "Pollo asado con verduras",
+          "side": "Ensalada de lechuga y manzana",
+          "recipes": [
+            {
+              "title": "Pollo asado con verduras",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "muslos de pollo",
+                  "quantity": "8",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "zanahoria",
+                  "quantity": "3",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "cebolla",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pimiento rojo",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "ajo",
+                  "quantity": "3",
+                  "unit": "dientes"
+                },
+                {
+                  "name": "limón",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "pimentón dulce",
+                  "quantity": "1",
+                  "unit": "cucharaditas"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "3",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Precalienta el horno a 200 ºC. Pela las zanahorias y córtalas en rodajas gruesas; corta las cebollas en gajos y el pimiento en tiras.",
+                "Extiende las verduras con los ajos sin pelar en una fuente grande y riega con la mitad del aceite.",
+                "Sala los muslos, mézclalos con el pimentón, el zumo de medio limón y el resto del aceite y colócalos sobre las verduras, con la piel hacia arriba.",
+                "Hornea 50-60 minutos, dándoles la vuelta a mitad de tiempo y regando con su jugo.",
+                "Está listo cuando el jugo sale claro y la carne junto al hueso no está rosada (74 ºC en el centro si tienes termómetro). Reposa 5 minutos y sirve con el limón restante.",
+                "Lávate las manos y la tabla con agua caliente y jabón tras manejar el pollo crudo."
+              ],
+              "tags": [
+                "menú semanal",
+                "comida",
+                "plato principal",
+                "pollo",
+                "horno",
+                "domingo"
+              ]
+            },
+            {
+              "title": "Ensalada de lechuga y manzana",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "lechuga",
+                  "quantity": "0.5",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "manzana",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "limón",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lava y trocea la lechuga. Corta la manzana en cubos o láminas y rocíala con el zumo de limón para que no se oscurezca.",
+                "Mezcla y aliña con el aceite y la sal justo antes de servir."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "ensalada",
+                "sin cocinar",
+                "con niños"
+              ]
+            }
+          ]
+        },
+        "cena": {
+          "title": "Revuelto de champiñones y calabacín",
+          "side": "Tostadas con tomate",
+          "recipes": [
+            {
+              "title": "Revuelto de champiñones y calabacín",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "huevo",
+                  "quantity": "6",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "champiñones",
+                  "quantity": "250",
+                  "unit": "g"
+                },
+                {
+                  "name": "calabacín",
+                  "quantity": "1",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "ajo",
+                  "quantity": "1",
+                  "unit": "dientes"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Lamina los champiñones, corta el calabacín en dados pequeños y pica el ajo.",
+                "Calienta el aceite en una sartén grande y saltea el ajo 30 segundos. Añade el calabacín y los champiñones y cocina 8-10 minutos, hasta que suelten el agua y se doren.",
+                "Bate los huevos con la sal, viértelos y remueve a fuego medio hasta que cuajen del todo (que no queden partes líquidas). Sirve enseguida."
+              ],
+              "tags": [
+                "menú semanal",
+                "cena",
+                "plato principal",
+                "huevos",
+                "verdura",
+                "cena ligera",
+                "rápida"
+              ]
+            },
+            {
+              "title": "Tostadas con tomate",
+              "servings": 4,
+              "ingredients": [
+                {
+                  "name": "pan integral",
+                  "quantity": "8",
+                  "unit": "rebanadas"
+                },
+                {
+                  "name": "tomate",
+                  "quantity": "2",
+                  "unit": "unidades"
+                },
+                {
+                  "name": "aceite de oliva",
+                  "quantity": "2",
+                  "unit": "cucharadas"
+                },
+                {
+                  "name": "sal",
+                  "quantity": "1",
+                  "unit": "pizca"
+                }
+              ],
+              "steps": [
+                "Tuesta las rebanadas de pan.",
+                "Ralla el tomate (sin la piel) y repártelo sobre las tostadas. Termina con un hilo de aceite y una pizca de sal."
+              ],
+              "tags": [
+                "menú semanal",
+                "acompañamiento",
+                "sin cocinar",
+                "rápida"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

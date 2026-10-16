@@ -1,5 +1,6 @@
 // Menú semanal oficial en Comunidad: estructura que se ve (renderToStaticMarkup, sin navegador ni red: los efectos no se ejecutan) y reglas que solo se
 // comprueban leyendo el código (coste, seguridad, accesibilidad, punto de extensión de alergias, que cada botón tenga su función real).
+// Los casos usan una copia CONGELADA del menú de la semilla anterior a la revisión del 16/10 (28 recetas, sin campos nuevos) y variantes con el contrato ampliado.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -12,7 +13,7 @@ import planSrc from '@/ui/community/menu/MenuPlanView.tsx?raw'
 import importSrc from '@/ui/community/menu/MenuImportSheet.tsx?raw'
 import shopSrc from '@/ui/community/menu/MenuShoppingSheet.tsx?raw'
 import dataSrc from '@/data/communityMenu.ts?raw'
-import { MenuPlanView } from '@/ui/community/menu/MenuPlanView'
+import { MenuPlanView, RecipeBlock } from '@/ui/community/menu/MenuPlanView'
 import { MenuImportSheet } from '@/ui/community/menu/MenuImportSheet'
 import { MenuShoppingSheet } from '@/ui/community/menu/MenuShoppingSheet'
 import { MenuPostPanel } from '@/ui/community/menu/MenuPostPanel'
@@ -26,7 +27,7 @@ vi.mock('@/ui/community/useCommunityAccess', () => ({
   useCommunityAccess: () => ({ canParticipate, readOnly: !canParticipate, canRead: true, level: canParticipate ? 'participate' : 'read', reason: null, access: {}, refreshAccess: async () => ({}) }),
 }))
 
-const raw = JSON.parse(readFileSync(join(process.cwd(), 'supabase/seed/community_initial_posts/05-menu-semanal.payload.json'), 'utf8'))
+const raw = JSON.parse(readFileSync(join(process.cwd(), 'src/domain/fixtures/menuSemanaAnterior.json'), 'utf8'))
 const menu = parseMenu(raw)!
 const dated = parseMenu({ ...raw, weekStart: '2026-10-19', weekEnd: '2026-10-25' })!
 
@@ -196,5 +197,151 @@ describe('coste y seguridad', () => {
 
   it('la importación nunca recibe un identificador de familia', () => {
     expect(dataSrc).not.toMatch(/family/i)
+  })
+})
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Contrato ampliado: elementos sencillos, «Truco de Pepa», congelación y tiempos
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+describe('campos opcionales de la receta en el plan (MenuPlanView / RecipeBlock)', () => {
+  type R = Record<string, unknown>
+  const rawX = JSON.parse(JSON.stringify(raw))
+  const lentejas = rawX.days[0].meals.comida.recipes[0] as R
+  const fruta = rawX.days[0].meals.comida.recipes[1] as R
+  Object.assign(lentejas, { tip: 'Cuece el doble y congela <b>raciones</b>.', freeze: { ideal: true, note: 'Congela en raciones de 2 personas.' }, time: { active: 20, total: 90 } })
+  Object.assign(fruta, { simple: true, steps: [] })
+  // La cena del lunes es SOLO un elemento sencillo (no hay receta que ver).
+  rawX.days[0].meals.cena.recipes = [Object.assign({}, rawX.days[0].meals.cena.recipes[1], { simple: true, steps: [] })]
+  const mx = parseMenu(rawX)!
+  const [rLent, rFruta] = mx.days[0].meals.comida!.recipes
+  const block = (recipe: typeof rLent, over: Partial<Parameters<typeof RecipeBlock>[0]> = {}) =>
+    html(<RecipeBlock recipe={recipe} menu={mx} servings={4} role="Plato principal" canUseKitchen onSave={() => undefined} onShop={() => undefined} {...over} />)
+
+  it('una receta con truco, congelación y tiempos los enseña, con la insignia y la nota, y conserva Preparación y «Guardar esta receta»', () => {
+    const out = block(rLent)
+    expect(out).toContain('Ideal para cocinar de más y congelar')
+    expect(out).toContain('❄️')
+    expect(out).toContain('Congela en raciones de 2 personas.')
+    expect(out).toContain('💡')
+    expect(out).toContain('Truco de Pepa')
+    expect(out).toContain('Trabajo activo 20 min · Total 90 min')
+    expect(out).toContain('⏱️')
+    expect(out).toContain('Preparación')
+    expect(out).toContain('Guardar esta receta')
+    expect(out).toContain('Ingredientes a Compras')
+  })
+
+  it('el texto del truco se pinta como texto (nada de HTML)', () => {
+    const out = block(rLent)
+    expect(out).not.toContain('<b>raciones</b>')
+    expect(out).toContain('&lt;b&gt;raciones&lt;/b&gt;')
+  })
+
+  it('una receta SIN campos nuevos no enseña insignia, truco ni tiempo (todo sigue igual que antes)', () => {
+    const plain = parseMenu(raw)!.days[0].meals.cena!.recipes[0]
+    const out = block(plain)
+    for (const t of ['Ideal para cocinar', 'Truco de Pepa', 'Trabajo activo', '❄️', '💡', '⏱️']) expect(out).not.toContain(t)
+    expect(out).toContain('Preparación')
+    expect(out).toContain('Guardar esta receta')
+  })
+
+  it('un elemento SENCILLO se enseña con sus ingredientes y cantidades, sin pasos y SIN «Guardar esta receta»', () => {
+    const out = block(rFruta, { role: 'Acompañamiento sencillo' })
+    expect(out).toContain('Fruta de temporada')
+    expect(out).toContain('Acompañamiento sencillo')
+    expect(out).toContain('Elemento sencillo: Fruta de temporada') // etiqueta accesible
+    expect(out).toContain('Ingredientes')
+    expect(out).toContain('no necesita receta')
+    expect(out).not.toContain('Preparación')
+    expect(out).not.toContain('no tiene pasos')
+    expect(out).not.toContain('Guardar esta receta')
+    expect(out).toContain('Ingredientes a Compras') // sus ingredientes SÍ van a Compras
+  })
+
+  it('las cantidades del elemento sencillo se escalan con las raciones elegidas', () => {
+    const base = block(rFruta)
+    const doble = html(<RecipeBlock recipe={rFruta} menu={mx} servings={8} role="x" canUseKitchen onSave={() => undefined} onShop={() => undefined} />)
+    const qty = (o: string) => o.match(/<li>[^<]*<\/li>/)?.[0]
+    expect(qty(base)).toBeDefined()
+    expect(qty(doble)).toBeDefined()
+    expect(qty(doble)).not.toBe(qty(base))
+  })
+
+  it('con solo lectura el elemento sencillo no ofrece ningún botón', () => {
+    const out = block(rFruta, { canUseKitchen: false })
+    expect(out).not.toContain('<button')
+    expect(out).toContain('Fruta de temporada')
+  })
+
+  it('en la tarjeta cerrada: insignia discreta de congelación y tiempo del plato principal', () => {
+    const out = html(<MenuPlanView postId="p1" menu={mx} canUseKitchen />)
+    expect(out).toContain('Ideal para cocinar de más y congelar')
+    expect(out).toContain('Trabajo activo 20 min · Total 90 min')
+    // La nota larga y el truco solo salen al desplegar la receta.
+    expect(out).not.toContain('Congela en raciones de 2 personas.')
+    expect(out).not.toContain('Truco de Pepa')
+  })
+
+  it('una comida con receta dice «Ver receta»; una comida solo de elementos sencillos dice «Ver ingredientes» (no hay receta con pasos vacíos)', () => {
+    const out = html(<MenuPlanView postId="p1" menu={mx} canUseKitchen />)
+    expect((out.match(/Ver receta/g) ?? []).length).toBe(1)
+    expect((out.match(/Ver ingredientes/g) ?? []).length).toBe(1)
+  })
+
+  it('sin campos nuevos el plan se ve exactamente con «Ver receta» en las dos comidas del día', () => {
+    const out = html(<MenuPlanView postId="p1" menu={menu} canUseKitchen />)
+    expect((out.match(/Ver receta/g) ?? []).length).toBe(2)
+    expect(out).not.toContain('Ver ingredientes')
+  })
+
+  it('el código no tiene botón de receta para los sencillos y no pinta HTML', () => {
+    expect(planSrc).toContain('!recipe.simple')
+    expect(planSrc).not.toContain('dangerouslySetInnerHTML')
+  })
+})
+
+describe('hoja de importación con elementos sencillos', () => {
+  type R = Record<string, unknown>
+  const rawX = JSON.parse(JSON.stringify(raw))
+  Object.assign(rawX.days[0].meals.comida.recipes[1] as R, { simple: true, steps: [] })
+  rawX.days[0].meals.cena.recipes = [Object.assign({}, rawX.days[0].meals.cena.recipes[1], { simple: true, steps: [] })]
+  const mx = parseMenu(rawX)!
+  const render = (initial: Parameters<typeof MenuImportSheet>[0]['initial'], extra: Partial<Parameters<typeof MenuImportSheet>[0]> = {}) =>
+    html(<MenuImportSheet postId="p1" menu={mx} initial={initial} initialServings={4} onClose={() => undefined} {...extra} />)
+
+  it('«Una sola receta»: los elementos sencillos aparecen desactivados y marcados como «no es una receta»', () => {
+    const out = render({ scope: 'recipe', day: 'lunes', meal: 'comida', recipeIndex: 0 })
+    expect(out).toMatch(/<option value="1" disabled="">[^<]*Fruta de temporada[^<]*\(apunte sencillo: no es una receta\)/)
+    expect(out).not.toMatch(/<option value="0" disabled/)
+  })
+
+  it('si la selección llegase a ser un sencillo, se pasa a la primera receta de verdad de esa comida', () => {
+    const out = render({ scope: 'recipe', day: 'lunes', meal: 'comida', recipeIndex: 1 })
+    expect(out).toMatch(/<option value="0" selected="">/)
+  })
+
+  it('una comida con solo sencillos no ofrece guardar nada como receta: el botón sigue desactivado', () => {
+    const out = render({ scope: 'recipe', day: 'lunes', meal: 'cena', recipeIndex: 0 })
+    expect(out).toMatch(/<button[^>]*class="primary"[^>]*disabled=""[^>]*>📥 Guardar esta receta/)
+  })
+
+  it('el punto de extensión de alergias recibe TAMBIÉN los elementos sencillos (sus ingredientes se avisan igual)', () => {
+    const out = render({ scope: 'meal', day: 'lunes', meal: 'comida' }, { renderWarnings: (items) => <p>{items.length} elementos, {items.filter((i) => i.recipe.simple).length} sencillos</p> })
+    expect(out).toContain('2 elementos, 1 sencillos')
+  })
+
+  it('el código distingue «apunte sin receta» en la vista previa y en el resumen, y no ofrece guardar sencillos como receta', () => {
+    expect(importSrc).toContain("recipe.action === 'note'")
+    expect(importSrc).toContain('apunte sin receta')
+    expect(importSrc).toContain('disabled={r.simple}')
+    expect(importSrc).toContain('MENU_ERROR_MESSAGES.NOT_A_RECIPE')
+  })
+})
+
+describe('Compras no cambia con los elementos sencillos', () => {
+  it('MenuShoppingSheet no distingue sencillos: usa la misma función de siempre para todos', () => {
+    expect(shopSrc).not.toMatch(/simple|tip|freeze/)
+    expect(shopSrc).toContain('buildMenuShopping(menu, selection, servings)')
   })
 })

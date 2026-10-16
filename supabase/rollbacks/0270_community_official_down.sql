@@ -30,6 +30,8 @@ drop function if exists public.community_admin_edit_proposal(uuid, text, text, j
 drop function if exists public.community_admin_list_proposals(text);
 drop function if exists public.community_service_create_proposals(date, jsonb);
 drop function if exists private.community_publish_item(uuid);
+drop function if exists private.community_menu_check(jsonb, uuid);
+drop function if exists private.community_menu_recent_overlap(jsonb, uuid);
 drop function if exists private.community_menu_quality(jsonb);
 drop function if exists private.community_validate_menu_item(jsonb);
 drop function if exists private.community_validate_menu(jsonb);

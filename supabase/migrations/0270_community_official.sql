@@ -194,6 +194,13 @@ $$;
 revoke execute on function private.community_menu_warn(text, text, text, text, text) from public, anon, authenticated;
 
 -- Valida UNA receta del menú (mismos límites que el puente a la Cocina). Devuelve null si es válida o el motivo en español.
+-- Campos OPCIONALES (todos los menús anteriores siguen siendo válidos; un campo AUSENTE nunca es un error; un JSON null en tip/freeze/time cuenta como ausente, igual
+-- que `tags`; en `simple` no, porque solo puede ser verdadero o falso):
+--   simple  boolean. true = «acompañamiento sencillo» (una pieza de fruta, pan tostado…): lleva título, raciones e ingredientes con cantidades y NO necesita pasos
+--           (`steps` puede faltar o ser []; si los lleva, se validan igual, hasta 30). Una receta que no es simple sigue necesitando de 1 a 30 pasos.
+--   tip     texto de 1 a 400 caracteres («Truco de Pepa…»).
+--   freeze  {"ideal": true|false, "note": "…"} — `ideal` booleano obligatorio dentro del objeto; `note` opcional, de 1 a 300 caracteres.
+--   time    {"active": minutos enteros 1–600, "total": minutos enteros 1–1440}, total >= active (trabajo activo y tiempo total, ambos obligatorios dentro del objeto).
 create or replace function private.community_validate_menu_recipe(r jsonb)
 returns text
 language plpgsql
@@ -207,6 +214,9 @@ declare
   v_names text[] := '{}';
   v_n text;
   v_t text;
+  v_simple boolean := false;
+  v_active numeric;
+  v_total numeric;
 begin
   if jsonb_typeof(r) is distinct from 'object' then
     return 'una receta no tiene el formato esperado';
@@ -240,14 +250,64 @@ begin
     end if;
     v_names := v_names || v_n;
   end loop;
-  if jsonb_typeof(r -> 'steps') is distinct from 'array' or jsonb_array_length(r -> 'steps') not between 1 and 30 then
-    return v_t || 'debe tener de 1 a 30 pasos';
-  end if;
-  for st in select * from jsonb_array_elements(r -> 'steps') loop
-    if jsonb_typeof(st) is distinct from 'string' or btrim(st #>> '{}') = '' or char_length(st #>> '{}') > 1000 then
-      return v_t || 'cada paso debe tener texto (hasta 1000 caracteres)';
+  if r ? 'simple' then
+    if jsonb_typeof(r -> 'simple') is distinct from 'boolean' then
+      return v_t || 'el campo «simple» debe ser verdadero o falso';
     end if;
-  end loop;
+    v_simple := (r ->> 'simple')::boolean;
+  end if;
+  -- Una receta normal necesita de 1 a 30 pasos; un elemento sencillo puede no llevar ninguno (falta `steps` o es una lista vacía).
+  if v_simple and (not r ? 'steps' or jsonb_typeof(r -> 'steps') = 'null') then
+    null;
+  elsif jsonb_typeof(r -> 'steps') is distinct from 'array' or jsonb_array_length(r -> 'steps') not between (case when v_simple then 0 else 1 end) and 30 then
+    return v_t || case when v_simple then 'los pasos deben ser una lista de hasta 30' else 'debe tener de 1 a 30 pasos' end;
+  else
+    for st in select * from jsonb_array_elements(r -> 'steps') loop
+      if jsonb_typeof(st) is distinct from 'string' or btrim(st #>> '{}') = '' or char_length(st #>> '{}') > 1000 then
+        return v_t || 'cada paso debe tener texto (hasta 1000 caracteres)';
+      end if;
+    end loop;
+  end if;
+  if r ? 'tip' and jsonb_typeof(r -> 'tip') <> 'null' then
+    if jsonb_typeof(r -> 'tip') <> 'string' then
+      return v_t || 'el truco debe ser un texto de 1 a 400 caracteres';
+    end if;
+    if char_length(btrim(r ->> 'tip')) not between 1 and 400 then
+      return v_t || 'el truco debe ser un texto de 1 a 400 caracteres';
+    end if;
+  end if;
+  if r ? 'freeze' and jsonb_typeof(r -> 'freeze') <> 'null' then
+    if jsonb_typeof(r -> 'freeze') <> 'object' then
+      return v_t || 'la congelación debe ser {"ideal": verdadero o falso, "note": texto opcional}';
+    end if;
+    if jsonb_typeof(r -> 'freeze' -> 'ideal') is distinct from 'boolean' then
+      return v_t || 'la congelación debe ser {"ideal": verdadero o falso, "note": texto opcional}';
+    end if;
+    if r -> 'freeze' ? 'note' then
+      if jsonb_typeof(r -> 'freeze' -> 'note') <> 'string' then
+        return v_t || 'la nota de congelación debe ser un texto de 1 a 300 caracteres';
+      end if;
+      if char_length(btrim(r -> 'freeze' ->> 'note')) not between 1 and 300 then
+        return v_t || 'la nota de congelación debe ser un texto de 1 a 300 caracteres';
+      end if;
+    end if;
+  end if;
+  if r ? 'time' and jsonb_typeof(r -> 'time') <> 'null' then
+    if jsonb_typeof(r -> 'time') <> 'object' then
+      return v_t || 'el tiempo debe ser {"active": minutos enteros de 1 a 600, "total": minutos enteros de 1 a 1440}';
+    end if;
+    if jsonb_typeof(r -> 'time' -> 'active') is distinct from 'number' or jsonb_typeof(r -> 'time' -> 'total') is distinct from 'number' then
+      return v_t || 'el tiempo debe ser {"active": minutos enteros de 1 a 600, "total": minutos enteros de 1 a 1440}';
+    end if;
+    v_active := (r -> 'time' ->> 'active')::numeric;
+    v_total := (r -> 'time' ->> 'total')::numeric;
+    if v_active <> trunc(v_active) or v_total <> trunc(v_total) or v_active not between 1 and 600 or v_total not between 1 and 1440 then
+      return v_t || 'el tiempo debe ser {"active": minutos enteros de 1 a 600, "total": minutos enteros de 1 a 1440}';
+    end if;
+    if v_total < v_active then
+      return v_t || 'el tiempo total no puede ser menor que el de trabajo activo';
+    end if;
+  end if;
   if r ->> 'tags' is not null then
     if jsonb_typeof(r -> 'tags') is distinct from 'array' or jsonb_array_length(r -> 'tags') > 12 then
       return v_t || 'como máximo 12 etiquetas';
@@ -375,8 +435,13 @@ revoke execute on function private.community_validate_menu_item(jsonb) from publ
 -- severity «error»: el menú NO es válido (un único aviso con el motivo de private.community_validate_menu; no se puede aprobar). severity «warning»: aviso NO
 -- bloqueante (decide la persona). Avisos: SAME_MAIN_INGREDIENT (comida y cena del día con el mismo primer ingrediente en su receta principal), INGREDIENT_NOT_IN_STEPS
 -- (ingrediente que no se menciona en ningún paso), QUANTITY_EMPTY / QUANTITY_NOT_NUMERIC / QUANTITY_ABSURD (cantidades vacías, no numéricas o desmesuradas),
--- TIME_TOO_LONG / TIME_TOO_SHORT (tiempos de más de 6 horas o menos de 1 minuto escritos en los pasos), SERVINGS_MISMATCH (raciones de una receta distintas de las del
--- menú). «Plato repetido más de 2 veces» y «comida y cena iguales» NO son avisos: son errores de validación.
+-- TIME_TOO_LONG / TIME_TOO_SHORT (tiempos de más de 6 horas o menos de 1 minuto escritos en los pasos), TIME_UNREALISTIC (campo `time` de la receta: total de más de 6 horas,
+-- trabajo activo de más de 2 horas, o un paso que dura más que el tiempo total declarado), SERVINGS_MISMATCH (raciones de una receta distintas de las del menú).
+-- «Plato repetido más de 2 veces» y «comida y cena iguales» NO son avisos: son errores de validación.
+-- ELEMENTOS SENCILLOS (`simple: true`, sin pasos): no se les aplican los avisos que dependen de los pasos (INGREDIENT_NOT_IN_STEPS, tiempos escritos en los pasos) ni cuentan
+-- como «plato principal» para SAME_MAIN_INGREDIENT; sus cantidades SÍ se revisan.
+-- El aviso de platos repetidos de semanas recientes (RECENT_REPEAT) NO está aquí (esta función es pura y no lee tablas): lo da private.community_menu_recent_overlap y lo une
+-- private.community_menu_check.
 -- LÍMITES (heurística, no una revisión humana): solo reconoce texto en español; compara palabras sueltas sin tildes (un ingrediente se da por mencionado si cualquiera de
 -- sus palabras de 3 o más letras, en singular, aparece en los pasos: «sal» también casa con «salteado»); los tiempos se leen solo si van en cifras («15 minutos», «2 h»; no
 -- «un cuarto de hora»); NO comprueba seguridad alimentaria, alérgenos, valores nutricionales, coherencia entre cantidades y raciones, ni que la receta sea cocinable.
@@ -410,6 +475,10 @@ declare
   v_lim numeric;
   v_mins numeric;
   v_first text[];
+  v_simple boolean;
+  v_max_step numeric;
+  v_active numeric;
+  v_total numeric;
   x record;
 begin
   if v_err is not null then
@@ -421,24 +490,26 @@ begin
     v_first := '{}';
     foreach m in array array['comida', 'cena'] loop
       meal := d -> 'meals' -> m;
-      v_first := v_first || private.community_menu_text_key(meal -> 'recipes' -> 0 -> 'ingredients' -> 0 ->> 'name');
+      -- Un elemento sencillo (fruta, pan tostado…) no cuenta como plato principal para comparar la comida y la cena.
+      v_first := v_first || case when coalesce((meal -> 'recipes' -> 0 ->> 'simple')::boolean, false) then '' else private.community_menu_text_key(meal -> 'recipes' -> 0 -> 'ingredients' -> 0 ->> 'name') end;
       for rec in select * from jsonb_array_elements(meal -> 'recipes') loop
         v_title := rec ->> 'title';
+        v_simple := coalesce((rec ->> 'simple')::boolean, false);
         if (rec ->> 'servings')::numeric <> (p ->> 'servings')::numeric then
           v_out := v_out || private.community_menu_warn('SERVINGS_MISMATCH', 'La receta tiene ' || (rec ->> 'servings') || ' raciones y el menú ' || (p ->> 'servings') || '.', v_day, m, v_title);
         end if;
-        select private.community_menu_text_key(string_agg(s #>> '{}', ' ')) into v_steps from jsonb_array_elements(rec -> 'steps') as s;
+        select private.community_menu_text_key(string_agg(s #>> '{}', ' ')) into v_steps from jsonb_array_elements(coalesce(rec -> 'steps', '[]'::jsonb)) as s;
         for ing in select * from jsonb_array_elements(rec -> 'ingredients') loop
-          -- Ingrediente que no aparece en ningún paso.
+          -- Ingrediente que no aparece en ningún paso (no se aplica a un elemento sencillo: no tiene pasos).
           v_name := private.community_menu_text_key(ing ->> 'name');
           v_found := false;
           for v_tok in select w from regexp_split_to_table(v_name, '[^a-z0-9]+') as w where char_length(w) >= 3 and w <> all (v_stop) loop
-            if position((case when char_length(v_tok) > 3 and v_tok like '%s' then left(v_tok, -1) else v_tok end) in v_steps) > 0 then
+            if position((case when char_length(v_tok) > 3 and v_tok like '%s' then left(v_tok, -1) else v_tok end) in coalesce(v_steps, '')) > 0 then
               v_found := true;
               exit;
             end if;
           end loop;
-          if not v_found and exists (select 1 from regexp_split_to_table(v_name, '[^a-z0-9]+') as w where char_length(w) >= 3 and w <> all (v_stop)) then
+          if not v_simple and not v_found and exists (select 1 from regexp_split_to_table(v_name, '[^a-z0-9]+') as w where char_length(w) >= 3 and w <> all (v_stop)) then
             v_out := v_out || private.community_menu_warn('INGREDIENT_NOT_IN_STEPS', 'El ingrediente «' || (ing ->> 'name') || '» no se menciona en ningún paso.', v_day, m, v_title);
           end if;
           -- Cantidades.
@@ -462,9 +533,11 @@ begin
           end if;
         end loop;
         -- Tiempos escritos en los pasos.
-        for st in select * from jsonb_array_elements(rec -> 'steps') loop
+        v_max_step := 0;
+        for st in select * from jsonb_array_elements(coalesce(rec -> 'steps', '[]'::jsonb)) loop
           for x in select g[1] as n, g[2] as u from regexp_matches(lower(st #>> '{}'), '(\d+(?:[.,]\d+)?)\s*(horas?|hrs?|h|minutos?|mins?|min)\y', 'g') as g loop
             v_mins := replace(x.n, ',', '.')::numeric * case when x.u like 'h%' then 60 else 1 end;
+            v_max_step := greatest(v_max_step, v_mins);
             if v_mins > 360 then
               v_out := v_out || private.community_menu_warn('TIME_TOO_LONG', 'Un paso indica ' || x.n || ' ' || x.u || ' (más de 6 horas).', v_day, m, v_title);
             elsif v_mins < 1 then
@@ -472,6 +545,20 @@ begin
             end if;
           end loop;
         end loop;
+        -- Campo `time` de la receta (ya validado: enteros, total >= trabajo activo): tiempos poco realistas.
+        if rec ? 'time' and jsonb_typeof(rec -> 'time') = 'object' then
+          v_active := (rec -> 'time' ->> 'active')::numeric;
+          v_total := (rec -> 'time' ->> 'total')::numeric;
+          if v_total > 360 then
+            v_out := v_out || private.community_menu_warn('TIME_UNREALISTIC', 'El tiempo total indicado (' || v_total || ' min) supera las 6 horas.', v_day, m, v_title);
+          end if;
+          if v_active > 120 then
+            v_out := v_out || private.community_menu_warn('TIME_UNREALISTIC', 'El trabajo activo indicado (' || v_active || ' min) supera las 2 horas: el menú es para personas con poco tiempo.', v_day, m, v_title);
+          end if;
+          if v_max_step > v_total and v_max_step <= 360 then
+            v_out := v_out || private.community_menu_warn('TIME_UNREALISTIC', 'Un paso dura ' || v_max_step || ' min, más que el tiempo total indicado (' || v_total || ' min).', v_day, m, v_title);
+          end if;
+        end if;
       end loop;
     end loop;
     if v_first[1] <> '' and v_first[1] = v_first[2] then
@@ -482,6 +569,96 @@ begin
 end;
 $$;
 revoke execute on function private.community_menu_quality(jsonb) from public, anon, authenticated;
+
+-- Aviso NO bloqueante «plato repetido de semanas recientes» (código RECENT_REPEAT). Compara los PLATOS PRINCIPALES del menú que se revisa (la primera receta de cada comida y
+-- de cada cena, sin contar los elementos sencillos `simple: true`) con los de los ÚLTIMOS 4 MENÚS SEMANALES APROBADOS O PUBLICADOS (otros elementos oficiales de tipo `menu`;
+-- p_item_id excluye al propio menú para que no se compare consigo mismo; con null no se excluye ninguno). Los «últimos 4» son los de semana más reciente (menu_week_start; los
+-- sin semana, al final), luego los aprobados más recientemente.
+-- Devuelve una lista (jsonb array) de avisos {code, severity «warning», message, day, meal, recipe}: uno por cada comida o cena cuyo plato principal ya salió, con la semana del
+-- menú más reciente en que apareció. Menú no válido o sin menús previos = lista vacía.
+-- LÍMITES (heurística editorial, no una revisión humana): SOLO coincidencia del TÍTULO normalizado de la receta principal (minúsculas, sin tildes ni eñes, espacios simples,
+-- vía private.community_menu_text_key). NO detecta el mismo plato con otro nombre («lentejas estofadas» frente a «lentejas con verduras»), ni platos casi idénticos, ni
+-- ingredientes o técnicas repetidos, ni acompañamientos; tampoco mira menús rechazados o en borrador. Es de LECTURA (lee community_official_items), por eso es `stable` y no
+-- se mezcla en la función pura community_menu_quality.
+create or replace function private.community_menu_recent_overlap(p_menu jsonb, p_item_id uuid default null)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_prior jsonb;
+  v_out jsonb := '[]'::jsonb;
+  d jsonb;
+  rec jsonb;
+  i integer;
+  m text;
+  v_key text;
+  v_week text;
+begin
+  if private.community_validate_menu(p_menu) is not null then
+    return v_out;
+  end if;
+  -- clave normalizada del plato principal → semana (DD/MM/AAAA, o '' si no tiene) del menú MÁS RECIENTE de los 4 últimos en que salió.
+  select coalesce(jsonb_object_agg(t.k, t.w), '{}'::jsonb) into v_prior
+  from (
+    select distinct on (q.k) q.k, coalesce(to_char(q.ws, 'DD/MM/YYYY'), '') as w
+    from (
+      select private.community_menu_text_key(r.rec ->> 'title') as k, p.ws, p.rk
+      from (
+        select x.menu_week_start as ws, x.payload -> 'menu' as menu,
+               row_number() over (order by x.menu_week_start desc nulls last, x.approved_at desc nulls last, x.proposed_at desc, x.id) as rk
+        from public.community_official_items x
+        where x.kind = 'menu' and x.status in ('approved', 'published') and (p_item_id is null or x.id <> p_item_id)
+        order by x.menu_week_start desc nulls last, x.approved_at desc nulls last, x.proposed_at desc, x.id
+        limit 4
+      ) p
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(p.menu -> 'days') = 'array' then p.menu -> 'days' else '[]'::jsonb end) as dd(value)
+      cross join lateral (values ('comida'), ('cena')) as ml(meal)
+      cross join lateral (select dd.value -> 'meals' -> ml.meal -> 'recipes' -> 0 as rec) r
+      where jsonb_typeof(r.rec) = 'object' and jsonb_typeof(r.rec -> 'title') = 'string' and coalesce(r.rec ->> 'simple', 'false') <> 'true'
+    ) q
+    where q.k <> ''
+    order by q.k, q.rk
+  ) t;
+  if v_prior = '{}'::jsonb then
+    return v_out;
+  end if;
+  for i in 0..6 loop
+    d := p_menu -> 'days' -> i;
+    foreach m in array array['comida', 'cena'] loop
+      rec := d -> 'meals' -> m -> 'recipes' -> 0;
+      if coalesce((rec ->> 'simple')::boolean, false) then
+        continue;
+      end if;
+      v_key := private.community_menu_text_key(rec ->> 'title');
+      if v_prior ? v_key then
+        v_week := v_prior ->> v_key;
+        v_out := v_out || private.community_menu_warn('RECENT_REPEAT',
+          'El plato «' || left(rec ->> 'title', 80) || '» ya estuvo en un menú reciente' || case when v_week <> '' then ' (semana del ' || v_week || ')' else '' end || '.',
+          d ->> 'day', m, rec ->> 'title');
+      end if;
+    end loop;
+  end loop;
+  return v_out;
+end;
+$$;
+revoke execute on function private.community_menu_recent_overlap(jsonb, uuid) from public, anon, authenticated;
+
+-- REVISIÓN COMPLETA de un menú para la administración: avisos de calidad (private.community_menu_quality) + platos repetidos de semanas recientes
+-- (private.community_menu_recent_overlap). Es lo que ven community_admin_list_proposals (menu_check), community_admin_list_menus (check_errors / check_warnings) y
+-- community_admin_get_menu (check). p_item_id = el elemento que se revisa (se excluye de la comparación).
+create or replace function private.community_menu_check(p_menu jsonb, p_item_id uuid default null)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.community_menu_quality(p_menu) || private.community_menu_recent_overlap(p_menu, p_item_id)
+$$;
+revoke execute on function private.community_menu_check(jsonb, uuid) from public, anon, authenticated;
 
 -- Publica un elemento oficial aprobado como publicación (identidad oficial correspondiente). Los artículos exigen fuentes; los menús se vuelven a validar y, si son
 -- semanales, llevan week_start y week_end (lunes y domingo de la semana siguiente al sábado de publicación). Idempotente: un elemento ya publicado devuelve null.
@@ -601,7 +778,7 @@ begin
       'review_note', i.review_note, 'publish_at', i.publish_at, 'published_post_id', i.published_post_id,
       -- Menús: semana, estado de la publicación programada, aviso de texto sin revisar y revisión de calidad (null en el resto de tipos).
       'menu_week_start', i.menu_week_start, 'publish_attempts', i.publish_attempts, 'publish_error', i.publish_error, 'menu_text_stale', i.menu_text_stale,
-      'menu_check', case when i.kind = 'menu' then private.community_menu_quality(i.payload -> 'menu') end) order by i.batch_week desc, i.proposed_at)
+      'menu_check', case when i.kind = 'menu' then private.community_menu_check(i.payload -> 'menu', i.id) end) order by i.batch_week desc, i.proposed_at)
     from public.community_official_items i where i.status = p_status
   ), '[]'::jsonb);
 end;
@@ -948,8 +1125,8 @@ begin
     'menus', coalesce((
       select jsonb_agg(private.community_menu_row(m)
         || case when m.status in ('proposed', 'approved') then
-             jsonb_build_object('check_errors', (select count(*) from jsonb_array_elements(private.community_menu_quality(m.payload -> 'menu')) w where w ->> 'severity' = 'error'),
-                                'check_warnings', (select count(*) from jsonb_array_elements(private.community_menu_quality(m.payload -> 'menu')) w where w ->> 'severity' = 'warning'))
+             (select jsonb_build_object('check_errors', count(*) filter (where w ->> 'severity' = 'error'), 'check_warnings', count(*) filter (where w ->> 'severity' = 'warning'))
+                from jsonb_array_elements(private.community_menu_check(m.payload -> 'menu', m.id)) w)
            else '{}'::jsonb end
         order by m.menu_week_start desc nulls first, m.proposed_at desc)
       from public.community_official_items m
@@ -959,7 +1136,7 @@ begin
 end;
 $$;
 
--- Un menú completo para revisarlo antes de aprobar: fila + texto + datos del menú + revisión de calidad (lista de avisos de private.community_menu_quality).
+-- Un menú completo para revisarlo antes de aprobar: fila + texto + datos del menú + revisión (lista de avisos de private.community_menu_check: calidad + platos repetidos recientes).
 create or replace function public.community_admin_get_menu(p_id uuid)
 returns jsonb
 language plpgsql
@@ -977,7 +1154,7 @@ begin
   end if;
   return private.community_menu_row(i) || jsonb_build_object(
     'body', i.body, 'section', i.section, 'topic_id', i.topic_id, 'menu', i.payload -> 'menu',
-    'check', private.community_menu_quality(i.payload -> 'menu'), 'item_error', private.community_validate_menu_item(i.payload));
+    'check', private.community_menu_check(i.payload -> 'menu', i.id), 'item_error', private.community_validate_menu_item(i.payload));
 end;
 $$;
 

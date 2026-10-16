@@ -82,3 +82,46 @@ describe('avisos de alergias antes de importar un menú', () => {
     expect(src).not.toMatch(/localStorage|sessionStorage|indexedDB|console\./)
   })
 })
+
+
+describe('avisos de alergias con elementos sencillos (fruta, pan tostado, yogur…)', () => {
+  // Menú mínimo escrito a mano: un plato principal y un acompañamiento SENCILLO (sin pasos) con un ingrediente lácteo.
+  const small = parseMenu({
+    version: 1,
+    servings: 4,
+    days: [
+      {
+        day: 'lunes',
+        meals: {
+          comida: {
+            title: 'Lentejas',
+            recipes: [
+              { title: 'Lentejas', servings: 4, ingredients: [{ name: 'lentejas', quantity: '320', unit: 'g' }], steps: ['Cuece las lentejas.'] },
+              { title: 'Yogur natural', servings: 4, simple: true, steps: [], ingredients: [{ name: 'yogur natural', quantity: '4', unit: 'unidades' }] },
+            ],
+          },
+        },
+      },
+    ],
+  })!
+  const items = selectRecipes(small, { scope: 'week' })
+
+  it('el elemento sencillo se revisa igual que una receta: avisa con su día y su nombre', () => {
+    const t = text(render(overview({ restrictions: [r({ allergenKey: 'leche' })] }), items))
+    expect(t).toContain('Revisa antes de cocinar')
+    expect(t).toContain('Lunes · Comida · Yogur natural')
+    expect(t).not.toContain('Lunes · Comida · Lentejas')
+    expect(t).not.toContain(TRAP_NOTE)
+  })
+
+  it('sin coincidencias en un elemento sencillo sigue enseñando el descargo y nunca «segura»', () => {
+    const t = text(render(overview({ restrictions: [r({ allergenKey: 'altramuces' })] }), items))
+    expect(t).toContain(NO_MATCH_DISCLAIMER)
+    expect(t.split(NO_MATCH_DISCLAIMER).join('').split(DIETARY_GENERAL_DISCLAIMER).join('')).not.toMatch(/segur[ao]|libre de|apta? para|sin alérgenos/i)
+  })
+
+  it('un elemento sencillo no hace que se oculte el aviso de la receta ni al revés', () => {
+    const t = text(render(overview({ restrictions: [r({ allergenKey: 'leche' })] }), items))
+    expect((t.match(/Lunes · Comida · /g) ?? []).length).toBe(1)
+  })
+})

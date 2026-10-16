@@ -1,5 +1,6 @@
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
+  FREEZE_BADGE_TEXT,
   MENU_DAYS,
   MENU_MAX_SERVINGS,
   MENU_MEALS,
@@ -7,6 +8,7 @@ import {
   dayLabel,
   dayShort,
   formatDayMonth,
+  formatRecipeTime,
   formatWeekRange,
   ingredientQuantityText,
   addDays,
@@ -28,6 +30,9 @@ import '@/ui/community/menu/communityMenu.css'
 // (ingredientes escalados a las raciones elegidas y pasos). Mirar el menú es libre; las acciones (importar a la Cocina y añadir a Compras) necesitan acceso
 // completo a Comunidad y una familia: con permiso solo de lectura se ve todo, pero esas acciones no aparecen y se explica por qué.
 // Todo el texto del menú se pinta como texto de React (nunca como HTML).
+// Elementos SENCILLOS (`simple`: una pieza de fruta, pan tostado…): se enseñan con sus ingredientes y cantidades escaladas, sin pasos y sin el botón «Guardar esta receta»
+// (no son recetas de Cocina: al importar el día o la comida se apuntan en el menú como texto). Sus ingredientes sí se pueden añadir a Compras.
+// Insignia «Ideal para cocinar de más y congelar», «Truco de Pepa» y tiempos (trabajo activo / total) son informativos y opcionales: cada familia decide cómo cocina.
 export interface MenuPlanViewProps {
   postId: string
   menu: CommunityMenu
@@ -191,6 +196,10 @@ export function MenuPlanView({ postId, menu, canUseKitchen, renderWarnings }: Me
           const id = mealKeyId(day.day, key)
           const expanded = open.has(id)
           const bodyId = `${uid}-${id}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+          // Si todo lo del plato es sencillo no hay receta que ver, solo ingredientes.
+          const onlySimple = meal.recipes.every((r) => r.simple)
+          const main = meal.recipes[0]
+          const freezable = meal.recipes.some((r) => r.freeze?.ideal)
           return (
             <article key={key} className="community-menu-meal" aria-label={`${label} del ${day.day}`}>
               <p className="community-menu-meal-label">
@@ -202,9 +211,19 @@ export function MenuPlanView({ postId, menu, canUseKitchen, renderWarnings }: Me
                   <span className="muted">Acompañamiento:</span> {meal.side}
                 </p>
               )}
+              {!expanded && main?.time && (
+                <p className="community-menu-time muted community-menu-small">
+                  <span aria-hidden="true">⏱️</span> {formatRecipeTime(main.time)}
+                </p>
+              )}
+              {!expanded && freezable && (
+                <p className="community-menu-freeze community-menu-small">
+                  <span aria-hidden="true">❄️</span> {FREEZE_BADGE_TEXT}
+                </p>
+              )}
               <div className="community-menu-meal-actions">
                 <button type="button" className="community-menu-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => toggle(id)}>
-                  {expanded ? 'Ocultar receta' : 'Ver receta'}
+                  {expanded ? (onlySimple ? 'Ocultar ingredientes' : 'Ocultar receta') : onlySimple ? 'Ver ingredientes' : 'Ver receta'}
                 </button>
                 {canUseKitchen && (
                   <>
@@ -226,7 +245,7 @@ export function MenuPlanView({ postId, menu, canUseKitchen, renderWarnings }: Me
                       recipe={recipe}
                       menu={menu}
                       servings={servings}
-                      role={index === 0 ? 'Plato principal' : 'Acompañamiento'}
+                      role={recipe.simple ? (index === 0 ? 'Plato sencillo' : 'Acompañamiento sencillo') : index === 0 ? 'Plato principal' : 'Acompañamiento'}
                       canUseKitchen={canUseKitchen}
                       onSave={() => setSheet({ type: 'import', selection: { scope: 'recipe', day: day.day, meal: key, recipeIndex: index } })}
                       onShop={() => setSheet({ type: 'shopping', selection: { scope: 'recipe', day: day.day, meal: key, recipeIndex: index } })}
@@ -258,7 +277,7 @@ export function MenuPlanView({ postId, menu, canUseKitchen, renderWarnings }: Me
   )
 }
 
-function RecipeBlock({
+export function RecipeBlock({
   recipe,
   menu,
   servings,
@@ -278,10 +297,23 @@ function RecipeBlock({
   const base = recipeBaseServings(recipe, menu)
   const scaled = useMemo(() => recipe.ingredients.map((i) => ({ i, text: ingredientQuantityText(i, base, servings) })), [recipe, base, servings])
   return (
-    <section className="community-menu-recipe" aria-label={`Receta: ${recipe.title}`}>
+    <section className={'community-menu-recipe' + (recipe.simple ? ' simple' : '')} aria-label={`${recipe.simple ? 'Elemento sencillo' : 'Receta'}: ${recipe.title}`}>
       <p className="community-menu-recipe-role">{role}</p>
       <h4>{recipe.title}</h4>
       <p className="muted community-menu-small">Para {servings} {servings === 1 ? 'persona' : 'personas'}</p>
+      {recipe.time && (
+        <p className="community-menu-time community-menu-small">
+          <span aria-hidden="true">⏱️</span> {formatRecipeTime(recipe.time)}
+        </p>
+      )}
+      {recipe.freeze?.ideal && (
+        <div className="community-menu-freeze" role="note">
+          <p className="community-menu-freeze-title">
+            <span aria-hidden="true">❄️</span> {FREEZE_BADGE_TEXT}
+          </p>
+          {recipe.freeze.note && <p className="community-menu-small">{recipe.freeze.note}</p>}
+        </div>
+      )}
       <h5>Ingredientes</h5>
       {scaled.length > 0 ? (
         <ul className="community-recipe-ingredients">
@@ -293,24 +325,40 @@ function RecipeBlock({
           ))}
         </ul>
       ) : (
-        <p className="muted">Esta receta no tiene ingredientes escritos.</p>
+        <p className="muted">{recipe.simple ? 'Este elemento no tiene ingredientes escritos.' : 'Esta receta no tiene ingredientes escritos.'}</p>
       )}
-      <h5>Preparación</h5>
-      {recipe.steps.length > 0 ? (
-        <ol className="community-recipe-steps">
-          {recipe.steps.map((s, k) => (
-            <li key={k}>{s}</li>
-          ))}
-        </ol>
+      {recipe.simple ? (
+        <p className="muted community-menu-small">Es un acompañamiento sencillo: no necesita receta. Al importar el menú se apunta en tu menú como texto.</p>
       ) : (
-        <p className="muted">Esta receta no tiene pasos escritos.</p>
+        <>
+          <h5>Preparación</h5>
+          {recipe.steps.length > 0 ? (
+            <ol className="community-recipe-steps">
+              {recipe.steps.map((s, k) => (
+                <li key={k}>{s}</li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted">Esta receta no tiene pasos escritos.</p>
+          )}
+        </>
+      )}
+      {recipe.tip && (
+        <aside className="community-menu-tip" aria-label="Truco de Pepa">
+          <p className="community-menu-tip-title">
+            <span aria-hidden="true">💡</span> Truco de Pepa
+          </p>
+          <p>{recipe.tip}</p>
+        </aside>
       )}
       {canUseKitchen && (
         <div className="community-menu-recipe-actions">
-          <button type="button" className="primary" onClick={onSave}>
-            📥 Guardar esta receta
-          </button>
-          <button type="button" onClick={onShop}>
+          {!recipe.simple && (
+            <button type="button" className="primary" onClick={onSave}>
+              📥 Guardar esta receta
+            </button>
+          )}
+          <button type="button" className={recipe.simple ? 'primary' : undefined} onClick={onShop}>
             🛒 Ingredientes a Compras
           </button>
         </div>

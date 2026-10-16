@@ -1,13 +1,18 @@
 // Menú semanal oficial (Comunidad): lectura del menú, escalado, selección, fechas, resultado de la importación y compra (suma sin duplicar).
-// Usa el menú REAL de la publicación semilla 05 (7 días × comida y cena, 28 recetas para 4 personas).
+// Los casos concretos usan una copia CONGELADA del menú de la semilla anterior a la revisión del 16/10 (7 días × comida y cena, 28 recetas para 4 personas, sin campos
+// nuevos): así no dependen del contenido que se reescribe. El menú ACTUAL de la semilla se comprueba aparte, de forma general.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
+  MENU_ERROR_MESSAGES,
   addDays,
   buildMenuShopping,
+  countSelection,
   defaultTargetMonday,
   formatDayDate,
+  formatMinutes,
+  formatRecipeTime,
   formatWeekRange,
   importResultLines,
   ingredientQuantityText,
@@ -26,8 +31,9 @@ import {
 } from '@/domain/communityMenu'
 import { normalizeKey } from '@/domain/communityRecipeDiff'
 
-const raw = JSON.parse(readFileSync(join(process.cwd(), 'supabase/seed/community_initial_posts/05-menu-semanal.payload.json'), 'utf8'))
+const raw = JSON.parse(readFileSync(join(process.cwd(), 'src/domain/fixtures/menuSemanaAnterior.json'), 'utf8'))
 const menu = parseMenu(raw) as CommunityMenu
+const seedNow = JSON.parse(readFileSync(join(process.cwd(), 'supabase/seed/community_initial_posts/05-menu-semanal.payload.json'), 'utf8'))
 
 describe('lectura del menú', () => {
   it('lee los 7 días con comida y cena y 28 recetas', () => {
@@ -144,7 +150,7 @@ describe('fechas (lunes a domingo, sin husos horarios)', () => {
 describe('resultado de la importación en lenguaje llano', () => {
   const base: MenuImportResult = {
     ok: true, replayed: false, scope: 'week', targetStart: '2026-10-19', targetEnd: '2026-10-25', servings: 4, onConflict: 'skip',
-    recipesCreated: 26, recipesReused: 2, recipes: [], slotsImported: 12, slotsSkipped: 2, slotsReplaced: 0, slotsAppended: 0, skipped: [], entriesCreated: 24, entriesRemoved: 0,
+    recipesCreated: 26, recipesReused: 2, notesCreated: 0, recipes: [], slotsImported: 12, slotsSkipped: 2, slotsReplaced: 0, slotsAppended: 0, skipped: [], entriesCreated: 24, entriesRemoved: 0,
   }
   it('dice qué se ha creado, reutilizado y respetado', () => {
     const lines = importResultLines(base).join(' ')
@@ -166,6 +172,8 @@ describe('errores propios de la importación', () => {
     expect(menuErrorCode({ message: 'BAD_TARGET_START' })).toBe('BAD_TARGET_START')
     expect(menuErrorCode({ message: 'Error: KEY_REUSED' })).toBe('KEY_REUSED')
     expect(menuErrorCode({ message: 'BAD_SCOPE' })).toBe('BAD_SCOPE')
+    expect(menuErrorCode({ message: 'NOT_A_RECIPE' })).toBe('NOT_A_RECIPE')
+    expect(MENU_ERROR_MESSAGES.NOT_A_RECIPE).toContain('no es una receta')
     expect(menuErrorCode({ message: 'NOT_AVAILABLE' })).toBeNull() // es un error de Comunidad
     expect(menuErrorCode(new Error('otra cosa'))).toBeNull()
   })
@@ -244,5 +252,151 @@ describe('compra: suma sin duplicar con el código de «Preparar compra del men�
     expect(rows.find((r) => r.line.name === 'lentejas')?.inList).toBe(true)
     expect(rows.find((r) => r.line.name === 'cebolla')?.inList).toBe(false)
     expect(rows.filter((r) => r.inList)).toHaveLength(2)
+  })
+})
+
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Contrato AMPLIADO de la receta: simple, tip, freeze, time (todo opcional)
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+type RawRecipe = Record<string, unknown>
+const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x))
+const rawRecipe = (m: typeof raw, d: number, meal: 'comida' | 'cena', i: number): RawRecipe => m.days[d].meals[meal].recipes[i]
+
+describe('lectura de los campos nuevos', () => {
+  it('un menú anterior (sin campos nuevos) se lee igual: ni sencillos, ni truco, ni congelación, ni tiempos', () => {
+    const all = menu.days.flatMap((d) => [d.meals.comida!, d.meals.cena!]).flatMap((m) => m.recipes)
+    expect(all.every((r) => r.simple === false && r.tip === null && r.freeze === null && r.time === null)).toBe(true)
+    expect(all.every((r) => r.steps.length > 0)).toBe(true)
+  })
+
+  it('lee simple, tip, freeze y time', () => {
+    const m = clone(raw)
+    Object.assign(rawRecipe(m, 0, 'comida', 0), { tip: '  Cuece las lentejas el domingo.  ', freeze: { ideal: true, note: ' Congela en raciones. ' }, time: { active: 20, total: 90 } })
+    Object.assign(rawRecipe(m, 0, 'comida', 1), { simple: true, steps: [] })
+    const p = parseMenu(m)!
+    const [lentejas, fruta] = p.days[0].meals.comida!.recipes
+    expect(lentejas.tip).toBe('Cuece las lentejas el domingo.')
+    expect(lentejas.freeze).toEqual({ ideal: true, note: 'Congela en raciones.' })
+    expect(lentejas.time).toEqual({ active: 20, total: 90 })
+    expect(lentejas.simple).toBe(false)
+    expect(fruta.simple).toBe(true)
+    expect(fruta.steps).toEqual([])
+    expect(fruta.ingredients.length).toBeGreaterThan(0)
+  })
+
+  it('un elemento sencillo sin la clave steps se lee sin romper (steps vacío) y conserva sus ingredientes con cantidades', () => {
+    const m = clone(raw)
+    const r = rawRecipe(m, 4, 'comida', 1)
+    r.simple = true
+    delete r.steps
+    const fruta = parseMenu(m)!.days[4].meals.comida!.recipes[1]
+    expect(fruta.simple).toBe(true)
+    expect(fruta.steps).toEqual([])
+    expect(fruta.ingredients.length).toBe(1)
+  })
+
+  it('lo que no tiene sentido se descarta sin romper: simple como texto, truco vacío, congelación no ideal, tiempos inválidos', () => {
+    const m = clone(raw)
+    Object.assign(rawRecipe(m, 0, 'comida', 0), { simple: 'true', tip: '   ', freeze: { ideal: false, note: 'no' }, time: { active: 0, total: 10 } })
+    Object.assign(rawRecipe(m, 0, 'cena', 0), { tip: 5, freeze: 'sí', time: { active: 30, total: 20 } })
+    Object.assign(rawRecipe(m, 1, 'comida', 0), { freeze: { ideal: true }, time: { active: 10.5, total: 20 } })
+    const p = parseMenu(m)!
+    const a = p.days[0].meals.comida!.recipes[0]
+    expect([a.simple, a.tip, a.freeze, a.time]).toEqual([false, null, null, null])
+    const b = p.days[0].meals.cena!.recipes[0]
+    expect([b.tip, b.freeze, b.time]).toEqual([null, null, null])
+    const c = p.days[1].meals.comida!.recipes[0]
+    expect(c.freeze).toEqual({ ideal: true, note: '' })
+    expect(c.time).toBeNull()
+  })
+
+  it('el menú ACTUAL de la semilla se lee entero: toda receta normal con pasos y cada sencillo con ingredientes', () => {
+    const p = parseMenu(seedNow)!
+    expect(p).not.toBeNull()
+    expect(p.days).toHaveLength(7)
+    const all = p.days.flatMap((d) => [d.meals.comida!, d.meals.cena!]).flatMap((m) => m.recipes)
+    for (const r of all) {
+      if (r.simple) expect(r.ingredients.length, r.title).toBeGreaterThan(0)
+      else expect(r.steps.length, r.title).toBeGreaterThan(0)
+      expect(r.ingredients.every((i) => i.name), r.title).toBe(true)
+    }
+  })
+})
+
+describe('textos de tiempo', () => {
+  it('minutos hasta 2 horas, luego horas', () => {
+    expect(formatMinutes(15)).toBe('15 min')
+    expect(formatMinutes(90)).toBe('90 min')
+    expect(formatMinutes(119)).toBe('119 min')
+    expect(formatMinutes(120)).toBe('2 h')
+    expect(formatMinutes(135)).toBe('2 h 15 min')
+    expect(formatMinutes(1440)).toBe('24 h')
+  })
+  it('«Trabajo activo X · Total Y»', () => {
+    expect(formatRecipeTime({ active: 20, total: 90 })).toBe('Trabajo activo 20 min · Total 90 min')
+    expect(formatRecipeTime({ active: 15, total: 15 })).toBe('Trabajo activo 15 min · Total 15 min')
+  })
+})
+
+describe('elementos sencillos: selección, escalado y Compras', () => {
+  const m = clone(raw)
+  Object.assign(rawRecipe(m, 0, 'comida', 1), { simple: true, steps: [] })
+  const sm = parseMenu(m)!
+
+  it('siguen apareciendo en la selección de la comida (con su marca simple) y se cuentan aparte', () => {
+    const meal = selectRecipes(sm, { scope: 'meal', day: 'lunes', meal: 'comida' })
+    expect(meal.map((x) => x.recipe.title)).toEqual(['Lentejas estofadas con verduras', 'Fruta de temporada'])
+    expect(meal.map((x) => x.recipe.simple)).toEqual([false, true])
+    expect(countSelection(meal)).toEqual({ notes: 1, recipes: 1 })
+    expect(countSelection(selectRecipes(sm, { scope: 'week' }))).toEqual({ notes: 1, recipes: 27 })
+    expect(countSelection([])).toEqual({ notes: 0, recipes: 0 })
+  })
+
+  it('sus cantidades se escalan igual que las de una receta', () => {
+    const fruta = sm.days[0].meals.comida!.recipes[1]
+    const base = recipeBaseServings(fruta, sm)
+    const original = menu.days[0].meals.comida!.recipes[1].ingredients[0]
+    expect(ingredientQuantityText(fruta.ingredients[0], base, 4)).toBe([original.quantity, original.unit].filter(Boolean).join(' '))
+    expect(ingredientQuantityText(fruta.ingredients[0], base, 8)).not.toBe(ingredientQuantityText(fruta.ingredients[0], base, 4))
+  })
+
+  it('sus ingredientes llegan a Compras exactamente igual que antes de ser sencillos (mismas líneas y cantidades)', () => {
+    for (const servings of [4, 2, 6]) {
+      const antes = buildMenuShopping(menu, { scope: 'week' }, servings)
+      const despues = buildMenuShopping(sm, { scope: 'week' }, servings)
+      expect(despues).toEqual(antes)
+    }
+    const meal = buildMenuShopping(sm, { scope: 'meal', day: 'lunes', meal: 'comida' }, 4)
+    const fruta = menu.days[0].meals.comida!.recipes[1].ingredients[0]
+    expect(meal.some((l) => normalizeKey(l.name) === normalizeKey(fruta.name))).toBe(true)
+  })
+
+  it('una sola línea de Compras para un sencillo suelto (selección de receta con índice 1)', () => {
+    const lines = buildMenuShopping(sm, { scope: 'recipe', day: 'lunes', meal: 'comida', recipeIndex: 1 }, 4)
+    expect(lines).toHaveLength(1)
+    expect(normalizeKey(lines[0].name)).toBe(normalizeKey(menu.days[0].meals.comida!.recipes[1].ingredients[0].name))
+  })
+})
+
+describe('resultado de la importación con apuntes sin receta', () => {
+  const base: MenuImportResult = {
+    ok: true, replayed: false, scope: 'week', targetStart: '2026-10-19', targetEnd: '2026-10-25', servings: 4, onConflict: 'skip',
+    recipesCreated: 26, recipesReused: 0, notesCreated: 2, recipes: [], slotsImported: 14, slotsSkipped: 0, slotsReplaced: 0, slotsAppended: 0, skipped: [], entriesCreated: 28, entriesRemoved: 0,
+  }
+  it('dice cuántos platos son apuntes sin receta y que no se crea ninguna receta', () => {
+    const l = importResultLines(base)
+    expect(l.join(' ')).toContain('28 platos apuntados')
+    expect(l.join(' ')).toContain('2 de ellos son apuntes sin receta')
+    expect(l.join(' ')).toContain('no se crea ninguna receta')
+    expect(importResultLines({ ...base, notesCreated: 1 }).join(' ')).toContain('1 de ellos es un apunte sin receta')
+  })
+  it('sin apuntes no añade esa frase (resultado igual que antes)', () => {
+    expect(importResultLines({ ...base, notesCreated: 0 }).join(' ')).not.toContain('apunte')
+  })
+  it('un resultado de una versión anterior (sin notesCreated) tampoco rompe', () => {
+    const old = { ...base } as Partial<MenuImportResult>
+    delete old.notesCreated
+    expect(importResultLines(old as MenuImportResult).join(' ')).not.toContain('apunte sin receta')
   })
 })

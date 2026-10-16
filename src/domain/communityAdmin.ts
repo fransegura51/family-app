@@ -1090,6 +1090,8 @@ export interface MenuRecipeData {
   servings: number
   ingredientCount: number
   stepCount: number
+  // Elemento sencillo (fruta, pan tostado…): no tiene pasos y no es una receta de Cocina.
+  simple: boolean
 }
 export interface MenuMealData {
   title: string
@@ -1112,7 +1114,7 @@ function toMenuMeal(v: unknown): MenuMealData | null {
   return {
     title: str(m.title),
     side: strOrNull(m.side),
-    recipes: rows(m.recipes).map((r) => ({ title: str(r.title), servings: num(r.servings), ingredientCount: asArr(r.ingredients).length, stepCount: asArr(r.steps).length })),
+    recipes: rows(m.recipes).map((r) => ({ title: str(r.title), servings: num(r.servings), ingredientCount: asArr(r.ingredients).length, stepCount: asArr(r.steps).length, simple: r.simple === true })),
   }
 }
 

@@ -6183,6 +6183,20 @@ function ReceiptForm({
     )
   }
 
+  // Deja el formulario de «Subir ticket» como nuevo (tras guardar, o al pulsar Cancelar con una foto ya escaneada por error).
+  function resetAddForm() {
+    uploadedReceiptId.current = null
+    setFile(null)
+    setStore('')
+    setTotalAmount('')
+    setCategory(defaultReceiptCategory(categories))
+    setPurchasedByMemberId('')
+    setLines([])
+    setSkippedLines([])
+    setOcrStatus('idle')
+    setError(null)
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (mode === 'add' && !file) {
@@ -6210,14 +6224,7 @@ function ReceiptForm({
           uploadedReceiptId.current = receiptId
         }
         await saveLines(receiptId)
-        uploadedReceiptId.current = null
-        setFile(null)
-        setStore('')
-        setTotalAmount('')
-        setCategory(defaultReceiptCategory(categories))
-        setPurchasedByMemberId('')
-        setLines([])
-        setOcrStatus('idle')
+        resetAddForm()
       } else if (receipt) {
         // La categoría de un ticket (y la de su gasto vinculado) se cambia SOLO con classify_purchase: atómica gasto ↔ ticket y sin pisar
         // en silencio (Fase 6C.2C). Un ticket sin gasto se clasifica solo a sí mismo; nunca se crea un gasto para clasificarlo. Un ticket
@@ -6468,6 +6475,11 @@ function ReceiptForm({
         </button>
         {mode === 'edit' && (
           <button type="button" className="link-button" onClick={onCancel}>
+            Cancelar
+          </button>
+        )}
+        {mode === 'add' && (file || lines.length > 0) && (
+          <button type="button" className="link-button" onClick={resetAddForm} disabled={saving}>
             Cancelar
           </button>
         )}

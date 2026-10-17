@@ -28,7 +28,7 @@ describe('la campana', () => {
   })
 
   it('está arriba a la derecha y el contador es el de sin leer, sin consulta periódica', () => {
-    expect(css).toMatch(/\.home-bell-row\s*\{[^}]*justify-content:\s*flex-end/)
+    expect(css).toMatch(/\.home-bell-row \.notification-bell\s*\{[^}]*position:\s*absolute;[^}]*right:\s*0/)
     expect(bell).toContain('fetchUnreadNotificationCount')
     expect(bell).not.toContain('setInterval')
   })

@@ -42,4 +42,4 @@ Un truco: haced una **tarjeta comodín** en blanco para «lo que yo quiera» o �
 
 🎁 ¿Preferís saltaros la parte de preparar los dibujos y las plantillas? ¡En PEPA os lo ponemos fácil! Hemos preparado un kit gratuito de rutinas infantiles, con tableros, tarjetas ilustradas para niños y niñas, y tarjetas en blanco para personalizar. Solo tenéis que imprimir (al 100 %, a tamaño real), recortar y montar vuestra manualidad juntos. ❤️
 
-[Descargar el kit de rutinas de PEPA (PDF)](https://fransegura51.github.io/family-app/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf)
+[Descargar el kit de rutinas de PEPA (PDF)](https://pepafamilyapp.es/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf)

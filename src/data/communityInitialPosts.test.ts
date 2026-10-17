@@ -59,7 +59,7 @@ const TOPICS = {
   recetas: ['platos-principales', 'entrantes-aperitivos-tapas', 'recetas-faciles', 'postres-dulces', 'cocina-saludable', 'menus-planificacion', 'trucos-de-cocina', 'aprovechamiento-alimentos'],
   hogar: ['ahorro-economia', 'organizacion-familiar', 'crianza-educacion', 'limpieza-hogar', 'actividades-familia', 'manualidades-decoracion'],
 } as Record<string, string[]>
-const PDF_LINK = 'https://fransegura51.github.io/family-app/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf'
+const PDF_LINK = 'https://pepafamilyapp.es/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf'
 
 const posts = load()
 const byNum = (n: number) => posts.find((p) => p.file.startsWith(String(n).padStart(2, '0') + '-'))!

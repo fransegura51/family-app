@@ -4,6 +4,7 @@ import sql from '../../supabase/migrations/0253_location_device_tokens.sql?raw'
 import rollback from '../../supabase/rollbacks/0253_location_device_tokens_down.sql?raw'
 import service from '../../android-patches/background-geolocation/BackgroundGeolocationService.java?raw'
 import receiver from '../../android/app/src/main/java/es/pepafamilyapp/app/NativeLocationReceiver.java?raw'
+import bootReceiver from '../../android/app/src/main/java/es/pepafamilyapp/app/NativeBootReceiver.java?raw'
 import patchScript from '../../scripts/patch-background-geolocation.mjs?raw'
 import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import packageJson from '../../package.json?raw'
@@ -107,6 +108,22 @@ describe('servicio de Android que sigue con la app cerrada', () => {
     }
     expect(receiver).toContain('receptor: envío fallido')
     expect(patchScript).toContain('getNativeDiagnostics')
+  })
+
+  it('tras reiniciar el móvil o actualizar la app se vuelve a registrar el envío nativo (Play Services lo olvida)', () => {
+    expect(manifest).toContain('android:name=".NativeBootReceiver"')
+    expect(manifest).toContain('android.intent.action.BOOT_COMPLETED')
+    expect(manifest).toContain('android.intent.action.MY_PACKAGE_REPLACED')
+    expect(manifest).toContain('android.permission.RECEIVE_BOOT_COMPLETED')
+    expect(bootReceiver).toContain('requestLocationUpdates(request, NativeLocationReceiver.pendingIntent(context))')
+    expect(bootReceiver).toContain('if (token == null || token.isEmpty())')
+  })
+
+  it('el receptor intenta relanzar el servicio en primer plano (en segundo plano Android espacia las posiciones) y el servicio lo atiende', () => {
+    expect(receiver).toContain('static void tryStartForegroundService(Context context, boolean force)')
+    expect(receiver).toContain('Android no deja relanzar el servicio en primer plano')
+    expect(service).toContain('ACTION_START_NATIVE.equals(intent.getAction())')
+    expect(service).toContain('"fgs_pid"')
   })
 
   it('al volver a abrir la app se retira el envío nativo (no hay envíos duplicados)', () => {

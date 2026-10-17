@@ -55,6 +55,7 @@ public class BackgroundGeolocationService extends Service {
     static final String DIAG_PREFS = "pepa_bg_geo_diag";
     private static final String NATIVE_WATCHER_ID = "pepa-native";
     private static final String RECEIVER_CLASS = "es.pepafamilyapp.app.NativeLocationReceiver";
+    private static final String ACTION_START_NATIVE = "es.pepafamilyapp.app.START_NATIVE_LOCATION";
     private static final String RECEIVER_ACTION = "es.pepafamilyapp.app.NATIVE_LOCATION";
     private static final int MAX_DIAG_LINES = 60;
 
@@ -107,6 +108,21 @@ public class BackgroundGeolocationService extends Service {
     // Reinicio del sistema tras matar el proceso (intent nulo): se retoma el envío nativo si estaba configurado; si no, no hay nada que hacer.
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // El receptor de posiciones (o el de arranque del móvil) nos relanza en primer plano tras haber muerto el proceso.
+        if (intent != null && ACTION_START_NATIVE.equals(intent.getAction())) {
+            diag("el receptor relanza el servicio en primer plano (" + (hasNativeUpload() ? "con" : "sin") + " configuración de envío)");
+            if (hasNativeUpload()) {
+                startNativeWatcher();
+            } else {
+                // startForegroundService obliga a pasar a primer plano antes de parar.
+                try {
+                    startForeground(NOTIFICATION_ID, buildNativeNotification());
+                } catch (Exception ignored) {
+                }
+                stopSelf();
+            }
+            return START_STICKY;
+        }
         if (intent == null) {
             diag("Android reinicia el servicio tras matar el proceso (" + (hasNativeUpload() ? "con" : "sin") + " configuración de envío)");
             if (hasNativeUpload()) {
@@ -127,6 +143,7 @@ public class BackgroundGeolocationService extends Service {
 
     @Override
     public void onDestroy() {
+        getSharedPreferences(DIAG_PREFS, Context.MODE_PRIVATE).edit().remove("fgs_pid").apply();
         diag("servicio detenido (onDestroy)");
         super.onDestroy();
     }
@@ -285,6 +302,7 @@ public class BackgroundGeolocationService extends Service {
         }
         try {
             startForeground(NOTIFICATION_ID, watcher.backgroundNotification);
+            getSharedPreferences(DIAG_PREFS, Context.MODE_PRIVATE).edit().putInt("fgs_pid", android.os.Process.myPid()).apply();
         } catch (Exception exception) {
             Logger.error("Failed to foreground service", exception);
             // Android 12+ no deja poner en primer plano un servicio reiniciado desde segundo plano: no es grave, el aviso al receptor sigue.

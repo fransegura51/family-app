@@ -31,6 +31,7 @@ public class NativeLocationReceiver extends BroadcastReceiver {
     static final String ACTION = "es.pepafamilyapp.app.NATIVE_LOCATION";
     static final String PREFS = "pepa_bg_geo";
     static final String DIAG_PREFS = "pepa_bg_geo_diag";
+    static final String ACTION_START_NATIVE = "es.pepafamilyapp.app.START_NATIVE_LOCATION";
     private static final String SERVICE_CLASS = "com.equimaps.capacitor_background_geolocation.BackgroundGeolocationService";
     private static final long MIN_UPLOAD_GAP_MS = 10_000L;
     private static final float MAX_ACCURACY_M = 100f;
@@ -66,6 +67,9 @@ public class NativeLocationReceiver extends BroadcastReceiver {
             return;
         }
         prefs.edit().putLong("last_upload_at", now).apply();
+        // Si el servicio en primer plano no está vivo en este proceso (Android mató el proceso y lo ha vuelto a lanzar solo para este aviso), se intenta relanzar:
+        // en segundo plano Android espacia mucho las posiciones, con el servicio en primer plano no.
+        tryStartForegroundService(context, false);
 
         final PendingResult pending = goAsync();
         final double latitude = location.getLatitude();
@@ -165,6 +169,34 @@ public class NativeLocationReceiver extends BroadcastReceiver {
             return buffer.toString("UTF-8");
         } finally {
             connection.disconnect();
+        }
+    }
+
+    /**
+     * Intenta relanzar el servicio en primer plano (el que pone la notificación fija) si no está vivo en ESTE proceso. Android 12+ puede negarse a arrancarlo
+     * desde segundo plano: no pasa nada grave (el aviso al receptor sigue funcionando) y el motivo queda en el registro.
+     * `force`: sin esperar el minuto de margen entre intentos (arranque del móvil).
+     */
+    static void tryStartForegroundService(Context context, boolean force) {
+        try {
+            SharedPreferences d = context.getSharedPreferences(DIAG_PREFS, Context.MODE_PRIVATE);
+            if (d.getInt("fgs_pid", 0) == android.os.Process.myPid()) {
+                return; // el servicio ya está en primer plano en este mismo proceso
+            }
+            long now = System.currentTimeMillis();
+            if (!force && now - d.getLong("fgs_try_at", 0L) < 60_000L) {
+                return;
+            }
+            d.edit().putLong("fgs_try_at", now).apply();
+            Intent service = new Intent(ACTION_START_NATIVE).setClassName(context.getPackageName(), SERVICE_CLASS);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(service);
+            } else {
+                context.startService(service);
+            }
+            diag(context, "receptor: se relanza el servicio en primer plano");
+        } catch (Exception e) {
+            diag(context, "receptor: Android no deja relanzar el servicio en primer plano (" + e.getClass().getSimpleName() + ")");
         }
     }
 

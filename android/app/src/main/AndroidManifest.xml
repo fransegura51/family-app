@@ -41,6 +41,16 @@
             android:name=".NativeLocationReceiver"
             android:exported="false" />
 
+        <!-- Tras reiniciar el móvil o actualizar la app, Play Services olvida el aviso al receptor: este receptor lo vuelve a registrar (ver NativeBootReceiver). -->
+        <receiver
+            android:name=".NativeBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -53,6 +63,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- «Permitir siempre»: sin él, si Android reinicia el servicio de ubicación en segundo plano (Android 11+), se queda sin acceso a la posición. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 </manifest>

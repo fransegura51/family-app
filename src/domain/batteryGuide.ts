@@ -20,7 +20,9 @@ const GUIDES: BrandGuide[] = [
     steps: [
       'Ajustes → Aplicaciones. Arriba toca «Autoinicio en segundo plano» y activa PEPA.',
       'Ajustes → Aplicaciones → Gestionar aplicaciones → PEPA → Ahorro de batería → «Sin restricciones».',
-      'En apps recientes, mantén pulsada la tarjeta de PEPA y toca el candado, para que el móvil no la limpie.',
+      'En apps recientes, mantén pulsada la tarjeta de PEPA y toca el candado, para que el móvil no la limpie. No la deslices: al deslizarla el móvil la cierra del todo.',
+      'Ajustes → Aplicaciones → Gestionar aplicaciones → PEPA: apaga «Pausar la actividad de la aplicación si no se utiliza» (si no, Android le quita los permisos al cabo de un tiempo).',
+      'En esa misma pantalla, Permisos de la aplicación → Ubicación → «Permitir siempre» (con «Ubicación precisa» activada).',
     ],
   },
   {
@@ -29,6 +31,7 @@ const GUIDES: BrandGuide[] = [
     steps: [
       'Ajustes → Aplicaciones → PEPA → Batería → «Sin restricciones».',
       'Ajustes → Cuidado del dispositivo → Batería → Límites de uso en segundo plano. Quita PEPA de «Aplicaciones en suspensión» y desactiva «Poner en suspensión las apps sin usar».',
+      'Ajustes → Aplicaciones → PEPA → Permisos: apaga «Quitar permisos si no se utiliza la app». En Ubicación elige «Permitir siempre» (con «Usar ubicación precisa» activada).',
     ],
   },
   {
@@ -49,7 +52,10 @@ const GUIDES: BrandGuide[] = [
   {
     brand: 'google',
     name: 'Google Pixel y otros Android',
-    steps: ['Ajustes → Aplicaciones → PEPA → Batería → «Sin restricciones».'],
+    steps: [
+      'Ajustes → Aplicaciones → PEPA → Batería → «Sin restricciones».',
+      'Ajustes → Aplicaciones → PEPA → Permisos: apaga «Pausar la actividad de la aplicación si no se utiliza». En Ubicación elige «Permitir siempre» (con «Ubicación precisa» activada).',
+    ],
   },
 ]
 

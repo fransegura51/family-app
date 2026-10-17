@@ -42,7 +42,8 @@ El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla 
 - JS (`src/services/nativeUpload.ts`): pide la llave una vez por arranque al empezar a compartir y la entrega al servicio; al dejar de compartir o
   cerrar sesión la anula. Al volver a abrir la app, el envío nativo se retira y manda JS (sin duplicados).
 - El servidor contesta `ok` / `off` / `revoked` / `invalid`; con `off` o `revoked` el servicio se para y borra su configuración.
-- Pendiente conocido: tras REINICIAR el móvil el servicio no arranca solo hasta abrir PEPA (falta un receptor BOOT_COMPLETED).
+- Tras REINICIAR el móvil o ACTUALIZAR la app (17/10/2026): `NativeBootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED) vuelve a registrar el aviso al receptor y
+  prueba a relanzar el servicio en primer plano; si Android no lo deja, queda anotado en el registro (`pepa_bg_geo_diag`). Sin probar en un móvil real.
 - Envío nativo robusto (16/10/2026): un fallo real (Paco salió a las 17:45 y el Xiaomi no mandó nada hasta abrir la app, con «Permitir siempre» ya dado y la
   pausa de actividad apagada) mostró que depender de que el servicio siga vivo no basta (Android 12+ no deja poner en primer plano un servicio
   reiniciado desde segundo plano). Ahora las posiciones se piden a Play Services con un `PendingIntent` a
@@ -72,9 +73,7 @@ Con la app deslizada los avisos de Firebase sí llegaron (13/10). La guía por m
 Solo miembros de la MISMA familia (RLS), respeta el consentimiento y las cuentas sin acceso a Ubicación.
 
 ## Limitaciones conocidas
-- Tras reiniciar el móvil, la ubicación con la app cerrada no se retoma hasta abrir PEPA. Decisión (13/10/2026): NO se añade un receptor de arranque, porque
-  un servicio de ubicación lanzado desde el arranque no tiene acceso a la ubicación sin el permiso «Permitir siempre» (ACCESS_BACKGROUND_LOCATION), que
-  obligaría a una pantalla de ajustes más y a la declaración de ubicación en segundo plano de Google Play. Se reabre si hace falta.
+- Reinicio del móvil: decisión del 13/10/2026 de NO añadir receptor de arranque, REVOCADA el 17/10/2026 (ya se pide «Permitir siempre» y se añadió `NativeBootReceiver`; ver arriba).
 - Si un móvil tiene a la vez la PEPA web instalada (con Web Push) y la app nativa (FCM), recibe **dos** avisos: quitar la web de ese móvil.
 - Play Protect / Mi Protect avisan al instalar el APK fuera de tienda (esperable).
 - iPhone: no existe todavía (hace falta cuenta de Apple + Mac en la nube; `npx cap add ios` se haría en un runner macOS). En iOS la ubicación en

@@ -37,6 +37,10 @@ describe('guía de batería: reconocer la marca por el código de modelo', () =>
     const xiaomi = orderedGuides('xiaomi')[0].steps.join(' ')
     expect(xiaomi).toContain('Autoinicio en segundo plano')
     expect(xiaomi).toContain('Sin restricciones')
+    // Lo que de verdad paró la ubicación el 14-16/10/2026: Android quitaba los permisos a PEPA y la pausa de actividad estaba activada.
+    expect(xiaomi).toContain('Pausar la actividad de la aplicación si no se utiliza')
+    expect(xiaomi).toContain('Permitir siempre')
+    expect(xiaomi).toContain('No la deslices')
   })
 })
 

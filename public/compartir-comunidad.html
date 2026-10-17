@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comunidad PEPA · PEPA Family App</title>
+    <meta name="description" content="Consejos, artículos y menús de Pepa y de otras familias. Entra con tu cuenta de PEPA (mayores de 18 años) para leer." />
+    <meta name="robots" content="noindex, nofollow" />
+    <!--
+      Página PUESTA PARA LA VISTA PREVIA de WhatsApp y similares (un archivo real, sin servidor y gratis): las apps de mensajería no ejecutan JavaScript, así que leen
+      estas metas y enseñan «Comunidad PEPA · PEPA Family App» con la imagen oficial. Las personas son redirigidas al instante a la publicación (comunidad/p/<id>).
+      No contiene nada de ninguna publicación: el id solo viaja en la dirección (?p=...) y se valida aquí antes de usarlo.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PEPA Family App" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:title" content="Comunidad PEPA" />
+    <meta property="og:description" content="Consejos, artículos y menús de Pepa y de otras familias. Entra con tu cuenta de PEPA (mayores de 18 años) para leer." />
+    <meta property="og:image" content="https://fransegura51.github.io/family-app/comunidad-og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Comunidad PEPA" />
+    <meta name="twitter:description" content="Consejos, artículos y menús de Pepa y de otras familias. Entra con tu cuenta de PEPA (mayores de 18 años) para leer." />
+    <meta name="twitter:image" content="https://fransegura51.github.io/family-app/comunidad-og.jpg" />
+    <script>
+      ;(function (l) {
+        var q = /[?&]p=([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:&|$)/i.exec(l.search)
+        var dir = l.pathname.replace(/[^/]*$/, '')
+        l.replace(dir + 'comunidad' + (q ? '/p/' + q[1] : ''))
+      })(window.location)
+    </script>
+  </head>
+  <body>
+    <p><a href="comunidad">Abrir Comunidad PEPA</a></p>
+  </body>
+</html>

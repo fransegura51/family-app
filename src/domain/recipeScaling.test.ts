@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseSimpleNumber, scaleIngredientQuantity, unitInfo } from '@/domain/recipeScaling'
+import { parseSimpleNumber, purchaseValue, scaleIngredientQuantity, unitInfo } from '@/domain/recipeScaling'
 
 // Caso real validado: receta de 4 raciones → 10 comensales (factor 2,5).
 const F = { servings: 4, diners: 10 }
@@ -39,13 +39,13 @@ describe('escalado — factor 10 / 4 = 2,5 con valores exactos (sin redondear)',
   it('15. cantidad desconocida (null) sigue desconocida, sin inventar', () => {
     expect(scale(null, 'g')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica' })
   })
-  it('cantidad textual («un puñado», fracción «1/2») no se escala', () => {
+  it('cantidad textual («un puñado», rango «2-3») no se escala', () => {
     expect(scale('un puñado', 'g')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica' })
-    expect(scale('1/2', 'cucharada')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica' })
+    expect(scale('2-3', 'cucharada')).toMatchObject({ value: null, scaled: false, reason: 'cantidad_no_numerica' })
   })
   it('16. unidad no interpretable («pizca», vacía) → no inventa escalado: conserva la original', () => {
     expect(scale('2', 'pizca')).toMatchObject({ value: 2, unit: 'pizca', scaled: false, reason: 'unidad_no_escalable' })
-    expect(scale('2', null)).toMatchObject({ scaled: false, reason: 'unidad_no_escalable' })
+    expect(scale('2', 'pizca')).toMatchObject({ scaled: false })
   })
   it('sin raciones válidas (null o 0) → no escala', () => {
     expect(scaleIngredientQuantity('250', 'g', null, 10)).toMatchObject({ value: 250, scaled: false, reason: 'sin_raciones' })
@@ -72,7 +72,7 @@ describe('unidades reconocidas y canónicas', () => {
     expect(unitInfo('cl')?.factor).toBe(10)
   })
   it('unidades no reconocidas → null', () => {
-    expect(unitInfo('pizca')).toBeNull()
+    expect(unitInfo('pizca')?.family).toBe('pizca')
     expect(unitInfo('al gusto')).toBeNull()
     expect(unitInfo(null)).toBeNull()
   })
@@ -84,5 +84,55 @@ describe('parseSimpleNumber', () => {
     expect(parseSimpleNumber('0,5')).toBe(0.5)
     expect(parseSimpleNumber('0')).toBeNull()
     expect(parseSimpleNumber('3 huevos')).toBeNull()
+  })
+})
+
+describe('unidades de despensa y piezas (Compras)', () => {
+  it('reconoce lonchas, rebanadas, dientes de ajo, hojas, rodajas, huevos, lomos, muslos, en singular, plural y con complemento', () => {
+    for (const [u, family] of [
+      ['lonchas', 'loncha'],
+      ['loncha', 'loncha'],
+      ['rebanadas', 'rebanada'],
+      ['dientes de ajo', 'diente'],
+      ['diente', 'diente'],
+      ['hojas', 'hoja'],
+      ['rodajas', 'rodaja'],
+      ['huevos', 'conteo'],
+      ['lomos', 'lomo'],
+      ['muslos', 'muslo'],
+      ['Ud.', 'conteo'],
+      ['cdas.', 'cucharada'],
+    ] as const) {
+      expect(unitInfo(u)?.family, u).toBe(family)
+    }
+  })
+  it('escala de forma proporcional: queso en lonchas, pan en rebanadas, ajo y huevos', () => {
+    expect(scaleIngredientQuantity('4', 'lonchas', 4, 6)).toMatchObject({ value: 6, unit: 'lonchas', scaled: true, fractional: false })
+    expect(scaleIngredientQuantity('2', 'rebanadas', 4, 2)).toMatchObject({ value: 1, unit: 'rebanada', fractional: false })
+    expect(scaleIngredientQuantity('3', 'dientes', 4, 5)).toMatchObject({ value: 3.75, fractional: true })
+    expect(scaleIngredientQuantity('4', 'huevos', 4, 3)).toMatchObject({ value: 3, fractional: false })
+  })
+  it('una cantidad sin unidad son unidades enteras («2» huevos) y se escala', () => {
+    expect(scaleIngredientQuantity('2', null, 4, 6)).toMatchObject({ value: 3, scaled: true, unit: '' })
+    expect(scaleIngredientQuantity('1', '', 2, 3)).toMatchObject({ value: 1.5, fractional: true })
+  })
+  it('fracciones habituales', () => {
+    expect(parseSimpleNumber('1/2')).toBe(0.5)
+    expect(parseSimpleNumber('1 1/2')).toBe(1.5)
+    expect(parseSimpleNumber('½')).toBe(0.5)
+    expect(parseSimpleNumber('1½')).toBe(1.5)
+    expect(parseSimpleNumber('2-3')).toBeNull()
+    expect(parseSimpleNumber('1/0')).toBeNull()
+  })
+  it('redondeo de compra: las piezas suben al entero, las medidas no', () => {
+    const lettuce = unitInfo('unidad')!
+    expect(purchaseValue(1.5, lettuce)).toBe(2)
+    expect(purchaseValue(2, lettuce)).toBe(2)
+    expect(purchaseValue(2.0000000001, lettuce)).toBe(2)
+    expect(purchaseValue(3.75, unitInfo('dientes')!)).toBe(4)
+    expect(purchaseValue(0.75, unitInfo('kg')!)).toBe(0.75)
+  })
+  it('la pizca no se escala', () => {
+    expect(scaleIngredientQuantity('1', 'pizca', 4, 8)).toMatchObject({ value: 1, scaled: false })
   })
 })

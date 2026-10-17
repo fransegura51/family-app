@@ -469,10 +469,3 @@ export function markShoppingDuplicates(lines: ShoppingPlanLine[], current: Pick<
   return lines.map((line) => ({ line, inList: pending.has(normalizeKey(line.name)) }))
 }
 
-// Textos de «avisos de revisión» de una línea (los mismos que «Preparar compra del menú»).
-export const SHOPPING_NOTE_LABEL: Record<string, string> = {
-  sin_raciones: 'La receta no tiene raciones: cantidad original, sin escalar.',
-  cantidad_no_numerica: 'La cantidad no es un número: revísala.',
-  unidad_no_escalable: 'Unidad que no se puede escalar: cantidad original.',
-  fraccionario: 'El resultado no es un número entero de unidades: revísalo antes de comprar.',
-}

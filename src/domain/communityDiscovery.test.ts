@@ -12,12 +12,14 @@ import {
   emptyListMessage,
   filtersFromRecord,
   filtersToRecord,
+  hasSectionFilters,
   HOME_BLOCKS,
   isCommunitySection,
   isSearchable,
   normalizeQuery,
   parseKind,
   parseOrder,
+  parseTopics,
   readDiscoveryFilters,
   readSectionFilters,
   searchOrders,
@@ -25,6 +27,8 @@ import {
   sectionListParams,
   sectionOrders,
   sectionSignature,
+  splitFeaturedTopics,
+  toggleTopic,
   topicBelongsToSection,
   topicsForSection,
   type DiscoveryFilters,
@@ -110,8 +114,8 @@ describe('secciones y órdenes', () => {
   })
 
   it('«Mejor valoradas» solo existe en Recetas', () => {
-    expect(sectionOrders('recetas')).toEqual(['recientes', 'comentados', 'valoradas', 'sin_respuesta', 'para_mi'])
-    expect(sectionOrders('hogar')).toEqual(['recientes', 'comentados', 'sin_respuesta', 'para_mi'])
+    expect(sectionOrders('recetas')).toEqual(['recientes', 'comentados', 'valoradas', 'sin_respuesta', 'no_leidas', 'para_mi'])
+    expect(sectionOrders('hogar')).toEqual(['recientes', 'comentados', 'sin_respuesta', 'no_leidas', 'para_mi'])
     expect(sectionOrders('hogar')).not.toContain('valoradas')
   })
 
@@ -124,7 +128,7 @@ describe('secciones y órdenes', () => {
 
   it('el orden inicial es «Más recientes» (dirección limpia)', () => {
     const f = readSectionFilters('recetas', new URLSearchParams(''))
-    expect(f).toEqual({ topic: null, order: 'recientes', kind: null })
+    expect(f).toEqual({ topics: [], order: 'recientes', kind: null })
     expect(sectionFiltersToParams(f).toString()).toBe('')
   })
 
@@ -145,28 +149,28 @@ describe('secciones y órdenes', () => {
 describe('sección: de la dirección a la petición', () => {
   it('lee tema, orden y tipo y construye los parámetros del listado', () => {
     const f = readSectionFilters('recetas', new URLSearchParams('tema=postres-dulces&orden=comentados&tipo=pregunta'))
-    expect(f).toEqual({ topic: 'postres-dulces', order: 'comentados', kind: 'pregunta' })
-    expect(sectionListParams('recetas', f, 40, 20)).toEqual({ section: 'recetas', topic: 'postres-dulces', kind: 'pregunta', order: 'comentados', limit: 20, offset: 40 })
+    expect(f).toEqual({ topics: ['postres-dulces'], order: 'comentados', kind: 'pregunta' })
+    expect(sectionListParams('recetas', f, 40, 20)).toEqual({ section: 'recetas', topics: ['postres-dulces'], kind: 'pregunta', order: 'comentados', limit: 20, offset: 40 })
   })
 
   it('sin filtros pide TODOS los contenidos de la sección', () => {
     const p = sectionListParams('hogar', readSectionFilters('hogar', new URLSearchParams('')), 0)
-    expect(p).toMatchObject({ section: 'hogar', topic: null, kind: null, order: 'recientes', offset: 0 })
+    expect(p).toMatchObject({ section: 'hogar', topics: [], kind: null, order: 'recientes', offset: 0 })
   })
 
   it('escribe en la dirección solo lo que no es por defecto y se puede leer de vuelta', () => {
-    const f = { topic: 'platos-principales', order: 'valoradas' as const, kind: null }
+    const f = { topics: ['platos-principales'], order: 'valoradas' as const, kind: null }
     const qs = sectionFiltersToParams(f)
     expect(qs.toString()).toBe('tema=platos-principales&orden=valoradas')
     expect(readSectionFilters('recetas', qs)).toEqual(f)
   })
 
   it('la firma cambia con la sección, el tema, el orden y el tipo', () => {
-    const base = { topic: null, order: 'recientes' as const, kind: null }
+    const base = { topics: [] as string[], order: 'recientes' as const, kind: null }
     const sigs = new Set([
       sectionSignature('recetas', base),
       sectionSignature('hogar', base),
-      sectionSignature('recetas', { ...base, topic: 'x' }),
+      sectionSignature('recetas', { ...base, topics: ['x'] }),
       sectionSignature('recetas', { ...base, order: 'comentados' }),
       sectionSignature('recetas', { ...base, kind: 'receta' }),
     ])
@@ -277,5 +281,60 @@ describe('estados vacíos amables', () => {
     }
     expect(emptyListMessage('para_mi', false).hint).toContain('favoritos')
     expect(emptyListMessage('recientes', true).hint).toContain('filtros')
+  })
+})
+
+describe('sección: varios temas a la vez (lógica O), Todos, Ver todos / Ver menos', () => {
+  const topic = (id: string) => ({ id, label: id })
+  const RECETAS = ['platos-principales', 'entrantes-aperitivos-tapas', 'recetas-faciles', 'postres-dulces', 'cocina-saludable', 'menus-planificacion', 'trucos-de-cocina', 'aprovechamiento-alimentos'].map(topic)
+
+  it('la dirección admite varios temas (repetidos o separados por comas), sin vacíos ni repetidos', () => {
+    expect(parseTopics(new URLSearchParams('tema=a&tema=b&tema=a'))).toEqual(['a', 'b'])
+    expect(parseTopics(new URLSearchParams('tema=a,b,,c'))).toEqual(['a', 'b', 'c'])
+    expect(parseTopics(new URLSearchParams('tema=a&tema=x'), ['a', 'b'])).toEqual(['a'])
+    expect(parseTopics(new URLSearchParams(''))).toEqual([])
+  })
+
+  it('pulsar un tema lo añade y pulsarlo otra vez lo quita; «Todos» (lista vacía) limpia', () => {
+    expect(toggleTopic([], 'a')).toEqual(['a'])
+    expect(toggleTopic(['a'], 'b')).toEqual(['a', 'b'])
+    expect(toggleTopic(['a', 'b'], 'a')).toEqual(['b'])
+    expect(toggleTopic(['b'], 'b')).toEqual([])
+  })
+
+  it('con varios temas la petición manda la lista; temas, tipo y orden se combinan y la dirección lo recuerda', () => {
+    const f = readSectionFilters('recetas', new URLSearchParams('tema=recetas-faciles&tema=postres-dulces&tipo=receta&orden=no_leidas'))
+    expect(f).toEqual({ topics: ['recetas-faciles', 'postres-dulces'], order: 'no_leidas', kind: 'receta' })
+    expect(sectionListParams('recetas', f, 0, 20)).toMatchObject({ topics: ['recetas-faciles', 'postres-dulces'], kind: 'receta', order: 'no_leidas' })
+    expect(readSectionFilters('recetas', sectionFiltersToParams(f))).toEqual(f)
+    expect(hasSectionFilters(f)).toBe(true)
+    expect(hasSectionFilters({ topics: [], order: 'no_leidas', kind: null })).toBe(false)
+    expect(sectionSignature('recetas', f)).not.toBe(sectionSignature('recetas', { ...f, topics: ['postres-dulces', 'recetas-faciles'] }))
+  })
+
+  it('«No leídas primero» se ofrece en las dos secciones, además de recientes, comentadas y sin respuesta', () => {
+    expect(sectionOrders('hogar')).toEqual(['recientes', 'comentados', 'sin_respuesta', 'no_leidas', 'para_mi'])
+    expect(sectionOrders('recetas')).toEqual(['recientes', 'comentados', 'valoradas', 'sin_respuesta', 'no_leidas', 'para_mi'])
+    expect(parseOrder('no_leidas', sectionOrders('hogar'))).toBe('no_leidas')
+    expect(parseOrder('no_leidas', searchOrders(null))).toBe('recientes')
+  })
+
+  it('se enseñan 3 temas destacados y el resto queda tras «Ver todos los temas», sin repetidos', () => {
+    const { featured, rest } = splitFeaturedTopics('recetas', RECETAS, [])
+    expect(featured.map((t) => t.id)).toEqual(['platos-principales', 'recetas-faciles', 'trucos-de-cocina'])
+    expect(rest).toHaveLength(5)
+    expect(new Set([...featured, ...rest].map((t) => t.id)).size).toBe(8)
+  })
+
+  it('un tema elegido que estaba escondido se sube a la vista para que no quede oculto', () => {
+    const { featured, rest } = splitFeaturedTopics('recetas', RECETAS, ['postres-dulces'])
+    expect(featured.map((t) => t.id)).toContain('postres-dulces')
+    expect(rest.map((t) => t.id)).not.toContain('postres-dulces')
+    expect(featured.length + rest.length).toBe(8)
+  })
+
+  it('si faltan destacados fijos se completa con los primeros del catálogo', () => {
+    const { featured } = splitFeaturedTopics('hogar', [topic('x1'), topic('x2'), topic('x3'), topic('x4')], [])
+    expect(featured.map((t) => t.id)).toEqual(['x1', 'x2', 'x3'])
   })
 })

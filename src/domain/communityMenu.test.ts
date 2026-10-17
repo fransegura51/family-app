@@ -84,8 +84,8 @@ describe('escalado de cantidades (solo se ve; la receta oficial no se toca)', ()
     expect(q('aceite de oliva', 2)).toBe('1,5 cucharadas')
     expect(q('cebolla', 2)).toBe('≈ 0,5 unidades')
   })
-  it('lo que no se puede escalar se deja tal cual (dientes, pizca)', () => {
-    expect(q('ajo', 8)).toBe('2 dientes')
+  it('los dientes se escalan y la pizca se deja tal cual', () => {
+    expect(q('ajo', 8)).toBe('4 dientes')
     expect(q('sal', 8)).toBe('1 pizca')
   })
 })
@@ -220,7 +220,9 @@ describe('compra: suma sin duplicar con el código de «Preparar compra del men�
         if (numeric !== null && match && /^(g|ml|unidad|unidades|cucharada|cucharadas|cucharadita|cucharaditas)$/.test(l.unit)) {
           // 1 kg se enseña como «1 kg»: se compara en la unidad base.
           const factor = / kg$/.test(l.quantity ?? '') ? 1000 : / l$/.test(l.quantity ?? '') ? 1000 : 1
-          expect(Math.abs(numeric * factor - match[1])).toBeLessThan(0.01 * Math.max(1, match[1]))
+          // Las unidades enteras se COMPRAN redondeadas hacia arriba (1,5 lechugas → 2); el resto coincide con la suma exacta.
+          const target = /^(unidad|unidades)$/.test(l.unit) ? Math.ceil(match[1] - 1e-9) : match[1]
+          expect(Math.abs(numeric * factor - target)).toBeLessThan(0.01 * Math.max(1, target))
         }
       }
     }

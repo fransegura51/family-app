@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { validateWeeklyMenuArticle, WEEKLY_MENU_ARTICLE_MAX_CHARS } from '@/domain/communityMenuArticle'
 
 const dir = join(process.cwd(), 'supabase/seed/community_initial_posts')
 
@@ -17,7 +18,7 @@ interface Post {
 
 function load(): Post[] {
   return readdirSync(dir)
-    .filter((f) => f.endsWith('.md'))
+    .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
     .sort()
     .map((file) => {
       const text = readFileSync(join(dir, file), 'utf8').replace(/\r\n/g, '\n')
@@ -293,13 +294,12 @@ const CONSERVED = ['Crema de calabaza y zanahoria', 'Zanahoria rallada con limó
 const FREEZE_TITLES = ['Lentejas estofadas con verduras y huevo duro', 'Crema de calabaza y zanahoria', 'Macarrones con tomate, pavo y verduras', 'Hamburguesas caseras de ternera']
 
 const INTRO = [
-  'Comer bien en casa no debería significar pasar horas entre fogones.',
-  'Entre el trabajo, los estudios, los recados, las tareas de casa y todo lo que surge durante el día, muchas veces llegamos a la hora de comer sin tiempo ni ganas de complicarnos.',
-  'Por eso, todos los sábados Pepa te propondrá para la siguiente semana 7 comidas y 7 cenas fáciles, variadas y pensadas para la vida real.',
-  'Encontrarás platos que se preparan rápidamente, recetas que puedes dejar hechas con antelación y pequeños trucos para ahorrar tiempo: desde utilizar verduras congeladas hasta recurrir a ingredientes precocinados cuando te venga mejor.',
-  'Además, señalaremos las recetas que son ideales para cocinar más cantidad y congelar, porque preparar una buena olla de lentejas hoy también puede solucionarte la comida de otro día.',
-  'Y recuerda: tú decides cómo organizarte. Puedes importar el menú completo a tu Cocina, elegir solo algunos platos, ajustar las raciones y seleccionar qué ingredientes necesitas añadir a la lista de la compra.',
-  'Pepa te da las ideas. Tú las adaptas a tu ritmo y a tu forma de vivir. ❤️',
+  '¡Estrenamos los menús semanales de Pepa! ❤️',
+  'Sabemos que pensar cada día qué preparar para comer y cenar puede convertirse en otra tarea más.',
+  'Por eso, todos los sábados Pepa te traerá un nuevo menú para la semana siguiente, con siete comidas y siete cenas variadas, prácticas y pensadas para facilitar la organización familiar.',
+  'Encontrarás recetas fáciles, ideas para ahorrar tiempo y platos que puedes preparar con antelación.',
+  'Puedes importar el menú completo, elegir días o recetas individuales, ajustar las raciones y añadir los ingredientes a Compras.',
+  'Pepa te da las ideas. Tú decides cómo organizarte. ❤️',
 ]
 // Platos y detalles del menú anterior que ya no están (no deben quedar en el texto, los datos ni los documentos de la semilla).
 const REPLACED: [string, RegExp][] = [
@@ -362,16 +362,14 @@ describe('menú semanal (publicación 05): texto', () => {
     expect((p.body.match(/^- \*\*Cena:/gm) ?? []).length).toBe(7)
   })
 
-  it('incluye trucos para ahorrar tiempo, la sección de congelación solo con las recetas marcadas, seguridad y pregunta final', () => {
-    expect(p.body).toContain('**Trucos para ahorrar tiempo**')
-    expect(p.body).toContain('**❄️ Ideal para cocinar de más y congelar**')
-    expect(p.body).toContain('**Seguridad en la cocina**')
-    const freezeSection = p.body.split('**❄️ Ideal para cocinar de más y congelar**')[1].split('**Seguridad en la cocina**')[0]
-    const bullets = freezeSection.split('\n').filter((l) => l.startsWith('- '))
-    expect(bullets).toHaveLength(4)
-    for (const w of ['Lentejas', 'Crema de calabaza', 'Salsa de los macarrones', 'Hamburguesas']) expect(freezeSection).toContain(w)
-    for (const w of ['garbanzos', 'bacalao', 'salmón:']) expect(bullets.join('\n').toLowerCase()).not.toContain(w)
-    expect(p.body.trim().endsWith('?  👇') || p.body.trim().endsWith('? 👇')).toBe(true)
+  it('es breve: tras la introducción solo el resumen de la semana, sin tiempos, trucos, congelación ni listas de seguridad (eso va en las fichas)', () => {
+    expect(validateWeeklyMenuArticle(p.body, menu)).toEqual([])
+    expect(p.body.length).toBeLessThanOrEqual(WEEKLY_MENU_ARTICLE_MAX_CHARS)
+    expect(p.body.length).toBeLessThan(2600)
+    for (const w of ['Trucos para ahorrar tiempo', 'Ideal para cocinar de más', 'Seguridad en la cocina', 'Por qué funciona', 'min de trabajo', '⏱', '❄']) expect(p.body, w).not.toContain(w)
+    expect(p.body).not.toMatch(/congel|\d+ min/i)
+    expect(p.body).toContain('**Este es el menú de esta semana** (cantidades para 4 personas):')
+    expect(p.body.trim().endsWith('no una dieta ni un plan nutricional.')).toBe(true)
   })
 
   it('cumple las reglas de Comunidad: sin enlaces, sin títulos ni tablas, máximo 10.000 caracteres', () => {
@@ -388,16 +386,6 @@ describe('menú semanal (publicación 05): texto', () => {
 
   it('no menciona platos sustituidos', () => {
     for (const [name, re] of REPLACED) expect(p.body, name).not.toMatch(re)
-  })
-
-  it('el tiempo de cada plato del texto coincide con el de su receta', () => {
-    for (const [, kind, dish, recipes] of TABLE) {
-      const r = recipeByTitle(recipes[0])
-      expect(r.time, dish).toBeTruthy()
-      const line = p.body.split('\n').find((l) => l.toLowerCase().startsWith(`- **${kind}: ${dish.charAt(0).toLowerCase()}${dish.slice(1)}`.toLowerCase()))
-      expect(line, dish).toBeTruthy()
-      expect(line, dish).toContain(`${r.time!.active} min de trabajo, ${r.time!.total} en total`)
-    }
   })
 
   it('la semilla SQL generada lleva este título y estos datos (se regenera con scripts/build-community-seed.mjs)', () => {
@@ -560,6 +548,25 @@ describe('menú semanal (publicación 05): datos del menú (payload)', () => {
     for (const t of ['Salmón con calabacín y limón', 'Tortilla de calabacín', 'Pizzas pequeñas de tortilla de trigo con verduras y queso', 'Quesadillas de pollo, pimiento y queso', 'Sopa de verduras con fideos y pollo desmenuzado', 'Revuelto de champiñones y calabacín', 'Garbanzos con espinacas y bacalao', 'Ensalada de tomate', 'Ensalada de lechuga y tomate']) {
       expect(recipeByTitle(t).freeze, t).toBeUndefined()
     }
+  })
+
+  it('los consejos que antes estaban en el artículo viven ahora en las fichas (tip, freeze o pasos) y se importan a las notas de la receta', () => {
+    const tipOf = (t: string) => recipeByTitle(t).tip!
+    expect(tipOf('Lentejas estofadas con verduras y huevo duro')).toMatch(/lentejas cocidas de bote/)
+    expect(tipOf('Crema de calabaza y zanahoria')).toMatch(/congeladas, no hace falta descongelarlas/)
+    expect(tipOf('Arroz tres delicias con pollo y verduras')).toMatch(/precocinado/)
+    expect(tipOf('Salmón con calabacín y limón')).toMatch(/congelado/)
+    expect(tipOf('Merluza al horno con patatas y verduras')).toMatch(/hasta 2 días antes/)
+    expect(tipOf('Sopa de verduras con fideos y pollo desmenuzado')).toMatch(/pollo ya cocido/)
+    expect(tipOf('Macarrones con tomate, pavo y verduras')).toMatch(/el día antes/)
+    expect(tipOf('Garbanzos con espinacas y bacalao')).toMatch(/garbanzos cocidos de bote/)
+    expect(tipOf('Quesadillas de pollo, pimiento y queso')).toMatch(/por la mañana o el día antes/)
+    for (const t of FREEZE_TITLES) {
+      expect(recipeByTitle(t).freeze!.note, t).toMatch(/nevera/)
+      expect(recipeByTitle(t).freeze!.note, t).toMatch(/no (la |lo )?vuelvas a congelar/i)
+    }
+    // El pescado crudo: tabla y cuchillo aparte y manos lavadas, también en las fichas de pescado.
+    for (const t of ['Salmón con calabacín y limón', 'Merluza al horno con patatas y verduras', 'Garbanzos con espinacas y bacalao']) expect(recipeByTitle(t).steps.join(' '), t).toMatch(/tabla y un cuchillo solo para el pescado crudo y lávate las manos/)
   })
 
   it('seguridad alimentaria: carne y huevo bien hechos, pescado sin espinas, bacalao desalado y conservación', () => {

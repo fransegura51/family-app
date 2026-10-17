@@ -9,10 +9,19 @@ export function buildShareUrl(opts: { origin: string; baseUrl: string; publicBas
   return `${opts.origin}${base}comunidad/p/${opts.id}`
 }
 
+// Enlace para COMPARTIR. Con dominio público configurado (Worker) es el de `buildShareUrl`. Sin él se usa la página estática `compartir-comunidad.html` (archivo real de la web,
+// gratis): lleva la marca «PEPA Family App», una descripción y la imagen oficial de Comunidad para la vista previa de WhatsApp y redirige al instante a la publicación
+// (`comunidad/p/<id>`). Una SPA sin servidor no puede poner metas por publicación; el título real va en el texto del mensaje (`buildShareText`). Ver docs/comunidad/VISTAS_PREVIAS_COMPARTIR.md.
+export function buildPreviewShareUrl(opts: { origin: string; baseUrl: string; publicBase?: string | null; id: string }): string {
+  if (opts.publicBase?.trim()) return buildShareUrl(opts)
+  const base = opts.baseUrl.endsWith('/') ? opts.baseUrl : `${opts.baseUrl}/`
+  return `${opts.origin}${base}compartir-comunidad.html?p=${encodeURIComponent(opts.id)}`
+}
+
 // Enlace público estable de una publicación (el que se comparte en WhatsApp y redes).
 export function getShareUrl(id: string): string {
   const env = import.meta.env as Record<string, string | undefined>
-  return buildShareUrl({ origin: window.location.origin, baseUrl: import.meta.env.BASE_URL, publicBase: env.VITE_COMMUNITY_PUBLIC_BASE, id })
+  return buildPreviewShareUrl({ origin: window.location.origin, baseUrl: import.meta.env.BASE_URL, publicBase: env.VITE_COMMUNITY_PUBLIC_BASE, id })
 }
 
 export type ShareResult = 'shared' | 'cancelled' | 'failed'

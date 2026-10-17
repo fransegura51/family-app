@@ -19,7 +19,7 @@ export const TOPICS = {
   recetas: ['platos-principales', 'entrantes-aperitivos-tapas', 'recetas-faciles', 'postres-dulces', 'cocina-saludable', 'menus-planificacion', 'trucos-de-cocina', 'aprovechamiento-alimentos'],
   hogar: ['ahorro-economia', 'organizacion-familiar', 'crianza-educacion', 'limpieza-hogar', 'actividades-familia', 'manualidades-decoracion'],
 }
-export const ALLOWED_LINKS = ['https://fransegura51.github.io/family-app/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf']
+export const ALLOWED_LINKS = ['https://fransegura51.github.io/family-app/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf', 'https://pepafamilyapp.es/descargas/PEPA_Kit_Rutinas_Imprimible_Completo.pdf']
 const EXPECTED = 20
 
 export function parsePost(file, text) {
@@ -63,7 +63,7 @@ export function validate(posts, payloads) {
 }
 
 export function load() {
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort()
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.md') && !f.startsWith('_')).sort()
   const posts = files.map((f) => parsePost(f, fs.readFileSync(path.join(dir, f), 'utf8')))
   const payloads = {}
   for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.payload.json'))) {

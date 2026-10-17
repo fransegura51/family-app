@@ -23,6 +23,7 @@ import {
 import { isOwnWishlist, looksLikeProductUrl, wishlistItemStatus, wishlistTitle, type WishlistItemStatus } from '@/domain/wishlist'
 import { errorMessage } from '@/domain/errorMessage'
 import { shareText } from '@/services/share'
+import { buildWishlistShareText, wishlistShareTitle } from '@/domain/shareMessages'
 import { detectWishlistItemImage } from '@/services/wishlistItemImage'
 import type { FamilyMember, Profile, Wishlist, WishlistItem, WishlistItemReservation } from '@/domain/types'
 import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'
@@ -250,7 +251,7 @@ function WishlistDetailScreen({
     try {
       const url = guestUrl ?? (await getWishlistGuestUrl(wishlist.id))
       setGuestUrl(url)
-      const shown = await shareText({ title: `Lista de deseos de ${ownerName}`, text: url })
+      const shown = await shareText({ title: wishlistShareTitle(ownerName), text: buildWishlistShareText(ownerName, url) })
       setNotice(shown ? null : 'Copiado al portapapeles.')
     } catch (err) {
       setError(errorMessage(err, 'No se pudo generar el enlace'))

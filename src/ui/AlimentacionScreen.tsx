@@ -30,7 +30,7 @@ import {
   updateRecipe,
   uploadRecipePhoto,
 } from '@/data/food'
-import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CocinarTab } from '@/ui/CocinarTab'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
@@ -50,6 +50,8 @@ import { errorMessage } from '@/domain/errorMessage'
 import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
+import { KitchenMenuShoppingSheet } from '@/ui/KitchenMenuShoppingSheet'
+import { hasShoppableRecipe, type KitchenShoppingScope } from '@/domain/kitchenMenuShopping'
 import { DietaryWarnings } from '@/ui/DietaryWarnings'
 // EL editor de campos de receta (raciones, etiquetas, ingredientes y pasos) es el MISMO que usa Comunidad: ver src/ui/recipeEditor/RecipeEditorFields.tsx.
 import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
@@ -615,6 +617,8 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
   // «📥 Importar menú de Comunidad»: solo con Comunidad abierta para la persona (sin consultas si no lo está).
   const communityVisible = useCommunityVisible()
   const [importOpen, setImportOpen] = useState(false)
+  // «🛒 Añadir a Compras»: de la semana entera, de un día o de un plato (receta). Solo con recetas enlazadas que tengan ingredientes.
+  const [shopping, setShopping] = useState<{ scope: KitchenShoppingScope; title: string } | null>(null)
 
   function reload() {
     setLoading(true)
@@ -647,11 +651,33 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
           📥 Importar menú de Comunidad
         </button>
       )}
-      {dates.map((date) => (
+      {hasShoppableRecipe(entries, recipes, { scope: 'week' }) && (
+        <button
+          type="button"
+          className="menu-week-shop-btn"
+          onClick={() => setShopping({ scope: { scope: 'week' }, title: 'Los platos con receta de toda la semana' })}
+        >
+          🛒 Añadir semana a Compras
+        </button>
+      )}
+      {dates.map((date) => {
+        const dayLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
+        return (
         <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
-          <strong>
-            {new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
-          </strong>
+          <div className="menu-day-head">
+            <strong>{dayLabel}</strong>
+            {hasShoppableRecipe(entries, recipes, { scope: 'day', date }) && (
+              <button
+                type="button"
+                className="menu-icon-btn"
+                title="Añadir a Compras los ingredientes de este día"
+                aria-label={`Añadir a Compras los ingredientes de ${dayLabel}`}
+                onClick={() => setShopping({ scope: { scope: 'day', date }, title: `Los platos con receta de ${dayLabel}` })}
+              >
+                🛒
+              </button>
+            )}
+          </div>
           {MEAL_TYPES.filter((m) => m.value !== 'snack').map((meal) => {
             const slotEntries = entries.filter((e) => e.entryDate === date && e.mealType === meal.value)
             const entry = slotEntries[0]
@@ -660,6 +686,19 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
             const recipe = entry?.recipeId ? recipes.find((r) => r.id === entry.recipeId) : null
             const isAdding = addingFor?.date === date && addingFor.meal === meal.value
             const isEditing = entry && editingId === entry.id
+            // Carrito de un plato: solo si tiene receta enlazada con ingredientes (un plato escrito a mano no se descompone).
+            const cart = (e: MenuEntry, title: string) =>
+              hasShoppableRecipe([e], recipes, { scope: 'entry', entryId: e.id }) ? (
+                <button
+                  type="button"
+                  className="menu-icon-btn"
+                  title="Añadir sus ingredientes a Compras"
+                  aria-label={`Añadir a Compras los ingredientes de ${title}`}
+                  onClick={() => setShopping({ scope: { scope: 'entry', entryId: e.id }, title: `«${title}»` })}
+                >
+                  🛒
+                </button>
+              ) : null
             return (
               <Fragment key={meal.value}>
               <div className="menu-row">
@@ -678,17 +717,27 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                   />
                 ) : entry ? (
                   <>
-                    {recipe ? (
-                      <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(recipe.id)} aria-label={`Ver la receta ${recipe.title}`}>
-                        📖 {recipe.title}
+                    <span className="menu-row-main">
+                      {recipe ? (
+                        <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(recipe.id)} aria-label={`Ver la receta ${recipe.title}`}>
+                          📖 {recipe.title}
+                        </button>
+                      ) : (
+                        <span>{entry.freeText}</span>
+                      )}
+                    </span>
+                    <span className="menu-row-actions">
+                      {cart(entry, recipe?.title ?? entry.freeText ?? 'este plato')}
+                      <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${recipe?.title ?? entry.freeText ?? 'este plato'}`} onClick={() => setEditingId(entry.id)}>
+                        ✏️
                       </button>
-                    ) : (
-                      <span>{entry.freeText}</span>
-                    )}
-                    <button type="button" className="link-button" onClick={() => setEditingId(entry.id)}>
-                      Editar
-                    </button>
-                    <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(entry.id).then(reload)} />
+                      <ConfirmIconButton
+                        icon="🗑️"
+                        className="menu-icon-btn"
+                        ariaLabel={`Quitar ${recipe?.title ?? entry.freeText ?? 'este plato'} del menú`}
+                        onConfirm={() => deleteMenuEntry(entry.id).then(reload)}
+                      />
+                    </span>
                   </>
                 ) : isAdding ? (
                   <MenuEntryPicker
@@ -701,40 +750,54 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     onCancel={() => setAddingFor(null)}
                   />
                 ) : (
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => setAddingFor({ date, meal: meal.value })}
-                  >
-                    + Añadir
-                  </button>
-                )}
-              </div>
-              {extraEntries.map((extra) => (
-                <div key={extra.id} className="menu-row">
-                  <span className="muted menu-meal-label" aria-hidden="true">
-                    +
-                  </span>
-                  {extra.recipeId && recipes.some((r) => r.id === extra.recipeId) ? (
+                  <span className="menu-row-main">
                     <button
                       type="button"
-                      className="link-button menu-recipe-link"
-                      onClick={() => setViewRecipeId(extra.recipeId)}
-                      aria-label={`Ver la receta ${recipes.find((r) => r.id === extra.recipeId)?.title ?? ''}`}
+                      className="link-button"
+                      onClick={() => setAddingFor({ date, meal: meal.value })}
                     >
-                      📖 {recipes.find((r) => r.id === extra.recipeId)?.title}
+                      + Añadir
                     </button>
-                  ) : (
-                    <span>{extra.freeText}</span>
-                  )}
-                  <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(extra.id).then(reload)} />
-                </div>
-              ))}
+                  </span>
+                )}
+              </div>
+              {extraEntries.map((extra) => {
+                const extraRecipe = extra.recipeId ? recipes.find((r) => r.id === extra.recipeId) : undefined
+                return (
+                  <div key={extra.id} className="menu-row">
+                    <span className="muted menu-meal-label" aria-hidden="true">
+                      +
+                    </span>
+                    <span className="menu-row-main">
+                      {extraRecipe ? (
+                        <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(extraRecipe.id)} aria-label={`Ver la receta ${extraRecipe.title}`}>
+                          📖 {extraRecipe.title}
+                        </button>
+                      ) : (
+                        <span>{extra.freeText}</span>
+                      )}
+                    </span>
+                    <span className="menu-row-actions">
+                      {cart(extra, extraRecipe?.title ?? extra.freeText ?? 'este plato')}
+                      <ConfirmIconButton
+                        icon="🗑️"
+                        className="menu-icon-btn"
+                        ariaLabel={`Quitar ${extraRecipe?.title ?? extra.freeText ?? 'este plato'} del menú`}
+                        onConfirm={() => deleteMenuEntry(extra.id).then(reload)}
+                      />
+                    </span>
+                  </div>
+                )
+              })}
               </Fragment>
             )
           })}
         </div>
-      ))}
+        )
+      })}
+      {shopping && (
+        <KitchenMenuShoppingSheet entries={entries} recipes={recipes} scope={shopping.scope} title={shopping.title} onClose={() => setShopping(null)} />
+      )}
       {viewedRecipe && (
         <RecipeQuickViewModal
           recipe={viewedRecipe}

@@ -11,6 +11,7 @@ import {
   saveCommunityPinned,
   type CommunityMenuKey,
 } from '@/state/communityMenu'
+import { BreadcrumbSlotContext } from '@/ui/community/Breadcrumbs'
 import { ReadOnlyNotice } from '@/ui/community/CommunityAccessNotices'
 import { CommunityMenu } from '@/ui/community/CommunityMenu'
 import { useCommunity } from '@/ui/community/CommunityProvider'
@@ -20,9 +21,11 @@ import { useHideFloatingOnScroll } from '@/ui/community/useHideFloatingOnScroll'
 import '@/ui/community/community.css'
 
 // Marco de TODAS las páginas de Comunidad (portada, secciones, publicaciones, comentarios, perfiles, borradores y páginas internas). De arriba abajo:
-//   1. franja compacta con el botón «☰ Menú» (mismo desplegable que Compras: Portada, Recetas y cocina, Hogar y familia),
+//   1. el botón «☰ Menú» justo encima de la cabecera (mismo desplegable que Compras: Portada, Recetas y cocina, Hogar y familia),
 //   2. la cabecera oficial COMUNIDAD_MASTER_v1 a todo el ancho útil, entera (sin deformar ni recortar a Pepa o al rótulo),
-//   3. la barra de herramientas (Buscar, Guardados, Borradores, Novedades, Mi perfil, Publicar).
+//   3. las migas de pan, inmediatamente debajo de la cabecera (las pinta cada página con <Breadcrumbs/> y se colocan aquí),
+//   4. la barra de herramientas (Buscar, Guardados, Borradores, Novedades, Mi perfil, Publicar), UNA sola vez,
+//   5. el título, la descripción, los filtros y el contenido de cada página.
 // La imagen original está guardada sin tocar en src/assets/brand/variants/comunidad-master-v1.png; aquí se sirve una versión WebP optimizada de la misma
 // imagen (640 y 1280 px de ancho) para no gastar datos del móvil.
 export function CommunityHeader() {
@@ -56,6 +59,7 @@ export function CommunityLayout() {
   const [pinned, setPinned] = useState<CommunityMenuKey[]>(() => loadCommunityPinned())
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const [crumbSlot, setCrumbSlot] = useState<HTMLElement | null>(null)
 
   useEffect(() => {
     setMenuOpen(false)
@@ -125,7 +129,6 @@ export function CommunityLayout() {
         >
           {menuOpen ? '✕' : '☰'} Menú
         </button>
-        <span className="community-topstrip-title">{activeKey ? COMMUNITY_MENU_META[activeKey].label : 'Comunidad PEPA'}</span>
         {menuOpen && (
           <CommunityMenu
             order={order}
@@ -143,6 +146,8 @@ export function CommunityLayout() {
         )}
       </div>
       <CommunityHeader />
+      <div className="community-crumb-slot" ref={setCrumbSlot} />
+      <CommunityToolbar canParticipate={canParticipate} profileId={me?.id ?? null} />
       {pinnedInOrder.length > 0 && (
         <div className="filter-row community-pinned-row" aria-label="Accesos a la vista">
           {pinnedInOrder.map((key) => (
@@ -162,9 +167,10 @@ export function CommunityLayout() {
           ))}
         </div>
       )}
-      <CommunityToolbar canParticipate={canParticipate} profileId={me?.id ?? null} />
       <ReadOnlyNotice />
-      <Outlet />
+      <BreadcrumbSlotContext.Provider value={crumbSlot}>
+        <Outlet />
+      </BreadcrumbSlotContext.Provider>
     </div>
   )
 }

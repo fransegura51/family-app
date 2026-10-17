@@ -32,6 +32,7 @@ import type {
   SuggestItem,
   SummaryState,
 } from '@/domain/community'
+import { markOpenedLocally } from '@/domain/communityRead'
 import { POST_RECIPE_ERROR_MESSAGES, postRecipeErrorCode, type PostRecipeImportResult } from '@/domain/communityPostRecipes'
 
 // snake_case → camelCase en profundidad (las claves de recetas/ingredientes ya son simples y no cambian).
@@ -64,6 +65,8 @@ export const listCommunityTopics = () => rpc<CommunityTopic[]>('community_list_t
 export interface ListPostsParams {
   section?: CommunitySection | null
   topic?: string | null
+  // Varios temas a la vez (lógica O, 0287). Vacío o ausente = sin filtro de tema.
+  topics?: string[]
   kind?: AnyPostKind | null
   order?: PostOrder
   limit?: number
@@ -86,6 +89,7 @@ export const listPosts = (p: ListPostsParams = {}) =>
     p_author: p.author ?? null,
     p_saved: p.saved ?? false,
     p_following: p.following ?? false,
+    p_topics: p.topics && p.topics.length > 0 ? p.topics : null,
   })
 
 export const similarPosts = (title: string, kind: PostKind | null, section: CommunitySection | null) =>
@@ -94,7 +98,12 @@ export const similarPosts = (title: string, kind: PostKind | null, section: Comm
 export const searchSuggest = (prefix: string) => rpc<SuggestItem[]>('community_search_suggest', { p_prefix: prefix })
 
 // null = no disponible (eliminada, oculta, no existe). El autor de una oculta por moderación recibe un aviso mínimo.
-export const getPost = (id: string) => rpc<PostDetail | HiddenPostNotice | null>('community_get_post', { p_id: id })
+// Abrir el detalle lo marca como LEÍDO en el servidor (0287); aquí además se recuerda en la sesión para las listas que se recuperan al volver atrás.
+export async function getPost(id: string): Promise<PostDetail | HiddenPostNotice | null> {
+  const post = await rpc<PostDetail | HiddenPostNotice | null>('community_get_post', { p_id: id })
+  if (post && !('status' in post && post.status === 'hidden')) markOpenedLocally(id)
+  return post
+}
 
 // «Importar a mi Cocina» (0282): guarda SOLO las recetas elegidas de la publicación en La cocina de Pepa de MI familia. Una llamada, todo o nada y con clave de
 // idempotencia: repetirla (doble toque, reintento tras un corte) no duplica nada. No modifica la publicación ni las recetas de otras familias.

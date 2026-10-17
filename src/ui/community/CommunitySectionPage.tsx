@@ -15,6 +15,8 @@ import {
   sectionListParams,
   sectionOrders,
   sectionSignature,
+  splitFeaturedTopics,
+  toggleTopic,
   topicsForSection,
   type SectionFilters,
 } from '@/domain/communityDiscovery'
@@ -52,16 +54,23 @@ function SectionContent({ section }: { section: CommunitySection }) {
   const [restore] = useState(() => navType === 'POP')
 
   // El tema, el orden y el tipo viven en la dirección (?tema=&orden=&tipo=): compartibles y recuperables con «atrás».
-  const filters = useMemo(() => readSectionFilters(section, sp), [section, sp])
-  const signature = sectionSignature(section, filters)
   const sectionTopics = useMemo(() => (topics ? topicsForSection(topics, section) : []), [topics, section])
+  // Varios temas a la vez (lógica O). Con el catálogo cargado se descartan los que no existen en esta sección (direcciones antiguas o ajenas).
+  const filters = useMemo(() => {
+    const f = readSectionFilters(section, sp)
+    return sectionTopics.length > 0 ? { ...f, topics: f.topics.filter((id) => sectionTopics.some((t) => t.id === id)) } : f
+  }, [section, sp, sectionTopics])
+  const signature = sectionSignature(section, filters)
+  // «Ver todos los temas» / «Ver menos»: solo cambia lo que se enseña, no los filtros.
+  const [allTopics, setAllTopics] = useState(false)
+  const { featured, rest } = useMemo(() => splitFeaturedTopics(section, sectionTopics, filters.topics), [section, sectionTopics, filters.topics])
 
   const list = useCommunityList({
     storageKey: `section:${section}`,
     signature,
     pageSize: LIST_PAGE_SIZE,
     restore,
-    meta: { order: filters.order, topic: filters.topic, kind: filters.kind },
+    meta: { order: filters.order, topic: filters.topics.join(',') || null, kind: filters.kind },
     fetchPage: (offset) => listPosts(sectionListParams(section, filters, offset, LIST_PAGE_SIZE)),
   })
 
@@ -90,22 +99,37 @@ function SectionContent({ section }: { section: CommunitySection }) {
       {info && <p className="muted community-list-intro">{info.description}</p>}
 
       {sectionTopics.length > 0 && (
-        <div role="group" aria-label="Filtrar por tema" className="community-chips">
-          <button type="button" className="community-chip" aria-pressed={filters.topic === null} onClick={() => setFilters({ ...filters, topic: null })}>
+        <div role="group" aria-label="Filtrar por tema (puedes elegir varios)" className="community-chips community-chips-compact">
+          <button type="button" className="community-chip" aria-pressed={filters.topics.length === 0} onClick={() => setFilters({ ...filters, topics: [] })}>
             Todos
           </button>
-          {sectionTopics.map((t) => (
+          {[...featured, ...(allTopics ? rest : [])].map((t) => (
             <button
               key={t.id}
               type="button"
               className="community-chip"
-              aria-pressed={filters.topic === t.id}
-              onClick={() => setFilters({ ...filters, topic: filters.topic === t.id ? null : t.id })}
+              aria-pressed={filters.topics.includes(t.id)}
+              onClick={() => setFilters({ ...filters, topics: toggleTopic(filters.topics, t.id) })}
             >
               {t.label}
             </button>
           ))}
+          {rest.length > 0 && (
+            <button type="button" className="community-chip community-chip-more" aria-expanded={allTopics} onClick={() => setAllTopics((v) => !v)}>
+              {allTopics ? 'Ver menos' : 'Ver todos los temas'}
+            </button>
+          )}
         </div>
+      )}
+      {filtered && (
+        <p className="community-filter-status muted">
+          {filters.topics.length > 0 && <span>{filters.topics.length === 1 ? '1 tema seleccionado' : `${filters.topics.length} temas seleccionados`}</span>}
+          {filters.topics.length > 0 && filters.kind && <span> · </span>}
+          {filters.kind && <span>Tipo: {KIND_LABELS[filters.kind]}</span>}{' '}
+          <button type="button" className="link-button" onClick={() => setFilters({ topics: [], order: filters.order, kind: null })}>
+            Limpiar filtros
+          </button>
+        </p>
       )}
 
       <div className="community-filter-grid">
@@ -165,7 +189,7 @@ function SectionContent({ section }: { section: CommunitySection }) {
             </p>
             <p className="muted">{empty.hint}</p>
             {filtered && (
-              <button type="button" className="link-button" onClick={() => setFilters({ topic: null, order: filters.order, kind: null })}>
+              <button type="button" className="link-button" onClick={() => setFilters({ topics: [], order: filters.order, kind: null })}>
                 Quitar los filtros
               </button>
             )}

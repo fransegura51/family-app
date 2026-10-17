@@ -4252,7 +4252,9 @@ textarea {
    fila para no solaparse sin tener que mover los avatares. */
 .kitchen-header-menu-fab-floating {
   position: fixed;
-  top: 58px;
+  /* Como .app-content: 54 px de siempre MÁS la zona segura de arriba (iPhone: hora, batería, isla). Sin ella, en la app nativa el botón quedaba arriba del todo, pegado a
+     la barra del sistema y lejos de la cabecera (regresión 17/10/2026). Sin barra (web, Android sin muesca) env() vale 0 y queda en los 58 px de siempre. */
+  top: calc(58px + env(safe-area-inset-top, 0px));
   left: 10px;
   right: auto;
   z-index: 39;
@@ -4266,7 +4268,7 @@ textarea {
    de la pantalla entera, no de la cabecera), así que aquí se fija en
    píxeles en su lugar. */
 .kitchen-header-menu-fab-floating-lower {
-  top: 80px;
+  top: calc(80px + env(safe-area-inset-top, 0px));
 }
 
 /* Tarjeta de acceso rápido de la pestaña Inicio (Alimentación, Compras)
@@ -4461,7 +4463,7 @@ textarea {
    de un único botón escondido dentro de Movimientos. */
 .finance-fab-group {
   position: fixed;
-  top: 8px;
+  top: calc(8px + env(safe-area-inset-top, 0px));
   right: 8px;
   z-index: 40;
   display: flex;
@@ -7806,4 +7808,92 @@ textarea {
   background: var(--card-bg, #fff);
   color: var(--text, #1c1f26);
   font-size: 18px;
+}
+
+/* Cocina · menú semanal compacto (17/10/2026): menos aire vertical, nombres alineados a la izquierda, y las acciones de cada plato (carrito, lápiz, papelera) juntas a la
+   derecha. Los colores pastel del día no cambian. Los iconos miden 40 px de toque: se ven pequeños pero se pulsan bien. */
+.menu-day {
+  gap: 0;
+  margin-bottom: 8px;
+  padding-top: 10px;
+  padding-bottom: 6px;
+}
+
+.menu-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.menu-day .menu-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 0;
+  min-height: 40px;
+}
+
+.menu-day .menu-meal-label {
+  width: 62px;
+}
+
+.menu-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.menu-row-main .link-button {
+  text-align: left;
+  padding: 6px 0;
+  align-self: auto;
+}
+
+.menu-row-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+}
+
+.menu-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.menu-icon-btn.confirm-icon-armed {
+  background: #fde8e8;
+  color: #b42318;
+  font-weight: 700;
+}
+
+.menu-week-shop-btn {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 10px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.menu-day .menu-picker {
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
 }

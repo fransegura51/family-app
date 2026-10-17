@@ -17,7 +17,15 @@ export interface ScaledQuantity {
   fractional: boolean
 }
 
-export type UnitFamily = 'masa' | 'volumen' | 'conteo' | 'cucharada' | 'cucharadita'
+// «conteo» son unidades enteras (huevos, patatas, lechugas…). Las piezas con nombre propio (lonchas, rebanadas, dientes, hojas, rodajas, lomos, muslos, filetes) son familias
+// APARTE: 4 lonchas no se suman con 4 unidades. «pizca» es una cantidad de condimento: no se escala ni se suma (en la compra queda «al gusto»).
+export type UnitFamily = 'masa' | 'volumen' | 'conteo' | 'cucharada' | 'cucharadita' | 'loncha' | 'rebanada' | 'diente' | 'hoja' | 'rodaja' | 'lomo' | 'muslo' | 'filete' | 'pizca'
+
+// Familias de piezas indivisibles: una cantidad con decimales no se puede comprar tal cual (hay que redondear hacia arriba).
+const COUNT_FAMILIES: readonly UnitFamily[] = ['conteo', 'loncha', 'rebanada', 'diente', 'hoja', 'rodaja', 'lomo', 'muslo', 'filete']
+export function isCountFamily(family: UnitFamily): boolean {
+  return COUNT_FAMILIES.includes(family)
+}
 
 export interface UnitInfo {
   family: UnitFamily
@@ -48,28 +56,73 @@ const UNIT_TABLE: Record<string, UnitInfo> = {
   cucharaditas: { family: 'cucharadita', label: 'cucharadita', factor: 1 },
   cdta: { family: 'cucharadita', label: 'cucharadita', factor: 1 },
   cdtas: { family: 'cucharadita', label: 'cucharadita', factor: 1 },
+  loncha: { family: 'loncha', label: 'loncha', factor: 1 },
+  lonchas: { family: 'loncha', label: 'loncha', factor: 1 },
+  rebanada: { family: 'rebanada', label: 'rebanada', factor: 1 },
+  rebanadas: { family: 'rebanada', label: 'rebanada', factor: 1 },
+  diente: { family: 'diente', label: 'diente', factor: 1 },
+  dientes: { family: 'diente', label: 'diente', factor: 1 },
+  hoja: { family: 'hoja', label: 'hoja', factor: 1 },
+  hojas: { family: 'hoja', label: 'hoja', factor: 1 },
+  rodaja: { family: 'rodaja', label: 'rodaja', factor: 1 },
+  rodajas: { family: 'rodaja', label: 'rodaja', factor: 1 },
+  lomo: { family: 'lomo', label: 'lomo', factor: 1 },
+  lomos: { family: 'lomo', label: 'lomo', factor: 1 },
+  muslo: { family: 'muslo', label: 'muslo', factor: 1 },
+  muslos: { family: 'muslo', label: 'muslo', factor: 1 },
+  filete: { family: 'filete', label: 'filete', factor: 1 },
+  filetes: { family: 'filete', label: 'filete', factor: 1 },
+  huevo: { family: 'conteo', label: 'unidad', factor: 1 },
+  huevos: { family: 'conteo', label: 'unidad', factor: 1 },
+  pizca: { family: 'pizca', label: 'pizca', factor: 1 },
+  pizcas: { family: 'pizca', label: 'pizca', factor: 1 },
+}
+
+// Texto de una unidad listo para buscarla en la tabla: minúsculas, sin punto final de abreviatura y sin el complemento («dientes de ajo» → «dientes», «lonchas de queso»
+// → «lonchas»). Una unidad que no está en la tabla sigue sin interpretarse.
+function normalizeUnit(unit: string): string {
+  const t = unit.trim().toLowerCase().replace(/\.+$/, '').replace(/\s+/g, ' ')
+  if (UNIT_TABLE[t]) return t
+  return t.split(' de ')[0]?.trim() ?? t
 }
 
 // Unidad interpretable de forma segura, o null (pizca, «al gusto», vacía, desconocida…).
 export function unitInfo(unit: string | null | undefined): UnitInfo | null {
   if (!unit) return null
-  return UNIT_TABLE[unit.trim().toLowerCase()] ?? null
+  return UNIT_TABLE[normalizeUnit(unit)] ?? null
 }
 
 // Forma de mostrar una unidad para un valor: «unidad»/«unidades», «cucharada»/«cucharadas»…
 export function displayUnit(info: UnitInfo, value: number): string {
   if (info.family === 'conteo') return value === 1 ? 'unidad' : 'unidades'
-  if (info.family === 'cucharada') return value === 1 ? 'cucharada' : 'cucharadas'
-  if (info.family === 'cucharadita') return value === 1 ? 'cucharadita' : 'cucharaditas'
-  return info.label
+  if (info.family === 'masa' || info.family === 'volumen') return info.label
+  // Piezas, cucharadas, cucharaditas, pizcas: singular con 1 y plural con el resto («lonchas», «dientes», «pizcas»).
+  return value === 1 ? info.label : info.label + 's'
 }
 
-// Solo números simples («250», «1,5», «0.5»). Fracciones, rangos («2-3») y textos («un puñado») no se escalan.
+// Cantidad que se COMPRA a partir de la cantidad de cocina: las piezas indivisibles se redondean hacia arriba (1,5 lechugas → 2), el resto se deja tal cual. La receta no se toca:
+// esto solo es lo práctico para la lista de la compra.
+export function purchaseValue(value: number, info: UnitInfo): number {
+  return isCountFamily(info.family) ? Math.ceil(value - 1e-9) : value
+}
+
+const VULGAR: Record<string, number> = { '½': 0.5, '¼': 0.25, '¾': 0.75, '⅓': 1 / 3, '⅔': 2 / 3 }
+
+// Números simples («250», «1,5», «0.5») y fracciones habituales («1/2», «1 1/2», «½», «1½»). Rangos («2-3») y textos («un puñado») no se escalan.
 export function parseSimpleNumber(text: string | null): number | null {
   if (text === null) return null
   const t = text.trim().replace(',', '.')
-  if (!/^\d+(\.\d+)?$/.test(t)) return null
-  const n = Number(t)
+  let n: number
+  const plain = /^\d+(\.\d+)?$/.exec(t)
+  const frac = /^(?:(\d+)\s+)?(\d+)\/(\d+)$/.exec(t)
+  const vulgar = /^(\d+)?\s*([½¼¾⅓⅔])$/.exec(t)
+  if (plain) n = Number(t)
+  else if (frac) {
+    const den = Number(frac[3])
+    if (den <= 0) return null
+    n = Number(frac[1] ?? 0) + Number(frac[2]) / den
+  } else if (vulgar) n = Number(vulgar[1] ?? 0) + VULGAR[vulgar[2]]
+  else return null
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
@@ -85,11 +138,14 @@ export function scaleIngredientQuantity(
     return { value, unit: originalUnit, scaled: false, reason: 'sin_raciones', fractional: false }
   }
   if (value === null) return { value: null, unit: originalUnit, scaled: false, reason: 'cantidad_no_numerica', fractional: false }
-  const info = unitInfo(unit)
+  // Cantidad numérica SIN unidad («2» huevos, «1» lechuga): son unidades enteras.
+  const info = originalUnit === '' ? unitInfo('unidad') : unitInfo(unit)
   if (!info) return { value, unit: originalUnit, scaled: false, reason: 'unidad_no_escalable', fractional: false }
+  // Una pizca es un toque de condimento: no se multiplica con los comensales.
+  if (info.family === 'pizca') return { value, unit: originalUnit, scaled: false, reason: 'unidad_no_escalable', fractional: false }
   const scaled = (value * targetDiners) / originalServings
-  // Solo el CONTEO es indivisible (huevos, patatas): ahí un decimal no es una cantidad comprable.
-  // Masa, volumen, cucharadas y cucharaditas son medidas continuas: 2,5 cucharadas es válido, sin aviso.
-  const fractional = info.family === 'conteo' && Math.abs(scaled - Math.round(scaled)) > 1e-9
-  return { value: scaled, unit: displayUnit(info, scaled), scaled: true, reason: null, fractional }
+  // Las piezas indivisibles (huevos, lonchas, dientes…) no se compran con decimales: se marca como fraccionario. Masa, volumen, cucharadas y cucharaditas son medidas
+  // continuas: 2,5 cucharadas es válido, sin aviso.
+  const fractional = isCountFamily(info.family) && Math.abs(scaled - Math.round(scaled)) > 1e-9
+  return { value: scaled, unit: originalUnit === '' ? '' : displayUnit(info, scaled), scaled: true, reason: null, fractional }
 }

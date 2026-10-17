@@ -313,6 +313,20 @@ body.community-floating-hidden .scroll-top-fab {
   color: var(--muted, #6b7280);
 }
 
+.community-card-read {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.community-card-read-updated {
+  color: var(--primary, #2563eb);
+  font-weight: 600;
+  opacity: 1;
+}
+
 .community-blocked-card {
   position: relative;
   padding: 14px;

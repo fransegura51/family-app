@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { KIND_ICONS, KIND_LABELS, anecdoteTypeTag, type CommunityCardItem } from '@/domain/community'
+import { READ_LABELS, readBadge } from '@/domain/communityRead'
 import { paths } from '@/ui/community/communityNav'
 import { useCommunityPhotoUrl } from '@/ui/community/communityPhotoUrl'
 
@@ -38,6 +39,7 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
     )
   }
 
+  const badge = readBadge(item)
   const author = item.authorDeleted ? 'Usuario eliminado' : (item.authorAlias ?? 'Alguien')
   return (
     <Link to={paths.post(item.id)} className="community-card" aria-label={`${KIND_LABELS[item.kind]}: ${item.title}`}>
@@ -68,6 +70,11 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
             </span>
           )}
           {item.kind === 'receta' && item.importCount > 0 && <span>📥 {item.importCount}</span>}
+          {badge && (
+            <span className={`community-card-read community-card-read-${badge}`} data-read-state={badge}>
+              {READ_LABELS[badge]}
+            </span>
+          )}
         </div>
       </div>
       {thumb.src && <img className="community-card-thumb" src={thumb.src} alt="" loading="lazy" decoding="async" onError={thumb.onError} />}

@@ -2,17 +2,9 @@ import { useState } from 'react'
 import { addMenuShoppingLines } from '@/data/food'
 import { errorMessage } from '@/domain/errorMessage'
 import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
-import type { ScaleNote } from '@/domain/recipeScaling'
 import type { ShoppingStoreEntry } from '@/domain/types'
 import { showToast } from '@/state/toast'
 import { clearPendingMenuShoppingRequestId, pendingMenuShoppingRequestId } from '@/state/menuShoppingRequestId'
-
-const NOTE_LABEL: Record<ScaleNote, string> = {
-  sin_raciones: 'La receta no tiene raciones: cantidad original, sin escalar.',
-  cantidad_no_numerica: 'Cantidad no numérica en la receta: revísala.',
-  unidad_no_escalable: 'Unidad que no se escala: cantidad original.',
-  fraccionario: 'Resultado no entero de unidades: revísalo antes de comprar.',
-}
 
 // Una fila de la revisión. `line` es null para un producto añadido a mano.
 interface ReviewRow {
@@ -140,7 +132,7 @@ export function MenuShoppingModal({
                 </select>
               </div>
               <p className="menu-shopping-sources">Para: {row.line ? [...new Set(row.line.sources.map((s) => s.dishName))].join(', ') : 'Añadido a mano'}</p>
-              {row.line && row.line.notes.length > 0 && <p className="menu-shopping-notes">{row.line.notes.map((n) => NOTE_LABEL[n]).join(' ')}</p>}
+              {row.line?.hint && <p className="menu-shopping-notes">{row.line.hint}</p>}
             </article>
           ))}
           <button type="button" className="link-button menu-shopping-add" onClick={addManual} disabled={saving}>

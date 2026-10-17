@@ -86,7 +86,7 @@ export function parseKind(raw: string | null | undefined): AnyPostKind | null {
 export function sectionOrders(section: CommunitySection): PostOrder[] {
   const base: PostOrder[] = ['recientes', 'comentados']
   if (section === 'recetas') base.push('valoradas')
-  base.push('sin_respuesta', 'para_mi')
+  base.push('sin_respuesta', 'no_leidas', 'para_mi')
   return base
 }
 
@@ -122,14 +122,52 @@ export function topicBelongsToSection(topics: CommunityTopic[], topicId: string 
 // ---------------------------------------------------------------------------------------------------------------------------------
 
 export interface SectionFilters {
-  topic: string | null
+  // Temas elegidos (varios a la vez, lógica O). Vacío = «Todos».
+  topics: string[]
   order: PostOrder
   kind: AnyPostKind | null
 }
 
+// Temas de la dirección (?tema=a&tema=b, o ?tema=a,b): sin vacíos ni repetidos y, si se conoce el catálogo de la sección, solo los que existen en ella.
+export function parseTopics(sp: URLSearchParams, valid?: string[]): string[] {
+  const out: string[] = []
+  for (const raw of sp.getAll('tema')) {
+    for (const t of raw.split(',')) {
+      const id = t.trim()
+      if (id && !out.includes(id) && (!valid || valid.includes(id))) out.push(id)
+    }
+  }
+  return out
+}
+
+// Alterna un tema (pulsar uno elegido lo quita; uno nuevo se añade) manteniendo el orden en que se eligieron.
+export function toggleTopic(topics: string[], id: string): string[] {
+  return topics.includes(id) ? topics.filter((t) => t !== id) : [...topics, id]
+}
+
+export const FEATURED_TOPICS_VISIBLE = 3
+
+// Temas destacados que se enseñan siempre (hasta 3) y el resto, que queda tras «Ver todos los temas». Los destacados fijos (por sección) van primero; si faltan o no
+// existen se completa con los primeros del catálogo. Un tema ya elegido que cae en «el resto» se sube a la vista para que no quede escondido.
+const FEATURED_BY_SECTION: Record<CommunitySection, string[]> = {
+  recetas: ['platos-principales', 'recetas-faciles', 'trucos-de-cocina'],
+  hogar: ['organizacion-familiar', 'ahorro-economia', 'actividades-familia'],
+}
+export function splitFeaturedTopics<T extends { id: string }>(section: CommunitySection, topics: T[], selected: string[]): { featured: T[]; rest: T[] } {
+  const pick: T[] = []
+  for (const id of FEATURED_BY_SECTION[section]) {
+    const t = topics.find((x) => x.id === id)
+    if (t && pick.length < FEATURED_TOPICS_VISIBLE) pick.push(t)
+  }
+  for (const t of topics) if (pick.length < FEATURED_TOPICS_VISIBLE && !pick.includes(t)) pick.push(t)
+  const rest = topics.filter((t) => !pick.includes(t))
+  const extra = rest.filter((t) => selected.includes(t.id))
+  return { featured: [...pick, ...extra], rest: rest.filter((t) => !extra.includes(t)) }
+}
+
 export function readSectionFilters(section: CommunitySection, sp: URLSearchParams): SectionFilters {
   return {
-    topic: sp.get('tema') || null,
+    topics: parseTopics(sp),
     order: parseOrder(sp.get('orden'), sectionOrders(section)),
     kind: parseKind(sp.get('tipo')),
   }
@@ -138,23 +176,23 @@ export function readSectionFilters(section: CommunitySection, sp: URLSearchParam
 // Solo se escribe en la dirección lo que NO es el valor por defecto («Más recientes» y «Todos» no se escriben): así la dirección limpia = pantalla inicial.
 export function sectionFiltersToParams(f: SectionFilters): URLSearchParams {
   const q = new URLSearchParams()
-  if (f.topic) q.set('tema', f.topic)
+  for (const t of f.topics) q.append('tema', t)
   if (f.order !== 'recientes') q.set('orden', f.order)
   if (f.kind) q.set('tipo', f.kind)
   return q
 }
 
 export function sectionListParams(section: CommunitySection, f: SectionFilters, offset: number, limit: number = LIST_PAGE_SIZE): ListPostsParams {
-  return { section, topic: f.topic, kind: f.kind, order: f.order, limit, offset }
+  return { section, topics: f.topics, kind: f.kind, order: f.order, limit, offset }
 }
 
 // Firma de lo que se está viendo: si cambia, la lista se vuelve a pedir desde el principio.
 export function sectionSignature(section: CommunitySection, f: SectionFilters): string {
-  return `${section}|${f.topic ?? ''}|${f.order}|${f.kind ?? ''}`
+  return `${section}|${f.topics.join(',')}|${f.order}|${f.kind ?? ''}`
 }
 
 export function hasSectionFilters(f: SectionFilters): boolean {
-  return f.topic !== null || f.kind !== null
+  return f.topics.length > 0 || f.kind !== null
 }
 
 // Texto amable del estado vacío de una sección según lo que se estaba mirando.

@@ -7,7 +7,7 @@ export type PostKind = 'receta' | 'pregunta' | 'consejo' | 'anecdota'
 export type OfficialKind = 'encuesta' | 'articulo' | 'menu'
 export type AnyPostKind = PostKind | OfficialKind
 export type CommunitySection = 'recetas' | 'hogar'
-export type PostOrder = 'recientes' | 'comentados' | 'valoradas' | 'sin_respuesta' | 'para_mi'
+export type PostOrder = 'recientes' | 'comentados' | 'valoradas' | 'sin_respuesta' | 'para_mi' | 'no_leidas'
 export type CommentOrder = 'antiguos' | 'recientes' | 'utiles'
 export type FollowMode = 'smart' | 'every' | 'off'
 
@@ -69,6 +69,7 @@ export const ORDER_LABELS: Record<PostOrder, string> = {
   valoradas: 'Mejor valoradas',
   sin_respuesta: 'Preguntas sin responder',
   para_mi: 'Para mí',
+  no_leidas: 'No leídas primero',
 }
 
 export const COMMENT_ORDER_LABELS: Record<CommentOrder, string> = {
@@ -152,6 +153,8 @@ export interface PostCard {
   unanswered: boolean
   likedByMe: boolean
   savedByMe: boolean
+  // Lectura de ESTA persona (0287): 'read' = ya abrió la publicación; 'updated' = la abrió pero el contenido cambió después; null = nunca la abrió.
+  readState?: 'read' | 'updated' | null
   canInteract: boolean
 }
 

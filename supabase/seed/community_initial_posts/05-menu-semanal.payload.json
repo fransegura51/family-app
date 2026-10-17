@@ -90,7 +90,7 @@
               "tip": "Truco de Pepa: con lentejas cocidas de bote (unos 800 g ya escurridas) ahorras más de una hora y la receta queda en unos 30 minutos. Sofríe las verduras, añade la patata con 400 ml de agua y cuece 15 minutos; incorpora las lentejas aclaradas y cuece 5 minutos más. Los huevos se cuecen mientras tanto.",
               "freeze": {
                 "ideal": true,
-                "note": "Congela las lentejas sin el huevo duro (se vuelve gomoso): cuécelo al servir. Deja enfriar el guiso en menos de dos horas, repártelo en raciones en tarros o bolsas aptas para congelar y guárdalo hasta 3 meses. Descongela en la nevera y recalienta hasta que hierva, una sola vez."
+                "note": "Congela las lentejas sin el huevo duro (se vuelve gomoso): cuécelo al servir. Enfría el guiso en menos de dos horas, repártelo en raciones en tarros o bolsas aptas para congelar y guárdalo hasta 3 meses. Descongela en la nevera, recalienta hasta que hierva, una sola vez, y no lo vuelvas a congelar."
               },
               "time": {
                 "active": 25,
@@ -175,7 +175,7 @@
               "tip": "Truco de Pepa: la calabaza y la zanahoria ya peladas y troceadas, frescas en bolsa o congeladas, te ahorran la parte más pesada. Si son congeladas, no hace falta descongelarlas: añádelas directas a la olla y calcula unos 5 minutos más de cocción.",
               "freeze": {
                 "ideal": true,
-                "note": "Cuando la crema esté fría (en menos de dos horas), repártela en raciones en tarros o bolsas aptas para congelar, dejando un dedo libre arriba, y guárdala hasta 3 meses. Descongela en la nevera y recalienta removiendo hasta que hierva, una sola vez."
+                "note": "Cuando la crema esté fría (en menos de dos horas), repártela en raciones en tarros o bolsas aptas para congelar, dejando un dedo libre arriba, y guárdala hasta 3 meses. Descongela en la nevera y recalienta removiendo hasta que hierva, una sola vez. No la vuelvas a congelar."
               },
               "time": {
                 "active": 20,
@@ -349,7 +349,7 @@
               "steps": [
                 "Lava los calabacines y córtalos en rodajas de 1 cm. Exprime medio limón y corta el otro medio en gajos para servir.",
                 "En una sartén grande, calienta una cucharada de aceite a fuego medio-alto y saltea el calabacín 6-8 minutos, removiendo, hasta que esté tierno y con algo de color. Sálalo, pásalo a una fuente y mantenlo caliente.",
-                "Seca los lomos de salmón con papel de cocina y sálalos ligeramente. En la misma sartén, calienta el aceite restante a fuego medio-alto y cocina los lomos primero por el lado de la piel 4 minutos.",
+                "Seca los lomos de salmón con papel de cocina y sálalos ligeramente. En la misma sartén, calienta el aceite restante a fuego medio-alto y cocina los lomos primero por el lado de la piel 4 minutos. Usa una tabla y un cuchillo solo para el pescado crudo y lávate las manos después de tocarlo.",
                 "Dales la vuelta y cocina 2-3 minutos más, hasta que por dentro estén opacos y se separen en lascas (no debe quedar crudo, sobre todo en los platos de los pequeños).",
                 "Rocía el salmón con el zumo de limón, revisa con un tenedor que no queden espinas y sirve sobre el calabacín, con los gajos de limón.",
                 "Alérgenos presentes: pescado. Si sobra, guárdalo en la nevera en menos de dos horas y tómalo en 1 o 2 días."
@@ -428,7 +428,7 @@
                 "Precalienta el horno a 200 ºC, con calor arriba y abajo. Pela las patatas, córtalas en rodajas de 1 cm y cuécelas en agua con sal 10-12 minutos, hasta que estén casi tiernas. Escúrrelas. (Si las cocinaste con antelación o usas patatas cocidas envasadas, sáltate este paso.)",
                 "Corta el pimiento y la cebolla en tiras finas y el tomate en rodajas, y lamina los ajos.",
                 "Extiende las patatas y las verduras con el ajo en una fuente grande, riégalas con tres cucharadas de aceite y añade sal. Hornea 20 minutos, removiendo a mitad de tiempo.",
-                "Sala los lomos de merluza, colócalos sobre las verduras y riégalos con la cucharada de aceite restante. Hornea 12-15 minutos más, según el grosor.",
+                "Sala los lomos de merluza, colócalos sobre las verduras y riégalos con la cucharada de aceite restante. Hornea 12-15 minutos más, según el grosor. Usa una tabla y un cuchillo solo para el pescado crudo y lávate las manos después de tocarlo.",
                 "Está lista cuando la carne es blanca y opaca y se separa en lascas. Aunque compres lomos sin espinas, revisa con un tenedor antes de servir, sobre todo los platos de los pequeños.",
                 "Alérgenos presentes: pescado. Guarda las sobras en la nevera en menos de dos horas, tómalas en 1 o 2 días y recaliéntalas hasta que estén calientes por dentro."
               ],
@@ -612,7 +612,7 @@
               "tip": "Truco de Pepa: la salsa se puede hacer el día antes (aguanta 2 o 3 días en la nevera) y el día que toca solo cueces la pasta, unos 10 minutos. Si vas con prisa, usa zanahoria ya rallada de bolsa o pásala por el rallador grueso.",
               "freeze": {
                 "ideal": true,
-                "note": "Congela solo la salsa (con el pavo y las verduras), sin la pasta ni el queso: la pasta recalentada pierde la textura. Una vez fría, repártela en raciones en bolsas o tarros aptos y guárdala hasta 3 meses. Descongela en la nevera, recalienta hasta que hierva y mézclala con pasta recién cocida."
+                "note": "Congela solo la salsa (con el pavo y las verduras), sin la pasta ni el queso: recalentada se queda blanda. Fría, repártela en raciones en bolsas o tarros aptos (hasta 3 meses). Descongela en la nevera, recalienta hasta que hierva, mézclala con pasta recién cocida y no la vuelvas a congelar."
               },
               "time": {
                 "active": 25,
@@ -819,7 +819,7 @@
               ],
               "steps": [
                 "Si has comprado bacalao salado seco, desálalo con antelación: ponlo en agua fría en la nevera, con la piel hacia arriba, y cambia el agua tres veces al día durante uno o dos días, según el grosor. Más cómodo: el bacalao ya desalado, que se vende refrigerado o congelado (descongélalo en la nevera, siguiendo las instrucciones del envase).",
-                "Quita la piel y las espinas del bacalao y córtalo en trozos de 2-3 cm; pasa los dedos por cada trozo para asegurarte de que no queda ninguna espina. Pica la cebolla y lamina los ajos. Aclara los garbanzos cocidos (unos 600 g ya escurridos, de bote o cocidos en casa) bajo el grifo y escúrrelos.",
+                "Quita la piel y las espinas del bacalao y córtalo en trozos de 2-3 cm; pasa los dedos por cada trozo para asegurarte de que no queda ninguna espina. Pica la cebolla y lamina los ajos. Aclara los garbanzos cocidos (unos 600 g ya escurridos, de bote o cocidos en casa) bajo el grifo y escúrrelos. Usa una tabla y un cuchillo solo para el pescado crudo y lávate las manos después de tocarlo.",
                 "En una cazuela, calienta el aceite y sofríe la cebolla 6 minutos a fuego medio. Añade el ajo 1 minuto más.",
                 "Retira del fuego, añade el pimentón y remueve unos segundos. Vuelve al fuego e incorpora las espinacas (si son frescas, en tandas; si son congeladas, directas).",
                 "Cuando las espinacas se reduzcan, añade los garbanzos y 200 ml de agua. Cuece a fuego suave 10 minutos y chafa unos pocos garbanzos contra la cazuela para que ligue el caldo.",
@@ -1013,7 +1013,7 @@
               ],
               "freeze": {
                 "ideal": true,
-                "note": "Congela las hamburguesas crudas, ya formadas y separadas con papel de horno, en una bolsa o recipiente cerrado (hasta 3 meses). Descongélalas en la nevera, nunca en la encimera, y cocínalas bien hechas, sin nada rosado dentro."
+                "note": "Congela las hamburguesas crudas, ya formadas y separadas con papel de horno, en una bolsa o recipiente cerrado (hasta 3 meses). Descongélalas en la nevera, nunca en la encimera, y cocínalas bien hechas, sin nada rosado dentro. No vuelvas a congelar lo descongelado."
               },
               "time": {
                 "active": 20,

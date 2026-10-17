@@ -68,6 +68,41 @@
   font-weight: 700;
 }
 
+/* Chips compactos (secciones): menos alto, el toque sigue siendo cómodo (el botón ocupa al menos 36 px y deja aire alrededor). */
+.community-chips-compact {
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.community-chips-compact .community-chip {
+  min-height: 36px;
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.community-chip-more {
+  border-style: dashed;
+  color: var(--primary, #4c6ef5);
+}
+
+.community-filter-status {
+  margin: 2px 0 6px;
+  font-size: 13px;
+}
+
+.community-filter-status .link-button {
+  min-height: 32px;
+  padding: 4px 6px;
+}
+
+/* «Mis temas favoritos» queda aparte de los filtros temporales de arriba. */
+.community-filter-grid + .community-fav-open {
+  border-top: 1px solid var(--border, #d9dee8);
+  width: 100%;
+  text-align: left;
+  margin-top: 4px;
+}
+
 /* Desplegables de filtros: dos columnas en móvil, más si hay sitio. */
 .community-filter-grid {
   display: grid;

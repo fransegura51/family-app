@@ -11,7 +11,8 @@ import type { PostDetail } from '@/domain/community'
 import detailSrc from '@/ui/community/PostDetailPage.tsx?raw'
 import planSrc from '@/ui/community/menu/MenuPlanView.tsx?raw'
 import importSrc from '@/ui/community/menu/MenuImportSheet.tsx?raw'
-import shopSrc from '@/ui/community/menu/MenuShoppingSheet.tsx?raw'
+import shopSrc from '@/ui/ShoppingLinesSheet.tsx?raw'
+import shopWrapperSrc from '@/ui/community/menu/MenuShoppingSheet.tsx?raw'
 import dataSrc from '@/data/communityMenu.ts?raw'
 import { MenuPlanView, RecipeBlock } from '@/ui/community/menu/MenuPlanView'
 import { MenuImportSheet } from '@/ui/community/menu/MenuImportSheet'
@@ -182,6 +183,15 @@ describe('hoja de Compras (MenuShoppingSheet)', () => {
     expect(shopSrc).toContain('markShoppingDuplicates')
     expect(shopSrc).toContain('listShoppingItems')
   })
+
+  it('cada ingrediente es una fila compacta: casilla, nombre, cantidad y cuántas recetas lo usan; los platos solo con «Ver platos»', () => {
+    const out = html(<MenuShoppingSheet menu={menu} selection={{ scope: 'day', day: 'lunes' }} servings={4} onClose={() => undefined} />)
+    // Sin la lista leída (render estático) no hay filas; el contrato está en el código: la lista de platos solo se pinta si la fila está desplegada.
+    expect(out).toContain('community-menu-sheet')
+    expect(shopSrc).toContain('community-menu-shop-dishes-btn')
+    expect(shopSrc).toContain('{expanded && <p className="community-menu-shop-for">')
+    expect(shopSrc).toContain('r.line.hint')
+  })
 })
 
 describe('coste y seguridad', () => {
@@ -343,6 +353,7 @@ describe('hoja de importación con elementos sencillos', () => {
 describe('Compras no cambia con los elementos sencillos', () => {
   it('MenuShoppingSheet no distingue sencillos: usa la misma función de siempre para todos', () => {
     expect(shopSrc).not.toMatch(/simple|tip|freeze/)
-    expect(shopSrc).toContain('buildMenuShopping(menu, selection, servings)')
+    expect(shopWrapperSrc).not.toMatch(/simple|tip|freeze/)
+    expect(shopWrapperSrc).toContain('buildMenuShopping(menu, selection, servings)')
   })
 })

@@ -98,10 +98,11 @@ describe('propuesta de compra — caso real pulpo a la gallega (4 → 10 comensa
 describe('avisos — fraccionario solo para conteo indivisible; la cantidad desconocida conserva su aviso', () => {
   const plan = (ingredients: RecipeIngredient[]) => buildMenuShoppingPlan([dish('d1', 'Plato', 'r1')], [recipe('r1', 4, ingredients)], 10, 'mixto')
 
-  it('3 huevos × 2,5 = 7,5 unidades → aviso fraccionario', () => {
+  it('3 huevos × 2,5 = 7,5 → se compran 8, con una explicación clara (la receta no cambia)', () => {
     const [line] = plan([ing('h', 'Huevo', '3', 'unidades')])
-    expect(line.quantity).toBe('7,5 unidades')
+    expect(line.quantity).toBe('8 unidades')
     expect(line.notes).toEqual(['fraccionario'])
+    expect(line.hint).toBe('La receta usa 7,5; se redondea a 8 para comprar.')
   })
 
   it('sal sin cantidad → aviso de cantidad no numérica, NUNCA el fraccionario', () => {

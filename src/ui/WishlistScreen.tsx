@@ -26,6 +26,7 @@ import { shareText } from '@/services/share'
 import { detectWishlistItemImage } from '@/services/wishlistItemImage'
 import type { FamilyMember, Profile, Wishlist, WishlistItem, WishlistItemReservation } from '@/domain/types'
 import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'
+import { formatDate } from '@/domain/dateFormat'
 
 // "Lista de deseos" (Pequeños Grandes, Fases 12-16 del prompt maestro consolidado, autorización directa
 // del usuario 2026-10-10) — por persona/año/celebración. El secreto de una reserva es REAL (RLS,
@@ -92,7 +93,7 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
               <strong>{memberName(w.ownerMemberId)}</strong>
               <span className="muted" style={{ fontSize: 13, display: 'block' }}>
                 {wishlistTitle(w.occasion, w.year)}
-                {w.celebrationDate ? ` · ${w.celebrationDate}` : ''}
+                {w.celebrationDate ? ` · ${formatDate(w.celebrationDate)}` : ''}
               </span>
             </span>
             <span onClick={(e) => e.stopPropagation()}>
@@ -281,7 +282,7 @@ function WishlistDetailScreen({
       </button>
       <p className="muted">
         {wishlistTitle(wishlist.occasion, wishlist.year)}
-        {wishlist.celebrationDate ? ` · ${wishlist.celebrationDate}` : ''}
+        {wishlist.celebrationDate ? ` · ${formatDate(wishlist.celebrationDate)}` : ''}
       </p>
       {ownWishlist && (
         <p className="muted" style={{ fontSize: 13 }}>

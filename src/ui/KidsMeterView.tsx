@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_KIDS_THEME_ID, KIDS_THEMES, type KidsMeter } from '@/ui/kidsThemes'
 import type { BodyMeasurement, FamilyMember } from '@/domain/types'
+import { formatDate } from '@/domain/dateFormat'
 
 // Medidor de altura para niños: una escena con temática (cohete...) cuya
 // columna lisa hace de regla. Las marcas y los números los dibuja el código
@@ -30,7 +31,7 @@ function writeStored(key: string, value: string): void {
 }
 
 const fmtCm = (v: number) => v.toLocaleString('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 1 })
-const fmtDate = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtDate = (d: string) => formatDate(d)
 
 // Color fijo de las marcas del historial: un violeta intenso que se ve bien sobre la regla
 // crema de cualquier diseño (el color de cada persona, si era claro como el amarillo, se perdía).

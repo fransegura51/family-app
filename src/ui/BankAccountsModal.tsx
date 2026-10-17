@@ -13,6 +13,7 @@ import { supabase } from '@/data/supabaseClient'
 import type { BankAccount, BankConnection, FamilyMember } from '@/domain/types'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
+import { formatDateFromTimestamp } from '@/domain/dateFormat'
 
 // Petición real: "Esta parte de las cuentas quiero que la pongas en una
 // página emergente accesible desde el menú arriba con Configuración
@@ -120,7 +121,7 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
                     <strong>🏦 {c.aspspName}</strong>
                     <p className="muted" style={{ margin: '4px 0' }}>
                       {connAccounts.length} {connAccounts.length === 1 ? 'cuenta' : 'cuentas'}
-                      {c.validUntil && ` · válido hasta ${c.validUntil.slice(0, 10)}`}
+                      {c.validUntil && ` · válido hasta ${formatDateFromTimestamp(c.validUntil)}`}
                     </p>
                     {connAccounts.length === 0 && (
                       <p className="error" style={{ margin: '4px 0', fontSize: 13 }}>

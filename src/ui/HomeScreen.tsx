@@ -18,6 +18,7 @@ import { NAV_TABS, navSectionId, NAV_SECTION_COLORS } from '@/domain/navTabs'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
+import { formatTime } from '@/domain/dateFormat'
 
 interface HomeCardDef {
   id: string
@@ -174,7 +175,7 @@ function todayStr(): string {
 }
 
 function hhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  return formatTime(iso)
 }
 
 // "Foto de portada" en la pantalla de inicio, al estilo de otras apps

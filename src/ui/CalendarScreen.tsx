@@ -108,6 +108,7 @@ import {
 } from '@/domain/recurrence'
 import { WeekdayPicker } from '@/ui/WeekdayPicker'
 import { errorMessage } from '@/domain/errorMessage'
+import { formatDateFromTimestamp, formatDateTime } from '@/domain/dateFormat'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -593,10 +594,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
     const key = `${ev.id}-${dateStr}`
     setSharingEventKey(key)
     const occ = occurrenceAt(ev, dateStr)
-    const when = new Date(occ.startAt).toLocaleString('es-ES', {
-      dateStyle: 'medium',
-      timeStyle: ev.allDay ? undefined : 'short',
-    })
+    const when = ev.allDay ? formatDateFromTimestamp(occ.startAt) : formatDateTime(occ.startAt)
     const plainText = [ev.title, when, ev.description?.trim() || null].filter(Boolean).join('\n')
     // Bug real reportado, varias veces, en Android y ordenador (nunca en
     // iPhone): compartir el .ics como ARCHIVO abría el menú nativo, pero

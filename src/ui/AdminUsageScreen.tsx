@@ -7,12 +7,13 @@ import { getAmazonWebhookToken, regenerateAmazonWebhookToken } from '@/data/fami
 import { errorMessage } from '@/domain/errorMessage'
 import { AppActivityPanel } from '@/ui/AppActivityPanel'
 import { ConfirmButton } from '@/ui/ConfirmButton'
+import { formatDateFromTimestamp } from '@/domain/dateFormat'
 
 function formatDate(iso: string | null): string {
   if (!iso) return 'Nunca'
   const d = new Date(iso)
   const days = Math.floor((Date.now() - d.getTime()) / 86400000)
-  const when = d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+  const when = formatDateFromTimestamp(d)
   if (days === 0) return `Hoy (${when})`
   if (days === 1) return `Ayer (${when})`
   return `Hace ${days} días (${when})`
@@ -224,7 +225,7 @@ export function AdminUsageScreen() {
                 {inv.note && <p className="muted" style={{ margin: 0, fontSize: 13 }}>{inv.note}</p>}
                 <p className="muted" style={{ margin: 0, fontSize: 12 }}>
                   Creado {formatDate(inv.createdAt)}
-                  {!inv.usedAt && ` · caduca el ${new Date(inv.expiresAt).toLocaleDateString('es-ES')}`}
+                  {!inv.usedAt && ` · caduca el ${formatDateFromTimestamp(inv.expiresAt)}`}
                 </p>
                 {!inv.usedAt && (
                   <button type="button" className="link-button" onClick={() => handleDeleteInvite(inv.code)}>

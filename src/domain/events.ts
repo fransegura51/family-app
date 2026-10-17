@@ -127,6 +127,7 @@ import invitaDelfinTortuga from '@/assets/eventos/invitaciones/delfin_tortuga.jp
 import invitaMago from '@/assets/eventos/invitaciones/mago.jpg'
 import invitaBruja from '@/assets/eventos/invitaciones/bruja.jpg'
 import invitaMonstruo from '@/assets/eventos/invitaciones/monstruo.jpg'
+import { formatDate } from '@/domain/dateFormat'
 
 export const EVENT_TYPE_META: Record<EventType, { label: string; icon: string }> = {
   cumpleanos: { label: 'Cumpleaños', icon: '🎂' },
@@ -457,7 +458,7 @@ export function eventDateLine(event: Pick<FamilyEvent, 'dateStatus' | 'eventDate
   if (event.dateStatus === 'pendiente' || !event.eventDate) return '📅 Fecha todavía por confirmar'
   const label = event.dateStatus === 'provisional' ? 'Fecha provisional' : 'Fecha'
   const time = event.eventTime ? ` a las ${event.eventTime.slice(0, 5)}` : ''
-  return `📅 ${label}: ${event.eventDate}${time}`
+  return `📅 ${label}: ${formatDate(event.eventDate)}${time}`
 }
 
 export function eventLocationLines(
@@ -637,8 +638,7 @@ export function hasRealMoments(moments: EventMoment[]): boolean {
 }
 
 function shortSpanishDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-')
-  return `${d}/${m}/${y}`
+  return formatDate(isoDate)
 }
 
 // Cierre de Fase 2 — versión genérica para cuando el evento ya tiene event_moments reales: agrupa por

@@ -74,6 +74,7 @@ import {
 } from '@/data/appLock'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
+import { formatDateTime } from '@/domain/dateFormat'
 
 const PINNED_COUNT = 4
 
@@ -1646,7 +1647,7 @@ function GoogleCalendarSettingsCard() {
         <>
           <p className="muted">
             {status.lastSyncedAt
-              ? `Última sincronización: ${new Date(status.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+              ? `Última sincronización: ${formatDateTime(status.lastSyncedAt)}`
               : 'Conectado — la primera sincronización llega en la próxima hora en punto.'}
           </p>
           {status.lastSyncError && <p className="error">{status.lastSyncError}</p>}
@@ -1873,7 +1874,7 @@ function CalendarExternalLinksSection() {
               </div>
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>
                 {f.lastSyncedAt
-                  ? `Sincronizado: ${new Date(f.lastSyncedAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}`
+                  ? `Sincronizado: ${formatDateTime(f.lastSyncedAt)}`
                   : 'Todavía sin sincronizar'}
               </p>
               {f.lastSyncError && (

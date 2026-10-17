@@ -17,6 +17,7 @@ import {
   type ForecastRecurrenceOption,
 } from './forecast'
 import { centsToEurosString, distributeTotalCentsEvenly, eurosStringToCents } from './forecastMoneyCents'
+import { formatDate } from '@/domain/dateFormat'
 
 export type ForecastUntilMode = 'forever' | 'count' | 'date'
 
@@ -135,8 +136,7 @@ export function parseRecurrenceRuleToFormState(recurrenceRule: string | null, du
 // DD/MM/YYYY — solo para la vista previa nueva de esta fase (petición explícita: no tocar cómo se
 // muestran las fechas en el resto de Previsión, ni cómo se almacenan — esto es puramente visual).
 export function formatSpanishDate(isoDate: string): string {
-  const [y, m, d] = isoDate.split('-')
-  return `${d}/${m}/${y}`
+  return formatDate(isoDate)
 }
 
 // ── Ajuste UX tras certificación móvil — "Importe TOTAL" del plan, con propuesta de reparto editable

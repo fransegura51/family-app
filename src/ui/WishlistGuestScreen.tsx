@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
+import { formatDate } from '@/domain/dateFormat'
 
 // Página pública de "Lista de deseos" (Pequeños Grandes) — el invitado no necesita cuenta ni la app
 // instalada. Ruta pública de la propia SPA ("/?deseos=TOKEN"), reconocida en App.tsx ANTES del guardián
@@ -128,7 +129,7 @@ export function WishlistGuestScreen({ token }: { token: string }) {
         <h1>🎁 Lista de deseos de {data.wishlist.ownerName}</h1>
         <p className="muted">
           {data.wishlist.occasion} {data.wishlist.year}
-          {data.wishlist.celebrationDate ? ` · ${data.wishlist.celebrationDate}` : ''}
+          {data.wishlist.celebrationDate ? ` · ${formatDate(data.wishlist.celebrationDate)}` : ''}
         </p>
         <p className="muted" style={{ fontSize: 13 }}>
           Reserva lo que quieras regalar — nadie más (ni siquiera {data.wishlist.ownerName}) verá quién ha reservado qué. Sigue siendo una sorpresa.

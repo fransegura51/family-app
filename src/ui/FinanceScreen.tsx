@@ -272,6 +272,7 @@ import { classifyPurchase } from '@/data/classifyPurchase'
 import { reportClientError } from '@/data/errorReports'
 import { CLASSIFY_FAILED_MESSAGE, classifyMessage, classifyOk, pendingSignalText } from '@/domain/classifyPurchase'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
+import { formatDate } from '@/domain/dateFormat'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -1465,10 +1466,7 @@ function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
 
   // de-DE y no es-ES: es-ES no pone el punto de millar en 4 cifras (3213,00).
   const fmtEur = (v: number) => v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
-  const fmtDate = (d: string) => {
-    const [y, m, day] = d.split('-').map(Number)
-    return `${day}/${m}/${y}`
-  }
+  const fmtDate = (d: string) => formatDate(d)
 
   interface TipBox {
     key: string
@@ -4175,7 +4173,7 @@ function MovementRow({
         </div>
         <div className="movement-row-line movement-row-meta muted">
           <span>
-            {e.expenseDate}
+            {formatDate(e.expenseDate)}
             {e.store && ` · ${e.store}`}
             {e.kind !== 'real' && ` · ${e.kind}`}
             {tag && ` · ${tag.name}`}
@@ -5763,7 +5761,7 @@ function ReceiptRow({
       const url = await getReceiptUrl(receipt.storagePath)
       const ext = receipt.storagePath.split('.').pop() || 'jpg'
       const file = await fetchAsShareableFile(url, `ticket-${receipt.receiptDate}.${ext}`, ext === 'pdf' ? 'application/pdf' : 'image/jpeg')
-      const shared = await shareFiles([file], { title: `Ticket ${receipt.store ?? ''} ${receipt.receiptDate}`.trim() })
+      const shared = await shareFiles([file], { title: `Ticket ${receipt.store ?? ''} ${formatDate(receipt.receiptDate)}`.trim() })
       if (!shared) window.open(url, '_blank')
     } catch (err) {
       setShareError(errorMessage(err, 'No se pudo compartir'))
@@ -5776,7 +5774,7 @@ function ReceiptRow({
     <div className="card receipt-row">
       <div className="receipt-row-main">
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
-          <span>{receipt.receiptDate}</span>
+          <span>{formatDate(receipt.receiptDate)}</span>
           {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
           <span> · {isPendingCategory(receipt.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : receipt.category}</span>
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
@@ -7631,7 +7629,7 @@ function periodLabelForTitle(preset: SpendRangePreset, from: string, to: string)
     const { year, month0 } = accountingPeriodLabel(from)
     return `${MONTH_LABELS[month0]} ${year}`
   }
-  if (preset === 'rango') return `${from} a ${to}`
+  if (preset === 'rango') return `${formatDate(from)} a ${formatDate(to)}`
   return PRESET_LABELS[preset]
 }
 
@@ -8231,7 +8229,7 @@ function BudgetsOverview({
                 <div className="task-card-main">
                   <strong style={{ color: '#1e8449' }}>+{inc.amount.toFixed(2)} €</strong>
                   <p className="muted">
-                    {inc.expenseDate}
+                    {formatDate(inc.expenseDate)}
                     {inc.category && inc.category !== 'Ingreso' && ` · ${inc.category}`}
                   </p>
                 </div>

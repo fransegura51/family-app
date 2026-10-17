@@ -52,7 +52,7 @@ DOCUMENTOS, FOTOS Y MÁS
 Guarda los documentos importantes de la familia y compártelos solo con quien quieras. Álbum familiar, lista de deseos, premios para los más pequeños y contactos de confianza.
 
 TU FAMILIA, PRIVADA
-Cada familia tiene su espacio y nadie más lo ve. Tú decides qué se comparte y con quién. Puedes borrar tu cuenta y tus datos cuando quieras desde la propia app (Familia → Borrar mi cuenta).
+Cada familia tiene su espacio y nadie más lo ve. Tú decides qué se comparte y con quién. Puedes borrar tu cuenta y tus datos cuando quieras desde la propia app (Configuración → Mi cuenta → Borrar mi cuenta).
 
 Necesitas una cuenta para entrar. Algunas funciones (avisos, ubicación, micrófono) piden permiso y son opcionales.
 ```
@@ -96,7 +96,7 @@ How to test:
 2. Open the assistant (microphone button) and try: "Apunta leche en la compra", "El viernes tengo dentista a las cinco".
 3. Location: Family → Location. Sharing is off by default and only starts after the user accepts.
 
-Account deletion (guideline 5.1.1(v)): Family tab → bottom of the members list → "Borrar mi cuenta". The user must type BORRAR to confirm. Administrators can also delete the whole family.
+Account deletion (guideline 5.1.1(v)): Settings → "Mi cuenta" → "Borrar mi cuenta". The user must type BORRAR to confirm. Administrators can also delete the whole family.
 
 No payments or subscriptions are offered in this version. There is no user-generated content visible to strangers: everything is private within each family.
 

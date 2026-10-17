@@ -32,6 +32,8 @@ export type FinanceMetric =
   | 'price_up'
   | 'price_down'
   | 'cheapest_store'
+  // «¿Cuánto cuesta la leche?», «¿a cuánto está el aceite?»: lo último que se pagó por un producto, según los tickets (petición real, 17/10/2026).
+  | 'last_price'
   // Fase 2: análisis y conclusiones
   | 'analyze' // análisis abierto: el único que puede usar IA (con datos agregados)
   | 'where_money'
@@ -130,6 +132,10 @@ export function isWriteRequest(cleaned: string): boolean {
 const FINANCE_TOPIC =
   /\b(?:gast\w*|ingres\w*|ahorr\w*|presupuest\w*|sald[oa]s?|barato|barata|baratos|baratas|subido|bajado|subid[oa]s?|bajad[oa]s?|precio|precios|econom\w*|anali[zc]\w*|conclusion\w*|recort\w*|llam\w+ la atencion|categoria|categorias)\b|\b(?:se nos va|se nos esta yendo|esta yendo el dinero|que ha cambiado)\b|\bcuanto\b.*\b(?:pagad[oa]s?|pagamos|pagas|pagais)\b/
 
+// «¿Cuánto cuesta la leche?», «¿a cuánto está el aceite?», «¿a qué precio compramos el queso?», «¿cuánto pagamos por el pan?», «¿cuál es el precio de las gambas?».
+const PRICE_ASK =
+  /\bcuanto (?:cuesta|cuestan|vale|valen)\b|\bcuanto (?:pagamos|pagas|pago|pague|pagaste|pagasteis|hemos pagado|he pagado) por\b|\ba cuanto (?:esta|estan|sale|salen|compramos|compre)\b|\ba que precio\b|\bque precio tiene\b|\bcual es el precio d(?:e|el)\b/
+
 // «¿Qué tengo pendiente de clasificar?», «¿cuánto tengo sin clasificar?», «¿hay gastos pendientes?», «¿cuántos movimientos quedan por clasificar?».
 // Es la consulta sobre category NULL; nunca se resuelve contra los nombres de las categorías.
 const PENDING_ASK = /\b(?:pendientes?|sin|por)\s+(?:de\s+)?clasificar\b|\b(?:gastos?|movimientos?)\s+(?:sin\s+categori[az]\w*|pendientes?)\b|\bsin\s+categoria\b/
@@ -147,7 +153,7 @@ const GROSS_SPENT_ASK = /\bgasto bruto\b|\ben bruto\b|\bbruto\b|\bantes de (?:la
 const NET_SPENT_ASK = /\bgasto neto\b|\ben neto\b|\bneto\b|\bdespues de (?:las )?devoluciones\b/
 
 export function looksLikeFinance(cleaned: string): boolean {
-  return FINANCE_TOPIC.test(cleaned) || PENDING_ASK.test(cleaned) || REFUNDS_ASK.test(cleaned)
+  return FINANCE_TOPIC.test(cleaned) || PENDING_ASK.test(cleaned) || REFUNDS_ASK.test(cleaned) || PRICE_ASK.test(cleaned)
 }
 
 // ─── 2. Intención: señales léxicas + tabla de decisión ───
@@ -222,6 +228,8 @@ function metricOf(n: string): FinanceMetric | null {
   if (s.why && s.save) return 'why_savings'
   if ((s.why && (s.spend || s.change || s.rise)) || (s.explain && s.spend) || /\bpor que ha cambiado\b/.test(n)) return 'why_changed'
 
+  // Precio de un producto (lo último que se pagó): antes que las comparativas de precios.
+  if (PRICE_ASK.test(n) && !s.rise && !s.fall && !s.cheap) return 'last_price'
   // Precios de productos (tickets)
   if ((s.rise && (s.productWord || s.price)) || /\bmas caros?\b/.test(n)) return 'price_up'
   if (s.fall && (s.productWord || s.price)) return 'price_down'
@@ -308,6 +316,8 @@ export function baseQuery(metric: FinanceMetric, over: Partial<FinanceQuery> = {
 // Palabras que sobran en la frase del producto ("dónde compramos más barato el queso" -> "queso").
 const PRODUCT_NOISE = new Set('donde compramos compro comprais comprar tienda tiendas supermercado supermercados sale esta estan barato barata baratos baratas economico economica cuesta'.split(' '))
 
+const LAST_PRICE_NOISE = new Set('cuestan vale valen pagamos pagas pago pague pagado pagaste pagasteis precio tiene ultima vez compramos compre compro sale salen'.split(' '))
+
 export function parseFinanceQuestion(text: string, today: Date): FinanceParse | null {
   const n = withoutWakeWord(cleanFinanceText(text))
   if (!n) return null
@@ -343,6 +353,12 @@ export function parseFinanceQuestion(text: string, today: Date): FinanceParse | 
   const period = match?.spec ?? null
   const rest = match?.rest ?? subjectText
   const full = /\bcomplet[oa]s?\b/.test(n)
+
+  if (metric === 'last_price') {
+    const words = contentWords(rest).filter((w) => !PRODUCT_NOISE.has(w) && !LAST_PRICE_NOISE.has(w))
+    if (words.length === 0) return { kind: 'not-understood' }
+    return { kind: 'query', query: baseQuery(metric, { product: words.join(' ') }), uncertain: words.length > MAX_CANDIDATE_WORDS }
+  }
 
   if (metric === 'cheapest_store') {
     // Producto = las palabras con contenido que quedan sin las de la propia pregunta.

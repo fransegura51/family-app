@@ -17,7 +17,7 @@ import { queryFromIntent } from '@/domain/financeIntent'
 import type { IntentOutput } from '../../supabase/functions/_shared/ai/purposes/financeIntentCore.ts'
 import { recordPepaAnswer } from '@/services/pepaUsage'
 import { runFinanceQuery, type AiAnalyzer } from '@/domain/financeAnswer'
-import type { FinanceData } from '@/domain/financeCompute'
+import { mayBeProductClass, type FinanceData } from '@/domain/financeCompute'
 import { ANALYSIS_METRICS, parseFinanceFollowUp, parseFinanceQuestion, type FinanceQuery } from '@/domain/financeQuery'
 
 export const FINANCE_WRITE_REFUSED =
@@ -100,7 +100,7 @@ async function loadFinanceData(needTickets: boolean, needBudgets = false): Promi
 
 const defaultDeps: FinanceDeps = { canAccess: canAccessFinance, load: loadFinanceData, ai: requestFinanceAnalysis, interpret: classifyFinanceIntent, record: recordPepaAnswer }
 
-const NEEDS_TICKETS = new Set(['why_changed', 'price_up', 'price_down', 'cheapest_store', 'analyze', 'changes', 'attention', 'where_money', 'simpler', 'category_focus'])
+const NEEDS_TICKETS = new Set(['why_changed', 'price_up', 'price_down', 'cheapest_store', 'last_price', 'analyze', 'changes', 'attention', 'where_money', 'simpler', 'category_focus'])
 
 // Devuelve el texto de la respuesta, o null si la frase no es de Economía (entonces sigue su camino).
 export async function handleFinanceText(text: string, today: Date = new Date(), deps: FinanceDeps = defaultDeps): Promise<string | null> {
@@ -143,7 +143,7 @@ export async function handleFinanceText(text: string, today: Date = new Date(), 
 
   try {
     if (!(await deps.canAccess())) return FINANCE_NO_ACCESS
-    const data = await deps.load(NEEDS_TICKETS.has(query.metric), query.metric === 'budget_left')
+    const data = await deps.load(NEEDS_TICKETS.has(query.metric) || (query.metric === 'spent' && mayBeProductClass(query.target)), query.metric === 'budget_left')
     const run = await runFinanceQuery(query, data, today, deps.ai)
     // El contexto recuerda la consulta, salvo "explícamelo más sencillo": eso reformula, no cambia de tema.
     if (query.metric !== 'simpler') context = { query: run.query, at: Date.now(), items: run.items ?? contextItems() }

@@ -11,6 +11,7 @@
 //
 // Consultar no confirma. TODA escritura sale como propuesta (ActionProposal)
 // que hay que confirmar en la tarjeta; aquí no se escribe nada.
+import { answerGeneralQuestion } from '@/domain/generalQuestions'
 import { extractShoppingStore } from '@/domain/voiceQuery'
 import { splitEntries } from '@/domain/quickCapture'
 import { expandEntries, shouldAskAi } from '@/domain/productSplit'
@@ -241,6 +242,10 @@ async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> 
     const location = await deps.location(text)
     if (location) return location
   }
+
+  // Preguntas sencillas sin datos de la familia: la hora, el día de hoy, cuántos días faltan para Navidad… (domain/generalQuestions.ts).
+  const general = answerGeneralQuestion(text, today)
+  if (general) return { kind: 'answer', text: general }
 
   const storeNames = await deps.storeNames()
   switch (routeTalk(text, storeNames, today)) {

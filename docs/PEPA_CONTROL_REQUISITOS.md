@@ -621,6 +621,16 @@ Encargo dictado el 2026-10-15/17 (conversación «Android nativa»): «Los aviso
 
 **Pendiente**: nada pasa a **Aprobado** sin confirmación expresa.
 
+## Ubicación: aviso de llegada y salida visible en la tarjeta del lugar (PEPA-LOC-CARD)
+
+Encargo dictado el 2026-10-17 (conversación «Android nativa»): «La casilla de avisar cuando llega o sale de este lugar, quiero que la pongas fuera. Para verla tengo que meterme en editar, y no quiero verla en editar, quiero verla en la tarjeta de cada lugar, visible, para marcarla o desmarcarla». Decisión: el aviso sigue siendo **por lugar** (cada lugar guarda el suyo, nunca uno general); solo cambia dónde se marca.
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| LOC-CARD-1 | En la tarjeta de cada lugar guardado (Ubicación → Lugares frecuentes) aparece siempre la casilla «🔔 Avisarme cuando alguien llegue o se vaya de aquí»; al marcarla o desmarcarla se guarda al momento (`setPlaceNotifyArrivals`: mismas reglas y mismo reenvío de lugares al iPhone que antes), con vuelta atrás y mensaje si falla. «Editar» ya no la lleva: solo nombre, categoría y radio. El formulario de «Nuevo lugar» conserva su casilla | Implementado (sin commit todavía) | `LocationScreen.tsx` (`PlaceRow`), `AyudaScreen.tsx` | `placeNotifyToggleUi.test.ts` (3 tests) | PEPA-IOS-REGION (IOS-REGION-1), AND-LOC-2 | **Prueba manual con tu sesión real, tarjeta con la lista de lugares abierta Y cerrada («Lugares frecuentes» plegable)**: marcar y desmarcar en un lugar, comprobar que se mantiene al recargar y que «Editar» ya no la enseña |
+
+**Pendiente**: nada pasa a **Aprobado** sin confirmación expresa.
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

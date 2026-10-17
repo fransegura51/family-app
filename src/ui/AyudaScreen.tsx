@@ -248,7 +248,7 @@ const HELP_DETAILS: Record<string, HelpItem[]> = {
     { title: 'Menú ☰ e Inicio', text: 'El botón ☰, flotante junto al título, abre un desplegable con las pestañas de Ubicación — puedes sacar las que uses más para verlas siempre en pantalla, igual que en Economía.' },
     { title: 'Ubicación en vivo', text: 'Mapa con dónde está cada uno que lo comparte (con su permiso), y el recorrido de las últimas 24h.' },
     { title: 'Activar en este móvil', text: 'Elige quién lleva el teléfono para que empiece a compartir su posición desde ese dispositivo.' },
-    { title: 'Lugares frecuentes', text: 'Guarda sitios (casa, colegio...) para que la app los reconozca.' },
+    { title: 'Lugares frecuentes', text: 'Guarda sitios (casa, colegio...) para que la app los reconozca. Cada lugar tiene en su tarjeta, siempre visible, la casilla «🔔 Avisarme cuando alguien llegue o se vaya de aquí»: márcala o desmárcala y se guarda al momento, sin entrar en «Editar» (el aviso es por lugar, no para todos a la vez). «Editar» queda para el nombre, la categoría y el radio.' },
     { title: 'Reglas', text: 'Avisos automáticos al llegar o salir de un sitio guardado, o todos los días a una hora.' },
   ],
   '/cumpleanos': [

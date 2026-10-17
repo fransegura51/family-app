@@ -1240,7 +1240,13 @@ function PlaceRow({
   const [editName, setEditName] = useState(place.name)
   const [editCategory, setEditCategory] = useState(place.category ?? '')
   const [editRadius, setEditRadius] = useState(place.radiusM)
-  const [editNotify, setEditNotify] = useState(place.notifyArrivals)
+  // «Avisarme cuando alguien llegue o se vaya» va VISIBLE en la tarjeta (petición real, 17/10/2026: sin entrar a «Editar»): se guarda al marcarlo o desmarcarlo.
+  const [notifyOn, setNotifyOn] = useState(place.notifyArrivals)
+  const [notifyBusy, setNotifyBusy] = useState(false)
+  const [notifyError, setNotifyError] = useState<string | null>(null)
+  useEffect(() => {
+    setNotifyOn(place.notifyArrivals)
+  }, [place.notifyArrivals])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -1248,9 +1254,23 @@ function PlaceRow({
     setEditName(place.name)
     setEditCategory(place.category ?? '')
     setEditRadius(place.radiusM)
-    setEditNotify(place.notifyArrivals)
     setEditError(null)
     setEditing(true)
+  }
+
+  async function handleToggleNotify(enabled: boolean) {
+    setNotifyOn(enabled)
+    setNotifyBusy(true)
+    setNotifyError(null)
+    try {
+      await setPlaceNotifyArrivals(place.id, enabled)
+      onChanged()
+    } catch (err) {
+      setNotifyOn(!enabled)
+      setNotifyError(errorMessage(err, 'No se pudo cambiar el aviso'))
+    } finally {
+      setNotifyBusy(false)
+    }
   }
 
   async function handleSaveEdit(e: FormEvent) {
@@ -1259,7 +1279,6 @@ function PlaceRow({
     setEditError(null)
     try {
       await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius })
-      if (editNotify !== place.notifyArrivals) await setPlaceNotifyArrivals(place.id, editNotify)
       setEditing(false)
       onChanged()
     } catch (err) {
@@ -1328,10 +1347,6 @@ function PlaceRow({
           Radio (m)
           <input type="number" value={editRadius} onChange={(e) => setEditRadius(Number(e.target.value))} />
         </label>
-        <label className="inline-fields" style={{ alignItems: 'center' }}>
-          <input type="checkbox" checked={editNotify} onChange={(e) => setEditNotify(e.target.checked)} />
-          🔔 Avisarme cuando alguien llegue o se vaya de aquí
-        </label>
         {editError && <p className="error">{editError}</p>}
         <div className="inline-fields">
           <button type="submit" disabled={editSaving}>
@@ -1355,7 +1370,11 @@ function PlaceRow({
           </span>
         )}
         <p className="muted">Radio {place.radiusM} m</p>
-        {place.notifyArrivals && <p className="muted">🔔 Avisa cuando alguien llega o se va de aquí</p>}
+        <label className="inline-fields" style={{ alignItems: 'center' }}>
+          <input type="checkbox" checked={notifyOn} disabled={notifyBusy} onChange={(e) => void handleToggleNotify(e.target.checked)} />
+          🔔 Avisarme cuando alguien llegue o se vaya de aquí
+        </label>
+        {notifyError && <p className="error">{notifyError}</p>}
         {ranked.map(({ member, loc, dist }, i) => {
           const near = dist <= place.radiusM
           const nearest = i === 0

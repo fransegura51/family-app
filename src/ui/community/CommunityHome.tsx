@@ -160,7 +160,6 @@ export function CommunityHome() {
       {/* Título de la página para lectores de pantalla (la imagen de la cabecera ya lo enseña a la vista): toda página tiene un único encabezado de nivel 1. */}
       <h1 className="community-visually-hidden">Comunidad PEPA</h1>
       <Breadcrumbs crumbs={homeCrumbs} />
-      <InviteFriendsButton />
 
       <nav className="community-home-sections" aria-label="Secciones de Comunidad">
         {SECTIONS.map((s) => (
@@ -255,6 +254,9 @@ export function CommunityHome() {
           </button>
         </p>
       )}
+
+      {/* «Invitar amigos» (desactivado hasta el lanzamiento comercial) va al FINAL de la portada, debajo de las tarjetas y de todo el contenido. */}
+      <InviteFriendsButton />
     </>
   )
 }

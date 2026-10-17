@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type TouchEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
 import { NotificationBell } from '@/ui/NotificationBell'
-import { CommunityHomeEntry } from '@/ui/community/CommunityHomeEntry'
+import { useCommunityVisible } from '@/ui/community/useCommunityVisible'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
@@ -68,6 +68,18 @@ const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')
   .filter((c): c is HomeCardDef => c !== null)
 const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
 
+// Comunidad PEPA: tarjeta con el mismo formato que las demás secciones y su propio pastel (NAV_SECTION_COLORS, por índice: no cambia ninguno de los
+// otros). Solo se enseña cuando Comunidad está abierta para esta persona (useCommunityVisible: ya incluye acceso por edad/permisos y el interruptor de
+// lanzamiento) y entra en el mismo orden «Organizar» que el resto. No es una sección de la navegación inferior, por eso no sale de NAV_TABS.
+const COMMUNITY_CARD: HomeCardDef = {
+  id: 'comunidad',
+  title: 'Comunidad PEPA',
+  body: 'Recetas, consejos y más',
+  to: '/comunidad',
+  icon: '🏡',
+  color: NAV_SECTION_COLORS.get('comunidad') ?? '#fde3d0',
+}
+
 // Junta el orden guardado con las tarjetas que existan de verdad hoy —
 // si se guardó un orden antes de añadir/quitar alguna tarjeta, las
 // nuevas se añaden al final y las que ya no existen se ignoran, en vez
@@ -75,7 +87,7 @@ const HOME_CARDS_BY_ID = new Map(HOME_CARDS.map((c) => [c.id, c]))
 function resolveOrder(saved: string[] | null): string[] {
   const allIds = HOME_CARDS.map((c) => c.id)
   if (!saved) return allIds
-  const known = saved.filter((id) => HOME_CARDS_BY_ID.has(id))
+  const known = saved.filter((id) => HOME_CARDS_BY_ID.has(id) || id === COMMUNITY_CARD.id)
   const missing = allIds.filter((id) => !known.includes(id))
   return [...known, ...missing]
 }
@@ -103,19 +115,29 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       .catch(() => {})
   }, [])
 
+  // Tarjetas que se pintan hoy: las de siempre y, solo con Comunidad abierta para esta persona, la de Comunidad PEPA (en su sitio del orden guardado o, si
+  // nunca se movió, al final).
+  const communityVisible = useCommunityVisible() === true
+  const cardsById = useMemo(
+    () => (communityVisible ? new Map([...HOME_CARDS_BY_ID, [COMMUNITY_CARD.id, COMMUNITY_CARD]]) : HOME_CARDS_BY_ID),
+    [communityVisible],
+  )
+  const shownIds = useMemo(() => {
+    const known = order.filter((id) => cardsById.has(id))
+    return [...known, ...[...cardsById.keys()].filter((id) => !known.includes(id))]
+  }, [order, cardsById])
+
   function moveCard(id: string, direction: -1 | 1) {
-    setOrder((prev) => {
-      const index = prev.indexOf(id)
-      const target = index + direction
-      if (index === -1 || target < 0 || target >= prev.length) return prev
-      const next = [...prev]
-      ;[next[index], next[target]] = [next[target], next[index]]
-      saveHomeCardOrder(next)
-      return next
-    })
+    const index = shownIds.indexOf(id)
+    const target = index + direction
+    if (index === -1 || target < 0 || target >= shownIds.length) return
+    const next = [...shownIds]
+    ;[next[index], next[target]] = [next[target], next[index]]
+    setOrder(next)
+    saveHomeCardOrder(next)
   }
 
-  const orderedCards = order.map((id) => HOME_CARDS_BY_ID.get(id)).filter((c): c is HomeCardDef => !!c)
+  const orderedCards = shownIds.map((id) => cardsById.get(id)).filter((c): c is HomeCardDef => !!c)
 
   return (
     <div className="screen">
@@ -142,7 +164,6 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 
       <PhotoBanner />
 
-      <CommunityHomeEntry />
       <InviteFriendsButton />
 
       <NotificationsOnboarding />

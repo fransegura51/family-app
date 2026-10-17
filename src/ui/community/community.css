@@ -28,33 +28,78 @@
   }
 }
 
+/* Menú de Comunidad: tres secciones principales siempre a la vista (se reparten el ancho y pasan a otra línea si hace falta: NUNCA desplazamiento lateral) y un
+   botón «Más opciones» que despliega el resto. Botones de al menos 44 px de alto para el dedo. */
 .community-nav {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
   padding: 4px 0 8px;
-  scrollbar-width: thin;
+}
+
+.community-nav-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.community-nav-main .community-nav-link {
+  flex: 1 1 auto;
+  justify-content: center;
 }
 
 .community-nav-link {
-  flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--border, #d9dee8);
   background: var(--card-bg, #fff);
   color: inherit;
   text-decoration: none;
-  font-size: 14px;
-  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
   min-height: 44px;
   display: inline-flex;
   align-items: center;
+  cursor: pointer;
 }
 
 .community-nav-link.active {
   background: var(--primary, #4c6ef5);
   border-color: var(--primary, #4c6ef5);
   color: #fff;
+}
+
+/* «Más opciones» abierto y sin ninguna de sus opciones elegida: trazo destacado; con una elegida (active) se pinta como las demás secciones elegidas. */
+.community-nav-more-btn.open:not(.active) {
+  border-color: var(--primary, #4c6ef5);
+  color: var(--primary, #4c6ef5);
+}
+
+.community-nav-more {
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.community-nav-more-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.community-nav-more-list .community-nav-link {
+  width: 100%;
+  border-radius: 12px;
+}
+
+.community-nav-more-close {
+  display: block;
+  margin: 8px auto 0;
+  min-height: 44px;
 }
 
 .community-preview-banner,
@@ -322,4 +367,31 @@ body:has(.community-composer) .scroll-top-fab {
 .community-screen a.link-button,
 .community-touch-scope a.link-button {
   display: inline-block;
+}
+
+/* Alias: campo + botón «🎲 Sugerir otro» (en móvil el botón pasa debajo si no cabe). */
+.community-alias-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.community-alias-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.community-alias-suggest {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border, #d9dee8);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1f2937);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  font-size: 15px;
 }

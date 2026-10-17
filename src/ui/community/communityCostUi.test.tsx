@@ -21,7 +21,7 @@ vi.mock('@/data/community', () => ({
 }))
 
 import { communityStatusCache } from '@/data/communityStatusCache'
-import { CommunityHomeEntry } from '@/ui/community/CommunityHomeEntry'
+import homeSrc from '@/ui/HomeScreen.tsx?raw'
 import { ShareToCommunityButton } from '@/ui/community/recipes/ShareToCommunityButton'
 import { shouldAskForUpdate } from '@/ui/community/recipes/recipeUpdateCache'
 
@@ -33,27 +33,33 @@ beforeEach(() => {
   statusCalls.n = 0
 })
 
-describe('«Compartir en Comunidad» y la entrada de Inicio solo salen si Comunidad está abierta para esta persona', () => {
-  it('sin saber todavía el estado (o con Comunidad cerrada / sin acceso) no se pinta nada', () => {
+describe('«Compartir en Comunidad» y la tarjeta de Inicio solo salen si Comunidad está abierta para esta persona', () => {
+  it('sin saber todavía el estado (o con Comunidad cerrada / sin acceso) no se pinta el botón', () => {
     expect(html(createElement(ShareToCommunityButton, { onShare: () => undefined }))).toBe('')
-    expect(html(createElement(CommunityHomeEntry))).toBe('')
     communityStatusCache.prime(status(false))
     expect(html(createElement(ShareToCommunityButton, { onShare: () => undefined }))).toBe('')
-    expect(html(createElement(CommunityHomeEntry))).toBe('')
   })
 
-  it('con Comunidad abierta salen el botón (44 px de alto) y la entrada de Inicio', () => {
+  it('con Comunidad abierta sale el botón (44 px de alto)', () => {
     communityStatusCache.prime(status(true))
     const button = html(createElement(ShareToCommunityButton, { onShare: () => undefined }))
     expect(button).toContain('🌍 Compartir en Comunidad')
     expect(button).toContain('min-height:44px')
-    expect(html(createElement(CommunityHomeEntry))).toContain('href="/comunidad"')
   })
 
-  it('pintarlos no hace ninguna consulta por sí solo (las consultas son de los efectos y se comparten)', () => {
+  it('la tarjeta de Comunidad de Inicio solo entra en la lista con `visible` y lleva a /comunidad', () => {
+    expect(homeSrc).toContain('const communityVisible = useCommunityVisible() === true')
+    expect(homeSrc).toContain('communityVisible ? new Map([...HOME_CARDS_BY_ID, [COMMUNITY_CARD.id, COMMUNITY_CARD]]) : HOME_CARDS_BY_ID')
+    expect(homeSrc).toContain("to: '/comunidad'")
+    expect(homeSrc).toContain("title: 'Comunidad PEPA'")
+    expect(homeSrc).toContain("body: 'Recetas, consejos y más'")
+    // El enlace de texto antiguo ya no existe.
+    expect(homeSrc).not.toContain('CommunityHomeEntry')
+  })
+
+  it('pintar el botón no hace ninguna consulta por sí solo (las consultas son de los efectos y se comparten)', () => {
     communityStatusCache.prime(status(true))
     html(createElement(ShareToCommunityButton, { onShare: () => undefined }))
-    html(createElement(CommunityHomeEntry))
     expect(statusCalls.n).toBe(0)
   })
 

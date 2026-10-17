@@ -35,6 +35,13 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     // se aleja más de jumpMeters de la última enviada hace menos de jumpWindowSeconds NO se envía hasta que la siguiente lectura (en menos de jumpConfirmSeconds)
     // la confirma a menos de jumpConfirmMeters; si la siguiente vuelve a la zona de antes, el salto se descarta. Un desplazamiento real (coche, a pie) se confirma
     // con la lectura siguiente; si pasó más tiempo desde el último envío (por ejemplo, tras despertar por un cambio significativo) se envía sin esperar.
+    // Causa real (17/10/2026): al relanzar iOS la app cerrada, la PRIMERA lectura es a menudo la última posición guardada (antigua, 244 m más allá) y el servidor,
+    // que cambia por «ahora» toda hora de hace más de 10 minutos, la daba por reciente: aviso falso de salida y de llegada 5 s después. Una lectura de más de
+    // maxReadingAgeSeconds de antigüedad no se envía; y la última posición enviada se guarda en el móvil para que el filtro de saltos valga también tras relanzar.
+    private static let maxReadingAgeSeconds: TimeInterval = 15
+    private static let keyLastLat = "pepa.nativeUpload.lastLat"
+    private static let keyLastLon = "pepa.nativeUpload.lastLon"
+    private static let keyLastAt = "pepa.nativeUpload.lastAt"
     private static let jumpMeters: CLLocationDistance = 150
     private static let jumpWindowSeconds: TimeInterval = 120
     private static let jumpConfirmMeters: CLLocationDistance = 100
@@ -42,7 +49,23 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
 
     private var manager: CLLocationManager?
     private var lastUploadAt: Date = .distantPast
-    private var lastSentLocation: CLLocation?
+    private var lastSentLocation: CLLocation? {
+        get {
+            guard let lat = defaults.object(forKey: PepaNativeLocation.keyLastLat) as? Double,
+                  let lon = defaults.object(forKey: PepaNativeLocation.keyLastLon) as? Double,
+                  let at = defaults.object(forKey: PepaNativeLocation.keyLastAt) as? Double else { return nil }
+            return CLLocation(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), altitude: 0, horizontalAccuracy: 0, verticalAccuracy: -1, timestamp: Date(timeIntervalSince1970: at))
+        }
+        set {
+            if let location = newValue {
+                defaults.set(location.coordinate.latitude, forKey: PepaNativeLocation.keyLastLat)
+                defaults.set(location.coordinate.longitude, forKey: PepaNativeLocation.keyLastLon)
+                defaults.set(location.timestamp.timeIntervalSince1970, forKey: PepaNativeLocation.keyLastAt)
+            } else {
+                for key in [PepaNativeLocation.keyLastLat, PepaNativeLocation.keyLastLon, PepaNativeLocation.keyLastAt] { defaults.removeObject(forKey: key) }
+            }
+        }
+    }
     private var pendingJump: CLLocation?
     private var idleTimer: Timer?
     private let defaults = UserDefaults.standard
@@ -60,7 +83,8 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     }
 
     public func clear() {
-        for key in [PepaNativeLocation.keyUrl, PepaNativeLocation.keyApikey, PepaNativeLocation.keyToken, PepaNativeLocation.keyDistance, PepaNativeLocation.keyRegions] {
+        for key in [PepaNativeLocation.keyUrl, PepaNativeLocation.keyApikey, PepaNativeLocation.keyToken, PepaNativeLocation.keyDistance, PepaNativeLocation.keyRegions,
+                    PepaNativeLocation.keyLastLat, PepaNativeLocation.keyLastLon, PepaNativeLocation.keyLastAt] {
             defaults.removeObject(forKey: key)
         }
         DispatchQueue.main.async { self.stop() }
@@ -165,6 +189,7 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
         let now = Date()
         if now.timeIntervalSince(lastUploadAt) < PepaNativeLocation.minUploadGap { return }
         if location.horizontalAccuracy < 0 || location.horizontalAccuracy > PepaNativeLocation.maxAccuracy { return }
+        if now.timeIntervalSince(location.timestamp) > PepaNativeLocation.maxReadingAgeSeconds { return }
         if let last = lastSentLocation,
            location.timestamp.timeIntervalSince(last.timestamp) < PepaNativeLocation.jumpWindowSeconds,
            location.distance(from: last) > PepaNativeLocation.jumpMeters {

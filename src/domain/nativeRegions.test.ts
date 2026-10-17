@@ -65,7 +65,7 @@ describe('código nativo del iPhone: vigilar los bordes', () => {
 
   it('al relanzar iOS la app cerrada se vuelven a registrar los bordes guardados (start → syncRegions) y al borrar la configuración se paran', () => {
     expect(swift).toMatch(/manager\.startUpdatingLocation\(\)\s*scheduleIdleStop\(\)\s*syncRegions\(\)/)
-    expect(swift).toContain('PepaNativeLocation.keyRegions]')
+    expect(swift).toContain('PepaNativeLocation.keyRegions,')
     expect(swift).toMatch(/private func stop\(\) \{[\s\S]*?stopMonitoring\(for: region\)/)
   })
 
@@ -111,6 +111,20 @@ describe('código nativo del iPhone: saltos de GPS aislados', () => {
   it('mantiene los filtros de siempre (precisión peor de 100 m y un envío cada 10 s) antes de mirar el salto', () => {
     expect(swift.indexOf('maxAccuracy { return }')).toBeLessThan(swift.indexOf('jumpMeters {'))
     expect(swift).toContain('minUploadGap { return }')
+  })
+})
+
+describe('código nativo del iPhone: lectura antigua al relanzar la app cerrada', () => {
+  it('una lectura de más de 15 s de antigüedad no se envía (el servidor la daría por reciente)', () => {
+    expect(swift).toContain('maxReadingAgeSeconds: TimeInterval = 15')
+    expect(swift).toContain('now.timeIntervalSince(location.timestamp) > PepaNativeLocation.maxReadingAgeSeconds { return }')
+    expect(swift.indexOf('maxAccuracy { return }')).toBeLessThan(swift.indexOf('maxReadingAgeSeconds { return }'))
+  })
+
+  it('la última posición enviada se guarda en el móvil (sobrevive a que iOS relance la app) y se borra con la configuración', () => {
+    expect(swift).toContain('private var lastSentLocation: CLLocation? {')
+    expect(swift).toContain('defaults.set(location.coordinate.latitude, forKey: PepaNativeLocation.keyLastLat)')
+    expect(swift).toMatch(/PepaNativeLocation\.keyRegions,\s*PepaNativeLocation\.keyLastLat, PepaNativeLocation\.keyLastLon, PepaNativeLocation\.keyLastAt\]/)
   })
 })
 

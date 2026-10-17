@@ -16,6 +16,7 @@ import googleCallback from '../../supabase/functions/google-calendar-oauth-callb
 import bankStart from '../../supabase/functions/enable-banking-auth-start/index.ts?raw'
 import bankCallback from '../../supabase/functions/enable-banking-auth-callback/index.ts?raw'
 import appSrc from '@/App.tsx?raw'
+import deepLinksSrc from '@/ui/NativeDeepLinks.tsx?raw'
 import { ALLOWED_RETURN_PATHS, parseDeepLink } from '@/domain/nativeDeepLink'
 
 const fetchMock = vi.fn()
@@ -131,6 +132,13 @@ describe('página puente y Android', () => {
     expect(manifest).toContain('android:scheme="@string/custom_url_scheme"')
     expect(manifest).toContain('android.intent.category.BROWSABLE')
     expect(manifest).toContain('android.intent.action.VIEW')
+  })
+  it('el enlace de arranque se atiende UNA vez y el efecto no depende de «navigate» (si no, bucle de navegaciones al volver del banco en iPhone)', () => {
+    expect(deepLinksSrc).toContain('let launchUrlChecked = false')
+    expect(deepLinksSrc).toContain('if (!launchUrlChecked) {')
+    expect(deepLinksSrc).toContain('navigateRef.current(path, { replace: true })')
+    expect(deepLinksSrc).not.toContain('[navigate]')
+    expect(deepLinksSrc).toContain('  }, [])')
   })
   it('la app recibe los enlaces dentro del router, junto a los demás vigilantes', () => {
     expect(appSrc).toContain('<NativeDeepLinks />')

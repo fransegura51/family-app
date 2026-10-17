@@ -269,6 +269,6 @@ describe('lo que NO cambia (TEST: lógica y datos de Fase 14B permanecen intacto
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(279) // 0279: alergias e intolerancias de la ficha privada (datos de salud); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(280) // 0280: el resumen diario de tareas guarda el listado completo en el aviso (antes, 0279: alergias e intolerancias de la ficha privada); la numeración la sube quien añada la siguiente
   })
 })

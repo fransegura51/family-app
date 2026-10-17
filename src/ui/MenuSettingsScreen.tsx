@@ -54,6 +54,7 @@ import {
 import { DISABLEABLE_SPEND_RANGE_PRESETS, PRESET_LABELS, type SpendRangePreset } from '@/domain/dateRanges'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { ClassicButtonsCard } from '@/ui/ClassicButtonsCard'
+import { HomeCarouselCard } from '@/ui/HomeCarouselSettings'
 import { PepaPreferencesCard } from '@/ui/PepaPreferencesCard'
 import { NotificationsCard } from '@/ui/NotificationsCard'
 import { NotificationPrefsCard } from '@/ui/NotificationPrefsCard'
@@ -1898,7 +1899,7 @@ function CalendarExternalLinksSection() {
   )
 }
 
-type SettingsGroupId = 'menu' | 'colores' | 'familia' | 'pepa' | 'avisos' | 'cuenta' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
+type SettingsGroupId = 'menu' | 'inicio' | 'colores' | 'familia' | 'pepa' | 'avisos' | 'cuenta' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
 // «Cerrar sesión» (antes en Familia, 16/10/2026). Hace falta para que cada persona pueda tener su PROPIA cuenta en su propio móvil en vez de compartir el login
 // de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella): cierra esta sesión para poder entrar con la cuenta nueva
@@ -1932,8 +1933,8 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
   // Un color por tema, con el estilo elegido en Colores.
-  // (pastelPalette reparte los tonos por posición: pedir uno más no cambia el color de los ocho de antes.)
-  const groupColors = pastelPalette(11)
+  // (pastelPalette reparte los tonos por posición: pedir uno más no cambia el color de los de antes.)
+  const groupColors = pastelPalette(12)
 
   return (
     <div className="screen">
@@ -1946,6 +1947,17 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
 
       <SettingsGroup color={groupColors[0]} icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
         <MenuOrderSection />
+      </SettingsGroup>
+
+      <SettingsGroup
+        color={groupColors[11]}
+        icon="🏠"
+        title="Inicio"
+        summary="Carrusel de arriba: lista de la compra, calendario, Comunidad y fotos"
+        open={openGroup === 'inicio'}
+        onToggle={() => toggle('inicio')}
+      >
+        <HomeCarouselCard />
       </SettingsGroup>
 
       <SettingsGroup color={groupColors[1]} icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>

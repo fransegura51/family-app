@@ -2429,6 +2429,12 @@ select {
   gap: 14px;
 }
 
+/* El saludo ocupa lo que queda entre el avatar y la campana y puede partirse en varias líneas sin empujar a la campana. */
+.home-header-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .home-header p {
   margin: 0;
 }
@@ -7103,11 +7109,14 @@ textarea {
   margin: 4px 0 8px;
 }
 
-/* Campana de avisos de Inicio (solo en Inicio, arriba a la derecha, por encima del saludo). */
+/* Campana de avisos de Inicio: dentro de la cabecera (.home-header), arriba a la derecha, sin fila propia. En su sitio no se superpone al avatar de Pepa
+   ni a los botones fijos de arriba (que viven fuera del contenido, por encima de él). */
 .home-bell-row {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 4px;
+  flex: none;
+  align-self: flex-start;
+  margin: 0 0 0 auto;
 }
 
 .notification-bell {
@@ -7170,7 +7179,9 @@ textarea {
   overscroll-behavior: contain;
   background: var(--card-bg, #fff);
   color: var(--text, #1c1f26);
-  padding: 12px 16px calc(24px + env(safe-area-inset-bottom));
+  /* iPhone: la app se dibuja por debajo de la barra del sistema (hora, cobertura, batería); el título y la X empiezan DEBAJO de ella. Sin barra (Android,
+     escritorio) env() vale 0 y quedan los 12 px de siempre. */
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px calc(24px + env(safe-area-inset-bottom, 0px));
   box-sizing: border-box;
 }
 
@@ -7392,4 +7403,294 @@ textarea {
   background: transparent;
   color: var(--muted, #6b7280);
   font-size: 15px;
+}
+
+/* Detalle del aviso agrupado de tareas (dentro del panel de avisos): lista con el título COMPLETO de cada tarea (se parte en varias líneas), su fecha y las
+   personas asignadas; el panel ya se desplaza en vertical cuando hay muchas. */
+.notification-task-group {
+  margin-top: 12px;
+}
+
+.notification-task-group-title {
+  margin: 0;
+  padding: 6px 4px;
+  font-size: 16px;
+  border-bottom: 1px solid var(--border, #d9dee8);
+}
+
+.notification-task-title {
+  overflow-wrap: anywhere;
+}
+
+.notification-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.notification-detail-close {
+  min-height: 44px;
+  min-width: 120px;
+  padding: 8px 20px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+/* Carrusel de Inicio — engranaje, diapositivas nuevas (Comunidad e informativa de la Galería) y ventana de configuración. */
+.home-carousel-gear {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.home-carousel-off {
+  margin: 8px 0;
+}
+
+/* Comunidad: solo texto útil, sobre el pastel de Comunidad. Mismo marco (alto) que las demás diapositivas; si hay muchas líneas, la lista se corta con elegancia. */
+.home-community-banner,
+.home-gallery-info-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px 30px;
+  box-sizing: border-box;
+  color: var(--text, #1c1f26);
+}
+
+.home-community-title,
+.home-gallery-info-title {
+  margin: 0;
+  padding-right: 40px; /* sitio para el engranaje */
+  font-size: 18px;
+  font-weight: 700;
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-community-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.home-community-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-height: 36px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.home-community-line-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+}
+
+.home-community-line-text strong {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  font-weight: 600;
+}
+
+.home-community-line-text .muted {
+  font-size: 12px;
+}
+
+.home-community-empty,
+.home-gallery-info-text {
+  margin: 0;
+  font-size: 15px;
+}
+
+/* Ventana de configuración del carrusel. */
+.carousel-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overscroll-behavior: contain;
+}
+
+.carousel-settings-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  border-radius: 16px 16px 0 0;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 16px calc(20px + env(safe-area-inset-bottom, 0px));
+}
+
+.carousel-settings-sheet:focus {
+  outline: none;
+}
+
+@media (min-width: 640px) {
+  .carousel-settings-overlay {
+    align-items: center;
+  }
+  .carousel-settings-sheet {
+    border-radius: 16px;
+  }
+}
+
+.carousel-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.carousel-settings-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.carousel-settings-done {
+  display: block;
+  min-height: 44px;
+  margin: 16px 0 0 auto;
+  padding: 8px 24px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary, #4c6ef5);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.carousel-setting {
+  display: flex;
+  flex-direction: row; /* el <label> global va en columna */
+  gap: 10px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 6px 0;
+  font-size: 15px;
+}
+
+.carousel-setting input {
+  width: auto;
+  padding: 0;
+  margin-top: 3px;
+  flex: none;
+}
+
+.carousel-settings-parts {
+  margin-left: 4px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border, #e3e7ef);
+}
+
+.carousel-settings-parts[aria-disabled='true'] {
+  opacity: 0.55;
+}
+
+.carousel-photo-mode {
+  border: 0;
+  padding: 0;
+  margin: 8px 0 0;
+}
+
+.carousel-photo-mode legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.carousel-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.carousel-photo-option {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--card-bg, #f3f4f8);
+  cursor: pointer;
+  font-size: 22px;
+}
+
+.carousel-photo-option img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.carousel-photo-option.selected {
+  border-color: var(--primary, #4c6ef5);
+}
+
+.carousel-photo-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.carousel-photo-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--primary, #4c6ef5);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+
+/* Los puntitos del carrusel son blancos (pensados para fotos): sobre el pastel de Comunidad o de la tarjeta informativa se hacen oscuros para verse. */
+.home-community-banner .home-photo-banner-dot,
+.home-gallery-info-banner .home-photo-banner-dot {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.home-community-banner .home-photo-banner-dot-active,
+.home-gallery-info-banner .home-photo-banner-dot-active {
+  background: rgba(0, 0, 0, 0.7);
 }

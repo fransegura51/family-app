@@ -14,9 +14,12 @@ import calendar from '@/ui/CalendarScreen.tsx?raw'
 const css = readFileSync(join(process.cwd(), 'src/ui/styles.css'), 'utf8')
 
 describe('la campana', () => {
-  it('está en Inicio, por encima del saludo, y SOLO en Inicio', () => {
+  it('está en Inicio, compacta DENTRO de la cabecera (junto al saludo, sin fila propia), y SOLO en Inicio', () => {
     expect(home).toContain('<NotificationBell />')
-    expect(home.indexOf('<NotificationBell />')).toBeLessThan(home.indexOf('className="home-header"'))
+    const header = home.slice(home.indexOf('className="home-header"'), home.indexOf('<AttentionCard'))
+    expect(header).toContain('<NotificationBell />')
+    // Va después del saludo y antes del cierre de la cabecera: no ocupa una fila por encima.
+    expect(header.indexOf('<NotificationBell />')).toBeGreaterThan(header.indexOf('Hola, {profile.displayName}'))
     const dir = join(process.cwd(), 'src/ui')
     const others = readdirSync(dir).filter((f) => f.endsWith('.tsx') && !f.endsWith('.test.tsx') && f !== 'HomeScreen.tsx' && f !== 'NotificationBell.tsx')
     for (const f of others) expect(readFileSync(join(dir, f), 'utf8'), f).not.toContain('<NotificationBell')
@@ -29,6 +32,9 @@ describe('la campana', () => {
 
   it('está arriba a la derecha y el contador es el de sin leer, sin consulta periódica', () => {
     expect(css).toMatch(/\.home-bell-row\s*\{[^}]*justify-content:\s*flex-end/)
+    // Sin margen de fila propia: no empuja el saludo ni el carrusel hacia abajo.
+    expect(css).toMatch(/\.home-bell-row\s*\{[^}]*align-self:\s*flex-start/)
+    expect(css).not.toMatch(/\.home-bell-row\s*\{[^}]*margin-bottom:\s*4px/)
     expect(bell).toContain('fetchUnreadNotificationCount')
     expect(bell).not.toContain('setInterval')
   })

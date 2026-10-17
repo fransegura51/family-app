@@ -55,6 +55,20 @@ export async function getGalleryPhotoUrl(storagePath: string): Promise<string> {
   return data.signedUrl
 }
 
+// Varias fotos en UNA sola petición (el carrusel de Inicio y el selector de fotos fijas piden hasta 5-36 a la vez: una llamada en vez de una por foto).
+// Devuelve ruta → dirección firmada; las rutas que no se pudieron firmar no salen en el resultado.
+export async function getGalleryPhotoUrls(storagePaths: string[]): Promise<Record<string, string>> {
+  const unique = [...new Set(storagePaths)]
+  if (unique.length === 0) return {}
+  const { data, error } = await supabase.storage.from('gallery').createSignedUrls(unique, 3600)
+  if (error) throw error
+  const out: Record<string, string> = {}
+  for (const item of data ?? []) {
+    if (item.path && item.signedUrl && !item.error) out[item.path] = item.signedUrl
+  }
+  return out
+}
+
 export async function deleteGalleryPhoto(photo: GalleryPhoto): Promise<void> {
   await supabase.storage.from('gallery').remove([photo.storagePath])
   const { error } = await supabase.from('gallery_photos').delete().eq('id', photo.id)

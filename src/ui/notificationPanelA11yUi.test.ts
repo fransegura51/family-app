@@ -20,7 +20,8 @@ describe('el panel es un diálogo modal de verdad', () => {
   it('role=dialog, aria-modal y un nombre (aria-labelledby apunta al título)', () => {
     expect(panel).toContain('role="dialog"')
     expect(panel).toContain('aria-modal="true"')
-    expect(panel).toContain('aria-labelledby={titleId}')
+    // El nombre sigue al título de lo que se ve: «Avisos» en la lista y el título del aviso en el detalle de tareas.
+    expect(panel).toContain('aria-labelledby={detail ? `${titleId}-detail` : titleId}')
     expect(panel).toContain('<h2 id={titleId}>Avisos</h2>')
     expect(panel).toContain('tabIndex={-1}') // se puede enfocar por código
   })

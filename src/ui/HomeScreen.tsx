@@ -4,9 +4,13 @@ import type { FamilyMember, GalleryPhoto, Profile } from '@/domain/types'
 import type { AttentionItem } from '@/domain/attention'
 import { NotificationBell } from '@/ui/NotificationBell'
 import { useCommunityVisible } from '@/ui/community/useCommunityVisible'
+import { HomeCarouselSettingsModal } from '@/ui/HomeCarouselSettings'
+import { carouselSlideOrder, pickCarouselPhotos, showEmptyGalleryCard, type CommunityCarouselLine } from '@/domain/homeCarousel'
+import { useHomeCarouselPrefs } from '@/state/homeCarouselPrefs'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
-import { getGalleryPhotoUrl, listGalleryPhotos } from '@/data/gallery'
+import { getGalleryPhotoUrls, listGalleryPhotos } from '@/data/gallery'
+import { loadCommunityHomeLines, peekCommunityHomeLines } from '@/data/communityHomeSlide'
 import { listFamilyMembers } from '@/data/family'
 import { listUpcomingEvents } from '@/data/calendar'
 import { expandOccurrences } from '@/domain/calendar'
@@ -98,6 +102,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
   const [order, setOrder] = useState<string[]>(() => resolveOrder(loadHomeCardOrder()))
   const [organizing, setOrganizing] = useState(false)
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([])
+  // Ventana de configuración del carrusel (se abre con su engranaje).
+  const [carouselSettingsOpen, setCarouselSettingsOpen] = useState(false)
 
   useEffect(() => {
     listFamilyMembers()
@@ -147,22 +153,24 @@ export function HomeScreen({ profile }: { profile: Profile }) {
           círculo, el logo de Pepa, la foto de Pepa". "¿Qué tenemos
           hoy?" + "Hola, Paco" se sustituyen por "Hola, Paco" como
           título y "¿Cómo te puedo ayudar?" debajo (petición real). */}
-      {/* Campana de avisos: solo en Inicio, arriba a la derecha, por encima del saludo. */}
-      <NotificationBell />
+      {/* Campana de avisos: solo en Inicio, compacta, en la esquina superior derecha DE LA CABECERA (a la altura del saludo), sin fila propia: no empuja
+          el saludo ni el carrusel hacia abajo. */}
       <div className="home-header">
         <img src={pepaAvatar} alt="Pepa" className="home-pepa-avatar" />
-        <div>
+        <div className="home-header-text">
           <h1 className="home-greeting">
             {self && <MemberAvatar member={self} size={28} />}
             Hola, {profile.displayName}
           </h1>
           <p className="muted">¿Cómo te puedo ayudar?</p>
         </div>
+        <NotificationBell />
       </div>
 
       <AttentionCard items={attentionItems} />
 
-      <PhotoBanner />
+      <PhotoBanner onOpenSettings={() => setCarouselSettingsOpen(true)} />
+      {carouselSettingsOpen && <HomeCarouselSettingsModal onClose={() => setCarouselSettingsOpen(false)} />}
 
       <InviteFriendsButton />
 
@@ -197,6 +205,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
 type Slide =
   | { kind: 'photo'; id: string; url: string; caption: string }
   | { kind: 'info'; id: string; icon: string; title: string; items: string[]; art: 'compra' | 'tarea' }
+  | { kind: 'community'; id: string; lines: CommunityCarouselLine[] }
+  | { kind: 'gallery-info'; id: string }
 
 function todayStr(): string {
   const d = new Date()
@@ -217,11 +227,19 @@ function hhmm(iso: string): string {
 // para ese día" — y después, lo mismo con la lista de la compra). Cada
 // diapositiva de texto lleva a su pantalla (Calendario/Compras), igual
 // que las fotos llevan a Galería.
-function PhotoBanner() {
-  const [photos, setPhotos] = useState<GalleryPhoto[]>([])
+function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
+  // Configuración (por móvil, ver state/homeCarouselPrefs.ts): carrusel entero, cada diapositiva y fotos al azar o fijas. ORDEN OBLIGATORIO de las diapositivas:
+  // Lista de la compra, Calendario, Comunidad PEPA y, al final, las fotografías de la Galería PEPA (hasta 5). Lo útil va antes que las fotos.
+  const [prefs] = useHomeCarouselPrefs()
+  const communityVisible = useCommunityVisible() === true
+  const [gallery, setGallery] = useState<GalleryPhoto[]>([])
+  // La tarjeta de «aún no hay fotos» solo sale cuando se HA podido leer la Galería y de verdad está vacía (no si falló la consulta).
+  const [galleryOk, setGalleryOk] = useState(false)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [agendaItems, setAgendaItems] = useState<string[]>([])
   const [shoppingItems, setShoppingItems] = useState<string[]>([])
+  // null = todavía no se sabe / no se pudo cargar (la diapositiva no sale); [] = Comunidad abierta pero sin publicaciones.
+  const [communityLines, setCommunityLines] = useState<CommunityCarouselLine[] | null>(() => peekCommunityHomeLines())
   const [index, setIndex] = useState(0)
   const [loading, setLoading] = useState(true)
   const [paused, setPaused] = useState(false)
@@ -242,23 +260,48 @@ function PhotoBanner() {
   // renderizado y otro, y React no lo permite.
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
 
+  const order = carouselSlideOrder(prefs, communityVisible)
+  const wantsPhotos = order.includes('fotos')
+  const wantsAgenda = order.includes('agenda')
+  const wantsShopping = order.includes('compra')
+  const wantsCommunity = order.includes('comunidad')
+
+  // Fotos: solo de la Galería PEPA y solo si están activadas (una consulta de la lista; las direcciones de las elegidas, en UNA petición más).
   useEffect(() => {
+    if (!wantsPhotos) {
+      setLoading(false)
+      return
+    }
     listGalleryPhotos()
-      .then(async (list) => {
-        const recent = list.slice(0, 6)
-        setPhotos(recent)
-        const entries = await Promise.all(
-          recent.map(async (p) => [p.id, await getGalleryPhotoUrl(p.storagePath)] as const),
-        )
-        setUrls(Object.fromEntries(entries))
+      .then((list) => {
+        setGallery(list)
+        setGalleryOk(true)
       })
       .catch(() => {
-        // Sin fotos o sin permiso: se enseña el estado vacío, no hace
+        // Sin fotos o sin permiso: se enseña la tarjeta informativa, no hace
         // falta un error visible en la portada por esto.
       })
       .finally(() => setLoading(false))
+  }, [wantsPhotos])
 
-    const today = todayStr()
+  // Las que entran en el carrusel (hasta 5): al azar o las fijas elegidas. Se recalculan solo cuando cambia la Galería o la elección, no en cada pintado.
+  const fixedKey = prefs.fixedPhotoIds.join(',')
+  const photos = useMemo(
+    () => pickCarouselPhotos(gallery, { ...prefs, photos: wantsPhotos }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gallery, wantsPhotos, prefs.photoMode, fixedKey],
+  )
+  useEffect(() => {
+    const missing = photos.filter((p) => !urls[p.id])
+    if (missing.length === 0) return
+    getGalleryPhotoUrls(missing.map((p) => p.storagePath))
+      .then((byPath) => setUrls((prev) => ({ ...prev, ...Object.fromEntries(missing.filter((p) => byPath[p.storagePath]).map((p) => [p.id, byPath[p.storagePath]])) })))
+      .catch(() => {})
+  }, [photos, urls])
+
+  const today = todayStr()
+  useEffect(() => {
+    if (!wantsAgenda) return
     listUpcomingEvents()
       .then((events) => {
         const items = events
@@ -275,7 +318,10 @@ function PhotoBanner() {
         setAgendaItems(items)
       })
       .catch(() => {})
+  }, [wantsAgenda, today])
 
+  useEffect(() => {
+    if (!wantsShopping) return
     listShoppingItems()
       .then((items) => {
         const pending = items
@@ -284,18 +330,44 @@ function PhotoBanner() {
         setShoppingItems(pending)
       })
       .catch(() => {})
-  }, [])
+  }, [wantsShopping])
+
+  // Comunidad: tres consultas pequeñas (compartidas y recordadas 3 minutos, ver data/communityHomeSlide.ts), solo con Comunidad abierta para esta persona y la
+  // diapositiva activada. Si falla, la diapositiva no sale (nunca se enseña nada inventado).
+  useEffect(() => {
+    if (!wantsCommunity) return
+    let cancelled = false
+    loadCommunityHomeLines().then(
+      (lines) => {
+        if (!cancelled) setCommunityLines(lines)
+      },
+      () => undefined,
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [wantsCommunity])
 
   // Petición real: "quiero esas dos diapositivas por defecto en todos
   // los usuarios" — antes solo aparecían si había algo pendiente/hoy;
-  // ahora siempre están, con su propio estado vacío si no hay nada
-  // (ver "Sin nada pendiente todavía" / "Nada apuntado para hoy" en el
+  // ahora siempre están (si no se han desactivado), con su propio estado vacío si no
+  // hay nada (ver "Sin nada pendiente todavía" / "Nada apuntado para hoy" en el
   // renderizado de cada diapositiva).
-  const slides: Slide[] = [
-    ...photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' })),
-    { kind: 'info', id: 'agenda', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' },
-    { kind: 'info', id: 'compra', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' },
-  ]
+  const slides: Slide[] = order.flatMap((key): Slide[] => {
+    switch (key) {
+      case 'compra':
+        return [{ kind: 'info', id: 'compra', icon: '🛒', title: 'Compra pendiente', items: shoppingItems, art: 'compra' }]
+      case 'agenda':
+        return [{ kind: 'info', id: 'agenda', icon: '📅', title: 'Hoy en el calendario', items: agendaItems, art: 'tarea' }]
+      case 'comunidad':
+        return communityLines === null ? [] : [{ kind: 'community', id: 'comunidad', lines: communityLines }]
+      case 'fotos':
+        // Familias sin fotos: una tarjeta informativa sencilla que desaparece con la primera foto de la Galería.
+        return galleryOk && showEmptyGalleryCard(prefs, gallery.length)
+          ? [{ kind: 'gallery-info', id: 'galeria-info' }]
+          : photos.map((p): Slide => ({ kind: 'photo', id: p.id, url: urls[p.id] ?? '', caption: p.caption || 'Fotos de la familia' }))
+    }
+  })
 
   useEffect(() => {
     if (index >= slides.length) setIndex(0)
@@ -307,18 +379,31 @@ function PhotoBanner() {
     return () => clearInterval(timer)
   }, [slides.length, paused])
 
+  // Engranaje del carrusel: abre su configuración (qué diapositivas salen, fotos al azar o fijas). Pequeño, en la esquina de cada diapositiva.
+  const gear = (
+    <button type="button" className="home-carousel-gear" onClick={onOpenSettings} aria-label="Configurar el carrusel de Inicio">
+      <span aria-hidden="true">⚙️</span>
+    </button>
+  )
+
+  // Carrusel oculto del todo: no se enseña nada (se recupera desde Configuración → Carrusel de Inicio).
+  if (!prefs.enabled) return null
+
   if (loading) return null
 
-  if (slides.length === 0) {
+  // Todo desactivado pieza a pieza: una fila pequeña para poder volver a activarlo desde aquí mismo.
+  if (order.length === 0) {
     return (
-      <Link to="/galeria" className="home-photo-banner home-photo-banner-empty">
-        <div className="home-photo-banner-overlay">
-          <p className="home-photo-banner-title">📷 Sube fotos de la familia</p>
-          <p className="home-photo-banner-sub">Toca aquí para añadir la primera</p>
-        </div>
-      </Link>
+      <div className="home-carousel-off">
+        <button type="button" className="link-button" onClick={onOpenSettings}>
+          ⚙️ Carrusel de Inicio: no hay nada activado. Configurar
+        </button>
+      </div>
     )
   }
+
+  // Todas las diapositivas pendientes de datos (p. ej. solo Comunidad mientras carga): todavía no se pinta nada.
+  if (slides.length === 0) return null
 
   const current = slides[index] ?? slides[0]
   const dots = slides.length > 1 && (
@@ -357,14 +442,17 @@ function PhotoBanner() {
     setPaused(false)
   }
 
-  const slideInteractionProps = {
-    role: 'button' as const,
-    tabIndex: 0,
+  const pointerProps = {
     onTouchStart: handleTouchStart,
     onTouchEnd: handleTouchEnd,
     onMouseDown: handlePressStart,
     onMouseUp: handleMouseUp,
     onMouseLeave: handleMouseUp,
+  }
+  const slideInteractionProps = {
+    role: 'button' as const,
+    tabIndex: 0,
+    ...pointerProps,
     onKeyDown: (e: KeyboardEvent) => e.key === 'Enter' && setPaused((p) => !p),
   }
 
@@ -397,6 +485,7 @@ function PhotoBanner() {
         <Link to="/compras" state={{ tab: 'Lista' }} className="home-slide-link">
           Ir a la Lista →
         </Link>
+        {gear}
         {dots}
       </div>
     )
@@ -428,6 +517,56 @@ function PhotoBanner() {
         <Link to="/calendario" className="home-slide-link">
           Ir a Calendario →
         </Link>
+        {gear}
+        {dots}
+      </div>
+    )
+  }
+
+  // Comunidad PEPA: SOLO texto útil (sin ilustraciones ni cabeceras decorativas) con publicaciones reales: las más recientes, la más comentada y una pregunta sin
+  // responder. Cada línea abre su publicación; el título y el enlace de abajo abren Comunidad. Mismo marco (tamaño) que las demás diapositivas.
+  if (current.kind === 'community') {
+    return (
+      <div className="home-photo-banner home-community-banner" style={{ background: NAV_SECTION_COLORS.get('comunidad') }} aria-label="Comunidad PEPA" {...pointerProps}>
+        <Link to="/comunidad" className="home-community-title">
+          🏡 Comunidad PEPA
+        </Link>
+        {current.lines.length === 0 ? (
+          <p className="home-community-empty">Todavía no hay publicaciones. Entra en Comunidad para ver las novedades.</p>
+        ) : (
+          <ul className="home-community-list">
+            {current.lines.map((l) => (
+              <li key={l.id}>
+                <Link to={`/comunidad/p/${l.id}`} className="home-community-line">
+                  <span aria-hidden="true">{l.icon}</span>
+                  <span className="home-community-line-text">
+                    <strong>{l.title}</strong>
+                    <span className="muted">{l.meta}</span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link to="/comunidad" className="home-slide-link">
+          Ir a Comunidad →
+        </Link>
+        {gear}
+        {dots}
+      </div>
+    )
+  }
+
+  // Familias que todavía no han subido fotos a su Galería PEPA: una tarjeta informativa sencilla (desaparece con la primera foto).
+  if (current.kind === 'gallery-info') {
+    return (
+      <div className="home-photo-banner home-gallery-info-banner" style={{ background: NAV_SECTION_COLORS.get('galeria') }} aria-label="Fotos de la familia" {...pointerProps}>
+        <p className="home-gallery-info-title">📷 Fotos de la familia</p>
+        <p className="home-gallery-info-text">Cuando subáis imágenes a vuestra Galería PEPA, aquí podréis ver hasta cinco fotografías.</p>
+        <Link to="/galeria" className="home-slide-link">
+          Ir a la Galería →
+        </Link>
+        {gear}
         {dots}
       </div>
     )
@@ -444,6 +583,7 @@ function PhotoBanner() {
       <div className="home-photo-banner-overlay">
         <p className="home-photo-banner-title">📷 {current.caption}</p>
       </div>
+      {gear}
       {dots}
     </div>
   )

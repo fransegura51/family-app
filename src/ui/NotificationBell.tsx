@@ -4,7 +4,8 @@ import { unreadAnnouncement } from '@/domain/focusTrap'
 import { badgeText } from '@/domain/notificationsCenter'
 import { NotificationPanel } from '@/ui/NotificationPanel'
 
-// Campana de avisos: SOLO en Inicio, arriba a la derecha, por encima del saludo y fuera de los accesos rápidos (cuya posición cambia por persona).
+// Campana de avisos: SOLO en Inicio, compacta, en la esquina superior derecha de la cabecera (junto al saludo, sin fila propia) y fuera de los accesos rápidos
+// (cuya posición cambia por persona).
 // El contador es el de avisos sin leer. Se pide al abrir Inicio y al volver a la app (no hay consulta periódica: no sube el gasto de Supabase).
 // Accesibilidad (INC-20): el botón dice cuántos hay sin leer y si el panel está abierto; una región «polite» (invisible) anuncia el cambio del contador, pero
 // solo DESPUÉS de que la persona haya interactuado con la campana (al cargar Inicio no se anuncia nada); al cerrar el panel el foco vuelve a este botón.

@@ -2,6 +2,7 @@
 // Las pantallas de Comunidad siguen pidiendo su estado fresco (CommunityProvider); aquí solo se evita preguntar de más desde fuera.
 import { supabase } from '@/data/supabaseClient'
 import { communityStatus } from '@/data/community'
+import { clearCommunityHomeLines } from '@/data/communityHomeSlide'
 import { createCommunityStatusCache } from '@/domain/communityStatusCache'
 
 export const communityStatusCache = createCommunityStatusCache(() => communityStatus())
@@ -11,7 +12,10 @@ let lastUserId: string | null | undefined
 try {
   supabase.auth.onAuthStateChange((event, session) => {
     const id = session?.user?.id ?? null
-    if (event === 'SIGNED_OUT' || (lastUserId !== undefined && id !== lastUserId)) communityStatusCache.clear()
+    if (event === 'SIGNED_OUT' || (lastUserId !== undefined && id !== lastUserId)) {
+      communityStatusCache.clear()
+      clearCommunityHomeLines() // las líneas de Comunidad del carrusel de Inicio también son de cada cuenta
+    }
     lastUserId = id
   })
 } catch {

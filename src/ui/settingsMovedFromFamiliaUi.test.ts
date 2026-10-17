@@ -44,7 +44,7 @@ describe('Configuración tiene lo que salió de Familia, en temas que se abren y
   })
 
   it('todos los temas tienen su propio color (se pide uno más por cada tema nuevo; los de antes no cambian)', () => {
-    expect(settings).toContain('pastelPalette(11)')
+    expect(settings).toContain('pastelPalette(12)')
     expect(settings).toContain('groupColors[9]')
     expect(settings).toContain('groupColors[10]')
   })

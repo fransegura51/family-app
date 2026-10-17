@@ -62,6 +62,7 @@ interface PlaceRow {
   longitude: number
   radius_m: number
   notify_arrivals: boolean
+  created_at: string
 }
 
 // iPhone con la app cerrada: al cambiar los lugares se actualizan los bordes que vigila iOS (ver services/nativeUpload.ts). Import dinámico para no cruzar módulos.
@@ -73,12 +74,15 @@ export async function listPlaces(): Promise<LocationPlace[]> {
   let data: PlaceRow[]
   if (isNativeApp()) {
     // Lo llama el reconocimiento de paradas, que corre con el móvil bloqueado: por la capa nativa (la web se congela en segundo plano).
-    data = await nativeRest<PlaceRow[]>('GET', 'location_places?select=id,family_id,name,category,latitude,longitude,radius_m,notify_arrivals')
+    data = await nativeRest<PlaceRow[]>('GET', 'location_places?select=id,family_id,name,category,latitude,longitude,radius_m,notify_arrivals,created_at')
   } else {
-    const res = await supabase.from('location_places').select('id, family_id, name, category, latitude, longitude, radius_m, notify_arrivals')
+    const res = await supabase.from('location_places').select('id, family_id, name, category, latitude, longitude, radius_m, notify_arrivals, created_at')
     if (res.error) throw res.error
     data = res.data as PlaceRow[]
   }
+  // Siempre en el mismo orden (por fecha de creación): sin esto la base devuelve primero lo que no se ha tocado y un lugar al que se le cambia el aviso
+  // «baja» al final de la lista (petición real, 17/10/2026: «deberían quedarse en el mismo sitio»).
+  data.sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))
   return data.map((r) => ({
     id: r.id,
     familyId: r.family_id,

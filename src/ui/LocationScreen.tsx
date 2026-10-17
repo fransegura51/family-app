@@ -870,18 +870,27 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
               entera, delante del formulario para añadir uno nuevo. */}
           <AddPlaceForm onAdded={reload} />
 
-          <button type="button" className="guest-breakdown-toggle" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} style={{ marginTop: 20 }}>
-            <span className="section-title" style={{ marginTop: 0 }}>
-              Lugares frecuentes
+          {/* Petición real (17/10/2026): «Lugares frecuentes» pasaba muy desapercibido y costaba encontrarlo: tarjeta grande, con el título grande y
+              cuántos lugares hay guardados. Sigue siendo plegable. */}
+          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen}>
+            <span className="places-toggle-icon" aria-hidden="true">
+              🏠
             </span>
-            <span className="guest-breakdown-chevron" aria-hidden="true">
+            <span className="places-toggle-text">
+              <span className="places-toggle-title">Lugares frecuentes</span>
+              <span className="places-toggle-sub">
+                {places.length === 0 ? 'Ninguno guardado todavía' : places.length === 1 ? '1 lugar guardado' : `${places.length} lugares guardados`} ·{' '}
+                {placesOpen ? 'toca para ocultar' : 'toca para ver'}
+              </span>
+            </span>
+            <span className="places-toggle-chevron" aria-hidden="true">
               {placesOpen ? '︿' : '⌄'}
             </span>
           </button>
           {placesOpen && (
             <div className="event-list">
               {places.map((place) => (
-                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onRoute={setRoutePolyline} />
+                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onNotifyChanged={(enabled) => setPlaces((prev) => prev.map((p) => (p.id === place.id ? { ...p, notifyArrivals: enabled } : p)))} onRoute={setRoutePolyline} />
               ))}
               {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
             </div>
@@ -1207,12 +1216,16 @@ function PlaceRow({
   locations,
   members,
   onChanged,
+  onNotifyChanged,
   onRoute,
 }: {
   place: LocationPlace
   locations: MemberLocation[]
   members: FamilyMember[]
   onChanged: () => void
+  // Al marcar o desmarcar el aviso NO se vuelve a pedir nada ni se repinta el resto de la pantalla (mapa, miembros, fotos): solo se cambia ese lugar en la
+  // lista. Con el refresco, la pantalla se repintaba y el móvil saltaba (petición real, 17/10/2026: «cuando tico o destico se me sale de la pantalla»).
+  onNotifyChanged: (enabled: boolean) => void
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — se llama con el
   // trazado en cuanto se calcula el tiempo en coche, para dibujarlo en el mapa de arriba.
   onRoute: (polyline: string | null) => void
@@ -1240,7 +1253,14 @@ function PlaceRow({
   const [editName, setEditName] = useState(place.name)
   const [editCategory, setEditCategory] = useState(place.category ?? '')
   const [editRadius, setEditRadius] = useState(place.radiusM)
-  const [editNotify, setEditNotify] = useState(place.notifyArrivals)
+  // «Avisarme cuando alguien llegue o se vaya» va VISIBLE en la tarjeta (petición real, 17/10/2026: sin entrar a «Editar»): se guarda al marcarlo o desmarcarlo.
+  const [notifyOn, setNotifyOn] = useState(place.notifyArrivals)
+  // Ref y no estado: la casilla NO se desactiva mientras guarda (al desactivarse un campo con el foco, el móvil puede saltar de sitio).
+  const notifyBusyRef = useRef(false)
+  const [notifyError, setNotifyError] = useState<string | null>(null)
+  useEffect(() => {
+    setNotifyOn(place.notifyArrivals)
+  }, [place.notifyArrivals])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -1248,9 +1268,29 @@ function PlaceRow({
     setEditName(place.name)
     setEditCategory(place.category ?? '')
     setEditRadius(place.radiusM)
-    setEditNotify(place.notifyArrivals)
     setEditError(null)
     setEditing(true)
+  }
+
+  async function handleToggleNotify(enabled: boolean) {
+    if (notifyBusyRef.current) return
+    // La pantalla se queda donde está: se apunta cuánto se había bajado y se restaura tras repintar, pase lo que pase.
+    const scrollY = window.scrollY
+    const keepScroll = () => requestAnimationFrame(() => window.scrollTo(0, scrollY))
+    notifyBusyRef.current = true
+    setNotifyOn(enabled)
+    setNotifyError(null)
+    keepScroll()
+    try {
+      await setPlaceNotifyArrivals(place.id, enabled)
+      onNotifyChanged(enabled)
+    } catch (err) {
+      setNotifyOn(!enabled)
+      setNotifyError(errorMessage(err, 'No se pudo cambiar el aviso'))
+    } finally {
+      notifyBusyRef.current = false
+      keepScroll()
+    }
   }
 
   async function handleSaveEdit(e: FormEvent) {
@@ -1259,7 +1299,6 @@ function PlaceRow({
     setEditError(null)
     try {
       await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius })
-      if (editNotify !== place.notifyArrivals) await setPlaceNotifyArrivals(place.id, editNotify)
       setEditing(false)
       onChanged()
     } catch (err) {
@@ -1328,10 +1367,6 @@ function PlaceRow({
           Radio (m)
           <input type="number" value={editRadius} onChange={(e) => setEditRadius(Number(e.target.value))} />
         </label>
-        <label className="inline-fields" style={{ alignItems: 'center' }}>
-          <input type="checkbox" checked={editNotify} onChange={(e) => setEditNotify(e.target.checked)} />
-          🔔 Avisarme cuando alguien llegue o se vaya de aquí
-        </label>
         {editError && <p className="error">{editError}</p>}
         <div className="inline-fields">
           <button type="submit" disabled={editSaving}>
@@ -1355,7 +1390,11 @@ function PlaceRow({
           </span>
         )}
         <p className="muted">Radio {place.radiusM} m</p>
-        {place.notifyArrivals && <p className="muted">🔔 Avisa cuando alguien llega o se va de aquí</p>}
+        <label className="inline-fields" style={{ alignItems: 'center' }}>
+          <input type="checkbox" checked={notifyOn} onChange={(e) => void handleToggleNotify(e.target.checked)} />
+          🔔 Avisarme cuando alguien llegue o se vaya de aquí
+        </label>
+        {notifyError && <p className="error">{notifyError}</p>}
         {ranked.map(({ member, loc, dist }, i) => {
           const near = dist <= place.radiusM
           const nearest = i === 0

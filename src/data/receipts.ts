@@ -2,16 +2,13 @@ import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import { toDateStr } from '@/domain/dateRanges'
+import { pickTicketExpenseMatch, sourceAfterTicketMatch, TICKET_MATCH_SOURCES, TICKET_MATCH_WINDOW_DAYS } from '@/domain/ticketExpenseMatch'
 import type { Receipt } from '@/domain/types'
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00')
   d.setDate(d.getDate() + days)
   return toDateStr(d)
-}
-
-function daysBetween(a: string, b: string): number {
-  return Math.abs(new Date(a + 'T00:00').getTime() - new Date(b + 'T00:00').getTime()) / 86_400_000
 }
 
 async function currentFamilyId(): Promise<string> {
@@ -82,32 +79,34 @@ export async function uploadReceipt(input: {
     // era ±3 días, pero se vio en producción un ticket fotografiado 4
     // días después de la compra (fin de semana) que se coló como
     // duplicado por quedarse fuera del margen.
+    // Orígenes: «banco», uno ya enlazado al banco sin ticket propio («ticket_banco», p. ej. un apunte a mano que el banco ya unió) o apuntado a mano
+    // (ver domain/ticketExpenseMatch.ts). Se pide el conjunto de gastos que ya tienen ticket para no robarle el gasto a otro.
     const { data: candidates } = await supabase
       .from('expenses')
-      .select('id, amount, expense_date')
+      .select('id, amount, expense_date, source')
       .eq('family_id', familyId)
-      .eq('source', 'banco')
+      .in('source', [...TICKET_MATCH_SOURCES])
       .eq('is_income', false)
-      .gte('expense_date', addDays(input.receiptDate, -7))
-      .lte('expense_date', addDays(input.receiptDate, 7))
-    // Con ±7 días cabe más de un candidato del mismo importe exacto —
-    // se queda con el de fecha más cercana al ticket, no el primero que
-    // devuelva la consulta (sin orden garantizado).
-    const match = (candidates ?? [])
-      .filter((c) => Math.abs(Number(c.amount) - input.totalAmount!) < 0.01)
-      .sort((a, b) => daysBetween(a.expense_date, input.receiptDate) - daysBetween(b.expense_date, input.receiptDate))[0]
+      .gte('expense_date', addDays(input.receiptDate, -TICKET_MATCH_WINDOW_DAYS))
+      .lte('expense_date', addDays(input.receiptDate, TICKET_MATCH_WINDOW_DAYS))
+    const candidateIds = (candidates ?? []).map((c) => c.id as string)
+    const { data: linkedRows } = candidateIds.length > 0 ? await supabase.from('receipts').select('expense_id').in('expense_id', candidateIds) : { data: [] }
+    const linkedIds = new Set((linkedRows ?? []).map((r) => r.expense_id as string))
+    // Con ±7 días cabe más de un candidato del mismo importe exacto: se queda con el de fecha más cercana al ticket.
+    const match = pickTicketExpenseMatch(
+      (candidates ?? []).map((c) => ({ id: c.id as string, amount: c.amount as number, expense_date: c.expense_date as string, source: c.source as string })),
+      { amount: input.totalAmount, receiptDate: input.receiptDate },
+      linkedIds,
+    )
 
     if (match) {
-      const { data: alreadyLinked } = await supabase.from('receipts').select('id').eq('expense_id', match.id).maybeSingle()
-      if (!alreadyLinked) {
-        const { error: updateExpenseError } = await supabase
-          .from('expenses')
-          // Sin categoría en el ticket (NULL) no se pisa la que ya tenga el gasto del banco.
-          .update({ source: 'ticket_banco', ...(input.category != null ? { category: input.category } : {}), store: input.store || null })
-          .eq('id', match.id)
-        if (updateExpenseError) throw updateExpenseError
-        expenseId = match.id
-      }
+      const { error: updateExpenseError } = await supabase
+        .from('expenses')
+        // Sin categoría en el ticket (NULL) no se pisa la que ya tenga el gasto.
+        .update({ source: sourceAfterTicketMatch(match.source), ...(input.category != null ? { category: input.category } : {}), store: input.store || null })
+        .eq('id', match.id)
+      if (updateExpenseError) throw updateExpenseError
+      expenseId = match.id
     }
 
     if (expenseId === null) {

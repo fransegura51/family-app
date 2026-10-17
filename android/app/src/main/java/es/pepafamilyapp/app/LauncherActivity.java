@@ -54,7 +54,12 @@ public class LauncherActivity extends Activity {
         finish();
     }
 
-    /** Razón con la que Android dice que cerró la app la última vez, si fue un cierre malo (fallo, bloqueo, memoria...). */
+    /**
+     * Razón con la que Android dice que cerró la app la última vez, si fue un FALLO de verdad (error, bloqueo, no responde, no arranca).
+     * Que el sistema la cierre por poca memoria o por una señal es normal en un móvil con muchas apps (y la ubicación con la app cerrada sigue
+     * funcionando por el receptor de posiciones): no se enseña la pantalla roja, solo se anota en el registro del móvil (pepa_bg_geo_diag), que la app
+     * sube al servidor al abrirse.
+     */
     private String badExitSinceLastTime(SharedPreferences prefs) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return null;
@@ -73,11 +78,15 @@ public class LauncherActivity extends Activity {
                 boolean bad = reason == ApplicationExitInfo.REASON_CRASH
                     || reason == ApplicationExitInfo.REASON_CRASH_NATIVE
                     || reason == ApplicationExitInfo.REASON_ANR
-                    || reason == ApplicationExitInfo.REASON_INITIALIZATION_FAILURE
-                    || reason == ApplicationExitInfo.REASON_SIGNALED
+                    || reason == ApplicationExitInfo.REASON_INITIALIZATION_FAILURE;
+                boolean systemKill = reason == ApplicationExitInfo.REASON_SIGNALED
                     || reason == ApplicationExitInfo.REASON_LOW_MEMORY
                     || reason == ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE
                     || reason == ApplicationExitInfo.REASON_DEPENDENCY_DIED;
+                if (systemKill) {
+                    NativeLocationReceiver.diag(this, "Android cerró PEPA: " + reasonName(reason) + " a las "
+                        + new java.text.SimpleDateFormat("dd/MM HH:mm:ss", java.util.Locale.US).format(new java.util.Date(info.getTimestamp())));
+                }
                 if (bad) {
                     out.append("Android dice: ").append(reasonName(reason)).append(" (código ").append(reason).append(")\n")
                         .append("Estado: ").append(info.getStatus()).append("\n")

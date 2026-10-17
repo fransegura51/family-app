@@ -8,6 +8,7 @@
 // lector de pantalla le sigue leyendo el <input> real (su valor/accesibilidad no cambian), el
 // <span> de encima lleva aria-hidden.
 import type { ChangeEvent, InputHTMLAttributes } from 'react'
+import { formatDate } from '@/domain/dateFormat'
 
 export interface DateFieldProps {
   value: string
@@ -34,12 +35,7 @@ export interface DateFieldProps {
 // Mismo criterio en toda la app: fecha corta en formato español (13/10/2026) — nunca el formato
 // nativo del dispositivo (que en inglés/US sería 10/13/2026 y confundiría).
 function formatDateFieldValue(value: string): string {
-  const d = new Date(value + 'T00:00')
-  if (Number.isNaN(d.getTime())) return value
-  // Explícito (day/month/year '2-digit'/'numeric') en vez del formato por defecto de
-  // toLocaleDateString('es-ES') — sin options, algunos motores no rellenan con cero el día/mes de un
-  // dígito (p. ej. "3/5/2020" en vez de "03/05/2020"), inconsistente con el resto de la app.
-  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  return formatDate(value)
 }
 
 export function DateField({

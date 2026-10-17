@@ -20,6 +20,7 @@ import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { Suggestion } from '@/domain/types'
 import sugerenciasHeaderImg from '@/assets/sugerencias/sugerencias-header.jpg'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { formatDateFromTimestamp } from '@/domain/dateFormat'
 
 const STATUS_LABELS: Record<Suggestion['status'], string> = {
   pendiente: '🕓 Pendiente',
@@ -123,7 +124,7 @@ export function SuggestionsScreen() {
                 {STATUS_LABELS[s.status]}
               </strong>
               <span className="muted" style={{ fontSize: 12 }}>
-                {s.createdAt.slice(0, 10)}
+                {formatDateFromTimestamp(s.createdAt)}
               </span>
             </div>
             <p style={{ margin: 0 }}>{s.message}</p>

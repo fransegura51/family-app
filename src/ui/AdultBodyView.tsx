@@ -4,6 +4,7 @@ import { bmi, bmiBand, changeOverDays, filterRange, goalProgress, RANGE_DAYS, ty
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
+import { formatDate } from '@/domain/dateFormat'
 
 // Vista de adultos de Peso y medidas, con un diseño más profesional:
 // peso actual con su tendencia, objetivo con barra de progreso, IMC con
@@ -14,7 +15,7 @@ const BAND_COLOR: Record<BmiBand, string> = { bajo: '#1c7ed6', normal: '#2f9e44'
 const ACCENT = '#364fc7'
 
 const fmt = (v: number, digits = 1) => v.toLocaleString('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits })
-const fmtDate = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtDate = (d: string) => formatDate(d)
 const fmtShort = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
 const todayStr = () => {
   const d = new Date()

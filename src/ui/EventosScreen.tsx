@@ -647,6 +647,7 @@ import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { GuestExportModal } from '@/ui/GuestExportModal'
 import { InvitationBackground, InvitationCanvasEditor, InvitationCanvasView, InvitationTemplatePicker } from '@/ui/InvitationDesigner'
 import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/domain/invitationAutoCompose'
+import { formatDate, formatDateTime } from '@/domain/dateFormat'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -753,9 +754,8 @@ function isEventStructuredByMoments(event: Pick<FamilyEvent, 'type' | 'enabledMo
 // Fecha corta para la cabecera del evento ("Domingo, 18/10/2026"), para que quepa en una línea.
 function eventShortDateLabel(ev: FamilyEvent): string {
   if (ev.dateStatus === 'pendiente' || !ev.eventDate) return 'Sin fecha todavía'
-  const [y, m, d] = ev.eventDate.split('-')
   const weekday = new Date(`${ev.eventDate}T00:00`).toLocaleDateString('es-ES', { weekday: 'long' })
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${d}/${m}/${y}`
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${formatDate(ev.eventDate)}`
 }
 
 // "Ponlo en marcha" del alta de Eventos (Fase 1 del "inicio inteligente", 2026-09-30) — sustituye el
@@ -4258,9 +4258,9 @@ function OffersComparison({
             )}
             {(o.offerDate || o.validUntil) && (
               <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
+                {o.offerDate ? `Oferta: ${formatDate(o.offerDate)}` : ''}
                 {o.offerDate && o.validUntil ? ' · ' : ''}
-                {o.validUntil ? `Válida hasta: ${o.validUntil}` : ''}
+                {o.validUntil ? `Válida hasta: ${formatDate(o.validUntil)}` : ''}
               </p>
             )}
             {o.conditions && (
@@ -4546,7 +4546,7 @@ function AddOfferForm({
             <option value="">No, es una oferta nueva</option>
             {existingOffers.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.providerName} · {o.amount.toFixed(2)} € {o.offerDate ? `(${o.offerDate})` : ''}
+                {o.providerName} · {o.amount.toFixed(2)} € {o.offerDate ? `(${formatDate(o.offerDate)})` : ''}
               </option>
             ))}
           </select>
@@ -4913,9 +4913,9 @@ function ProviderOffersPanel({
                 )}
                 {(o.offerDate || o.validUntil) && (
                   <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-                    {o.offerDate ? `Oferta: ${o.offerDate}` : ''}
+                    {o.offerDate ? `Oferta: ${formatDate(o.offerDate)}` : ''}
                     {o.offerDate && o.validUntil ? ' · ' : ''}
-                    {o.validUntil ? `Válida hasta: ${o.validUntil}` : ''}
+                    {o.validUntil ? `Válida hasta: ${formatDate(o.validUntil)}` : ''}
                   </p>
                 )}
                 {o.conditions && (
@@ -4997,7 +4997,7 @@ function ProviderOfferHistoryPanel({ globalProviderId, onUseAsReference }: { glo
                   <strong>{e.name ? `${e.name} · ` : ''}{e.amount.toFixed(2)} €</strong>
                   <p className="muted" style={{ fontSize: 11, margin: '2px 0' }}>
                     {e.eventTitle ?? 'Sin evento'}
-                    {e.offerDate ? ` · ${e.offerDate}` : ''}
+                    {e.offerDate ? ` · ${formatDate(e.offerDate)}` : ''}
                   </p>
                 </div>
                 <span className="muted" style={{ fontSize: 11 }}>{OFFER_STATUS_LABELS[e.status]}</span>
@@ -5123,7 +5123,7 @@ function AddLooseOfferForm({
             <option value="">No, es una oferta nueva</option>
             {existingOffers.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.amount.toFixed(2)} € {o.offerDate ? `(${o.offerDate})` : ''}
+                {o.amount.toFixed(2)} € {o.offerDate ? `(${formatDate(o.offerDate)})` : ''}
               </option>
             ))}
           </select>
@@ -13587,7 +13587,7 @@ function BudgetItemHistoryPanel({ budgetItemId }: { budgetItemId: string }) {
           {history !== null && history.length === 0 && <p className="muted">Todavía no hay cambios registrados.</p>}
           {history?.map((h) => (
             <p key={h.id} className="muted" style={{ fontSize: 12, margin: '2px 0' }}>
-              {new Date(h.changedAt).toLocaleString('es-ES')} · {h.field}: {h.oldValue ?? '—'} → {h.newValue ?? '—'}
+              {formatDateTime(h.changedAt)} · {h.field}: {h.oldValue ?? '—'} → {h.newValue ?? '—'}
             </p>
           ))}
         </div>
@@ -14726,7 +14726,7 @@ function PaymentsSection({ event }: { event: FamilyEvent }) {
           <span className="muted" style={{ fontSize: 12, textAlign: 'right' }}>
             {p.totalAmount.toFixed(2)} € · pagado {p.depositPaid.toFixed(2)} € · pendiente {remaining.toFixed(2)} €
             <br />
-            {p.dueDate ? `vence ${p.dueDate} · ` : ''}
+            {p.dueDate ? `vence ${formatDate(p.dueDate)} · ` : ''}
             {PAYMENT_STATUS_LABELS[p.status]}
           </span>
         </div>
@@ -14960,7 +14960,7 @@ function PaymentEntriesPanel({ payment, onChanged }: { payment: EventPayment; on
           {entries === null && <p className="muted">Cargando…</p>}
           {entries?.map((e) => (
             <div key={e.id} className="inline-fields" style={{ alignItems: 'center', fontSize: 13 }}>
-              <span style={{ flex: 1 }}>{e.paidAt ?? 'Sin fecha'}</span>
+              <span style={{ flex: 1 }}>{formatDate(e.paidAt, 'Sin fecha')}</span>
               <span>{e.amount.toFixed(2)} €</span>
               {e.notes && <span className="muted" style={{ fontSize: 11 }}>{e.notes}</span>}
               <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar abono" onConfirm={() => handleDelete(e)} />
@@ -15028,7 +15028,7 @@ function PaymentBondPanel({ payment, onChanged }: { payment: EventPayment; onCha
         </div>
       ) : (
         <p className="muted" style={{ fontSize: 13, margin: '2px 0' }}>
-          {payment.bondAmount!.toFixed(2)} € · {payment.bondReturnedAt ? `devuelta el ${payment.bondReturnedAt}` : 'retenida'}
+          {payment.bondAmount!.toFixed(2)} € · {payment.bondReturnedAt ? `devuelta el ${formatDate(payment.bondReturnedAt)}` : 'retenida'}
           {' · '}
           <button type="button" className="link-button" style={{ display: 'inline', padding: 0 }} onClick={() => setEditing(true)}>
             editar

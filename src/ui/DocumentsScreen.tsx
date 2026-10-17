@@ -19,6 +19,7 @@ import documentosHeaderImg from '@/assets/documentos/documentos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { analyzeDocumentExpiry } from '@/services/documentExpiry'
+import { formatDate } from '@/domain/dateFormat'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -395,7 +396,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
       <div className="task-card-main">
         <strong>{doc.title}</strong>
         <p className="muted" style={{ margin: '2px 0 0' }}>
-          {doc.expiryDate ? `📅 Vence el ${new Date(doc.expiryDate + 'T00:00').toLocaleDateString('es-ES')}` : 'Sin fecha de vencimiento'}
+          {doc.expiryDate ? `📅 Vence el ${formatDate(doc.expiryDate)}` : 'Sin fecha de vencimiento'}
         </p>
       </div>
       {shareError && <p className="error">{shareError}</p>}

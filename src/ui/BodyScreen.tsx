@@ -20,6 +20,7 @@ import { AdultBodyView } from '@/ui/AdultBodyView'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
+import { formatDate } from '@/domain/dateFormat'
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -142,11 +143,7 @@ export function BodyTab() {
         </button>
         {p.caption && <p className="muted">{p.caption}</p>}
         <p className="muted gallery-item-date">
-          {new Date(p.photoDate + 'T00:00').toLocaleDateString('es-ES', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          })}
+          {formatDate(p.photoDate)}
         </p>
       </div>
     ))}
@@ -306,11 +303,7 @@ function GeneralWeightView({
           <div key={m.id} className="card task-card">
             <div className="task-card-main">
               <strong>
-                {new Date(m.measuredDate + 'T00:00').toLocaleDateString('es-ES', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {formatDate(m.measuredDate)}
               </strong>
               <p className="muted">
                 {m.weightKg != null && `${m.weightKg} kg`}

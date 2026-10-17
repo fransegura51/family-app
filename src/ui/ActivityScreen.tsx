@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listRecentActivity, type ActivityEntry } from '@/data/activity'
 import { describeActivity } from '@/domain/activity'
+import { formatDateTime } from '@/domain/dateFormat'
 
 export function ActivityScreen() {
   const [entries, setEntries] = useState<ActivityEntry[]>([])
@@ -27,7 +28,7 @@ export function ActivityScreen() {
             <div key={e.id} className="card">
               <p>{describeActivity(e)}</p>
               <p className="muted">
-                {new Date(e.createdAt).toLocaleString('es-ES', { dateStyle: 'medium', timeStyle: 'short' })}
+                {formatDateTime(e.createdAt)}
               </p>
             </div>
           ))}

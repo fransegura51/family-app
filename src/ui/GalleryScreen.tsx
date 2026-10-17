@@ -6,6 +6,7 @@ import galeriaHeaderImg from '@/assets/galeria/galeria-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { formatDateFromTimestamp } from '@/domain/dateFormat'
 
 // Petición real: "Galería: compartir una o varias fotos" — cada foto ya
 // tiene su URL firmada cargada (reload la pide de golpe para toda la
@@ -139,7 +140,7 @@ export function GalleryScreen() {
             )}
             {p.caption && <p className="muted">{p.caption}</p>}
             <p className="muted gallery-item-date">
-              {new Date(p.createdAt).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {formatDateFromTimestamp(p.createdAt)}
             </p>
           </div>
         ))}

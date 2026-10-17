@@ -14,6 +14,7 @@ import {
 } from '@/domain/growth'
 import type { BodyMeasurement, FamilyMember } from '@/domain/types'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
+import { formatDate } from '@/domain/dateFormat'
 
 // Percentiles de crecimiento con los patrones de la OMS: peso, altura y
 // perímetro cefálico de un bebé (o niño pequeño, hasta los 5 años) con su
@@ -63,7 +64,7 @@ export function formatAge(months: number): string {
 }
 
 const fmtNum = (v: number, digits = 1) => v.toLocaleString('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits })
-const fmtDate = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })
+const fmtDate = (d: string) => formatDate(d)
 
 interface PointInfo {
   id: string

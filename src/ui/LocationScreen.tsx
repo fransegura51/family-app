@@ -65,6 +65,7 @@ import { describePositionAge } from '@/domain/positionFreshness'
 import { googleMapsUrl } from '@/domain/memberWhere'
 import { consumeMemberFocus, onMemberFocus } from '@/services/mapFocus'
 import { pastelPalette } from '@/domain/colors'
+import { formatTime } from '@/domain/dateFormat'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -1079,7 +1080,7 @@ function groupVisitsByDay(visits: LocationPlaceVisit[]): [string, LocationPlaceV
 }
 
 function placeHhmm(iso: string): string {
-  return new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  return formatTime(iso)
 }
 
 function placeDayLabel(day: string): string {

@@ -1,4 +1,4 @@
-// Correcciones visuales de Comunidad (17/10/2026): menú superior en dos niveles, «Invitar amigos» al final de la portada, generador de alias en el formulario y
+// Correcciones visuales de Comunidad (17/10/2026): marco con «☰ Menú» desplegable y barra de herramientas (antes, menú superior en dos niveles), «Invitar amigos» al final de la portada, generador de alias en el formulario y
 // tarjeta de Comunidad en Inicio. Se leen los fuentes (estructura) y el CSS; el comportamiento real se comprueba además en el navegador.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -7,53 +7,86 @@ import layoutSrc from '@/ui/community/CommunityLayout.tsx?raw'
 import homeSrc from '@/ui/community/CommunityHome.tsx?raw'
 import aliasSrc from '@/ui/community/AliasDialog.tsx?raw'
 import homeScreenSrc from '@/ui/HomeScreen.tsx?raw'
+import menuSrc from '@/ui/community/CommunityMenu.tsx?raw'
+import toolbarSrc from '@/ui/community/CommunityToolbar.tsx?raw'
+import stateSrc from '@/state/communityMenu.ts?raw'
+import { communityToolbarItems } from '@/ui/community/CommunityToolbar'
+import { nextFloatingHidden } from '@/ui/community/useHideFloatingOnScroll'
 import { NAV_SECTION_COLORS, NAV_TABS, navSectionId } from '@/domain/navTabs'
 
 const css = readFileSync(join(process.cwd(), 'src/ui/community/community.css'), 'utf8')
 
-describe('menú superior de Comunidad: dos niveles, sin desplazamiento lateral', () => {
-  it('Portada, Recetas y cocina y Hogar y familia son las principales; el resto va en «Más opciones» y no se ha quitado ninguna', () => {
-    const main = layoutSrc.slice(layoutSrc.indexOf('const LINKS'), layoutSrc.indexOf('export function CommunityLayout'))
-    for (const label of ['Portada', '🍲 Recetas y cocina', '🏡 Hogar y familia']) {
-      const line = main.split('\n').find((l) => l.includes(`'${label}'`))
-      expect(line, label).toBeDefined()
-      expect(line, label).not.toContain('secondary')
+describe('marco de Comunidad: «☰ Menú» desplegable + barra de herramientas (sustituyen a las cuatro pestañas grandes)', () => {
+  it('el menú desplegable tiene los tres destinos (Portada, Recetas y cocina, Hogar y familia) y reutiliza las clases del desplegable de Compras', () => {
+    for (const label of ['Portada', 'Recetas y cocina', 'Hogar y familia']) expect(stateSrc, label).toContain(`label: '${label}'`)
+    for (const cls of ['economia-menu-dropdown', 'economia-menu-row', 'economia-menu-item', 'economia-menu-pin', 'economia-menu-edit-toggle', 'economia-menu-edit-controls']) {
+      expect(menuSrc, cls).toContain(cls)
     }
-    for (const label of ['🔎 Buscar', '🔖 Guardados', '📝 Borradores', '🔔 Novedades', '🏅 Medallas', '🙂 Mi perfil']) {
-      const line = main.split('\n').find((l) => l.includes(`'${label}'`))
-      expect(line, label).toContain('secondary: true')
-    }
-    // Administración (solo para la administración) sigue disponible, dentro de «Más opciones».
-    expect(layoutSrc).toContain('🛠️ Administración')
-    expect(layoutSrc.indexOf('🛠️ Administración')).toBeGreaterThan(layoutSrc.indexOf('community-nav-more-list'))
-    expect(layoutSrc).toContain('Más opciones')
+    // El diseño antiguo (cuatro botones grandes + «Más opciones») ya no existe.
+    expect(layoutSrc).not.toContain('community-nav')
+    expect(layoutSrc).not.toContain('Más opciones')
   })
 
-  it('el botón anuncia si está abierto (aria-expanded / aria-controls) y el panel se cierra con Escape, tocando fuera, al elegir y con «Cerrar»', () => {
-    expect(layoutSrc).toContain('aria-expanded={moreOpen}')
-    expect(layoutSrc).toContain('aria-controls="community-nav-more"')
+  it('el botón «☰ Menú» anuncia si está abierto (aria-expanded / aria-controls) y el panel se cierra con Escape, tocando fuera, al elegir y con «Cerrar»', () => {
+    expect(layoutSrc).toContain('aria-expanded={menuOpen}')
+    expect(layoutSrc).toContain('aria-controls="community-menu"')
+    expect(menuSrc).toContain('id="community-menu"')
     expect(layoutSrc).toContain("e.key === 'Escape'")
     expect(layoutSrc).toContain("document.addEventListener('mousedown', onOutside)")
     expect(layoutSrc).toContain("document.addEventListener('touchstart', onOutside")
     expect(layoutSrc).toContain('}, [location.pathname])')
-    expect(layoutSrc).toContain('>\n              Cerrar\n')
+    expect(menuSrc).toContain('onClick={onClose}')
   })
 
-  it('la sección elegida se destaca (active), también «Más opciones» cuando la página actual es una de sus opciones', () => {
-    expect(layoutSrc).toContain("'community-nav-link' + (isActive ? ' active' : '')")
-    expect(layoutSrc).toContain("(moreActive ? ' active' : '')")
+  it('el destino actual se destaca (active / aria-current) y los accesos «sacados» se ven como botones en la pantalla', () => {
+    expect(menuSrc).toContain("(activeKey === key ? ' active' : '')")
+    expect(menuSrc).toContain("aria-current={activeKey === key ? 'page' : undefined}")
+    expect(layoutSrc).toContain("className={'chip' + (activeKey === key ? ' chip-active' : '')}")
   })
 
-  it('el CSS reparte las principales en varias líneas si hace falta (flex-wrap) y no hay overflow-x en el menú; botones de 44 px', () => {
-    const nav = css.slice(css.indexOf('.community-nav {'), css.indexOf('.community-preview-banner,'))
-    expect(nav).toContain('flex-wrap: wrap')
-    expect(nav).not.toContain('overflow-x')
-    expect(nav).toContain('min-height: 44px')
+  it('Administración no está en la barra: es un enlace discreto dentro del menú y solo para la administración', () => {
+    expect(menuSrc).toContain('{isAdmin && !editMode && (')
+    expect(menuSrc).toContain('🛠️ Administración')
+    expect(communityToolbarItems('abc').map((i) => i.label)).not.toContain('Administración')
+    expect(toolbarSrc).not.toContain('paths.admin')
   })
 
-  it('los permisos siguen igual: solo lectura no ve Guardados, Borradores, Medallas ni Mi perfil', () => {
-    for (const l of ['Guardados', 'Borradores', 'Medallas', 'Mi perfil']) expect(layoutSrc, l).toMatch(new RegExp(`${l}', participates: true`))
-    expect(layoutSrc).toContain('canParticipate || !l.participates')
+  it('la barra tiene Buscar, Guardados, Borradores, Novedades, Mi perfil y Publicar (sin Medallas) y los permisos siguen igual en solo lectura', () => {
+    const labels = communityToolbarItems('abc').map((i) => i.label)
+    expect(labels).toEqual(['Buscar', 'Guardados', 'Borradores', 'Novedades', 'Mi perfil', 'Publicar'])
+    expect(labels).not.toContain('Medallas')
+    const readOnly = communityToolbarItems('abc').filter((i) => !i.participates).map((i) => i.label)
+    expect(readOnly).toEqual(['Buscar', 'Novedades'])
+    expect(toolbarSrc).toContain('canParticipate || !i.participates')
+  })
+
+  it('el CSS: toolbar en UNA fila sin desplazamiento lateral y botones de 48 px; «Publicar» más destacado; cabecera a todo el ancho y con su proporción', () => {
+    const bar = css.slice(css.indexOf('.community-toolbar {'), css.indexOf('/* Mientras se baja'))
+    expect(bar).toContain('display: flex')
+    expect(bar).not.toContain('flex-wrap')
+    expect(bar).not.toContain('overflow-x')
+    expect(bar).toContain('min-height: 48px')
+    expect(bar).toMatch(/\.community-toolbar-publish \{[^}]*flex: 1\.3/)
+    const header = css.slice(css.indexOf('.community-header {'), css.indexOf('/* Barra de herramientas'))
+    expect(header).toContain('margin: 0 -16px 8px')
+    expect(header).toContain('width: 100%')
+    expect(header).toContain('height: auto')
+    expect(header).not.toContain('max-height')
+    expect(header).not.toContain('object-fit')
+  })
+
+  it('los botones flotantes de arriba se esconden al bajar por la página y vuelven al subir (sin tapar texto ni fotos)', () => {
+    expect(layoutSrc).toContain('useHideFloatingOnScroll()')
+    expect(css).toContain('body.community-floating-hidden .voice-fab-round')
+    expect(nextFloatingHidden(false, 0, 40)).toBe(false) // arriba del todo: siempre a la vista
+    expect(nextFloatingHidden(false, 100, 300)).toBe(true) // bajando
+    expect(nextFloatingHidden(true, 300, 296)).toBe(true) // un temblor pequeño no los hace aparecer
+    expect(nextFloatingHidden(true, 300, 200)).toBe(false) // subiendo
+  })
+
+  it('ya no hay aviso de «Vista previa para administración»: Comunidad se ve igual para todas las personas con acceso', () => {
+    expect(layoutSrc).not.toContain('Vista previa para administración')
+    expect(layoutSrc).not.toContain('community-preview-banner')
   })
 })
 

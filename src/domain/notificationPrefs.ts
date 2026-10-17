@@ -1,10 +1,13 @@
-// Ajustes de avisos por persona: zona horaria, resumen diario de tareas y franja de avisos personales de Comunidad (tabla user_notification_prefs, 0260).
+// Ajustes de avisos por persona: zona horaria, avisos de tareas (hoy y atrasadas, 0283) y franja de avisos personales de Comunidad (tabla user_notification_prefs, 0260).
 // Lógica pura: valores por defecto, validación y lista de zonas horarias.
 
 export interface NotificationPrefs {
   timezone: string
-  dailySummaryEnabled: boolean
-  dailySummaryTime: string // «HH:MM»
+  // Avisos de tareas (0283): dos resúmenes diarios independientes, cada uno con su interruptor y su hora «HH:MM» (24 h, en la zona horaria de la persona).
+  taskTodayEnabled: boolean
+  taskTodayTime: string
+  taskOverdueEnabled: boolean
+  taskOverdueTime: string
   personalCommunityMode: 'any' | 'window'
   personalWindowStart: string
   personalWindowEnd: string
@@ -18,11 +21,14 @@ export const COMMUNITY_SUGGESTION_MIN_HOURS = 6
 export const COMMUNITY_SUGGESTION_MAX_HOURS = 720
 export const COMMUNITY_SUGGESTION_DEFAULT_HOURS = 48
 
-// Quien ya existe empieza en Europe/Madrid, a las 08:00, con el resumen activado.
+// Quien no ha guardado nada empieza en Europe/Madrid con los dos avisos de tareas activados: las de hoy a las 08:00 y las atrasadas a las 09:00 (los mismos valores por
+// defecto que usa el servidor; quien ya había elegido hora para el resumen único conserva su elección para «hoy», ver 0283).
 export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   timezone: 'Europe/Madrid',
-  dailySummaryEnabled: true,
-  dailySummaryTime: '08:00',
+  taskTodayEnabled: true,
+  taskTodayTime: '08:00',
+  taskOverdueEnabled: true,
+  taskOverdueTime: '09:00',
   personalCommunityMode: 'any',
   personalWindowStart: '08:00',
   personalWindowEnd: '21:00',

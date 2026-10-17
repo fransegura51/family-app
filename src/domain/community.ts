@@ -200,6 +200,8 @@ export interface PostDetail extends Omit<PostCard, 'blockedByMe'> {
   recipe: PublicRecipe | null
   // Menú semanal oficial (solo en las publicaciones de tipo `menu`): 7 días × comida y cena, con sus recetas. Sin leer: se normaliza con parseMenu().
   menu?: unknown
+  // Recetas estructuradas de la publicación (0282), sin leer: se normalizan con parsePostRecipes(). null/ausente = la publicación no tiene recetas importables.
+  variants?: unknown
   articleSources: unknown
   isMine: boolean
   followingConversation: boolean

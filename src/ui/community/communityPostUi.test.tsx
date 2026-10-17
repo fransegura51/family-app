@@ -451,8 +451,9 @@ describe('comentarios', () => {
 })
 
 describe('campo para comentar', () => {
-  it('siempre accesible: fijo abajo en móvil, 16 px (sin zoom en iPhone), una foto como máximo y respuesta con quién', () => {
-    expect(css).toMatch(/\.community-composer\s*\{[^}]*position:\s*sticky[^}]*bottom:/)
+  it('formulario completo al final de los comentarios (no es una capa fija), 16 px (sin zoom en iPhone), una foto como máximo y respuesta con quién', () => {
+    expect(css).toMatch(/\.community-composer\s*\{[^}]*margin-top/)
+    expect(css).not.toMatch(/\.community-composer\s*\{[^}]*position:\s*(sticky|fixed)/)
     expect(css).toMatch(/\.community-composer-field textarea\s*\{[^}]*font-size:\s*16px/)
     const html = render(<CommentComposer postId="p1" replyTarget={{ id: 'c1', rootId: 'c1', alias: 'Cocinillas' }} onCancelReply={noop} onPosted={noop} />)
     expect(html).toContain('Respondiendo a')

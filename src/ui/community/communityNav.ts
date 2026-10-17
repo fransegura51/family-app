@@ -5,7 +5,7 @@
 //   /comunidad/p/:id                publicación (query: nuevos=1, c=<id de comentario> para abrir en lo nuevo)
 //   /comunidad/nueva                crear (query: tipo=<kind>, seccion=<id>, borrador=<id>, receta=<id de receta privada>, titulo=<título precompletado>)
 //   /comunidad/editar/:id           editar una publicación propia
-//   /comunidad/borradores | /guardados | /buscar (query q=) | /novedades | /medallas | /normas
+//   /comunidad/borradores | /guardados | /buscar (query q=) | /recientes (Novedades: últimas publicaciones) | /novedades (comentarios sin leer) | /medallas | /normas
 //   /comunidad/u/:id                perfil público
 //   /comunidad/mi-perfil            ajustes de mi perfil público, bloqueos, temas favoritos…
 //   /comunidad/admin                Centro de Mando (solo administración)
@@ -46,6 +46,8 @@ export const paths = {
   saved: `${COMMUNITY_BASE}/guardados`,
   search: (q?: string) => `${COMMUNITY_BASE}/buscar${q ? `?q=${encodeURIComponent(q)}` : ''}`,
   news: `${COMMUNITY_BASE}/novedades`,
+  // «✨ Novedades» de la barra: las publicaciones más recientes (la lista de comentarios sin leer sigue en `news`, ligada a los avisos personales).
+  recent: `${COMMUNITY_BASE}/recientes`,
   medals: `${COMMUNITY_BASE}/medallas`,
   rules: `${COMMUNITY_BASE}/normas`,
   profile: (id: string) => `${COMMUNITY_BASE}/u/${id}`,

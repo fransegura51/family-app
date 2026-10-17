@@ -5,7 +5,13 @@
 // ANTES de esa mejora no lo tienen: `parseTaskSummary` devuelve null y la pantalla lo explica sin inventar nada (enseña el texto que sí se guardó y lleva a Calendario).
 import { calendarEventLink, isIsoDate } from '@/domain/calendarDeepLink'
 
+// Dos avisos independientes (0283): las tareas de hoy y las atrasadas. Los dos llevan el mismo formato de listado completo.
 export const TASK_SUMMARY_CATEGORY = 'task_daily_summary'
+export const TASK_OVERDUE_CATEGORY = 'task_overdue_summary'
+
+export function isTaskSummaryCategory(category: string): boolean {
+  return category === TASK_SUMMARY_CATEGORY || category === TASK_OVERDUE_CATEGORY
+}
 
 export interface SummaryTask {
   id: string

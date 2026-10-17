@@ -417,6 +417,131 @@
   line-height: 44px;
 }
 
+/* ---- Recetas estructuradas de una publicación: «Importar a mi Cocina» (una o varias). */
+.community-post-recipes {
+  margin: 18px 0;
+  min-width: 0;
+}
+
+.community-post-recipes-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.community-post-recipe {
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--card-bg, #fff);
+  overflow-wrap: anywhere;
+}
+
+.community-post-recipe.pending {
+  border-color: var(--primary, #3b5bdb);
+}
+
+.community-post-recipe-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.community-post-recipe-pick {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.community-post-recipe-pick input {
+  width: 22px;
+  height: 22px;
+}
+
+.community-post-recipe-title h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.community-post-recipe-title p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.community-post-recipe-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.community-post-recipe-details summary::before {
+  content: '▸';
+  margin-right: 6px;
+}
+
+.community-post-recipe-details[open] summary::before {
+  content: '▾';
+}
+
+.community-post-recipe-details h4 {
+  margin: 8px 0 4px;
+  font-size: 14px;
+}
+
+.community-post-recipe-details ul,
+.community-post-recipe-details ol {
+  margin: 0 0 6px;
+  padding-left: 22px;
+}
+
+.community-post-recipe-import {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 6px;
+}
+
+.community-post-recipes-bar,
+.community-post-recipes-confirm,
+.community-post-recipes-done {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--primary, #3b5bdb);
+  background: #eef1ff;
+}
+
+.community-post-recipes-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.community-post-recipes-bar button,
+.community-post-recipes-confirm button {
+  min-height: 44px;
+}
+
+.community-post-recipes-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.community-post-recipes-done {
+  border-color: #2f9e44;
+  background: #ebfbee;
+}
+
 /* ---- Táctil (44 px) en el editor compartido de recetas, SOLO dentro de Comunidad: la Cocina conserva sus medidas. */
 .community-recipe-fields .recipe-step-actions .recipe-row-remove {
   height: 44px;

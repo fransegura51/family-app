@@ -8,6 +8,9 @@ import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommunityPhotosAllowed } from '@/ui/community/useCommunityPhotosAllowed'
 import '@/ui/community/communityPost.css'
 
+// Identificador del formulario: el botón «💬 Comentar» de la publicación lo busca por aquí.
+export const COMMENT_FORM_ID = 'community-comment-form'
+
 export interface ReplyTarget {
   // Comentario al que se responde (puede ser una respuesta: el servidor la cuelga igualmente del comentario raíz, con un solo nivel de sangría).
   id: string
@@ -15,7 +18,8 @@ export interface ReplyTarget {
   alias: string
 }
 
-// Campo para escribir un comentario. SIEMPRE accesible: en móvil queda fijo abajo (por encima del menú inferior) aunque la conversación esté plegada.
+// Formulario para escribir un comentario. Va COMPLETO al final de la sección de comentarios (en el flujo de la página: NO es una capa fija que tape el texto);
+// el botón compacto «💬 Comentar» de la publicación lleva hasta aquí cuando el formulario no está a la vista.
 // Una foto como máximo, con texto opcional. La foto se prepara al elegirla (se re-codifica y pierde ubicación/EXIF) pero NO se sube hasta pulsar «Publicar»,
 // para no dejar fotos huérfanas si la persona se arrepiente. Pide alias/normas la primera vez (requireParticipation).
 export function CommentComposer({
@@ -38,6 +42,7 @@ export function CommentComposer({
   const [preparing, setPreparing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   // Ruta de la foto ya subida (si falla la publicación y la persona reintenta, no se vuelve a subir).
   const uploadedRef = useRef<string | null>(null)
@@ -48,9 +53,11 @@ export function CommentComposer({
   const { photosAllowed, forbid } = useCommunityPhotosAllowed(expanded)
   const showPhotos = photosAllowed !== false
 
-  // Al elegir «Responder» el cursor va directo al campo.
+  // Al elegir «Responder» la pantalla baja hasta el formulario y el cursor va directo al campo.
   useEffect(() => {
-    if (replyTarget) textRef.current?.focus()
+    if (!replyTarget) return
+    formRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    textRef.current?.focus({ preventScroll: true })
   }, [replyTarget])
 
   // Se libera la vista previa de la foto al desmontar.
@@ -133,6 +140,8 @@ export function CommentComposer({
 
   return (
     <form
+      ref={formRef}
+      id={COMMENT_FORM_ID}
       className="community-composer"
       aria-label="Escribir un comentario"
       onSubmit={(e) => {

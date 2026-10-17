@@ -6,7 +6,7 @@ import { KIND_ICONS, KIND_LABELS, anecdoteTypeTag, type BlockedCard, type Hidden
 import { formatLongDate, isBlockedLayer, isHiddenNotice, sortPhotos, type PostLookup } from '@/domain/communityPost'
 import { ArticleSources } from '@/ui/community/ArticleSources'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
-import { CommentComposer, type ReplyTarget } from '@/ui/community/CommentComposer'
+import { COMMENT_FORM_ID, CommentComposer, type ReplyTarget } from '@/ui/community/CommentComposer'
 import { CommentsSection, type CommentsRefresh } from '@/ui/community/CommentsSection'
 import { ReadOnlyHint } from '@/ui/community/CommunityAccessNotices'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
@@ -16,6 +16,7 @@ import { PollBox } from '@/ui/community/PollBox'
 import { PostActions } from '@/ui/community/PostActions'
 import { MenuPostPanel } from '@/ui/community/menu/MenuPostPanel'
 import { MenuDietaryWarnings } from '@/ui/MenuDietaryWarnings'
+import { PostRecipesPanel } from '@/ui/community/recipes/PostRecipesPanel'
 import { RecipePanel } from '@/ui/community/recipes/RecipePanel'
 import { pageCrumbs, paths, postCrumbs } from '@/ui/community/communityNav'
 import { useCommunityPhotoUrls } from '@/ui/community/communityPhotoUrl'
@@ -234,6 +235,7 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
       {detail.kind === 'menu' ? <MenuPostPanel detail={detail} renderWarnings={(items) => <MenuDietaryWarnings items={items} />} /> : detail.body && <CommunityRichText text={detail.body} className="community-post-body" />}
 
       {detail.kind === 'receta' && <RecipePanel detail={detail} onChanged={reload} />}
+      <PostRecipesPanel postId={detail.id} variants={detail.variants} />
       {detail.kind === 'encuesta' && <PollBox postId={detail.id} canInteract={canInteract} />}
       {detail.kind === 'articulo' && <ArticleSources raw={detail.articleSources} />}
 
@@ -250,7 +252,7 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
         onReply={setReplyTarget}
       />
 
-      {/* El campo para comentar va el último y queda fijo abajo en móvil, aunque la conversación esté plegada. Sin interacción posible, no se enseña. */}
+      {/* El formulario para comentar va completo al final de los comentarios (no es una capa fija). Sin interacción posible, no se enseña. */}
       {canInteract && (
         <CommentComposer
           postId={detail.id}
@@ -264,7 +266,36 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
         />
       )}
 
+      {canInteract && <CommentQuickButton />}
+
       {lightbox !== null && <PhotoLightbox urls={photoUrls} startIndex={lightbox} label="Fotos de la publicación" onClose={() => setLightbox(null)} />}
     </article>
+  )
+}
+
+// Acceso rápido, compacto, al formulario de comentarios: solo aparece mientras el formulario NO está a la vista y se esconde al bajar por la página (igual que los
+// botones de Pepa), así que no tapa el texto que se está leyendo. Respeta el menú inferior de PEPA y la zona segura del iPhone (ver communityPost.css).
+function CommentQuickButton() {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => {
+    const el = document.getElementById(COMMENT_FORM_ID)
+    if (!el || typeof IntersectionObserver === 'undefined') return
+    const io = new IntersectionObserver(([entry]) => setVisible(!entry.isIntersecting))
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  if (!visible) return null
+  return (
+    <button
+      type="button"
+      className="community-comment-quick"
+      onClick={() => {
+        const el = document.getElementById(COMMENT_FORM_ID)
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el?.querySelector('textarea')?.focus({ preventScroll: true })
+      }}
+    >
+      💬 Comentar
+    </button>
   )
 }

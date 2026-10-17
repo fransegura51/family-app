@@ -45,7 +45,7 @@ describe('campana compacta en la cabecera de Inicio', () => {
 
 describe('detalle del aviso agrupado de tareas', () => {
   it('abrir el resumen de tareas NO navega: abre un detalle dentro del panel con todas las tareas (título completo, fecha y asignadas)', () => {
-    expect(panel).toContain('if (n.category === TASK_SUMMARY_CATEGORY) {')
+    expect(panel).toContain('if (isTaskSummaryCategory(n.category)) {') // 0283: los dos avisos (hoy y atrasadas) abren el mismo detalle
     expect(panel).toContain('setDetail(n)')
     expect(panel).toContain('{t.title}')
     expect(panel).toContain('Fecha: {formatDate(t.date)}')

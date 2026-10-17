@@ -2,19 +2,13 @@ import { useEffect, useState } from 'react'
 import { communityStatus } from '@/data/community'
 import { accessFromStatus } from '@/domain/communityAccess'
 import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notifications'
-import {
-  DEFAULT_NOTIFICATION_PREFS,
-  detectDeviceTimezone,
-  isValidTime,
-  listTimezones,
-  timezoneLabel,
-  type NotificationPrefs,
-} from '@/domain/notificationPrefs'
+import { DEFAULT_NOTIFICATION_PREFS, detectDeviceTimezone, listTimezones, timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
+import { TaskSummaryPrefs } from '@/ui/TaskSummaryPrefs'
 import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 
 // Ajustes de avisos de CADA persona (se guardan en el servidor, así que valen en todos sus dispositivos):
 //  · Zona horaria propia (quien ya existía empieza en Europe/Madrid; si el móvil está en otra, se ofrece cambiarla, nunca se cambia sola).
-//  · Resumen diario de tareas pendientes y atrasadas: activado por defecto a las 08:00, con hora propia.
+//  · Avisos de tareas (componente TaskSummaryPrefs): resumen de las de hoy (08:00 por defecto) y de las atrasadas (09:00), independientes, cada uno con su interruptor y su hora de 24 h.
 //  · Avisos de Comunidad (COM-144: franja de avisos personales y sugerencias): solo si Comunidad es visible; se pregunta UNA vez al abrir la pantalla.
 export function NotificationPrefsCard() {
   const [prefs, setPrefs] = useState<NotificationPrefs>({ ...DEFAULT_NOTIFICATION_PREFS })
@@ -100,25 +94,7 @@ export function NotificationPrefsCard() {
               </button>
             </p>
           )}
-          <label className="checkbox-label">
-            <input type="checkbox" checked={prefs.dailySummaryEnabled} onChange={(e) => save({ dailySummaryEnabled: e.target.checked })} />
-            Resumen diario de tareas (pendientes de hoy y atrasadas)
-          </label>
-          {prefs.dailySummaryEnabled && (
-            <label>
-              Hora del resumen
-              <input
-                type="time"
-                value={prefs.dailySummaryTime}
-                onChange={(e) => {
-                  if (isValidTime(e.target.value)) void save({ dailySummaryTime: e.target.value })
-                }}
-              />
-            </label>
-          )}
-          <p className="muted">
-            Solo recibes el resumen si tienes tareas pendientes. La hora es la de tu zona horaria y se ajusta sola con los cambios de hora.
-          </p>
+          <TaskSummaryPrefs prefs={prefs} onSave={save} />
           {communityVisible && (
             <>
               <h4>Avisos de Comunidad</h4>

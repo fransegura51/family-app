@@ -16,6 +16,7 @@ const SavedPage = lazy(() => import('@/ui/community/SavedPage').then((m) => ({ d
 const ProfilePage = lazy(() => import('@/ui/community/ProfilePage').then((m) => ({ default: m.ProfilePage })))
 const MySettingsPage = lazy(() => import('@/ui/community/MySettingsPage').then((m) => ({ default: m.MySettingsPage })))
 const MedalsPage = lazy(() => import('@/ui/community/MedalsPage').then((m) => ({ default: m.MedalsPage })))
+const RecentPage = lazy(() => import('@/ui/community/RecentPage').then((m) => ({ default: m.RecentPage })))
 const NewsPage = lazy(() => import('@/ui/community/NewsPage').then((m) => ({ default: m.NewsPage })))
 const RulesPage = lazy(() => import('@/ui/community/RulesPage').then((m) => ({ default: m.RulesPage })))
 const AdminPage = lazy(() => import('@/ui/community/AdminPage').then((m) => ({ default: m.AdminPage })))
@@ -40,6 +41,7 @@ export function CommunityRoutes() {
               <Route path="u/:id" element={<ProfilePage />} />
               <Route path="mi-perfil" element={<ParticipationOnly><MySettingsPage /></ParticipationOnly>} />
               <Route path="medallas" element={<ParticipationOnly><MedalsPage /></ParticipationOnly>} />
+              <Route path="recientes" element={<RecentPage />} />
               <Route path="novedades" element={<NewsPage />} />
               <Route path="normas" element={<RulesPage />} />
               <Route path="admin" element={<AdminPage />} />

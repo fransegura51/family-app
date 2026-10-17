@@ -229,8 +229,8 @@ describe('contraste y táctil (CSS)', () => {
     expect(postCss).toMatch(/\.community-report \.community-report-actions \{\s*position: sticky;\s*bottom: -20px;/)
   })
 
-  it('final de página con hueco para el menú inferior y el botón «↑» sube cuando hay campo de comentar', () => {
+  it('final de página con hueco para el menú inferior; el formulario de comentar ya no es fijo, así que el botón «↑» no necesita subir', () => {
     expect(baseCss).toMatch(/\.community-screen \{\s*padding-bottom: calc\(96px/)
-    expect(baseCss).toContain('body:has(.community-composer) .scroll-top-fab')
+    expect(baseCss).not.toContain('body:has(.community-composer) .scroll-top-fab')
   })
 })

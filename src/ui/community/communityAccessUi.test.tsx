@@ -10,6 +10,7 @@ import postActionsSrc from '@/ui/community/PostActions.tsx?raw'
 import postPageSrc from '@/ui/community/PostDetailPage.tsx?raw'
 import profileSrc from '@/ui/community/ProfilePage.tsx?raw'
 import layoutSrc from '@/ui/community/CommunityLayout.tsx?raw'
+import toolbarSrc from '@/ui/community/CommunityToolbar.tsx?raw'
 import routesSrc from '@/ui/community/CommunityRoutes.tsx?raw'
 import providerSrc from '@/ui/community/CommunityProvider.tsx?raw'
 import recipePanelSrc from '@/ui/community/recipes/RecipePanel.tsx?raw'
@@ -260,9 +261,10 @@ describe('los componentes de escritura usan el guard común (código fuente)', (
     expect(summarySrc).toContain('{canParticipate && (')
   })
 
-  it('el menú oculta Guardados, Borradores, Medallas y Mi perfil en solo lectura y enseña el aviso fijo', () => {
-    for (const l of ['Guardados', 'Borradores', 'Medallas', 'Mi perfil']) expect(layoutSrc, l).toMatch(new RegExp(`${l}', participates: true`))
-    expect(layoutSrc).toContain('canParticipate || !l.participates')
+  it('la barra oculta Guardados, Borradores, Mi perfil y Publicar en solo lectura y el marco enseña el aviso fijo', () => {
+    for (const l of ['Guardados', 'Borradores', 'Mi perfil', 'Publicar']) expect(toolbarSrc, l).toMatch(new RegExp(`label: '${l}'[^}]*participates: true`, 's'))
+    expect(toolbarSrc).toContain('canParticipate || !i.participates')
+    expect(layoutSrc).toContain('<CommunityToolbar canParticipate={canParticipate}')
     expect(layoutSrc).toContain('<ReadOnlyNotice />')
   })
 

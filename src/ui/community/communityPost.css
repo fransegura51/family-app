@@ -593,17 +593,40 @@
   min-height: 44px;
 }
 
-/* ---- Campo para comentar: fijo abajo (por encima del menú inferior de PEPA), también con la conversación plegada. */
+/* ---- Formulario para comentar: va COMPLETO al final de los comentarios, en el flujo de la página (no es una capa fija: no tapa texto ni fotos al leer). */
 .community-composer {
-  position: sticky;
-  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
-  z-index: 30;
   margin-top: 14px;
-  padding: 8px 10px;
+  padding: 10px;
   background: var(--card-bg, #fff);
   border: 1px solid var(--border, #d9dee8);
   border-radius: 14px;
-  box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.1);
+  scroll-margin-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Acceso rápido «💬 Comentar»: pequeño, a la derecha, por encima del menú inferior de PEPA (~62 px) y de la zona segura del iPhone. Se esconde al bajar por la página. */
+.community-comment-quick {
+  position: fixed;
+  right: 12px;
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+  z-index: 38;
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: none;
+  background: var(--primary, #3b5bdb);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.25);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+body.community-floating-hidden .community-comment-quick {
+  opacity: 0;
+  transform: translateY(80px);
+  pointer-events: none;
 }
 
 .community-composer-row {

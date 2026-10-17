@@ -32,6 +32,7 @@ import type {
   SuggestItem,
   SummaryState,
 } from '@/domain/community'
+import { POST_RECIPE_ERROR_MESSAGES, postRecipeErrorCode, type PostRecipeImportResult } from '@/domain/communityPostRecipes'
 
 // snake_case → camelCase en profundidad (las claves de recetas/ingredientes ya son simples y no cambian).
 export function camelize<T>(value: unknown): T {
@@ -94,6 +95,27 @@ export const searchSuggest = (prefix: string) => rpc<SuggestItem[]>('community_s
 
 // null = no disponible (eliminada, oculta, no existe). El autor de una oculta por moderación recibe un aviso mínimo.
 export const getPost = (id: string) => rpc<PostDetail | HiddenPostNotice | null>('community_get_post', { p_id: id })
+
+// «Importar a mi Cocina» (0282): guarda SOLO las recetas elegidas de la publicación en La cocina de Pepa de MI familia. Una llamada, todo o nada y con clave de
+// idempotencia: repetirla (doble toque, reintento tras un corte) no duplica nada. No modifica la publicación ni las recetas de otras familias.
+export async function importPostRecipes(postId: string, keys: string[], idempotencyKey: string, duplicates: 'reuse' | 'copy' = 'reuse'): Promise<PostRecipeImportResult> {
+  const { data, error } = await supabase.rpc('community_import_post_recipes', {
+    p_post: postId,
+    p_keys: keys,
+    p_idempotency_key: idempotencyKey,
+    p_duplicate_recipes: duplicates,
+  })
+  if (error) {
+    const code = postRecipeErrorCode(error)
+    if (code) {
+      const e = new Error(POST_RECIPE_ERROR_MESSAGES[code])
+      e.name = 'CommunityPostRecipeError'
+      throw e
+    }
+    throw toCommunityError(error)
+  }
+  return camelize<PostRecipeImportResult>(data)
+}
 
 export interface PostInput {
   kind: PostKind

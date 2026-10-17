@@ -92,8 +92,10 @@ export async function deleteAllNotifications(): Promise<void> {
 // ---- Ajustes de avisos por persona
 interface PrefsRow {
   timezone: string
-  daily_summary_enabled: boolean
-  daily_summary_time: string
+  task_today_enabled: boolean
+  task_today_time: string
+  task_overdue_enabled: boolean
+  task_overdue_time: string
   personal_community_mode: string
   personal_window_start: string
   personal_window_end: string
@@ -101,7 +103,7 @@ interface PrefsRow {
   community_suggestion_every_hours: number
 }
 
-const PREFS_COLUMNS = 'timezone, daily_summary_enabled, daily_summary_time, personal_community_mode, personal_window_start, personal_window_end, community_suggestions_enabled, community_suggestion_every_hours'
+const PREFS_COLUMNS = 'timezone, task_today_enabled, task_today_time, task_overdue_enabled, task_overdue_time, personal_community_mode, personal_window_start, personal_window_end, community_suggestions_enabled, community_suggestion_every_hours'
 
 // Las horas llegan como «08:00:00»; la app las usa como «08:00».
 function hhmm(value: string): string {
@@ -115,8 +117,10 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
   const row = data as PrefsRow
   return {
     timezone: row.timezone,
-    dailySummaryEnabled: row.daily_summary_enabled,
-    dailySummaryTime: hhmm(row.daily_summary_time),
+    taskTodayEnabled: row.task_today_enabled ?? DEFAULT_NOTIFICATION_PREFS.taskTodayEnabled,
+    taskTodayTime: hhmm(row.task_today_time ?? DEFAULT_NOTIFICATION_PREFS.taskTodayTime),
+    taskOverdueEnabled: row.task_overdue_enabled ?? DEFAULT_NOTIFICATION_PREFS.taskOverdueEnabled,
+    taskOverdueTime: hhmm(row.task_overdue_time ?? DEFAULT_NOTIFICATION_PREFS.taskOverdueTime),
     personalCommunityMode: row.personal_community_mode === 'window' ? 'window' : 'any',
     personalWindowStart: hhmm(row.personal_window_start),
     personalWindowEnd: hhmm(row.personal_window_end),
@@ -131,8 +135,10 @@ export async function saveNotificationPrefs(patch: Partial<NotificationPrefs>): 
   if (!userResult.user) throw new Error('No autenticado')
   const row: Record<string, unknown> = { profile_id: userResult.user.id }
   if (patch.timezone !== undefined) row.timezone = patch.timezone
-  if (patch.dailySummaryEnabled !== undefined) row.daily_summary_enabled = patch.dailySummaryEnabled
-  if (patch.dailySummaryTime !== undefined) row.daily_summary_time = patch.dailySummaryTime
+  if (patch.taskTodayEnabled !== undefined) row.task_today_enabled = patch.taskTodayEnabled
+  if (patch.taskTodayTime !== undefined) row.task_today_time = patch.taskTodayTime
+  if (patch.taskOverdueEnabled !== undefined) row.task_overdue_enabled = patch.taskOverdueEnabled
+  if (patch.taskOverdueTime !== undefined) row.task_overdue_time = patch.taskOverdueTime
   if (patch.personalCommunityMode !== undefined) row.personal_community_mode = patch.personalCommunityMode
   if (patch.personalWindowStart !== undefined) row.personal_window_start = patch.personalWindowStart
   if (patch.personalWindowEnd !== undefined) row.personal_window_end = patch.personalWindowEnd

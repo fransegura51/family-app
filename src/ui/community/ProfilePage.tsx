@@ -6,6 +6,7 @@ import { communityErrorText } from '@/domain/communityErrors'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { DEFAULT_FOLLOW_MODE, FOLLOW_MODES, constancyText, earnedMedals, formatLongDate } from '@/domain/communityProfile'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
+import { MedalsContent } from '@/ui/community/MedalsPage'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { pageCrumbs, paths } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
@@ -269,7 +270,17 @@ export function ProfilePage() {
         </p>
       )}
 
-      {!profile.isOfficial && (
+      {/* Mi perfil: las medallas completas (con su progreso y la constancia) viven aquí; en el perfil de otra persona solo se ven las que ha conseguido. */}
+      {profile.isMe && medals && (
+        <section aria-labelledby="profile-medals-mine">
+          <h2 id="profile-medals-mine">🏅 Mis medallas</h2>
+          <p className="muted">Son un reconocimiento amable: no hay clasificaciones ni premios, y no compites con nadie.</p>
+          <MedalsContent view={medals} />
+        </section>
+      )}
+      {profile.isMe && !medals && <p className="muted">Cargando medallas…</p>}
+
+      {!profile.isOfficial && !profile.isMe && (
         <section className="card" aria-labelledby="profile-medals">
           <h2 id="profile-medals">Medallas</h2>
           {medals === null && <p className="muted">Cargando medallas…</p>}

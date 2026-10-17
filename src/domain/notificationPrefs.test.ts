@@ -13,10 +13,12 @@ import {
 } from '@/domain/notificationPrefs'
 
 describe('valores por defecto', () => {
-  it('quien ya existe empieza en Europe/Madrid, resumen activado a las 08:00', () => {
+  it('quien no ha guardado nada empieza en Europe/Madrid con los dos avisos de tareas activados: hoy a las 08:00 y atrasadas a las 09:00', () => {
     expect(DEFAULT_NOTIFICATION_PREFS.timezone).toBe('Europe/Madrid')
-    expect(DEFAULT_NOTIFICATION_PREFS.dailySummaryEnabled).toBe(true)
-    expect(DEFAULT_NOTIFICATION_PREFS.dailySummaryTime).toBe('08:00')
+    expect(DEFAULT_NOTIFICATION_PREFS.taskTodayEnabled).toBe(true)
+    expect(DEFAULT_NOTIFICATION_PREFS.taskTodayTime).toBe('08:00')
+    expect(DEFAULT_NOTIFICATION_PREFS.taskOverdueEnabled).toBe(true)
+    expect(DEFAULT_NOTIFICATION_PREFS.taskOverdueTime).toBe('09:00')
   })
   it('los avisos personales de Comunidad empiezan «a cualquier hora»', () => {
     expect(DEFAULT_NOTIFICATION_PREFS.personalCommunityMode).toBe('any')

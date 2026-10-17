@@ -7694,3 +7694,45 @@ textarea {
 .home-gallery-info-banner .home-photo-banner-dot-active {
   background: rgba(0, 0, 0, 0.7);
 }
+
+/* Avisos de tareas (Configuración → Avisos): selector de hora de 24 horas (HH:mm) con horas y minutos por separado. */
+.task-summary-prefs {
+  margin: 12px 0;
+}
+
+.task-summary-prefs h4 {
+  margin: 0 0 4px;
+}
+
+.task-summary-help {
+  font-size: 13px;
+  margin: 2px 0 8px;
+}
+
+.time-select-24 {
+  border: 0;
+  padding: 0;
+  margin: 4px 0 2px 28px;
+}
+
+.time-select-24 legend {
+  font-size: 14px;
+  padding: 0;
+}
+
+.time-select-24-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-select-24-row select {
+  min-height: 44px;
+  min-width: 72px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 18px;
+}

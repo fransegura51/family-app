@@ -24,7 +24,7 @@ import {
   omittedCount,
   parseTaskSummary,
   summaryTaskLink,
-  TASK_SUMMARY_CATEGORY,
+  isTaskSummaryCategory,
   type SummaryGroup,
   type TaskSummaryDetail,
 } from '@/domain/taskSummaryNotice'
@@ -129,7 +129,7 @@ export function NotificationPanel({
         () => undefined,
       )
     }
-    if (n.category === TASK_SUMMARY_CATEGORY) {
+    if (isTaskSummaryCategory(n.category)) {
       // El resumen de tareas se abre como detalle (todas las tareas), no se va directo a Calendario.
       setDetail(n)
       return

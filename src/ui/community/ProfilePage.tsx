@@ -187,14 +187,15 @@ export function ProfilePage() {
   const alias = profile.alias ?? 'Alguien'
   const earned = earnedMedals(medals)
   // El servidor no deja seguir a las cuentas oficiales (Pepa / Equipo PEPA) y tampoco se bloquean ni se denuncian como una persona.
-  const canFollow = canParticipate && !profile.isMe && !profile.isOfficial && profile.canInteract !== false
+  // Se puede seguir a cualquier persona y también a las cuentas oficiales (Pepa, Equipo PEPA); a una misma no.
+  const canFollow = canParticipate && !profile.isMe && profile.canInteract !== false
   const canModerate = canParticipate && !profile.isMe && !profile.isOfficial
 
   return (
     <>
       {crumbs}
       <header className="community-profile-head">
-        <CommunityAvatar alias={alias} emoji={profile.avatarEmoji} size="lg" />
+        <CommunityAvatar alias={alias} emoji={profile.avatarEmoji} size="lg" official={profile.isOfficial} />
         <div>
           <h1 className="community-profile-name">{alias}</h1>
           {profile.isOfficial && <span className="community-tag-official">Cuenta oficial</span>}
@@ -215,11 +216,15 @@ export function ProfilePage() {
           <strong>{profile.ratingCount ?? 0}</strong>
           <span>Valoraciones dadas</span>
         </li>
+        <li>
+          <strong>{profile.followerCount ?? 0}</strong>
+          <span>{profile.followerCount === 1 ? 'Seguidor' : 'Seguidores'}</span>
+        </li>
       </ul>
 
       {profile.isMe && (
         <p className="card">
-          Este es tu perfil público, tal como lo ven las demás familias.{' '}
+          Este es tu perfil público, tal como lo ven las demás familias. Solo se ve cuántas personas te siguen, nunca quiénes.{' '}
           <Link to={paths.myProfile} className="link-button">
             Cambiar mi alias y mis ajustes
           </Link>
@@ -229,8 +234,8 @@ export function ProfilePage() {
       {canFollow && (
         <div className="community-profile-actions">
           {profile.following ? (
-            <button type="button" disabled={busy} onClick={() => void unfollow()}>
-              Dejar de seguir
+            <button type="button" disabled={busy} onClick={() => void unfollow()} aria-label={`Siguiendo a ${alias}. Pulsa para dejar de seguir`} title="Pulsa para dejar de seguir">
+              ✓ Siguiendo
             </button>
           ) : (
             <button type="button" className="primary" disabled={busy} onClick={() => void follow()}>

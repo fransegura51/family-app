@@ -13,6 +13,7 @@ import { OfficialTab } from '@/ui/community/admin/OfficialTab'
 import { OverviewTab } from '@/ui/community/admin/OverviewTab'
 import { PollsTab } from '@/ui/community/admin/PollsTab'
 import { SettingsTab } from '@/ui/community/admin/SettingsTab'
+import { TopicProposalsTab } from '@/ui/community/admin/TopicProposalsTab'
 import { UsersTab } from '@/ui/community/admin/UsersTab'
 import { useAdminData } from '@/ui/community/admin/useAdminData'
 import '@/ui/community/communityAdmin.css'
@@ -74,6 +75,7 @@ export function AdminCenter() {
     moderacion: <ModerationTab section={section} onSection={setSection} onChanged={markDirty} />,
     usuarios: <UsersTab onChanged={markDirty} />,
     oficial: <OfficialTab onChanged={markDirty} />,
+    temas: <TopicProposalsTab onChanged={markDirty} />,
     encuestas: <PollsTab onGo={go} />,
     destacados: <FeaturedTab onChanged={markDirty} />,
     configuracion: <SettingsTab onChanged={markDirty} />,

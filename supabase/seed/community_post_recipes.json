@@ -1,18 +1,42 @@
 {
-  "_comment": "Recetas estructuradas de las publicaciones iniciales (0282). Cada receta sale SOLO de lo que dice el texto de su publicación: lo que el texto no da (una cantidad, un tiempo) se deja VACÍO, nunca se inventa. `anchor` = frase del texto de la publicación donde está esa receta (solo para revisar y para la prueba que comprueba que existe; no se guarda en la base de datos). Raciones: las del texto; cuando el texto no las da, 4 (valor neutro de la Cocina) y el rendimiento real va dentro de los pasos. Se carga en producción con supabase/seed/community_post_recipes_patch.sql (generado por scripts/build-community-post-recipes.mjs).",
+  "_comment": "Recetas estructuradas de las publicaciones iniciales (0282). Cada receta sale SOLO de lo que dice el texto de su publicación: lo que el texto no da (una cantidad, un tiempo) se deja VACÍO, nunca se inventa. `anchor` = frase del texto de la publicación donde está esa receta (solo para revisar y para la prueba que comprueba que existe; no se guarda en la base de datos). Raciones: SOLO las que dice el texto (2, 1, 4…); cuando el texto no las da, `servings` es null (SIN INDICAR: nunca se asume 4) y el rendimiento real, si el texto lo dice, va dentro de los pasos. Se carga en producción con supabase/seed/community_post_recipes_patch.sql (generado por scripts/build-community-post-recipes.mjs).",
   "inicial-02-platanos-maduros": [
     {
       "key": "tortitas-de-platano",
       "anchor": "**1. Tortitas de plátano (2 raciones, unas 6 tortitas pequeñas)**",
       "title": "Tortitas de plátano",
       "servings": 2,
-      "tags": ["desayuno", "plátano", "aprovechamiento"],
+      "tags": [
+        "desayuno",
+        "plátano",
+        "aprovechamiento"
+      ],
       "ingredients": [
-        { "name": "plátano muy maduro", "quantity": "1", "unit": "unidad" },
-        { "name": "huevo", "quantity": "1", "unit": "unidad" },
-        { "name": "copos de avena finos", "quantity": "4", "unit": "cucharadas soperas" },
-        { "name": "levadura química", "quantity": "1/2", "unit": "cucharadita" },
-        { "name": "canela (opcional)", "quantity": "1", "unit": "pizca" }
+        {
+          "name": "plátano muy maduro",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "huevo",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "copos de avena finos",
+          "quantity": "4",
+          "unit": "cucharadas soperas"
+        },
+        {
+          "name": "levadura química",
+          "quantity": "1/2",
+          "unit": "cucharadita"
+        },
+        {
+          "name": "canela (opcional)",
+          "quantity": "1",
+          "unit": "pizca"
+        }
       ],
       "steps": [
         "Aplasta el plátano con un tenedor hasta que quede en puré, mézclalo con el huevo y añade el resto de ingredientes (si prefieres, usa 40 g de harina en lugar de la avena).",
@@ -24,15 +48,43 @@
       "key": "bizcocho-de-platano",
       "anchor": "**2. Bizcocho de plátano (molde de unos 22-24 cm de largo)**",
       "title": "Bizcocho de plátano",
-      "servings": 4,
-      "tags": ["bizcocho", "plátano", "aprovechamiento"],
+      "servings": null,
+      "tags": [
+        "bizcocho",
+        "plátano",
+        "aprovechamiento"
+      ],
       "ingredients": [
-        { "name": "plátanos muy maduros (unos 300 g de pulpa)", "quantity": "3", "unit": "unidades" },
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "azúcar", "quantity": "80", "unit": "g" },
-        { "name": "aceite de girasol o de oliva suave", "quantity": "80", "unit": "ml" },
-        { "name": "harina", "quantity": "200", "unit": "g" },
-        { "name": "levadura química", "quantity": "2", "unit": "cucharaditas" }
+        {
+          "name": "plátanos muy maduros (unos 300 g de pulpa)",
+          "quantity": "3",
+          "unit": "unidades"
+        },
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "azúcar",
+          "quantity": "80",
+          "unit": "g"
+        },
+        {
+          "name": "aceite de girasol o de oliva suave",
+          "quantity": "80",
+          "unit": "ml"
+        },
+        {
+          "name": "harina",
+          "quantity": "200",
+          "unit": "g"
+        },
+        {
+          "name": "levadura química",
+          "quantity": "2",
+          "unit": "cucharaditas"
+        }
       ],
       "steps": [
         "Tritura o aplasta los plátanos y mézclalos con los huevos, el azúcar y el aceite.",
@@ -47,10 +99,22 @@
       "anchor": "**3. Helado de plátano (sin azúcar ni nata)**",
       "title": "Helado de plátano (sin azúcar ni nata)",
       "servings": 2,
-      "tags": ["postre", "plátano", "helado"],
+      "tags": [
+        "postre",
+        "plátano",
+        "helado"
+      ],
       "ingredients": [
-        { "name": "plátanos congelados en rodajas", "quantity": "2", "unit": "unidades" },
-        { "name": "yogur o leche", "quantity": "2-3", "unit": "cucharadas" }
+        {
+          "name": "plátanos congelados en rodajas",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "yogur o leche",
+          "quantity": "2-3",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Pela los plátanos, córtalos en rodajas y congélalos en una bandeja o en una bolsa, mínimo 4 horas.",
@@ -66,13 +130,37 @@
       "anchor": "**1. Espinacas y queso.**",
       "title": "Tortilla francesa de espinacas y queso",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "espinacas frescas (un puñado grande)", "quantity": "50", "unit": "g" },
-        { "name": "queso rallado o en lonchas", "quantity": "30", "unit": "g" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "espinacas frescas (un puñado grande)",
+          "quantity": "50",
+          "unit": "g"
+        },
+        {
+          "name": "queso rallado o en lonchas",
+          "quantity": "30",
+          "unit": "g"
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Saltea las espinacas frescas 1 minuto, escúrrelas y exprímelas: la verdura va siempre cocinada antes y bien escurrida.",
@@ -86,13 +174,37 @@
       "anchor": "**2. Champiñones salteados.**",
       "title": "Tortilla francesa de champiñones salteados",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "champiñones", "quantity": "100", "unit": "g" },
-        { "name": "ajo y perejil (opcional)", "quantity": "", "unit": "" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "champiñones",
+          "quantity": "100",
+          "unit": "g"
+        },
+        {
+          "name": "ajo y perejil (opcional)",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Lamina los champiñones y sáltalos en una sartén sin amontonarlos, a fuego fuerte, unos 5 minutos, hasta que suelten el agua y se doren. Un poco de ajo y perejil les va genial.",
@@ -106,13 +218,37 @@
       "anchor": "**3. Calabacín y cebolla.**",
       "title": "Tortilla francesa de calabacín y cebolla",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "cebolla", "quantity": "1/4", "unit": "unidad" },
-        { "name": "calabacín pequeño", "quantity": "1/2", "unit": "unidad" },
-        { "name": "aceite", "quantity": "1", "unit": "chorrito" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "cebolla",
+          "quantity": "1/4",
+          "unit": "unidad"
+        },
+        {
+          "name": "calabacín pequeño",
+          "quantity": "1/2",
+          "unit": "unidad"
+        },
+        {
+          "name": "aceite",
+          "quantity": "1",
+          "unit": "chorrito"
+        }
       ],
       "steps": [
         "Pocha la cebolla y el calabacín en dados con un chorrito de aceite, unos 8-10 minutos a fuego medio, hasta que estén blandos. Escúrrelos bien.",
@@ -126,13 +262,38 @@
       "anchor": "**4. Jamón y queso.**",
       "title": "Tortilla francesa de jamón y queso",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida", "con niños"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida",
+        "con niños"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "jamón cocido", "quantity": "2", "unit": "lonchas" },
-        { "name": "queso", "quantity": "1", "unit": "loncha" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "jamón cocido",
+          "quantity": "2",
+          "unit": "lonchas"
+        },
+        {
+          "name": "queso",
+          "quantity": "1",
+          "unit": "loncha"
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Bate los huevos con una pizca de sal.",
@@ -146,13 +307,37 @@
       "anchor": "**5. Tomate y hierbas.**",
       "title": "Tortilla francesa de tomate y hierbas",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "tomate pequeño y maduro", "quantity": "1", "unit": "unidad" },
-        { "name": "perejil, albahaca u orégano picados", "quantity": "1", "unit": "cucharada" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "tomate pequeño y maduro",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "perejil, albahaca u orégano picados",
+          "quantity": "1",
+          "unit": "cucharada"
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Corta el tomate en dados, sin semillas, y déjalo escurrir unos minutos con una pizca de sal.",
@@ -166,12 +351,32 @@
       "anchor": "**6. Patata.**",
       "title": "Tortilla francesa con patata",
       "servings": 1,
-      "tags": ["cena", "huevo", "aprovechamiento"],
+      "tags": [
+        "cena",
+        "huevo",
+        "aprovechamiento"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "patata pequeña ya cocida (hervida o hecha al microondas)", "quantity": "100-120", "unit": "g" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "patata pequeña ya cocida (hervida o hecha al microondas)",
+          "quantity": "100-120",
+          "unit": "g"
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Corta en dados la patata ya cocida (sirve la que sobró hervida o hecha al microondas) y dórala en la sartén 5 minutos.",
@@ -185,13 +390,37 @@
       "anchor": "**7. Atún y cebolla.**",
       "title": "Tortilla francesa de atún y cebolla",
       "servings": 1,
-      "tags": ["cena", "huevo", "rápida"],
+      "tags": [
+        "cena",
+        "huevo",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "sal", "quantity": "1", "unit": "pizca" },
-        { "name": "atún en lata pequeña", "quantity": "1", "unit": "lata" },
-        { "name": "cebolla muy picada", "quantity": "2", "unit": "cucharadas" },
-        { "name": "aceite", "quantity": "", "unit": "" }
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "sal",
+          "quantity": "1",
+          "unit": "pizca"
+        },
+        {
+          "name": "atún en lata pequeña",
+          "quantity": "1",
+          "unit": "lata"
+        },
+        {
+          "name": "cebolla muy picada",
+          "quantity": "2",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "aceite",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Escurre bien el atún. Pica muy fina la cebolla (mejor pochada un par de minutos).",
@@ -206,13 +435,33 @@
       "key": "albondigas-y-hamburguesas-con-calabacin",
       "anchor": "**Albóndigas y hamburguesas más jugosas.**",
       "title": "Albóndigas y hamburguesas jugosas con calabacín",
-      "servings": 4,
-      "tags": ["carne", "verdura integrada", "con niños"],
+      "servings": null,
+      "tags": [
+        "carne",
+        "verdura integrada",
+        "con niños"
+      ],
       "ingredients": [
-        { "name": "calabacín mediano", "quantity": "1", "unit": "unidad (unos 200 g)" },
-        { "name": "carne picada", "quantity": "500", "unit": "g" },
-        { "name": "huevo", "quantity": "1", "unit": "unidad" },
-        { "name": "pan rallado", "quantity": "2-3", "unit": "cucharadas" }
+        {
+          "name": "calabacín mediano",
+          "quantity": "1",
+          "unit": "unidad (unos 200 g)"
+        },
+        {
+          "name": "carne picada",
+          "quantity": "500",
+          "unit": "g"
+        },
+        {
+          "name": "huevo",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "pan rallado",
+          "quantity": "2-3",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Ralla el calabacín y exprímelo bien con un paño o con las manos para quitar el agua.",
@@ -225,12 +474,28 @@
       "key": "salsa-de-tomate-con-zanahoria",
       "anchor": "**Salsa de tomate con zanahoria.**",
       "title": "Salsa de tomate con zanahoria",
-      "servings": 4,
-      "tags": ["salsa", "verdura integrada", "pasta"],
+      "servings": null,
+      "tags": [
+        "salsa",
+        "verdura integrada",
+        "pasta"
+      ],
       "ingredients": [
-        { "name": "cebolla", "quantity": "1", "unit": "unidad" },
-        { "name": "zanahoria", "quantity": "2", "unit": "unidades" },
-        { "name": "tomate triturado", "quantity": "", "unit": "" }
+        {
+          "name": "cebolla",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "zanahoria",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "tomate triturado",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Pocha la cebolla y las zanahorias en trozos pequeños.",
@@ -242,12 +507,28 @@
       "key": "salsa-de-calabaza-para-pasta",
       "anchor": "**Salsa de calabaza para pasta.**",
       "title": "Salsa de calabaza para pasta",
-      "servings": 4,
-      "tags": ["salsa", "verdura integrada", "pasta"],
+      "servings": null,
+      "tags": [
+        "salsa",
+        "verdura integrada",
+        "pasta"
+      ],
       "ingredients": [
-        { "name": "calabaza en trozos", "quantity": "250", "unit": "g" },
-        { "name": "leche o caldo", "quantity": "1", "unit": "chorro" },
-        { "name": "queso rallado", "quantity": "1", "unit": "puñado" }
+        {
+          "name": "calabaza en trozos",
+          "quantity": "250",
+          "unit": "g"
+        },
+        {
+          "name": "leche o caldo",
+          "quantity": "1",
+          "unit": "chorro"
+        },
+        {
+          "name": "queso rallado",
+          "quantity": "1",
+          "unit": "puñado"
+        }
       ],
       "steps": [
         "Asa la calabaza en trozos a 200 °C, unos 30 minutos.",
@@ -261,14 +542,38 @@
       "key": "caldo-casero-de-verduras",
       "anchor": "**Receta (unos 2 litros)**",
       "title": "Caldo casero con restos de verduras",
-      "servings": 4,
-      "tags": ["caldo", "aprovechamiento", "base de cocina"],
+      "servings": null,
+      "tags": [
+        "caldo",
+        "aprovechamiento",
+        "base de cocina"
+      ],
       "ingredients": [
-        { "name": "restos de verduras limpias", "quantity": "500", "unit": "g" },
-        { "name": "agua fría", "quantity": "2,5", "unit": "litros" },
-        { "name": "hoja de laurel", "quantity": "1", "unit": "unidad" },
-        { "name": "granos de pimienta", "quantity": "5", "unit": "unidades" },
-        { "name": "tomate concentrado (opcional)", "quantity": "1", "unit": "cucharada" }
+        {
+          "name": "restos de verduras limpias",
+          "quantity": "500",
+          "unit": "g"
+        },
+        {
+          "name": "agua fría",
+          "quantity": "2,5",
+          "unit": "litros"
+        },
+        {
+          "name": "hoja de laurel",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "granos de pimienta",
+          "quantity": "5",
+          "unit": "unidades"
+        },
+        {
+          "name": "tomate concentrado (opcional)",
+          "quantity": "1",
+          "unit": "cucharada"
+        }
       ],
       "steps": [
         "Pon unos 500 g de verduras (recortes limpios, lavados) en una olla con 2,5 litros de agua fría, 1 hoja de laurel y 5 granos de pimienta.",
@@ -285,12 +590,28 @@
       "key": "cubitos-de-perejil-y-ajo",
       "anchor": "- **Perejil y ajo.**",
       "title": "Cubitos congelados de perejil y ajo",
-      "servings": 1,
-      "tags": ["congelar", "aprovechamiento", "hierbas"],
+      "servings": null,
+      "tags": [
+        "congelar",
+        "aprovechamiento",
+        "hierbas"
+      ],
       "ingredients": [
-        { "name": "perejil (hojas)", "quantity": "30", "unit": "g (2 puñados)" },
-        { "name": "ajo", "quantity": "2", "unit": "dientes" },
-        { "name": "aceite de oliva", "quantity": "4", "unit": "cucharadas" }
+        {
+          "name": "perejil (hojas)",
+          "quantity": "30",
+          "unit": "g (2 puñados)"
+        },
+        {
+          "name": "ajo",
+          "quantity": "2",
+          "unit": "dientes"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "4",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Lava el perejil y sécalo muy bien (con papel de cocina o centrifugadora): el agua forma cristales de hielo.",
@@ -304,12 +625,28 @@
       "key": "cubitos-de-albahaca-y-ajo",
       "anchor": "- **Albahaca y ajo.**",
       "title": "Cubitos congelados de albahaca y ajo",
-      "servings": 1,
-      "tags": ["congelar", "aprovechamiento", "hierbas"],
+      "servings": null,
+      "tags": [
+        "congelar",
+        "aprovechamiento",
+        "hierbas"
+      ],
       "ingredients": [
-        { "name": "albahaca", "quantity": "2", "unit": "puñados" },
-        { "name": "ajo", "quantity": "1", "unit": "diente" },
-        { "name": "aceite de oliva", "quantity": "4", "unit": "cucharadas" }
+        {
+          "name": "albahaca",
+          "quantity": "2",
+          "unit": "puñados"
+        },
+        {
+          "name": "ajo",
+          "quantity": "1",
+          "unit": "diente"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "4",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Lava la albahaca y sécala muy bien (con papel de cocina o centrifugadora): el agua forma cristales de hielo.",
@@ -323,12 +660,28 @@
       "key": "cubitos-de-romero-y-tomillo",
       "anchor": "- **Romero y tomillo.**",
       "title": "Cubitos congelados de romero y tomillo",
-      "servings": 1,
-      "tags": ["congelar", "aprovechamiento", "hierbas"],
+      "servings": null,
+      "tags": [
+        "congelar",
+        "aprovechamiento",
+        "hierbas"
+      ],
       "ingredients": [
-        { "name": "romero (hojas picadas)", "quantity": "1", "unit": "cucharada" },
-        { "name": "tomillo (hojas picadas)", "quantity": "1", "unit": "cucharada" },
-        { "name": "aceite de oliva", "quantity": "2-3", "unit": "cucharadas" }
+        {
+          "name": "romero (hojas picadas)",
+          "quantity": "1",
+          "unit": "cucharada"
+        },
+        {
+          "name": "tomillo (hojas picadas)",
+          "quantity": "1",
+          "unit": "cucharada"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "2-3",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Lava las hierbas y sécalas muy bien (con papel de cocina o centrifugadora): el agua forma cristales de hielo.",
@@ -341,12 +694,28 @@
       "key": "cubitos-de-cilantro-y-lima",
       "anchor": "- **Cilantro y ralladura de lima.**",
       "title": "Cubitos congelados de cilantro y lima",
-      "servings": 1,
-      "tags": ["congelar", "aprovechamiento", "hierbas"],
+      "servings": null,
+      "tags": [
+        "congelar",
+        "aprovechamiento",
+        "hierbas"
+      ],
       "ingredients": [
-        { "name": "cilantro", "quantity": "1", "unit": "puñado" },
-        { "name": "ralladura de lima (solo la parte verde)", "quantity": "1", "unit": "lima" },
-        { "name": "aceite de oliva", "quantity": "3", "unit": "cucharadas" }
+        {
+          "name": "cilantro",
+          "quantity": "1",
+          "unit": "puñado"
+        },
+        {
+          "name": "ralladura de lima (solo la parte verde)",
+          "quantity": "1",
+          "unit": "lima"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "3",
+          "unit": "cucharadas"
+        }
       ],
       "steps": [
         "Lava el cilantro y sécalo muy bien (con papel de cocina o centrifugadora): el agua forma cristales de hielo.",
@@ -361,12 +730,28 @@
       "key": "pan-rallado-casero",
       "anchor": "**1. Pan rallado casero**",
       "title": "Pan rallado casero",
-      "servings": 4,
-      "tags": ["pan duro", "aprovechamiento", "despensa"],
+      "servings": null,
+      "tags": [
+        "pan duro",
+        "aprovechamiento",
+        "despensa"
+      ],
       "ingredients": [
-        { "name": "pan duro", "quantity": "", "unit": "" },
-        { "name": "ajo en polvo (opcional, para el rebozado)", "quantity": "1", "unit": "cucharadita" },
-        { "name": "perejil seco (opcional, para el rebozado)", "quantity": "", "unit": "" }
+        {
+          "name": "pan duro",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "ajo en polvo (opcional, para el rebozado)",
+          "quantity": "1",
+          "unit": "cucharadita"
+        },
+        {
+          "name": "perejil seco (opcional, para el rebozado)",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Si ves moho en el pan, aunque sea una mancha pequeña, tíralo entero: no sirve cortar esa parte.",
@@ -379,13 +764,33 @@
       "key": "picatostes",
       "anchor": "**2. Picatostes (para sopas, cremas y ensaladas)**",
       "title": "Picatostes",
-      "servings": 4,
-      "tags": ["pan duro", "aprovechamiento", "horno"],
+      "servings": null,
+      "tags": [
+        "pan duro",
+        "aprovechamiento",
+        "horno"
+      ],
       "ingredients": [
-        { "name": "pan duro en dados de 1,5 cm", "quantity": "200", "unit": "g" },
-        { "name": "aceite de oliva", "quantity": "2", "unit": "cucharadas" },
-        { "name": "sal", "quantity": "", "unit": "" },
-        { "name": "orégano o ajo en polvo (opcional)", "quantity": "", "unit": "" }
+        {
+          "name": "pan duro en dados de 1,5 cm",
+          "quantity": "200",
+          "unit": "g"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "2",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "sal",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "orégano o ajo en polvo (opcional)",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Si ves moho en el pan, tíralo entero.",
@@ -399,16 +804,52 @@
       "anchor": "**3. Torrijas (4 personas, unas 8)**",
       "title": "Torrijas",
       "servings": 4,
-      "tags": ["postre", "pan duro", "aprovechamiento"],
+      "tags": [
+        "postre",
+        "pan duro",
+        "aprovechamiento"
+      ],
       "ingredients": [
-        { "name": "rebanadas de pan de torrijas o de barra, de 2 cm", "quantity": "8", "unit": "rebanadas" },
-        { "name": "leche", "quantity": "500", "unit": "ml" },
-        { "name": "azúcar", "quantity": "3", "unit": "cucharadas" },
-        { "name": "canela en rama", "quantity": "1", "unit": "rama" },
-        { "name": "piel de limón", "quantity": "1", "unit": "trozo" },
-        { "name": "huevo", "quantity": "2", "unit": "unidades" },
-        { "name": "aceite de oliva suave o girasol para freír", "quantity": "", "unit": "" },
-        { "name": "azúcar y canela para espolvorear", "quantity": "", "unit": "" }
+        {
+          "name": "rebanadas de pan de torrijas o de barra, de 2 cm",
+          "quantity": "8",
+          "unit": "rebanadas"
+        },
+        {
+          "name": "leche",
+          "quantity": "500",
+          "unit": "ml"
+        },
+        {
+          "name": "azúcar",
+          "quantity": "3",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "canela en rama",
+          "quantity": "1",
+          "unit": "rama"
+        },
+        {
+          "name": "piel de limón",
+          "quantity": "1",
+          "unit": "trozo"
+        },
+        {
+          "name": "huevo",
+          "quantity": "2",
+          "unit": "unidades"
+        },
+        {
+          "name": "aceite de oliva suave o girasol para freír",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "azúcar y canela para espolvorear",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Calienta la leche con el azúcar, la canela y el limón sin que hierva. Apártala y déjala templar.",
@@ -422,13 +863,37 @@
       "anchor": "**4. Migas (4 raciones)**",
       "title": "Migas",
       "servings": 4,
-      "tags": ["pan duro", "aprovechamiento", "plato único"],
+      "tags": [
+        "pan duro",
+        "aprovechamiento",
+        "plato único"
+      ],
       "ingredients": [
-        { "name": "pan duro de una barra de varios días", "quantity": "300", "unit": "g" },
-        { "name": "agua con una pizca de sal", "quantity": "100", "unit": "ml" },
-        { "name": "aceite de oliva", "quantity": "4", "unit": "cucharadas" },
-        { "name": "ajo en láminas", "quantity": "3-4", "unit": "dientes" },
-        { "name": "chorizo o panceta en trozos (opcional)", "quantity": "100", "unit": "g" }
+        {
+          "name": "pan duro de una barra de varios días",
+          "quantity": "300",
+          "unit": "g"
+        },
+        {
+          "name": "agua con una pizca de sal",
+          "quantity": "100",
+          "unit": "ml"
+        },
+        {
+          "name": "aceite de oliva",
+          "quantity": "4",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "ajo en láminas",
+          "quantity": "3-4",
+          "unit": "dientes"
+        },
+        {
+          "name": "chorizo o panceta en trozos (opcional)",
+          "quantity": "100",
+          "unit": "g"
+        }
       ],
       "steps": [
         "Corta el pan en trozos pequeños o desmigalo, rocíalo con el agua con sal, mézclalo y déjalo tapado con un paño de 2 a 3 horas (o de un día para otro).",
@@ -444,13 +909,37 @@
       "anchor": "1. **Con curry.**",
       "title": "Arroz blanco con curry",
       "servings": 2,
-      "tags": ["arroz", "aprovechamiento", "plato único"],
+      "tags": [
+        "arroz",
+        "aprovechamiento",
+        "plato único"
+      ],
       "ingredients": [
-        { "name": "arroz blanco ya cocido", "quantity": "250-300", "unit": "g" },
-        { "name": "cebolla picada", "quantity": "1/2", "unit": "unidad" },
-        { "name": "aceite", "quantity": "1", "unit": "cucharada" },
-        { "name": "curry", "quantity": "1", "unit": "cucharadita" },
-        { "name": "guisantes o pasas", "quantity": "1", "unit": "puñado" }
+        {
+          "name": "arroz blanco ya cocido",
+          "quantity": "250-300",
+          "unit": "g"
+        },
+        {
+          "name": "cebolla picada",
+          "quantity": "1/2",
+          "unit": "unidad"
+        },
+        {
+          "name": "aceite",
+          "quantity": "1",
+          "unit": "cucharada"
+        },
+        {
+          "name": "curry",
+          "quantity": "1",
+          "unit": "cucharadita"
+        },
+        {
+          "name": "guisantes o pasas",
+          "quantity": "1",
+          "unit": "puñado"
+        }
       ],
       "steps": [
         "Sofríe 1/2 cebolla picada en 1 cucharada de aceite 5 minutos.",
@@ -464,12 +953,32 @@
       "anchor": "2. **A la cubana.**",
       "title": "Arroz a la cubana",
       "servings": 2,
-      "tags": ["arroz", "aprovechamiento", "rápida"],
+      "tags": [
+        "arroz",
+        "aprovechamiento",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "arroz blanco ya cocido", "quantity": "250-300", "unit": "g" },
-        { "name": "salsa de tomate", "quantity": "150", "unit": "ml" },
-        { "name": "huevo frito", "quantity": "1", "unit": "unidad" },
-        { "name": "salchicha o plátano frito (opcional)", "quantity": "", "unit": "" }
+        {
+          "name": "arroz blanco ya cocido",
+          "quantity": "250-300",
+          "unit": "g"
+        },
+        {
+          "name": "salsa de tomate",
+          "quantity": "150",
+          "unit": "ml"
+        },
+        {
+          "name": "huevo frito",
+          "quantity": "1",
+          "unit": "unidad"
+        },
+        {
+          "name": "salchicha o plátano frito (opcional)",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Sirve el arroz blanco con 150 ml de salsa de tomate.",
@@ -483,14 +992,42 @@
       "anchor": "3. **Con ajo y limón.**",
       "title": "Arroz con ajo y limón",
       "servings": 2,
-      "tags": ["arroz", "aprovechamiento", "rápida"],
+      "tags": [
+        "arroz",
+        "aprovechamiento",
+        "rápida"
+      ],
       "ingredients": [
-        { "name": "arroz blanco ya cocido", "quantity": "250-300", "unit": "g" },
-        { "name": "ajo laminado", "quantity": "2", "unit": "dientes" },
-        { "name": "aceite", "quantity": "2", "unit": "cucharadas" },
-        { "name": "ralladura de limón", "quantity": "1/2", "unit": "limón" },
-        { "name": "zumo de limón", "quantity": "1", "unit": "chorrito" },
-        { "name": "perejil", "quantity": "", "unit": "" }
+        {
+          "name": "arroz blanco ya cocido",
+          "quantity": "250-300",
+          "unit": "g"
+        },
+        {
+          "name": "ajo laminado",
+          "quantity": "2",
+          "unit": "dientes"
+        },
+        {
+          "name": "aceite",
+          "quantity": "2",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "ralladura de limón",
+          "quantity": "1/2",
+          "unit": "limón"
+        },
+        {
+          "name": "zumo de limón",
+          "quantity": "1",
+          "unit": "chorrito"
+        },
+        {
+          "name": "perejil",
+          "quantity": "",
+          "unit": ""
+        }
       ],
       "steps": [
         "Dora 2 dientes de ajo laminados en 2 cucharadas de aceite.",
@@ -504,15 +1041,47 @@
       "anchor": "4. **Salteado con verduras.**",
       "title": "Arroz salteado con verduras",
       "servings": 2,
-      "tags": ["arroz", "aprovechamiento", "verdura"],
+      "tags": [
+        "arroz",
+        "aprovechamiento",
+        "verdura"
+      ],
       "ingredients": [
-        { "name": "arroz blanco ya cocido, del día anterior y bien enfriado", "quantity": "250-300", "unit": "g" },
-        { "name": "zanahoria en dados pequeños", "quantity": "", "unit": "" },
-        { "name": "calabacín en dados pequeños", "quantity": "", "unit": "" },
-        { "name": "pimiento en dados pequeños", "quantity": "", "unit": "" },
-        { "name": "cebolleta en dados pequeños", "quantity": "", "unit": "" },
-        { "name": "salsa de soja", "quantity": "1-2", "unit": "cucharadas" },
-        { "name": "huevo revuelto", "quantity": "1", "unit": "unidad" }
+        {
+          "name": "arroz blanco ya cocido, del día anterior y bien enfriado",
+          "quantity": "250-300",
+          "unit": "g"
+        },
+        {
+          "name": "zanahoria en dados pequeños",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "calabacín en dados pequeños",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "pimiento en dados pequeños",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "cebolleta en dados pequeños",
+          "quantity": "",
+          "unit": ""
+        },
+        {
+          "name": "salsa de soja",
+          "quantity": "1-2",
+          "unit": "cucharadas"
+        },
+        {
+          "name": "huevo revuelto",
+          "quantity": "1",
+          "unit": "unidad"
+        }
       ],
       "steps": [
         "Sofríe la zanahoria, el calabacín, el pimiento y la cebolleta en dados pequeños 3-4 minutos a fuego fuerte.",
@@ -526,13 +1095,37 @@
       "anchor": "5. **Cremoso con champiñones**",
       "title": "Arroz cremoso con champiñones",
       "servings": 2,
-      "tags": ["arroz", "champiñones", "plato único"],
+      "tags": [
+        "arroz",
+        "champiñones",
+        "plato único"
+      ],
       "ingredients": [
-        { "name": "arroz redondo crudo", "quantity": "150", "unit": "g" },
-        { "name": "cebolla", "quantity": "1/2", "unit": "unidad" },
-        { "name": "champiñones laminados", "quantity": "200", "unit": "g" },
-        { "name": "caldo caliente", "quantity": "500", "unit": "ml" },
-        { "name": "queso rallado o mantequilla", "quantity": "30 g o 1 cucharada", "unit": "" }
+        {
+          "name": "arroz redondo crudo",
+          "quantity": "150",
+          "unit": "g"
+        },
+        {
+          "name": "cebolla",
+          "quantity": "1/2",
+          "unit": "unidad"
+        },
+        {
+          "name": "champiñones laminados",
+          "quantity": "200",
+          "unit": "g"
+        },
+        {
+          "name": "caldo caliente",
+          "quantity": "500",
+          "unit": "ml"
+        },
+        {
+          "name": "queso rallado o mantequilla",
+          "quantity": "30 g o 1 cucharada",
+          "unit": ""
+        }
       ],
       "steps": [
         "Pocha 1/2 cebolla, añade 200 g de champiñones laminados y dóralos.",
@@ -546,15 +1139,43 @@
       "key": "tarro-de-galletas-para-regalar",
       "anchor": "**3. Un tarro de galletas para regalar.**",
       "title": "Tarro de galletas para regalar",
-      "servings": 4,
-      "tags": ["galletas", "regalo", "con niños"],
+      "servings": null,
+      "tags": [
+        "galletas",
+        "regalo",
+        "con niños"
+      ],
       "ingredients": [
-        { "name": "harina (mezclada con 1/2 cucharadita de bicarbonato y una pizca de sal)", "quantity": "150", "unit": "g" },
-        { "name": "azúcar moreno", "quantity": "100", "unit": "g" },
-        { "name": "copos de avena", "quantity": "100", "unit": "g" },
-        { "name": "pepitas de chocolate", "quantity": "100", "unit": "g" },
-        { "name": "mantequilla blanda (para hornear)", "quantity": "120", "unit": "g" },
-        { "name": "huevo (para hornear)", "quantity": "1", "unit": "unidad" }
+        {
+          "name": "harina (mezclada con 1/2 cucharadita de bicarbonato y una pizca de sal)",
+          "quantity": "150",
+          "unit": "g"
+        },
+        {
+          "name": "azúcar moreno",
+          "quantity": "100",
+          "unit": "g"
+        },
+        {
+          "name": "copos de avena",
+          "quantity": "100",
+          "unit": "g"
+        },
+        {
+          "name": "pepitas de chocolate",
+          "quantity": "100",
+          "unit": "g"
+        },
+        {
+          "name": "mantequilla blanda (para hornear)",
+          "quantity": "120",
+          "unit": "g"
+        },
+        {
+          "name": "huevo (para hornear)",
+          "quantity": "1",
+          "unit": "unidad"
+        }
       ],
       "steps": [
         "Para el tarro (de un litro): pon los ingredientes secos en capas — la harina mezclada con el bicarbonato y la sal, el azúcar moreno, los copos de avena y las pepitas de chocolate— y decóralo con tela o lazo. Anota en la etiqueta las instrucciones y los ingredientes (por si hay alergias).",

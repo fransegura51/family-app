@@ -1,3 +1,4 @@
+import { AuthorAvatar } from '@/ui/community/AuthorAvatar'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { unblockUser } from '@/data/community'
@@ -48,7 +49,8 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
           {anecdoteTypeTag(item.kind, item.anecdoteType) && <span className="community-tag-subtype">{anecdoteTypeTag(item.kind, item.anecdoteType)}</span>}
           <span>· {item.topicLabel}</span>
           <span>
-            · {item.authorAvatar ? `${item.authorAvatar} ` : ''}
+            · {item.authorAvatar ? <AuthorAvatar emoji={item.authorAvatar} official={item.authorIsOfficial} /> : null}
+            {item.authorAvatar ? ' ' : ''}
             {author}
           </span>
           {item.isOfficial && item.officialLabel && <span className="community-tag-official">{item.officialLabel}</span>}

@@ -17,13 +17,14 @@ const rows = (v: unknown): Rec[] => asArr(v).filter(isRec)
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // Pestañas
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
-export type AdminTabId = 'resumen' | 'moderacion' | 'usuarios' | 'oficial' | 'encuestas' | 'destacados' | 'configuracion' | 'historial'
+export type AdminTabId = 'resumen' | 'moderacion' | 'usuarios' | 'oficial' | 'temas' | 'encuestas' | 'destacados' | 'configuracion' | 'historial'
 
 export const ADMIN_TABS: { id: AdminTabId; label: string; icon: string }[] = [
   { id: 'resumen', label: 'Resumen', icon: '📊' },
   { id: 'moderacion', label: 'Moderación', icon: '🛡️' },
   { id: 'usuarios', label: 'Usuarios', icon: '👥' },
   { id: 'oficial', label: 'Contenido oficial', icon: '📝' },
+  { id: 'temas', label: 'Temas propuestos', icon: '💡' },
   { id: 'encuestas', label: 'Encuestas', icon: '🗳️' },
   { id: 'destacados', label: 'Destacados', icon: '⭐' },
   { id: 'configuracion', label: 'Configuración', icon: '⚙️' },
@@ -1494,4 +1495,45 @@ export function logReasonText(e: Pick<LogEntry, 'action' | 'reason'>): string | 
 // Pide una fila de más para saber si hay página siguiente sin otra consulta.
 export function splitPage<T>(items: T[], pageSize: number): { page: T[]; hasMore: boolean } {
   return { page: items.slice(0, pageSize), hasMore: items.length > pageSize }
+}
+
+// ---- Temas propuestos por las familias (0284): agrupados por tema; la administración NO ve quién propone, solo cuántas personas distintas.
+export interface TopicProposalGroup {
+  groupKey: string
+  label: string
+  topicId: string
+  topicLabel: string
+  people: number
+  proposals: number
+  firstAt: string
+  lastAt: string
+  texts: string[]
+  ids: string[]
+}
+
+export function toTopicProposalGroups(raw: unknown): TopicProposalGroup[] {
+  if (!Array.isArray(raw)) return []
+  const out: TopicProposalGroup[] = []
+  for (const x of raw) {
+    if (typeof x !== 'object' || x === null) continue
+    const g = x as Record<string, unknown>
+    if (typeof g.groupKey !== 'string' || typeof g.label !== 'string') continue
+    out.push({
+      groupKey: g.groupKey,
+      label: g.label,
+      topicId: typeof g.topicId === 'string' ? g.topicId : '',
+      topicLabel: typeof g.topicLabel === 'string' ? g.topicLabel : '',
+      people: typeof g.people === 'number' ? g.people : 0,
+      proposals: typeof g.proposals === 'number' ? g.proposals : 0,
+      firstAt: typeof g.firstAt === 'string' ? g.firstAt : '',
+      lastAt: typeof g.lastAt === 'string' ? g.lastAt : '',
+      texts: Array.isArray(g.texts) ? g.texts.filter((t): t is string => typeof t === 'string') : [],
+      ids: Array.isArray(g.ids) ? g.ids.filter((t): t is string => typeof t === 'string') : [],
+    })
+  }
+  return out
+}
+
+export function peopleLabel(n: number): string {
+  return n === 1 ? '1 persona' : `${n} personas`
 }

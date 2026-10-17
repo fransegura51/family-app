@@ -55,7 +55,11 @@ describe('enchufado mínimo en las pantallas existentes', () => {
     const k = code('src/ui/AlimentacionScreen.tsx')
     expect(k).toMatch(/<DietaryWarnings ingredients=\{viewing\.ingredients\} \/>/)
     expect(k).toMatch(/<DietaryWarnings ingredients=\{pickedRecipe\.ingredients\}/)
-    expect(k.indexOf('<DietaryWarnings ingredients={viewing.ingredients} />')).toBeLessThan(k.indexOf('<h3>Ingredientes</h3>'))
+    // El aviso va ANTES de los ingredientes dentro del visor (el primer «Ingredientes» de después del aviso es el de ese visor).
+    const at = k.indexOf('<DietaryWarnings ingredients={viewing.ingredients} />')
+    const next = k.indexOf('<h3>Ingredientes</h3>', at)
+    expect(next).toBeGreaterThan(at)
+    expect(next - at).toBeLessThan(600)
   })
   it('el aviso no se mete en el editor de recetas compartido con Comunidad ni dentro de Comunidad (se enchufará desde la importación)', () => {
     expect(code('src/ui/recipeEditor/RecipeEditorFields.tsx')).not.toMatch(/Dietary/)

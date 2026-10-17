@@ -268,7 +268,7 @@ function MyPosts({ profileId }: { profileId: string }) {
 
 // ---- Personas que sigo (con su modo de aviso)
 function FollowingList() {
-  const [list, setList] = useState<{ id: string; alias: string; avatarEmoji: string | null; notifyMode: FollowMode }[] | null>(null)
+  const [list, setList] = useState<{ id: string; alias: string; avatarEmoji: string | null; isOfficial?: boolean; notifyMode: FollowMode }[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -315,7 +315,7 @@ function FollowingList() {
         {list?.map((f) => (
           <li key={f.id}>
             <Link to={paths.profile(f.id)} className="community-person-link">
-              <CommunityAvatar alias={f.alias} emoji={f.avatarEmoji} size="sm" />
+              <CommunityAvatar alias={f.alias} emoji={f.avatarEmoji} size="sm" official={f.isOfficial} />
               <span>{f.alias}</span>
             </Link>
             <label>

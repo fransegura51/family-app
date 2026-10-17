@@ -471,3 +471,9 @@ body.community-floating-hidden .scroll-top-fab {
   cursor: pointer;
   font-size: 15px;
 }
+
+/* «Propón un tema» (portada): discreto, centrado, antes de «Invitar amigos». */
+.community-propose-topic {
+  margin: 18px 0 4px;
+  text-align: center;
+}

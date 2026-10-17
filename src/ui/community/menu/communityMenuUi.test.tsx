@@ -89,12 +89,13 @@ describe('plan semanal (MenuPlanView)', () => {
 })
 
 describe('publicación de tipo menú (MenuPostPanel)', () => {
-  it('conserva el texto como introducción PLEGABLE y pinta el plan', () => {
+  it('enseña el artículo completo a la vista (sin plegar) y DEBAJO el importador', () => {
     canParticipate = true
     const out = html(<MenuPostPanel detail={detail} />)
-    expect(out).toContain('<details class="community-menu-intro"')
-    expect(out).toContain('Leer el texto de la publicación')
+    expect(out).not.toContain('<details class="community-menu-intro"')
+    expect(out).not.toContain('Leer el texto de la publicación')
     expect(out).toContain('Texto de la publicación del menú')
+    expect(out.indexOf('Texto de la publicación del menú')).toBeLessThan(out.indexOf('role="tablist"'))
     expect(out).toContain('role="tablist"')
     expect(out).toContain('Importar menú completo')
   })

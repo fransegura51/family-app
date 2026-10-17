@@ -10,7 +10,8 @@ import { ReportContentDialog } from '@/ui/community/ReportContentDialog'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { paths } from '@/ui/community/communityNav'
-import { getShareUrl, shareCommunityPost } from '@/ui/community/communityShare'
+import { buildShareText, getShareUrl, shareCommunityPost } from '@/ui/community/communityShare'
+import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import '@/ui/community/communityPost.css'
 
 const FOLLOW_MODE_LABELS: Record<FollowMode, string> = {
@@ -30,7 +31,8 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
   const busy = useRef(new Set<string>())
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [manualUrl, setManualUrl] = useState<string | null>(null)
+  // Respaldo cuando el menú de compartir del teléfono no funciona (Android): copiar, WhatsApp o email con el mismo texto.
+  const [shareFallback, setShareFallback] = useState<{ title: string; text: string } | null>(null)
   const [reporting, setReporting] = useState(false)
   const [blocking, setBlocking] = useState(false)
   const [blockBusy, setBlockBusy] = useState(false)
@@ -141,8 +143,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
     setError(null)
     setNotice(null)
     const r = await shareCommunityPost(detail.id, detail.title)
-    if (r === 'copied') setNotice('Enlace copiado. Ya puedes pegarlo donde quieras.')
-    else if (r === 'failed') setManualUrl(getShareUrl(detail.id))
+    if (r === 'failed') setShareFallback({ title: detail.title, text: buildShareText(detail.title, getShareUrl(detail.id)) })
   }
 
   // Denunciar NO exige participar (ni alias): `ReportContentDialog` elige el camino del servidor según el acceso de la persona.
@@ -299,12 +300,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
           {notice}
         </p>
       )}
-      {manualUrl && (
-        <label className="community-share-manual">
-          Copia este enlace:
-          <input type="text" readOnly value={manualUrl} onFocus={(e) => e.currentTarget.select()} />
-        </label>
-      )}
+      {shareFallback && <ShareFallbackModal title={shareFallback.title} text={shareFallback.text} onClose={() => setShareFallback(null)} />}
       {error && (
         <p className="error" role="alert">
           {error}

@@ -40,19 +40,23 @@ describe('apartado «Avisos de tareas»', () => {
     expect(out.indexOf('Avisarme de las tareas atrasadas')).toBeLessThan(out.indexOf('Avisarme de las tareas de hoy'))
   })
 
-  it('con los valores por defecto: las dos activadas, hoy 08:00 y atrasadas 09:00', () => {
+  it('con los valores por defecto: solo «hoy» activado (08:00); «atrasadas» desactivado y a las 09:00 cuando se active', () => {
     const out = html()
-    expect((out.match(/type="checkbox" checked=""/g) ?? []).length).toBe(2)
-    // Primer selector (atrasadas): 09:00; segundo (hoy): 08:00.
+    expect((out.match(/type="checkbox" checked=""/g) ?? []).length).toBe(1)
+    expect(out).toContain('Hora del aviso de tareas de hoy')
+    expect(out).not.toContain('Hora del aviso de tareas atrasadas')
     const selected = [...out.matchAll(/<option value="(\d\d)" selected="">/g)].map((m) => m[1])
-    expect(selected).toEqual(['09', '00', '08', '00'])
+    expect(selected).toEqual(['08', '00'])
+    // Al activarlo propone las 09:00.
+    const both = html({ taskOverdueEnabled: true })
+    expect([...both.matchAll(/<option value="(\d\d)" selected="">/g)].map((m) => m[1])).toEqual(['09', '00', '08', '00'])
   })
 
   it('cada interruptor oculta SOLO su hora', () => {
     const noOverdue = html({ taskOverdueEnabled: false })
     expect(noOverdue).not.toContain('Hora del aviso de tareas atrasadas')
     expect(noOverdue).toContain('Hora del aviso de tareas de hoy')
-    const noToday = html({ taskTodayEnabled: false })
+    const noToday = html({ taskTodayEnabled: false, taskOverdueEnabled: true })
     expect(noToday).toContain('Hora del aviso de tareas atrasadas')
     expect(noToday).not.toContain('Hora del aviso de tareas de hoy')
     const none = html({ taskTodayEnabled: false, taskOverdueEnabled: false })

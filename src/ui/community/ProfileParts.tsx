@@ -3,13 +3,32 @@ import { reportContent } from '@/data/community'
 import { REPORT_REASONS } from '@/domain/community'
 import { avatarText } from '@/domain/communityProfile'
 import { communityErrorText } from '@/domain/communityErrors'
+import { isPepaAccount } from '@/ui/community/AuthorAvatar'
+import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import '@/ui/community/communityProfile.css'
 
 // Piezas compartidas por el perfil público y «Mi perfil»: avatar, diálogo de confirmación y diálogo de denuncia.
 
 // Icono/emoji si lo hay; si no, iniciales del alias. Es decorativo: el alias siempre va escrito al lado.
-export function CommunityAvatar({ alias, emoji, size = 'md' }: { alias: string | null | undefined; emoji: string | null | undefined; size?: 'sm' | 'md' | 'lg' }) {
+export function CommunityAvatar({
+  alias,
+  emoji,
+  size = 'md',
+  official,
+}: {
+  alias: string | null | undefined
+  emoji: string | null | undefined
+  size?: 'sm' | 'md' | 'lg'
+  official?: boolean
+}) {
+  if (isPepaAccount(official, emoji)) {
+    return (
+      <span className={`community-avatar community-avatar-${size} community-avatar-pepa`} aria-hidden="true">
+        <img src={pepaAvatar} alt="" decoding="async" />
+      </span>
+    )
+  }
   return (
     <span className={`community-avatar community-avatar-${size}`} aria-hidden="true">
       {avatarText(alias, emoji)}

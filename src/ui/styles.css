@@ -7396,8 +7396,31 @@ textarea {
   height: 22px;
 }
 
+/* Nuevos: texto en negrita y punto azul. Leídos: letra normal y sin punto. */
+.notification-item-unread .notification-item-main {
+  font-weight: 700;
+}
+
+.notification-item-read .notification-item-main {
+  font-weight: 400;
+}
+
 .notification-item-unread .notification-item-title {
   font-weight: 700;
+}
+
+.notification-counts {
+  margin: 6px 0 0;
+  font-size: 14px;
+}
+
+.notification-mark-unread {
+  flex: none;
+  align-self: center;
+  font-size: 12px;
+  max-width: 96px;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .notification-item-body {

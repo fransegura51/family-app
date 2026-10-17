@@ -4,6 +4,7 @@ import { getPost, unblockUser } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { KIND_ICONS, KIND_LABELS, anecdoteTypeTag, type BlockedCard, type HiddenPostNotice, type PostDetail } from '@/domain/community'
 import { formatLongDate, isBlockedLayer, isHiddenNotice, sortPhotos, type PostLookup } from '@/domain/communityPost'
+import { AuthorAvatar } from '@/ui/community/AuthorAvatar'
 import { ArticleSources } from '@/ui/community/ArticleSources'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { COMMENT_FORM_ID, CommentComposer, type ReplyTarget } from '@/ui/community/CommentComposer'
@@ -208,7 +209,9 @@ function PostView({ detail, patch, reload }: { detail: PostDetail; patch: (p: Pa
         </p>
         <h1 className="community-post-title">{detail.title}</h1>
         <p className="community-post-author">
-          <span aria-hidden="true">{detail.authorAvatar ?? '🙂'}</span>{' '}
+          <span aria-hidden="true">
+            <AuthorAvatar emoji={detail.authorAvatar} official={detail.authorIsOfficial} />
+          </span>{' '}
           {detail.authorDeleted ? (
             <span>{author}</span>
           ) : (

@@ -13,6 +13,8 @@
 import { SECTIONS, type CommunitySection } from '@/domain/community'
 
 export const COMMUNITY_BASE = '/comunidad'
+// Perfil oficial de Pepa (fijo: lo crea la migración 0264).
+export const PEPA_PROFILE_ID = '00000000-0000-4000-8000-0000000000a2'
 
 export const paths = {
   home: COMMUNITY_BASE,
@@ -48,6 +50,8 @@ export const paths = {
   news: `${COMMUNITY_BASE}/novedades`,
   // «✨ Novedades» de la barra: las publicaciones más recientes (la lista de comentarios sin leer sigue en `news`, ligada a los avisos personales).
   recent: `${COMMUNITY_BASE}/recientes`,
+  // «👥 Seguidos»: el mismo listado, solo con las cuentas que sigo.
+  following: `${COMMUNITY_BASE}/recientes?ver=seguidos`,
   medals: `${COMMUNITY_BASE}/medallas`,
   rules: `${COMMUNITY_BASE}/normas`,
   profile: (id: string) => `${COMMUNITY_BASE}/u/${id}`,

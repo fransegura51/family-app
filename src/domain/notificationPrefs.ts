@@ -27,7 +27,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   timezone: 'Europe/Madrid',
   taskTodayEnabled: true,
   taskTodayTime: '08:00',
-  taskOverdueEnabled: true,
+  taskOverdueEnabled: false,
   taskOverdueTime: '09:00',
   personalCommunityMode: 'any',
   personalWindowStart: '08:00',

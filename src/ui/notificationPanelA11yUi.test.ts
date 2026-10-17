@@ -75,19 +75,19 @@ describe('contenido con semántica para el lector de pantalla', () => {
     expect(panel).toContain('<h3 className="notification-bucket-heading">')
     expect(panel).toContain('aria-expanded={!isCollapsed}')
     expect(panel).toContain('aria-controls={bodyId}')
-    expect(panel).toContain('aria-expanded={earlierOpen}')
   })
 
-  it('«Seleccionar» usa casillas con nombre y «Marcar todas como leídas» sigue siendo una acción aparte', () => {
+  it('«Seleccionar» usa casillas con nombre; ya no hay «marcar todas» y cada aviso leído tiene «Marcar como no leída» con su nombre accesible', () => {
     expect(panel).toContain('<span className="visually-hidden">Seleccionar: {n.title}</span>')
-    expect(panel).toContain('Marcar todas como leídas')
+    expect(panel).not.toContain('Marcar todas como leídas')
+    expect(panel).toContain('aria-label={`Marcar como no leída: ${n.title}`}')
     expect(panel).toContain('role="group" aria-label="Confirmar eliminación"')
   })
 
   it('anuncia al lector de pantalla (región «polite» discreta) cuántos hay sin leer y el resultado de cada acción', () => {
     expect(panel).toContain('role="status" aria-live="polite"')
     expect(panel).toContain('unreadAnnouncement(unreadCount(list))')
-    expect(panel).toContain("'Todos los avisos están marcados como leídos.'")
+    expect(panel).toContain("'Aviso marcado como no leído.'")
     expect(panel).toContain("'Avisos eliminados.'")
     expect(panel).toContain('role="alert"') // los errores se leen al momento
   })

@@ -55,8 +55,8 @@ import {
 } from '@/domain/communityAdmin'
 
 describe('pestañas', () => {
-  it('son las 8 del Centro de Mando, en orden', () => {
-    expect(ADMIN_TABS.map((t) => t.id)).toEqual(['resumen', 'moderacion', 'usuarios', 'oficial', 'encuestas', 'destacados', 'configuracion', 'historial'])
+  it('son las 9 del Centro de Mando, en orden', () => {
+    expect(ADMIN_TABS.map((t) => t.id)).toEqual(['resumen', 'moderacion', 'usuarios', 'oficial', 'temas', 'encuestas', 'destacados', 'configuracion', 'historial'])
   })
   it('un valor raro en la dirección vuelve a Resumen', () => {
     expect(parseAdminTab('usuarios')).toBe('usuarios')

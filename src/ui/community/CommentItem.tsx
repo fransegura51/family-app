@@ -1,3 +1,4 @@
+import { AuthorAvatar } from '@/ui/community/AuthorAvatar'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { MAX_COMMENT, type CommentNode } from '@/domain/community'
@@ -96,7 +97,7 @@ export function CommentItem({
       <div className="community-comment-card" ref={watchRef}>
       <div className="community-comment-head">
         <span className="community-comment-avatar" aria-hidden="true">
-          {comment.authorAvatar ?? '🙂'}
+          <AuthorAvatar emoji={comment.authorAvatar} official={comment.authorIsOfficial} />
         </span>
         <span className="community-comment-who">
           {comment.authorDeleted ? (

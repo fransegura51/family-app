@@ -2,7 +2,17 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { importPostRecipes } from '@/data/community'
 import { communityErrorText } from '@/domain/communityErrors'
-import { importResultSummary, ingredientLine, orderedKeys, parsePostRecipes, toggleKey, type PostRecipe, type PostRecipeImportResult } from '@/domain/communityPostRecipes'
+import {
+  importResultSummary,
+  ingredientLine,
+  orderedKeys,
+  parsePostRecipes,
+  recipesWithoutServings,
+  servingsText,
+  toggleKey,
+  type PostRecipe,
+  type PostRecipeImportResult,
+} from '@/domain/communityPostRecipes'
 import './communityRecipes.css'
 
 // «Importar a mi Cocina» para las recetas (y variantes) que trae una publicación. Cada receta se puede importar SOLA, o varias a la vez marcándolas.
@@ -83,7 +93,7 @@ export function PostRecipesPanel({ postId, variants }: { postId: string; variant
         <ul>
           {pendingRecipes.map((r) => (
             <li key={r.key}>
-              {r.title} — {r.servings === 1 ? '1 ración' : `${r.servings} raciones`}, {r.ingredients.length} ingredientes y {r.steps.length} pasos
+              {r.title} — {servingsText(r.servings)}, {r.ingredients.length} ingredientes y {r.steps.length} pasos
             </li>
           ))}
         </ul>
@@ -119,7 +129,7 @@ export function PostRecipesPanel({ postId, variants }: { postId: string; variant
                 <div className="community-post-recipe-title">
                   <h3>{r.title}</h3>
                   <p className="muted">
-                    {r.servings === 1 ? '1 ración' : `${r.servings} raciones`} · {r.ingredients.length} ingredientes
+                    {r.servings === null ? 'Raciones: no las indica el artículo' : servingsText(r.servings)} · {r.ingredients.length} ingredientes
                   </p>
                 </div>
               </div>
@@ -184,6 +194,12 @@ export function PostRecipesPanel({ postId, variants }: { postId: string; variant
               <li key={r.id}>{r.title}</li>
             ))}
           </ul>
+          {recipesWithoutServings(result).length > 0 && (
+            <p className="muted">
+              El artículo no dice para cuántas personas es {recipesWithoutServings(result).length === 1 ? 'esta receta' : 'estas recetas'} ({recipesWithoutServings(result).join(', ')}): se han
+              guardado SIN raciones y sus cantidades no se escalan. Cuando quieras usarlas para otro número de personas, indica las raciones en su ficha (✏️) y entonces sí.
+            </p>
+          )}
           <Link to="/alimentacion?tab=Recetas" className="link-button">
             📖 Ver mis recetas en La cocina de Pepa
           </Link>

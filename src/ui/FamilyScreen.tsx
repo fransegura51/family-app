@@ -20,7 +20,6 @@ import { useSectionHome } from '@/ui/useSectionHome'
 import { effectiveMemberType } from '@/domain/growth'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
-import { CommunityPermissionsCard } from '@/ui/CommunityPermissionsCard'
 import { canSeeDietarySection, FamilyDietarySection } from '@/ui/FamilyDietarySection'
 import type { FamilyMember, MemberSex, MemberType, Profile } from '@/domain/types'
 import { NAV_TABS, navSectionId } from '@/domain/navTabs'
@@ -206,7 +205,6 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       {/* 16/10/2026: el cierre de sesión, los avisos, el permiso «Permitir siempre», la guía de batería, las preferencias de Pepa y el borrado de cuenta no son de la
           familia: viven en Configuración (☰ Menú → Configuración), en los temas «Avisos», «Pepa» y «Mi cuenta». */}
       {/* Permisos de Comunidad de las personas de 15 a 17 años: solo para administradores de la familia; consulta solo al abrirla. */}
-      {isAdmin && <CommunityPermissionsCard />}
       {error && <p className="error">{error}</p>}
       <div className="event-list">
         {order.map((m) =>

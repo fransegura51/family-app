@@ -22,6 +22,8 @@ export interface AppNotification {
 export interface BucketView {
   bucket: NotificationBucket
   title: string
+  // TODAS las del bloque, de más reciente a más antigua (el orden no cambia al marcar una como leída: nada salta mientras se lee).
+  items: AppNotification[]
   unread: AppNotification[]
   earlier: AppNotification[]
 }
@@ -43,6 +45,55 @@ export function unreadCount(list: AppNotification[]): number {
   return list.filter((n) => n.readAt === null).length
 }
 
+export function readCount(list: AppNotification[]): number {
+  return list.filter((n) => n.readAt !== null).length
+}
+
+// «3 nuevas · 12 leídas»: se cuentan por separado (no solo un total).
+export function countsLabel(unread: number, read: number): string {
+  const nuevas = unread === 1 ? '1 nueva' : `${unread} nuevas`
+  const leidas = read === 1 ? '1 leída' : `${read} leídas`
+  return `${nuevas} · ${leidas}`
+}
+
+// Tiempo que un aviso tiene que estar a la vista en la pantalla de Avisos para darse por leído.
+export const DWELL_READ_MS = 3000
+
+// Seguimiento de «a la vista»: cada aviso que entra en la zona visible arranca su cuenta atrás; si sale antes de tiempo (o se cierra el panel) se cancela. Solo avisa
+// UNA vez por aviso. Lógica pura (sin DOM) para poder probarla con temporizadores simulados.
+export function createDwellTracker(onDwell: (id: string) => void, delayMs: number = DWELL_READ_MS) {
+  const timers = new Map<string, ReturnType<typeof setTimeout>>()
+  const done = new Set<string>()
+  return {
+    enter(id: string) {
+      if (done.has(id) || timers.has(id)) return
+      timers.set(
+        id,
+        setTimeout(() => {
+          timers.delete(id)
+          done.add(id)
+          onDwell(id)
+        }, delayMs),
+      )
+    },
+    leave(id: string) {
+      const t = timers.get(id)
+      if (t !== undefined) {
+        clearTimeout(t)
+        timers.delete(id)
+      }
+    },
+    // Pausa general (pestaña oculta, detalle abierto o panel cerrado): ningún aviso cuenta mientras tanto.
+    cancelAll() {
+      for (const t of timers.values()) clearTimeout(t)
+      timers.clear()
+    },
+    pending() {
+      return timers.size
+    },
+  }
+}
+
 // Bloques del panel: sin bloques vacíos, cada uno con sus no leídas (desplegadas) y sus anteriores/leídas (plegadas).
 export function buildBucketViews(list: AppNotification[]): BucketView[] {
   const views: BucketView[] = []
@@ -52,6 +103,7 @@ export function buildBucketViews(list: AppNotification[]): BucketView[] {
     views.push({
       bucket,
       title: BUCKET_TITLES[bucket],
+      items,
       unread: items.filter((n) => n.readAt === null),
       earlier: items.filter((n) => n.readAt !== null),
     })

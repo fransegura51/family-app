@@ -13,6 +13,7 @@ import { PostCardView } from '@/ui/community/PostCardView'
 import '@/ui/community/communityHome.css'
 import '@/ui/community/communityLists.css'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
+import { ProposeTopicButton } from '@/ui/community/ProposeTopicDialog'
 
 // Portada de Comunidad (la cabecera oficial y el menú ya los pone CommunityLayout). Accesos a las dos secciones, buscador, «Crear publicación» y bloques
 // dinámicos: Más recientes, Más comentados, Preguntas sin responder y Para mí.
@@ -256,6 +257,8 @@ export function CommunityHome() {
       )}
 
       {/* «Invitar amigos» (desactivado hasta el lanzamiento comercial) va al FINAL de la portada, debajo de las tarjetas y de todo el contenido. */}
+      {/* «Propón un tema» (antes de «Invitar amigos»): ideas de artículos para la revisión editorial; nada se publica solo. */}
+      {canParticipate && <ProposeTopicButton />}
       <InviteFriendsButton />
     </>
   )

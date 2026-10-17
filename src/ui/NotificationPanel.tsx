@@ -5,11 +5,14 @@ import {
   deleteAllNotifications,
   deleteNotifications,
   listNotifications,
-  markAllNotificationsRead,
   markNotificationsRead,
+  markNotificationUnread,
 } from '@/data/notifications'
 import {
   buildBucketViews,
+  countsLabel,
+  createDwellTracker,
+  readCount,
   relativeTime,
   safeInternalUrl,
   selectionIds,
@@ -31,9 +34,10 @@ import {
 import { useModalDialog } from '@/ui/useModalDialog'
 
 // Panel de avisos (se abre sobre Inicio, sin salir de ella): casi pantalla completa en móvil y lateral en ordenador. Cerrarlo deja Inicio donde estaba.
-//  · Dos bloques en orden fijo (Personales / Otras notificaciones), cada uno plegable a mano; las no leídas desplegadas y las anteriores plegadas
-//    bajo «Ver anteriores (X)». Sin bloques vacíos. Cronológico, nunca por importancia.
-//  · Abrir el panel NO marca nada como leído; abrir un aviso sí. «Marcar todas como leídas» es una acción aparte de borrar.
+//  · Dos bloques en orden fijo (Personales / Otras notificaciones), cada uno plegable a mano. Se ven TODOS los avisos (nada escondido al abrir), de más reciente a más
+//    antiguo; los nuevos en negrita y con punto azul, los leídos con letra normal y sin punto. Arriba se cuentan por separado («3 nuevas · 12 leídas»).
+//  · Abrir el panel NO marca nada como leído: un aviso se da por leído al abrirlo o tras 3 segundos a la vista dentro del panel (los de un bloque plegado, los que están
+//    fuera de la zona visible o con el panel cerrado no cuentan). No hay «marcar todas»: cada aviso leído tiene «Marcar como no leída» para recordarlo más tarde.
 //  · Borrar uno, varios o todos (también los plegados) pide confirmación; borrar un aviso no borra la tarea, el pago o el evento al que apuntaba.
 //  · El historial es el del servidor (30 días), así que leído/borrado/contador son iguales en todos los dispositivos de la persona.
 //  · El aviso agrupado de tareas (resumen diario) no navega: abre un DETALLE dentro del mismo panel con TODAS las tareas del aviso (título completo, fecha,
@@ -62,7 +66,6 @@ export function NotificationPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [collapsed, setCollapsed] = useState<Partial<Record<NotificationBucket, boolean>>>({})
-  const [showEarlier, setShowEarlier] = useState<Partial<Record<NotificationBucket, boolean>>>({})
   const [busy, setBusy] = useState(false)
   // Aviso agrupado de tareas abierto (vista de detalle dentro del panel).
   const [detail, setDetail] = useState<AppNotification | null>(null)
@@ -87,12 +90,66 @@ export function NotificationPanel({
     })
   }, [load])
 
+  // El contador de la campana sigue a la lista (al marcar leídos o no leídos).
+  useEffect(() => {
+    if (items) onUnreadChange(unreadCount(items))
+  }, [items, onUnreadChange])
+
+  // Lectura automática: un aviso NUEVO que lleva 3 segundos seguidos a la vista en este panel se marca como leído (en la lista al instante y en el servidor, en lote).
+  // Solo cuentan los que se ven de verdad (IntersectionObserver sobre el propio panel con scroll): los de un bloque plegado, los de fuera de la zona visible, los de la lista
+  // oculta tras abrir un detalle y todo si la pestaña está en segundo plano o el panel se cierra enseguida (al desmontar se cancelan las cuentas atrás).
+  const readQueue = useRef<string[]>([])
+  const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const markSeen = useCallback((id: string) => {
+    readQueue.current.push(id)
+    if (readTimer.current !== null) return
+    readTimer.current = setTimeout(() => {
+      const ids = readQueue.current.splice(0)
+      readTimer.current = null
+      const now = new Date().toISOString()
+      setItems((prev) => (prev ? prev.map((x) => (ids.includes(x.id) && x.readAt === null ? { ...x, readAt: now } : x)) : prev))
+      void markNotificationsRead(ids).then(
+        () => undefined,
+        () => undefined,
+      )
+    }, 60)
+  }, [])
+  const [tabVisible, setTabVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
+  useEffect(() => {
+    const onVisibility = () => setTabVisible(!document.hidden)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [])
+  const hasItems = items !== null
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel || !hasItems || detail !== null || !tabVisible || typeof IntersectionObserver === 'undefined') return
+    const tracker = createDwellTracker(markSeen)
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.notificationId
+          if (!id) continue
+          if (entry.isIntersecting) tracker.enter(id)
+          else tracker.leave(id)
+        }
+      },
+      { root: panel, threshold: 0.6 },
+    )
+    panel.querySelectorAll<HTMLElement>('li[data-unread="true"]').forEach((el) => observer.observe(el))
+    return () => {
+      observer.disconnect()
+      tracker.cancelAll()
+    }
+  }, [hasItems, detail, tabVisible, items, markSeen])
+
   // Foco, Escape, scroll y fondo inerte (ver useModalDialog).
   useModalDialog(panelRef, { onClose, returnFocusRef })
 
   const views = useMemo(() => buildBucketViews(items ?? []), [items])
   const total = items?.length ?? 0
   const unread = items ? unreadCount(items) : 0
+  const read = items ? readCount(items) : 0
 
   async function run(action: () => Promise<void>, done: string) {
     setBusy(true)
@@ -235,7 +292,7 @@ export function NotificationPanel({
   function renderItem(n: AppNotification) {
     const isUnread = n.readAt === null
     return (
-      <li key={n.id} className={`notification-item${isUnread ? ' notification-item-unread' : ''}`}>
+      <li key={n.id} data-notification-id={n.id} data-unread={isUnread ? 'true' : 'false'} className={`notification-item${isUnread ? ' notification-item-unread' : ' notification-item-read'}`}>
         {selecting && (
           <label className="notification-select">
             <input type="checkbox" checked={selected.has(n.id)} onChange={() => toggle(n.id)} />
@@ -252,6 +309,23 @@ export function NotificationPanel({
           {n.body && <span className="notification-item-body">{n.body}</span>}
           <span className="notification-item-time muted">{relativeTime(n.createdAt)}</span>
         </button>
+        {!selecting && !isUnread && (
+          <button
+            type="button"
+            className="link-button notification-mark-unread"
+            disabled={busy}
+            aria-label={`Marcar como no leída: ${n.title}`}
+            onClick={() => {
+              setItems((prev) => (prev ? prev.map((x) => (x.id === n.id ? { ...x, readAt: null } : x)) : prev))
+              void markNotificationUnread(n.id).then(
+                () => setStatus('Aviso marcado como no leído.'),
+                () => void load(),
+              )
+            }}
+          >
+            Marcar como no leída
+          </button>
+        )}
       </li>
     )
   }
@@ -296,17 +370,15 @@ export function NotificationPanel({
           {items !== null && total === 0 && <p className="muted notification-empty">No tienes avisos. Aquí aparecerán los de los últimos 30 días.</p>}
 
           {items !== null && total > 0 && (
+            <p className="notification-counts" role="status">
+              <strong>{countsLabel(unread, read)}</strong>
+            </p>
+          )}
+
+          {items !== null && total > 0 && (
             <div className="notification-actions">
               {!selecting ? (
                 <>
-                  <button
-                    type="button"
-                    className="link-button"
-                    disabled={busy || unread === 0}
-                    onClick={() => run(markAllNotificationsRead, 'Todos los avisos están marcados como leídos.')}
-                  >
-                    Marcar todas como leídas
-                  </button>
                   <button type="button" className="link-button" onClick={() => setSelecting(true)}>
                     Seleccionar
                   </button>
@@ -352,7 +424,6 @@ export function NotificationPanel({
 
           {views.map((view) => {
             const isCollapsed = collapsed[view.bucket] === true
-            const earlierOpen = showEarlier[view.bucket] === true
             const bodyId = `${titleId}-${view.bucket}`
             return (
               <section key={view.bucket} className="notification-bucket" aria-label={view.title}>
@@ -365,26 +436,13 @@ export function NotificationPanel({
                     onClick={() => setCollapsed((prev) => ({ ...prev, [view.bucket]: !isCollapsed }))}
                   >
                     <span>
-                      {view.title} ({view.unread.length + view.earlier.length})
+                      {view.title} ({view.items.length})
                     </span>
                     <span aria-hidden="true">{isCollapsed ? '▸' : '▾'}</span>
                   </button>
                 </h3>
                 <div id={bodyId} hidden={isCollapsed}>
-                  {view.unread.length > 0 && <ul className="notification-list">{view.unread.map(renderItem)}</ul>}
-                  {view.earlier.length > 0 && (
-                    <>
-                      <button
-                        type="button"
-                        className="link-button notification-earlier-toggle"
-                        aria-expanded={earlierOpen}
-                        onClick={() => setShowEarlier((prev) => ({ ...prev, [view.bucket]: !earlierOpen }))}
-                      >
-                        {earlierOpen ? 'Ocultar anteriores' : `Ver anteriores (${view.earlier.length})`}
-                      </button>
-                      {earlierOpen && <ul className="notification-list">{view.earlier.map(renderItem)}</ul>}
-                    </>
-                  )}
+                  <ul className="notification-list">{view.items.map(renderItem)}</ul>
                 </div>
               </section>
             )

@@ -57,6 +57,9 @@ import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEd
 // que se guardaron desde Comunidad. No cambian nada de lo que ya hacía la Cocina.
 import { RecipeUpdateBanner } from '@/ui/community/recipes/RecipeUpdateBanner'
 import { ShareToCommunityButton } from '@/ui/community/recipes/ShareToCommunityButton'
+import { useCommunityVisible } from '@/ui/community/useCommunityVisible'
+// «Importar menú de Comunidad» (Menú semanal): se descarga solo al pulsar el botón.
+const CommunityMenuImportModal = lazy(() => import('@/ui/community/menu/CommunityMenuImportModal').then((m) => ({ default: m.CommunityMenuImportModal })))
 const RecipePublishHost = lazy(() => import('@/ui/community/recipes/RecipePublishSheet').then((m) => ({ default: m.RecipePublishHost })))
 
 const SUB_TABS = ['Inicio', 'Menú', 'Recetas', 'Cocinar'] as const
@@ -109,7 +112,7 @@ function initialTabFromParam(param: string | null): SubTab {
 }
 
 export function AlimentacionScreen() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState<SubTab>(() => initialTabFromParam(searchParams.get('tab')))
   // "La cocina de Pepa" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /alimentacion.
   useSectionHome(() => setTab('Inicio'))
@@ -212,7 +215,13 @@ export function AlimentacionScreen() {
       )}
 
       {tab === 'Inicio' && <AlimentacionInicioTab onNavigate={setTab} />}
-      {tab === 'Menú' && <MenuTab />}
+      {tab === 'Menú' && <MenuTab
+          onOpenRecipe={(id) => {
+            // Desde la ficha emergente de un plato del menú: abre ESA receta en Recetas (con todas sus acciones y la edición).
+            setSearchParams({ tab: 'Recetas', receta: id })
+            setTab('Recetas')
+          }}
+        />}
       {tab === 'Recetas' && <RecipesTab />}
       {tab === 'Cocinar' && <CocinarTab onOpenRecipes={() => setTab('Recetas')} />}
     </div>
@@ -588,7 +597,7 @@ function AlimentacionMenuDropdown({
 // Menú semanal (Skill 15)
 // ---------------------------------------------------------------------
 
-function MenuTab() {
+function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void }) {
   const [searchParams] = useSearchParams()
   const from = searchParams.get('desde')
   const dates = useMemo(() => weekDates(from), [from])
@@ -601,6 +610,11 @@ function MenuTab() {
   // solo borrar" — antes la única forma de cambiar un día era Quitar +
   // volver a Añadir desde cero.
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Receta cuya ficha está abierta en la ventana emergente (al tocar el nombre de un plato del menú que tiene receta guardada).
+  const [viewRecipeId, setViewRecipeId] = useState<string | null>(null)
+  // «📥 Importar menú de Comunidad»: solo con Comunidad abierta para la persona (sin consultas si no lo está).
+  const communityVisible = useCommunityVisible()
+  const [importOpen, setImportOpen] = useState(false)
 
   function reload() {
     setLoading(true)
@@ -623,9 +637,16 @@ function MenuTab() {
 
   if (loading) return <p className="muted">Cargando menú…</p>
 
+  const viewedRecipe = viewRecipeId ? (recipes.find((r) => r.id === viewRecipeId) ?? null) : null
+
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      {communityVisible === true && (
+        <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)}>
+          📥 Importar menú de Comunidad
+        </button>
+      )}
       {dates.map((date) => (
         <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
           <strong>
@@ -657,7 +678,13 @@ function MenuTab() {
                   />
                 ) : entry ? (
                   <>
-                    <span>{recipe?.title ?? entry.freeText}</span>
+                    {recipe ? (
+                      <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(recipe.id)} aria-label={`Ver la receta ${recipe.title}`}>
+                        📖 {recipe.title}
+                      </button>
+                    ) : (
+                      <span>{entry.freeText}</span>
+                    )}
                     <button type="button" className="link-button" onClick={() => setEditingId(entry.id)}>
                       Editar
                     </button>
@@ -688,7 +715,18 @@ function MenuTab() {
                   <span className="muted menu-meal-label" aria-hidden="true">
                     +
                   </span>
-                  <span>{(extra.recipeId ? recipes.find((r) => r.id === extra.recipeId)?.title : null) ?? extra.freeText}</span>
+                  {extra.recipeId && recipes.some((r) => r.id === extra.recipeId) ? (
+                    <button
+                      type="button"
+                      className="link-button menu-recipe-link"
+                      onClick={() => setViewRecipeId(extra.recipeId)}
+                      aria-label={`Ver la receta ${recipes.find((r) => r.id === extra.recipeId)?.title ?? ''}`}
+                    >
+                      📖 {recipes.find((r) => r.id === extra.recipeId)?.title}
+                    </button>
+                  ) : (
+                    <span>{extra.freeText}</span>
+                  )}
                   <ConfirmButton label="Quitar" onConfirm={() => deleteMenuEntry(extra.id).then(reload)} />
                 </div>
               ))}
@@ -697,6 +735,87 @@ function MenuTab() {
           })}
         </div>
       ))}
+      {viewedRecipe && (
+        <RecipeQuickViewModal
+          recipe={viewedRecipe}
+          onClose={() => setViewRecipeId(null)}
+          onOpenFull={() => {
+            setViewRecipeId(null)
+            onOpenRecipe(viewedRecipe.id)
+          }}
+        />
+      )}
+      {importOpen && (
+        <Suspense fallback={null}>
+          <CommunityMenuImportModal
+            onClose={(imported) => {
+              setImportOpen(false)
+              if (imported) reload()
+            }}
+          />
+        </Suspense>
+      )}
+    </div>
+  )
+}
+
+// Ventana emergente con la ficha de una receta (mismo patrón que las demás ventanas de Cocina: se abre sobre la pantalla, se cierra con ✕ o tocando fuera): foto,
+// etiquetas, raciones, ingredientes con cantidades y preparación. Para editarla o usar todas sus acciones, «Abrir la receta completa» lleva a Recetas.
+function RecipeQuickViewModal({ recipe, onClose, onOpenFull }: { recipe: Recipe; onClose: () => void; onOpenFull: () => void }) {
+  const tagColors = paletteByName(recipe.tags)
+  const servingsView = recipeServingsView(recipe.servings, recipe.servingsSource)
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label={`Receta: ${recipe.title}`} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {recipe.title}
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <RecipeImage imagePath={recipe.imagePath} alt={recipe.title} />
+        {recipe.tags.length > 0 && (
+          <div className="filter-row" style={{ margin: '8px 0 0' }}>
+            {recipe.tags.map((t) => (
+              <span key={t} className="chip" style={{ background: tagColors.get(t) }}>
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        {servingsView ? (
+          <p style={{ margin: '8px 0 0', fontSize: 14 }}>👥 Raciones: {servingsView.value}</p>
+        ) : recipe.ingredients.some((i) => i.quantity) ? (
+          <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
+            👥 Raciones: sin indicar.
+          </p>
+        ) : null}
+        <DietaryWarnings ingredients={recipe.ingredients} />
+        {recipe.ingredients.length > 0 && (
+          <div className="day-modal-group">
+            <h3>Ingredientes</h3>
+            <ul className="ingredient-list">
+              {recipe.ingredients.map((i) => (
+                <li key={i.id}>
+                  {i.name}
+                  {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {recipe.notes && (
+          <div className="day-modal-group">
+            <h3>Preparación / notas</h3>
+            <p style={{ whiteSpace: 'pre-wrap' }}>{dedupeStepNumbers(recipe.notes)}</p>
+          </div>
+        )}
+        <button type="button" className="primary" style={{ width: '100%', minHeight: 44, marginTop: 10 }} onClick={onOpenFull}>
+          📖 Abrir la receta completa (y editarla)
+        </button>
+      </div>
     </div>
   )
 }
@@ -754,7 +873,8 @@ function MenuEntryPicker({
 // Recetas (Skill 15)
 // ---------------------------------------------------------------------
 
-const DEFAULT_RECIPE_TAGS = ['Postres', 'Favoritos', 'Fáciles de preparar', 'Vegetariano', 'Rápidas']
+const FAVORITES_TAG = 'Favoritos'
+const DEFAULT_RECIPE_TAGS = ['Postres', FAVORITES_TAG, 'Fáciles de preparar', 'Vegetariano', 'Rápidas']
 
 function normalizeRecipeSearch(s: string): string {
   return s
@@ -807,6 +927,10 @@ function RecipesTab() {
   // de golpe.
   const [pickingFor, setPickingFor] = useState<Recipe | null>(null)
   const [tagFilter, setTagFilter] = useState('Todas')
+  // Filtros compactos (en vez de una nube permanente de etiquetas): «⭐ Favoritos» siempre a mano y el resto —etiquetas propias e ingrediente— dentro de «Filtros».
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [ingredientFilter, setIngredientFilter] = useState('')
   const [recipeSearch, setRecipeSearch] = useState('')
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Recipe | null>(null)
@@ -894,8 +1018,13 @@ function RecipesTab() {
   // tiendas en Compras (paletteByName): mismo nombre, siempre el mismo
   // color, en los chips de filtro y en la fila de cada receta.
   const tagColors = paletteByName(availableTags)
+  // El ingrediente se busca en los ingredientes de cada receta (NO son etiquetas): «huevo» encuentra «2 huevos».
+  const normalizedIngredientFilter = normalizeRecipeSearch(ingredientFilter)
+  const activeFilterCount = (tagFilter !== 'Todas' ? 1 : 0) + (normalizedIngredientFilter ? 1 : 0)
   const filteredRecipes = recipes
     .filter((r) => tagFilter === 'Todas' || r.tags.includes(tagFilter))
+    .filter((r) => !favoritesOnly || r.tags.includes(FAVORITES_TAG))
+    .filter((r) => !normalizedIngredientFilter || r.ingredients.some((i) => normalizeRecipeSearch(i.name).includes(normalizedIngredientFilter)))
     .sort((a, b) => a.title.localeCompare(b.title))
   const viewing = viewingId ? (recipes.find((r) => r.id === viewingId) ?? null) : null
 
@@ -952,22 +1081,54 @@ function RecipesTab() {
         </div>
       )}
 
-      <div className="filter-row">
-        <button type="button" className={'chip' + (tagFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setTagFilter('Todas')}>
-          Todas
+      <div className="filter-row recipe-quick-filters">
+        <button type="button" className={'chip' + (favoritesOnly ? ' chip-active' : '')} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly((v) => !v)}>
+          ⭐ Favoritos
         </button>
-        {availableTags.map((tag) => (
+        <button
+          type="button"
+          className={'chip' + (filtersOpen || activeFilterCount > 0 ? ' chip-active' : '')}
+          aria-expanded={filtersOpen}
+          aria-controls="recipe-filters-panel"
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          🎚️ Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
+        </button>
+        {(activeFilterCount > 0 || favoritesOnly) && (
           <button
-            key={tag}
             type="button"
-            className={'chip' + (tagFilter === tag ? ' chip-active' : '')}
-            style={{ background: tagColors.get(tag) }}
-            onClick={() => setTagFilter(tag)}
+            className="link-button"
+            onClick={() => {
+              setTagFilter('Todas')
+              setIngredientFilter('')
+              setFavoritesOnly(false)
+            }}
           >
-            {tag}
+            Quitar filtros
           </button>
-        ))}
+        )}
       </div>
+      {filtersOpen && (
+        <div id="recipe-filters-panel" className="card recipe-filters-panel">
+          <label>
+            Con el ingrediente
+            <input type="search" value={ingredientFilter} onChange={(e) => setIngredientFilter(e.target.value)} placeholder="Por ejemplo: huevos, arroz…" />
+          </label>
+          <p className="muted" style={{ margin: '8px 0 4px', fontSize: 13 }}>
+            Etiquetas (las que pones tú):
+          </p>
+          <div className="filter-row" style={{ margin: 0 }}>
+            <button type="button" className={'chip' + (tagFilter === 'Todas' ? ' chip-active' : '')} onClick={() => setTagFilter('Todas')}>
+              Todas
+            </button>
+            {availableTags.map((tag) => (
+              <button key={tag} type="button" className={'chip' + (tagFilter === tag ? ' chip-active' : '')} style={{ background: tagColors.get(tag) }} onClick={() => setTagFilter(tag)}>
+                {tag}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="event-list">
         {filteredRecipes.map((r) => (
@@ -983,7 +1144,7 @@ function RecipesTab() {
           </button>
         ))}
         {filteredRecipes.length === 0 && (
-          <p className="muted">{recipes.length === 0 ? 'Todavía no hay recetas.' : 'Ninguna receta con esa etiqueta.'}</p>
+          <p className="muted">{recipes.length === 0 ? 'Todavía no hay recetas.' : 'Ninguna receta con esos filtros.'}</p>
         )}
       </div>
 
@@ -1116,6 +1277,13 @@ function RecipesTab() {
                       Fuente original: {view.source}
                     </span>
                   )}
+                </p>
+              ) : viewing.ingredients.some((i) => i.quantity) ? (
+                <p className="muted" style={{ margin: '8px 0 0', fontSize: 13 }}>
+                  👥 Raciones: sin indicar. Las cantidades no se escalan hasta que digas para cuántas personas es.{' '}
+                  <button type="button" className="link-button" onClick={() => setEditing(viewing)}>
+                    Indicar raciones
+                  </button>
                 </p>
               ) : null
             })()}

@@ -2,10 +2,11 @@
 --
 -- Hasta ahora había UN solo resumen diario (0262/0280) con las dos cosas juntas, a la hora de `daily_summary_time` (08:00 por defecto). Ahora:
 --   · «Avisarme de las tareas de hoy»   → task_today_enabled / task_today_time     (por defecto activado, 08:00).
---   · «Avisarme de las tareas atrasadas» → task_overdue_enabled / task_overdue_time (por defecto activado, 09:00).
+--   · «Avisarme de las tareas atrasadas» → task_overdue_enabled / task_overdue_time (por defecto DESACTIVADO; al activarlo la hora propuesta es las 09:00).
 -- Son preferencias de CADA persona (user_notification_prefs, en el servidor: valen en todos sus dispositivos) y se calculan en SU zona horaria (timezone). Sin fila de ajustes
--- se usan los valores por defecto. Las personas que ya habían elegido hora/activación para el resumen conservan esa elección para «hoy» (y para «atrasadas» su activación,
--- a las 09:00); las columnas antiguas (daily_summary_*) se dejan como están, sin usar.
+-- se usan los valores por defecto. Las personas que ya habían elegido hora/activación para el resumen conservan esa elección para «hoy»; el aviso de «atrasadas» es
+-- NUEVO y queda DESACTIVADO para todo el mundo hasta que cada persona lo active conscientemente (no se activa un segundo aviso diario que nadie ha pedido). Las columnas
+-- antiguas (daily_summary_*) se dejan como están, sin usar.
 --
 -- Qué NO cambia: quién recibe cada tarea (private.event_notification_recipients, permisos y visibilidad de tareas familiares y personales), el cálculo de pendientes y
 -- atrasadas por OCURRENCIA (las repetitivas generan una ocurrencia independiente cada día), la ventana de envío (desde la hora elegida hasta 60 minutos después: un retraso o el
@@ -20,12 +21,12 @@
 alter table public.user_notification_prefs
   add column task_today_enabled boolean not null default true,
   add column task_today_time time not null default '08:00',
-  add column task_overdue_enabled boolean not null default true,
+  add column task_overdue_enabled boolean not null default false,
   add column task_overdue_time time not null default '09:00';
 
--- Quien ya había elegido algo para el resumen diario lo conserva.
+-- Quien ya había elegido algo para el resumen diario lo conserva para «hoy»; «atrasadas» arranca desactivado (se activa a mano).
 update public.user_notification_prefs
-set task_today_enabled = daily_summary_enabled, task_today_time = daily_summary_time, task_overdue_enabled = daily_summary_enabled;
+set task_today_enabled = daily_summary_enabled, task_today_time = daily_summary_time, task_overdue_enabled = false;
 
 -- Entregas: una por persona, día local y TIPO.
 alter table public.daily_task_summary_deliveries add column kind text not null default 'today' check (kind in ('today', 'overdue'));
@@ -64,11 +65,11 @@ begin
            coalesce(np.timezone, 'Europe/Madrid') as tz,
            coalesce(np.task_today_enabled, true) as today_on,
            coalesce(np.task_today_time, time '08:00') as today_tm,
-           coalesce(np.task_overdue_enabled, true) as over_on,
+           coalesce(np.task_overdue_enabled, false) as over_on,
            coalesce(np.task_overdue_time, time '09:00') as over_tm
     from public.profiles p
     left join public.user_notification_prefs np on np.profile_id = p.id
-    where (coalesce(np.task_today_enabled, true) or coalesce(np.task_overdue_enabled, true))
+    where (coalesce(np.task_today_enabled, true) or coalesce(np.task_overdue_enabled, false))
       and (p.allowed_sections is null or 'calendario' = any(p.allowed_sections))
   loop
     v_local := (p_now at time zone r.tz);

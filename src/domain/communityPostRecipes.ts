@@ -2,7 +2,7 @@
 //
 // Las recetas NO salen de analizar el texto libre (eso inventaría cantidades y pasos): las escribe la edición con los datos reales del texto y la base de datos las
 // valida (private.community_validate_post_recipes). Aquí está el mismo contrato para leerlas con seguridad en la app y para la prueba/generador del contenido inicial.
-// Cantidad desconocida = texto vacío (nunca un número inventado).
+// Cantidad desconocida = texto vacío y raciones desconocidas = null (nunca un número inventado).
 
 export interface PostRecipeIngredient {
   name: string
@@ -13,7 +13,8 @@ export interface PostRecipeIngredient {
 export interface PostRecipe {
   key: string
   title: string
-  servings: number
+  // null = el artículo NO dice para cuántas personas es (nunca se asume un número): se pregunta antes de escalar cantidades.
+  servings: number | null
   ingredients: PostRecipeIngredient[]
   steps: string[]
   tags: string[]
@@ -46,7 +47,9 @@ export function validatePostRecipes(raw: unknown): string | null {
     const t = typeof r.title === 'string' ? r.title.trim() : ''
     if (t.length < 1 || t.length > 120) return 'una receta necesita título (de 1 a 120 letras)'
     const where = `receta «${t.slice(0, 60)}»: `
-    if (typeof r.servings !== 'number' || !Number.isInteger(r.servings) || r.servings < 1 || r.servings > 50) return where + 'las raciones deben ser un número entero de 1 a 50'
+    // Raciones: un entero de 1 a 50 o SIN INDICAR (null o ausente) cuando el artículo no las dice.
+    if (r.servings !== undefined && r.servings !== null && (typeof r.servings !== 'number' || !Number.isInteger(r.servings) || r.servings < 1 || r.servings > 50))
+      return where + 'las raciones deben ser un número entero de 1 a 50 o quedar sin indicar'
     if (!Array.isArray(r.ingredients) || r.ingredients.length < 1 || r.ingredients.length > 60) return where + 'debe tener de 1 a 60 ingredientes'
     const names = new Set<string>()
     for (const ing of r.ingredients) {
@@ -80,7 +83,7 @@ export function parsePostRecipes(raw: unknown): PostRecipe[] {
   return (raw as Record<string, unknown>[]).map((r) => ({
     key: r.key as string,
     title: (r.title as string).trim(),
-    servings: r.servings as number,
+    servings: typeof r.servings === 'number' ? r.servings : null,
     ingredients: (r.ingredients as Record<string, unknown>[]).map((i) => ({ name: (i.name as string).trim(), quantity: String(i.quantity ?? ''), unit: String(i.unit ?? '') })),
     steps: (r.steps as string[]).map((s) => s.trim()),
     tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
@@ -110,7 +113,7 @@ export interface PostRecipeImportResult {
   // true = ya se había hecho con esta misma clave: no se ha creado nada otra vez.
   replayed: boolean
   postId: string
-  recipes: { id: string; key: string; title: string; created: boolean }[]
+  recipes: { id: string; key: string; title: string; created: boolean; servingsKnown?: boolean }[]
   recipesCreated: number
   recipesReused: number
 }
@@ -128,6 +131,17 @@ const POST_RECIPE_ERROR_KEYS = Object.keys(POST_RECIPE_ERROR_MESSAGES) as PostRe
 export function postRecipeErrorCode(error: unknown): PostRecipeErrorCode | null {
   const raw = typeof error === 'object' && error !== null ? String((error as { message?: unknown }).message ?? '') : String(error ?? '')
   return POST_RECIPE_ERROR_KEYS.find((k) => new RegExp(`\\b${k}\\b`).test(raw)) ?? null
+}
+
+// «4 raciones», «1 ración» o «Raciones: sin indicar en el artículo».
+export function servingsText(servings: number | null): string {
+  if (servings === null) return 'raciones sin indicar'
+  return servings === 1 ? '1 ración' : `${servings} raciones`
+}
+
+// Recetas importadas que no traen raciones (hay que indicarlas antes de escalar cantidades).
+export function recipesWithoutServings(r: PostRecipeImportResult): string[] {
+  return r.recipes.filter((x) => x.servingsKnown === false).map((x) => x.title)
 }
 
 // Resumen en claro de lo hecho (sin tecnicismos).

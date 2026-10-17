@@ -109,7 +109,7 @@ describe('aviso de solo lectura', () => {
     expect(html).toContain('role="note"')
     expect(html).toContain('<details>')
     expect(html).toContain('¿Qué significa?')
-    expect(html).toContain('Permisos de Comunidad')
+    expect(html).toContain('no puedes publicar, comentar')
   })
 
   it('solo sale con permiso de lectura: ni con acceso completo ni sin estado todavía', () => {
@@ -131,16 +131,20 @@ describe('aviso de solo lectura', () => {
 
 describe('pantalla «Comunidad no está disponible para tu cuenta»', () => {
   it('explica cada motivo y vuelve a Inicio', () => {
-    const under = render(<CommunityUnavailable reason="under_15" />)
+    const under = render(<CommunityUnavailable reason="under_18" />)
     expect(under).toContain('Comunidad no está disponible para tu cuenta')
-    expect(under).toContain('15 años')
+    expect(under).toContain('18 años')
     expect(under).toContain('href="/"')
-    expect(render(<CommunityUnavailable reason="age_unknown" />)).toContain('fecha de nacimiento')
-    expect(render(<CommunityUnavailable reason="not_authorized" />)).toContain('quien administra tu familia')
+    expect(under).not.toContain('Completar mi fecha de nacimiento')
+    const unknown = render(<CommunityUnavailable reason="age_unknown" />)
+    expect(unknown).toContain('fecha de nacimiento')
+    // Vía para completar el dato: la ficha de Familia.
+    expect(unknown).toContain('href="/familia"')
+    expect(unknown).toContain('Completar mi fecha de nacimiento')
   })
 
   it('el marco de rutas la enseña solo sin acceso, y no monta nada más', () => {
-    setStatus(NONE('under_15'))
+    setStatus(NONE('under_18'))
     expect(render(<CommunityAccessGate />)).toContain('Comunidad no está disponible para tu cuenta')
     setStatus(NONE('age_unknown'))
     expect(render(<CommunityAccessGate />)).toContain('fecha de nacimiento')

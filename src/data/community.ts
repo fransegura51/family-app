@@ -180,7 +180,7 @@ export const unfollowUser = (profileId: string) => rpc<void>('community_unfollow
 export const blockUser = (profileId: string) => rpc<void>('community_block', { p_cp: profileId })
 export const unblockUser = (profileId: string) => rpc<void>('community_unblock', { p_cp: profileId })
 export const listBlocks = () => rpc<{ id: string; alias: string; avatarEmoji: string | null }[]>('community_list_blocks')
-export const listFollowing = () => rpc<{ id: string; alias: string; avatarEmoji: string | null; notifyMode: FollowMode }[]>('community_list_following')
+export const listFollowing = () => rpc<{ id: string; alias: string; avatarEmoji: string | null; isOfficial?: boolean; notifyMode: FollowMode }[]>('community_list_following')
 export const setFavoriteTopics = (topics: string[]) => rpc<void>('community_set_favorite_topics', { p_topics: topics })
 export const getFavoriteTopics = () => rpc<string[]>('community_get_favorite_topics')
 export const getPublicProfile = (profileId: string) => rpc<PublicProfileInfo | null>('community_get_public_profile', { p_cp: profileId })
@@ -315,6 +315,13 @@ export const adminApproveProposal = (id: string, confirmText = false) =>
   rpc<Record<string, unknown>>('community_admin_approve_proposal', confirmText ? { p_id: id, p_confirm_text: true } : { p_id: id })
 // Menú semanal oficial: lista (todos los estados + valor de weekly_menu_autopublish), detalle con revisión de calidad, reprogramar (fecha = sábado 10:00 de
 // Madrid futuro; null cancela la programación) y reintentar una publicación con error.
+// ---- Propón un tema (0284): ideas de artículos que interesan a las familias. Separado del buzón de sugerencias de la app; nada se publica solo.
+export const proposeTopic = (topicId: string, text: string) => rpc<string>('community_propose_topic', { p_topic: topicId, p_text: text })
+export const adminListTopicProposals = (status: 'new' | 'drafted' | 'dismissed' = 'new') => rpc<Record<string, unknown>[]>('community_admin_list_topic_proposals', { p_status: status })
+export const adminGroupTopicProposals = (ids: string[], label: string | null) => rpc<number>('community_admin_group_topic_proposals', { p_ids: ids, p_label: label })
+export const adminTopicProposalsToDraft = (groupKey: string, title: string) => rpc<string>('community_admin_topic_proposals_to_draft', { p_group_key: groupKey, p_title: title })
+export const adminDismissTopicProposals = (groupKey: string) => rpc<number>('community_admin_dismiss_topic_proposals', { p_group_key: groupKey })
+
 export const adminListMenus = (limit = 50) => rpc<Record<string, unknown>>('community_admin_list_menus', { p_limit: limit })
 export const adminGetMenu = (id: string) => rpc<Record<string, unknown>>('community_admin_get_menu', { p_id: id })
 export const adminRescheduleMenu = (id: string, publishAt: string | null) => rpc<Record<string, unknown>>('community_admin_reschedule_menu', { p_id: id, p_publish_at: publishAt })

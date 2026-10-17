@@ -72,6 +72,12 @@ export function announceNotificationsChanged(): void {
   if (typeof window !== 'undefined') window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED_EVENT))
 }
 
+// «Marcar como no leída»: deja el aviso pendiente para recordarlo más tarde (el estado es del servidor, igual en todos los dispositivos de la persona).
+export async function markNotificationUnread(id: string): Promise<void> {
+  const { error } = await supabase.from('user_notifications').update({ read_at: null }).eq('id', id)
+  if (error) throw error
+}
+
 export async function markAllNotificationsRead(): Promise<void> {
   const { error } = await supabase.from('user_notifications').update({ read_at: new Date().toISOString() }).is('read_at', null)
   if (error) throw error

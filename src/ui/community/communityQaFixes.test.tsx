@@ -14,8 +14,7 @@ import noticeSrc from '@/ui/community/CommunityNoticePrefs.tsx?raw'
 import articleSrc from '@/ui/community/ArticleSources.tsx?raw'
 import reportSrc from '@/ui/community/ReportDialog.tsx?raw'
 import settingsSrc from '@/ui/community/MySettingsPage.tsx?raw'
-import { ADULT_DECLARATION_HELP, ADULT_DECLARATION_LABEL, needsAdultDeclaration, unavailableReasonText } from '@/domain/communityAccess'
-import { COMMUNITY_ERROR_MESSAGES, toCommunityError } from '@/domain/communityErrors'
+import { unavailableReasonText } from '@/domain/communityAccess'
 import { DEFAULT_NOTIFICATION_PREFS } from '@/domain/notificationPrefs'
 import { HOME_STATE_KEY, loadHomeState, saveHomeState } from '@/ui/community/communityListState'
 
@@ -99,45 +98,18 @@ describe('portada: recuerda su estado al volver atrás', () => {
   })
 })
 
-describe('declaración de mayoría de edad al crear el alias', () => {
+describe('la edad ya no se declara: sale de la fecha de nacimiento de la ficha de Familia', () => {
   beforeEach(() => rpc.mockClear())
 
-  it('solo se pide cuando se SABE que no consta la edad', () => {
-    expect(needsAdultDeclaration(false)).toBe(true)
-    expect(needsAdultDeclaration(true)).toBe(false)
-    expect(needsAdultDeclaration(null)).toBe(false)
-    expect(needsAdultDeclaration(undefined)).toBe(false)
-  })
-
-  it('texto claro: confirma 18 años y explica que PEPA no puede verificarlo', () => {
-    expect(ADULT_DECLARATION_LABEL).toBe('Confirmo que tengo 18 años o más')
-    expect(ADULT_DECLARATION_HELP).toContain('no puede comprobar tu edad')
-    expect(ADULT_DECLARATION_HELP).toContain('administra tu familia')
-    expect(ADULT_DECLARATION_HELP).toContain('fecha de nacimiento')
-  })
-
-  it('el envoltorio pasa p_declare_adult como 4.º argumento (false por defecto, nunca declara por la persona)', async () => {
+  it('el envoltorio del alias no declara nada por la persona (p_declare_adult = false)', async () => {
     await setCommunityAlias('Ana', null, true)
     expect(rpc).toHaveBeenLastCalledWith('community_set_alias', { p_alias: 'Ana', p_avatar_emoji: null, p_accept_rules: true, p_declare_adult: false })
-    await setCommunityAlias('Ana', '🍳', true, true)
-    expect(rpc).toHaveBeenLastCalledWith('community_set_alias', { p_alias: 'Ana', p_avatar_emoji: '🍳', p_accept_rules: true, p_declare_adult: true })
   })
 
-  it('ADULT_DECLARATION_REQUIRED tiene su frase en español', () => {
-    const e = toCommunityError({ message: 'ADULT_DECLARATION_REQUIRED' })
-    expect(e.code).toBe('ADULT_DECLARATION_REQUIRED')
-    expect(e.message).toBe(COMMUNITY_ERROR_MESSAGES.ADULT_DECLARATION_REQUIRED)
-    expect(e.message).toContain('18 años')
-  })
-
-  it('el diálogo pide la edad solo al crear, bloquea «Guardar» sin la casilla y enseña la casilla si el servidor la exige', () => {
-    expect(aliasSrc).toContain('getCommunityAccess()')
-    expect(aliasSrc).toContain('const creating = !current?.hasProfile')
-    expect(aliasSrc).toContain('needsAdultDeclaration(ageKnown)')
-    expect(aliasSrc).toContain('(needsAdult && !adult)')
-    expect(aliasSrc).toContain('setCommunityAlias(alias.trim(), emoji, accepted, needsAdult && adult)')
-    expect(aliasSrc).toContain("'ADULT_DECLARATION_REQUIRED'")
-    expect(aliasSrc).toContain('ADULT_DECLARATION_LABEL')
+  it('el diálogo del alias ya no tiene casilla de «Confirmo que tengo 18 años» (sin fecha fiable no hay acceso, no hay declaración)', () => {
+    expect(aliasSrc).not.toContain('ADULT_DECLARATION')
+    expect(aliasSrc).not.toContain('needsAdult')
+    expect(aliasSrc).toContain('setCommunityAlias(alias.trim(), emoji, accepted)')
   })
 })
 
@@ -165,9 +137,9 @@ describe('textos y accesibilidad pequeños', () => {
     expect(reportSrc).toContain('!reason && (')
   })
 
-  it('menor de 15: el motivo no repite la frase de «lo demás de PEPA sigue igual» (la pone la pantalla una sola vez)', () => {
-    const text = unavailableReasonText('under_15')
-    expect(text).toContain('15 años')
+  it('menor de 18: el motivo no repite la frase de «lo demás de PEPA sigue igual» (la pone la pantalla una sola vez)', () => {
+    const text = unavailableReasonText('under_18')
+    expect(text).toContain('18 años')
     expect(text).not.toMatch(/sigue/i)
   })
 

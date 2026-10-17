@@ -237,9 +237,11 @@ describe('acciones', () => {
     expect(actionsSrc).toContain('ConfirmDialog')
   })
 
-  it('compartir: menú nativo y, si no, copiar el enlace estable (con dominio público opcional)', () => {
-    expect(shareSrc).toContain('navigator.share')
-    expect(shareSrc).toContain('navigator.clipboard.writeText')
+  it('compartir: menú nativo con el enlace DENTRO del texto (Android) y, si falla, ventana de respaldo con WhatsApp / copiar / email (con dominio público opcional)', () => {
+    expect(shareSrc).toContain('navigator.share({ title, text })')
+    expect(shareSrc).not.toContain('navigator.share({ title, url })')
+    expect(shareSrc).not.toContain('clipboard')
+    expect(actionsSrc).toContain('<ShareFallbackModal')
     expect(shareSrc).toContain('VITE_COMMUNITY_PUBLIC_BASE')
     expect(shareSrc).toContain('comunidad/p/')
     expect(shareSrc).toContain('export function getShareUrl')

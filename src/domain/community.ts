@@ -257,6 +257,8 @@ export interface PublicProfileInfo {
   postCount?: number
   recipeCount?: number
   ratingCount?: number
+  // Cuántas personas la siguen (solo el número: quiénes son no sale nunca).
+  followerCount?: number
   following?: boolean
   isMe?: boolean
   canInteract?: boolean

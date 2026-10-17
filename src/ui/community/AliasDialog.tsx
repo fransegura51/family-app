@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { setCommunityAlias } from '@/data/community'
-import { getCommunityAccess } from '@/data/communityMinors'
-import { ADULT_DECLARATION_HELP, ADULT_DECLARATION_LABEL, needsAdultDeclaration } from '@/domain/communityAccess'
 import { communityErrorText, toCommunityError } from '@/domain/communityErrors'
 import { suggestAlias } from '@/domain/communityAlias'
 import { COMMUNITY_RULES, type MyCommunityProfile } from '@/domain/community'
@@ -30,10 +28,6 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const needsRules = !(current?.hasProfile && current.rulesAccepted)
-  // La declaración solo se pide al crear el alias (al cambiarlo ya se hizo). null = todavía no se sabe.
-  const [ageKnown, setAgeKnown] = useState<boolean | null>(null)
-  const [adult, setAdult] = useState(false)
-  const needsAdult = creating && needsAdultDeclaration(ageKnown)
 
   useEffect(() => {
     if (generated) recentSuggestions.current = [generated]
@@ -49,30 +43,13 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
     setError(null)
   }
 
-  // Una sola consulta pequeña, solo al crear el alias. Si falla, no se bloquea nada: si el servidor la necesita, lo dirá al guardar.
-  useEffect(() => {
-    if (!creating) return
-    let cancelled = false
-    getCommunityAccess().then(
-      (a) => {
-        if (!cancelled) setAgeKnown(a.ageKnown)
-      },
-      () => undefined,
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [creating])
-
   async function save() {
     setError(null)
     setSaving(true)
     try {
-      await setCommunityAlias(alias.trim(), emoji, accepted, needsAdult && adult)
+      await setCommunityAlias(alias.trim(), emoji, accepted)
       await onDone()
     } catch (e) {
-      // Si el servidor pide la declaración y aún no se enseñaba la casilla, se enseña ahora.
-      if (toCommunityError(e).code === 'ADULT_DECLARATION_REQUIRED') setAgeKnown(false)
       if (toCommunityError(e).code === 'ALIAS_TAKEN' && generated !== null && alias.trim() === generated) {
         // La propuesta automática ya la usa otra persona: se cambia por otra distinta sin que haya que escribir nada.
         const next = suggestAlias([...recentSuggestions.current, generated])
@@ -148,24 +125,13 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
             </label>
           </>
         )}
-        {needsAdult && (
-          <div className="community-adult-declaration">
-            <label className="checkbox-label community-touch-label">
-              <input type="checkbox" checked={adult} onChange={(e) => setAdult(e.target.checked)} aria-describedby="adult-declaration-help" />
-              {ADULT_DECLARATION_LABEL}
-            </label>
-            <p id="adult-declaration-help" className="muted">
-              {ADULT_DECLARATION_HELP}
-            </p>
-          </div>
-        )}
         {error && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
         <div className="modal-actions">
-          <button type="button" className="primary" disabled={saving || alias.trim().length < 3 || (needsRules && !accepted) || (needsAdult && !adult)} onClick={() => void save()}>
+          <button type="button" className="primary" disabled={saving || alias.trim().length < 3 || (needsRules && !accepted)} onClick={() => void save()}>
             {saving ? 'Guardando…' : 'Guardar y continuar'}
           </button>
           <button type="button" className="link-button" onClick={onCancel}>

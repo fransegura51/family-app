@@ -3,7 +3,7 @@
 -- Problema: un consejo o artículo puede traer varias recetas o variantes dentro del texto («Tortilla francesa: mucho más que huevo batido», con siete ideas). El texto
 -- libre NO se convierte en receta automáticamente (sería inventar cantidades y pasos): las recetas las escribe la edición con sus datos reales, UNA vez, y la base de datos
 -- las valida. Mismo contrato que las recetas del menú semanal (private.community_validate_menu_recipe: título, raciones, ingredientes con cantidad/unidad, pasos…) más una
--- `key` estable por receta (minúsculas, números y guiones) para poder pedir «esta» receta. Cantidad desconocida = texto vacío (nunca un número inventado).
+-- `key` estable por receta (minúsculas, números y guiones) para poder pedir «esta» receta. Cantidad desconocida = texto vacío y raciones desconocidas = null (nunca un número inventado).
 --
 --  · community_posts.recipes (jsonb, nulo salvo en estas publicaciones): array de 1 a 12 recetas. Entra al publicar desde `payload.recipes` del contenido oficial.
 --  · El detalle de la publicación (community_get_post) devuelve `variants` con ellas, para enseñarlas y elegir cuáles importar.
@@ -47,7 +47,12 @@ begin
     if coalesce(r ->> 'simple', 'false') = 'true' then
       return 'la receta «' || v_key || '» no puede ser un elemento sencillo';
     end if;
-    v_err := private.community_validate_menu_recipe(r);
+    -- Raciones: un número entero (1 a 50) o SIN INDICAR (clave ausente o null) cuando el artículo no las dice. Nunca se asumen cuatro.
+    if r ? 'servings' and jsonb_typeof(r -> 'servings') not in ('number', 'null') then
+      return 'las raciones de «' || v_key || '» deben ser un número o quedar sin indicar';
+    end if;
+    -- El validador del menú exige raciones: se le pasa una copia con un valor cualquiera cuando no constan (solo comprueba el resto).
+    v_err := private.community_validate_menu_recipe(case when jsonb_typeof(r -> 'servings') = 'number' then r else jsonb_set(r, '{servings}', '1'::jsonb) end);
     if v_err is not null then
       return v_err;
     end if;
@@ -242,10 +247,10 @@ begin
         values (v_recipe_id, v_ing ->> 'name', v_ing ->> 'quantity', v_ing ->> 'unit');
       end loop;
       v_created := v_created + 1;
-      v_listed := v_listed || jsonb_build_array(jsonb_build_object('id', v_recipe_id, 'key', v_variant ->> 'key', 'title', v_clean ->> 'title', 'created', true));
+      v_listed := v_listed || jsonb_build_array(jsonb_build_object('id', v_recipe_id, 'key', v_variant ->> 'key', 'title', v_clean ->> 'title', 'created', true, 'servings_known', (v_clean ->> 'servings') is not null));
     else
       v_reused := v_reused + 1;
-      v_listed := v_listed || jsonb_build_array(jsonb_build_object('id', v_recipe_id, 'key', v_variant ->> 'key', 'title', v_clean ->> 'title', 'created', false));
+      v_listed := v_listed || jsonb_build_array(jsonb_build_object('id', v_recipe_id, 'key', v_variant ->> 'key', 'title', v_clean ->> 'title', 'created', false, 'servings_known', (v_clean ->> 'servings') is not null));
     end if;
   end loop;
   if jsonb_array_length(v_listed) <> cardinality(v_keys) then

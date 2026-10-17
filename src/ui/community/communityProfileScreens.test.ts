@@ -142,7 +142,8 @@ describe('Perfil público: privacidad y acciones', () => {
       expect(src).not.toContain('dangerouslySetInnerHTML')
       // Se ignoran los comentarios (que sí pueden nombrar lo que NO se enseña).
       const code = src.replace(/^\s*\/\/.*$/gm, '')
-      expect(code).not.toMatch(/familyId|family_id|realName|fullName|email|followers|seguidores/i)
+      // Se enseña el NÚMERO de seguidores (followerCount) pero nunca una lista de seguidores ni a quién sigue a quién.
+      expect(code).not.toMatch(/familyId|family_id|realName|fullName|email|followers|listFollowers/i)
     }
   })
   it('los modos de aviso al seguir son los tres aprobados', () => {

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import home from '@/ui/HomeScreen.tsx?raw'
 import bell from '@/ui/NotificationBell.tsx?raw'
 import panel from '@/ui/NotificationPanel.tsx?raw'
+import { DWELL_READ_MS } from '@/domain/notificationsCenter'
 import modalHook from '@/ui/useModalDialog.ts?raw'
 import prefs from '@/ui/NotificationPrefsCard.tsx?raw'
 import mode from '@/ui/TaskNotifyModeCard.tsx?raw'
@@ -50,17 +51,29 @@ describe('el panel', () => {
     expect(css).toMatch(/@media \(min-width: 640px\)\s*\{\s*\.notification-panel\s*\{[^}]*max-width:\s*420px/)
   })
 
-  it('abrir el panel NO marca nada como leído; abrir un aviso sí; marcar todas es una acción aparte', () => {
-    const effects = panel.slice(panel.indexOf('useEffect(() => {'), panel.indexOf('const views'))
-    expect(effects).not.toContain('markNotificationsRead')
-    expect(effects).not.toContain('markAllNotificationsRead')
+  it('abrir el panel NO marca nada de golpe: un aviso se da por leído al abrirlo o tras 3 s a la vista; no hay «marcar todas» y cada leído tiene «Marcar como no leída»', () => {
+    const loadEffect = panel.slice(panel.indexOf('useEffect(() => {'), panel.indexOf('// El contador de la campana'))
+    expect(loadEffect).not.toContain('markNotificationsRead')
+    expect(loadEffect).not.toContain('markAllNotificationsRead')
     expect(panel).toContain('markNotificationsRead([n.id])')
-    expect(panel).toContain('Marcar todas como leídas')
+    expect(panel).toContain('createDwellTracker(markSeen)')
+    expect(panel).toContain('IntersectionObserver')
+    expect(panel).toContain('threshold: 0.6')
+    expect(panel).toContain('!tabVisible')
+    expect(panel).not.toContain('Marcar todas como leídas')
+    expect(panel).not.toContain('markAllNotificationsRead')
+    expect(panel).toContain('Marcar como no leída')
+    expect(panel).toContain('markNotificationUnread(n.id)')
+    expect(DWELL_READ_MS).toBe(3000)
   })
 
-  it('dos bloques plegables, anteriores plegadas bajo «Ver anteriores (X)» y borrar con confirmación', () => {
+  it('dos bloques plegables a mano con TODOS los avisos a la vista (nuevos en negrita y con punto, leídos normales), contadores separados y borrar con confirmación', () => {
     expect(panel).toContain('buildBucketViews')
-    expect(panel).toContain('Ver anteriores (${view.earlier.length})')
+    expect(panel).toContain('view.items.map(renderItem)')
+    expect(panel).not.toContain('Ver anteriores')
+    expect(panel).toContain('countsLabel(unread, read)')
+    expect(css).toMatch(/\.notification-item-unread \.notification-item-main\s*\{[^}]*font-weight:\s*700/)
+    expect(css).toMatch(/\.notification-item-read \.notification-item-main\s*\{[^}]*font-weight:\s*400/)
     expect(panel).toContain('aria-expanded')
     expect(panel).toContain('¿Eliminar')
     expect(panel).toContain('Seleccionar todas')

@@ -1,33 +1,48 @@
 import { useState } from 'react'
-import { Link, useNavigationType } from 'react-router-dom'
+import { Link, useNavigationType, useSearchParams } from 'react-router-dom'
 import { listPosts } from '@/data/community'
 import { LIST_PAGE_SIZE } from '@/domain/communityDiscovery'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
-import { pageCrumbs, paths } from '@/ui/community/communityNav'
+import { pageCrumbs, paths, PEPA_PROFILE_ID } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
 import { useCommunityList } from '@/ui/community/useCommunityList'
 import '@/ui/community/communityLists.css'
+import '@/ui/community/communityProfile.css'
 
 // ✨ Novedades de la barra: las publicaciones más recientes de Comunidad, por fecha de publicación (la última primero). Es una vista de lectura de TODA la comunidad
 // (mismas tarjetas, mismo servidor y mismas reglas de bloqueo y edad que «Más recientes»), sin repetir los avisos personales: los comentarios sin leer y las
 // respuestas siguen en la campana 🔔 de Inicio y en «Comentarios sin leer» (enlace al final).
+// «👥 Seguidos»: las publicaciones de las cuentas que sigo (Pepa y otras personas), con el mismo listado (?ver=seguidos). Cuánto aviso recibo de cada una se ajusta en su
+// perfil o en «Mi perfil»; el servidor nunca dice quién me sigue a mí.
 export function RecentPage() {
   const navType = useNavigationType()
+  const [sp, setSp] = useSearchParams()
+  const following = sp.get('ver') === 'seguidos'
   const [restore] = useState(() => navType === 'POP')
   const list = useCommunityList({
-    storageKey: 'recent',
-    signature: 'recent',
+    storageKey: following ? 'recent-following' : 'recent',
+    signature: following ? 'recent-following' : 'recent',
     pageSize: LIST_PAGE_SIZE,
     restore,
     meta: { order: 'recientes', topic: null, kind: null },
-    fetchPage: (offset) => listPosts({ order: 'recientes', limit: LIST_PAGE_SIZE, offset }),
+    fetchPage: (offset) => listPosts({ order: 'recientes', limit: LIST_PAGE_SIZE, offset, following }),
   })
 
   return (
     <>
-      <Breadcrumbs crumbs={pageCrumbs('Novedades')} />
-      <h1 className="community-list-title">✨ Novedades</h1>
-      <p className="muted community-list-intro">Lo último que se ha publicado en Comunidad, de la más reciente a la más antigua.</p>
+      <Breadcrumbs crumbs={pageCrumbs(following ? 'Seguidos' : 'Novedades')} />
+      <h1 className="community-list-title">{following ? '👥 Seguidos' : '✨ Novedades'}</h1>
+      <div className="community-profile-tabs" role="group" aria-label="Qué ver">
+        <button type="button" aria-pressed={!following} className={!following ? 'active' : ''} onClick={() => setSp({}, { replace: true })}>
+          ✨ Últimas publicaciones
+        </button>
+        <button type="button" aria-pressed={following} className={following ? 'active' : ''} onClick={() => setSp({ ver: 'seguidos' }, { replace: true })}>
+          👥 Seguidos
+        </button>
+      </div>
+      <p className="muted community-list-intro">
+        {following ? 'Lo último de las cuentas que sigues, de la más reciente a la más antigua.' : 'Lo último que se ha publicado en Comunidad, de la más reciente a la más antigua.'}
+      </p>
 
       <div aria-live="polite" aria-busy={list.status === 'loading'}>
         {list.status === 'loading' && list.items.length === 0 && (
@@ -47,12 +62,26 @@ export function RecentPage() {
 
         {list.status === 'ready' && list.items.length === 0 && (
           <div className="community-empty">
-            <p>
-              <strong>Todavía no hay publicaciones.</strong>
-            </p>
-            <Link to={paths.home} className="community-empty-link">
-              Ir a la portada de Comunidad
-            </Link>
+            {following ? (
+              <>
+                <p>
+                  <strong>Todavía no hay publicaciones de las cuentas que sigues.</strong>
+                </p>
+                <p className="muted">Puedes seguir a Pepa y a otras personas desde su perfil.</p>
+                <Link to={paths.profile(PEPA_PROFILE_ID)} className="community-empty-link">
+                  Ver el perfil de Pepa
+                </Link>
+              </>
+            ) : (
+              <>
+                <p>
+                  <strong>Todavía no hay publicaciones.</strong>
+                </p>
+                <Link to={paths.home} className="community-empty-link">
+                  Ir a la portada de Comunidad
+                </Link>
+              </>
+            )}
           </div>
         )}
 
@@ -77,10 +106,21 @@ export function RecentPage() {
       </div>
 
       <p className="muted community-list-intro">
-        ¿Buscas tus avisos?{' '}
-        <Link to={paths.news} className="link-button">
-          Comentarios sin leer
-        </Link>
+        {following ? (
+          <>
+            ¿Quieres cambiar los avisos de alguna cuenta?{' '}
+            <Link to={paths.myProfile} className="link-button">
+              Mi perfil → Personas que sigo
+            </Link>
+          </>
+        ) : (
+          <>
+            ¿Buscas tus avisos?{' '}
+            <Link to={paths.news} className="link-button">
+              Comentarios sin leer
+            </Link>
+          </>
+        )}
       </p>
     </>
   )

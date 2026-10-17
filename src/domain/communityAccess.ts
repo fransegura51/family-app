@@ -1,20 +1,18 @@
-// Comunidad PEPA — acceso por edad y permisos de la familia (regla aprobada por la dueña el 15/10/2026; el servidor la aplica en
-// supabase/migrations/0277_community_minors.sql y recalcula el acceso en CADA llamada).
-//   · Menores de 15: sin acceso.  · De 15 a 17: solo con permiso de quien administra la familia (dos permisos independientes: leer y participar,
-//     ambos desactivados por defecto; participar exige también poder leer).  · Desde 18: acceso normal.
-// Aquí vive la lógica PURA (sin red ni pantalla): niveles, textos en español y reglas de los interruptores. La seguridad real está en el servidor: la interfaz
-// solo tiene que reflejar el estado con claridad y no enseñar botones que no van a funcionar.
-import { communityErrorCode, type CommunityAccessErrorCode, type CommunityErrorCode } from './communityErrors'
+// Comunidad PEPA — acceso: SOLO personas de 18 años cumplidos o más (decisión definitiva del 17/10/2026; el servidor la aplica en
+// supabase/migrations/0284_community_adults_follow_topics_tags.sql y recalcula el acceso en CADA llamada). La edad sale de la fecha de nacimiento de la ficha de familia
+// enlazada a la cuenta: sin fecha fiable NO hay acceso. Ya no existen los permisos de la familia para menores (0277).
+// Aquí vive la lógica PURA (sin red ni pantalla): niveles y textos en español. La seguridad real está en el servidor: la interfaz solo refleja el estado con claridad.
+import type { CommunityAccessErrorCode } from './communityErrors'
 
 export type CommunityAccessLevel = 'none' | 'read' | 'participate'
-export type CommunityAccessReason = 'under_15' | 'age_unknown' | 'not_authorized' | 'read_only'
+export type CommunityAccessReason = 'under_18' | 'age_unknown' | 'read_only'
 
 export interface CommunityAccess {
   level: CommunityAccessLevel
   reason: CommunityAccessReason | null
 }
 
-// Los campos de acceso que trae `community_status()` (ya en camelCase). Son opcionales por si el servidor aún no tiene la migración 0277.
+// Los campos de acceso que trae `community_status()` (ya en camelCase). Son opcionales por si el servidor aún no los trae.
 export interface StatusAccessFields {
   access?: CommunityAccessLevel
   accessReason?: CommunityAccessReason | null
@@ -39,30 +37,16 @@ export function isAccessErrorCode(code: string): code is AccessErrorCode {
   return code === 'COMMUNITY_ACCESS_DENIED' || code === 'PARTICIPATION_NOT_ALLOWED'
 }
 
-// ---- Declaración de mayoría de edad (al crear el alias, solo si la ficha de familia no tiene fecha de nacimiento)
-// Es una DECLARACIÓN, no una verificación: PEPA no puede comprobar la edad. Con fecha en la ficha no se enseña nada.
-export const ADULT_DECLARATION_LABEL = 'Confirmo que tengo 18 años o más'
-export const ADULT_DECLARATION_HELP =
-  'PEPA no puede comprobar tu edad, por eso te lo preguntamos. La persona que administra tu familia puede añadir tu fecha de nacimiento en tu ficha de Familia y así no tendrás que confirmarlo.'
-
-// La casilla solo sale cuando se SABE que no consta la edad (age_known === false); con edad conocida o sin respuesta del servidor no se muestra
-// (si el servidor la necesita, responde ADULT_DECLARATION_REQUIRED y entonces sí se muestra).
-export function needsAdultDeclaration(ageKnown: boolean | null | undefined): boolean {
-  return ageKnown === false
-}
-
 // ---- Textos de la persona que usa Comunidad
 export const UNAVAILABLE_TITLE = 'Comunidad no está disponible para tu cuenta'
 
 // Por qué no se puede entrar (nivel «none»). Frases cortas y amables; nunca culpan a la persona.
 export function unavailableReasonText(reason: CommunityAccessReason | null): string {
   switch (reason) {
-    case 'under_15':
-      return 'Comunidad es para personas a partir de 15 años.'
+    case 'under_18':
+      return 'Comunidad PEPA es solo para personas de 18 años o más.'
     case 'age_unknown':
-      return 'Todavía no tenemos tu fecha de nacimiento. Pide a quien administra tu familia que la añada en tu ficha de Familia y así podremos comprobar si puedes entrar.'
-    case 'not_authorized':
-      return 'Para entrar en Comunidad necesitas el permiso de quien administra tu familia. Pídeselo: lo puede dar desde Familia, en «Permisos de Comunidad».'
+      return 'Comunidad PEPA es solo para personas de 18 años o más y todavía no tenemos tu fecha de nacimiento. Añádela en tu ficha de Familia y podrás entrar en cuanto se guarde.'
     default:
       return 'Ahora mismo no puedes entrar en Comunidad con esta cuenta.'
   }
@@ -71,7 +55,7 @@ export function unavailableReasonText(reason: CommunityAccessReason | null): str
 export const READ_ONLY_TITLE = 'Tienes permiso solo de lectura'
 export const READ_ONLY_SHORT = 'Puedes leer publicaciones, comentarios y perfiles, pero no publicar, comentar ni interactuar.'
 export const READ_ONLY_HELP =
-  'En Comunidad puedes leer todo lo que quieras. Para publicar, comentar, dar me gusta, guardar, seguir o valorar recetas hace falta el permiso «Participar en Comunidad». Quien administra tu familia lo puede dar desde Familia, en «Permisos de Comunidad».'
+  'En Comunidad puedes leer todo lo que quieras, pero ahora mismo no puedes publicar, comentar, dar me gusta, guardar, seguir ni valorar recetas.'
 
 // Cuando una pantalla pide participar y no se puede (ruta de escritura abierta a mano o botón no disponible).
 export const PARTICIPATION_NEEDED_TITLE = 'Esto necesita permiso para participar'
@@ -93,11 +77,11 @@ export interface AccessNotice {
 }
 
 export function accessErrorNotice(code: AccessErrorCode, level: CommunityAccessLevel, reason: CommunityAccessReason | null = null): AccessNotice {
-  if (level === 'none') return { title: UNAVAILABLE_TITLE, text: unavailableReasonText(reason ?? 'not_authorized') }
+  if (level === 'none') return { title: UNAVAILABLE_TITLE, text: unavailableReasonText(reason) }
   if (level === 'read') {
     return {
       title: READ_ONLY_TITLE,
-      text: `Quien administra tu familia ha cambiado tus permisos: ahora puedes leer Comunidad, pero no participar. ${READ_ONLY_SHORT}`,
+      text: `Ahora puedes leer Comunidad, pero no participar. ${READ_ONLY_SHORT}`,
     }
   }
   // Nivel completo pero el servidor lo ha rechazado (cambio muy reciente, o no hemos podido comprobarlo): se pide reintentar sin alarmar.
@@ -110,45 +94,7 @@ export function accessErrorNotice(code: AccessErrorCode, level: CommunityAccessL
   }
 }
 
-// ---- Permisos de las personas de 15 a 17 años (los gestiona la persona administradora de la familia)
-export type MinorStatus = 'configurable' | 'under_15' | 'needs_birthdate'
-
-export interface MinorPermission {
-  profileId: string
-  name: string
-  age: number | null
-  status: MinorStatus
-  canRead: boolean
-  canParticipate: boolean
-  updatedAt: string | null
-}
-
-export interface MinorFlags {
-  canRead: boolean
-  canParticipate: boolean
-}
-
-// Regla de los dos interruptores: activar «participar» activa «leer»; desactivar «leer» desactiva «participar». El servidor aplica lo mismo.
-export function applyMinorToggle(current: MinorFlags, field: 'read' | 'participate', value: boolean): MinorFlags {
-  if (field === 'participate') return { canRead: value ? true : current.canRead, canParticipate: value }
-  return { canRead: value, canParticipate: value ? current.canParticipate : false }
-}
-
-export interface MinorGroups {
-  configurable: MinorPermission[]
-  under15: MinorPermission[]
-  needsBirthdate: MinorPermission[]
-}
-
-export function groupMinors(list: MinorPermission[]): MinorGroups {
-  return {
-    configurable: list.filter((m) => m.status === 'configurable'),
-    under15: list.filter((m) => m.status === 'under_15'),
-    needsBirthdate: list.filter((m) => m.status === 'needs_birthdate'),
-  }
-}
-
-// Acceso de la propia persona (`community_get_access()`). `photosAllowed` es false si la persona no es adulta (las personas menores participan SIN fotos). Es opcional
+// Acceso de la propia persona (`community_get_access()`). `photosAllowed` es false si la persona no es adulta (solo personas adultas). Es opcional
 // por si el servidor es anterior a esa regla: en ese caso se trata como permitido y el servidor decide (devuelve PHOTOS_NOT_ALLOWED si no).
 export interface MyCommunityAccess {
   level: CommunityAccessLevel
@@ -163,54 +109,3 @@ export function photosAllowedFrom(access: { photosAllowed?: boolean } | null | u
 }
 
 export const MINORS_NO_PHOTOS_NOTE = 'Las personas menores de edad participan sin fotos.'
-
-// Declaración de quien autoriza (obligatoria al ACTIVAR un permiso; el servidor la guarda en el registro de permisos).
-export const GUARDIAN_DIALOG_TITLE = 'Confirma la autorización'
-export const GUARDIAN_AUTHORIZE_LABEL = 'Autorizar'
-export const GUARDIAN_CANCEL_LABEL = 'Cancelar'
-export const guardianDeclarationLabel = (name: string): string => `Soy madre, padre o tutor legal de ${name} y autorizo que use Comunidad`
-
-// Qué se va a permitir, en una frase (para el diálogo de confirmación). Si se activa «participar» manda sobre «leer» (participar incluye leer).
-export function guardianDialogText(name: string, current: MinorFlags, next: MinorFlags): string {
-  if (next.canParticipate && !current.canParticipate) {
-    return `Vas a permitir que ${name} participe en Comunidad: podrá leer, publicar, comentar, valorar recetas, guardar y seguir conversaciones. Participará sin fotos.`
-  }
-  return `Vas a permitir que ${name} lea Comunidad: podrá consultar publicaciones, comentarios y perfiles, pero no publicar ni interactuar.`
-}
-
-// ¿El cambio ACTIVA algún permiso (de desactivado a activado)? Entonces hay que pedir la declaración antes de llamar al servidor. Quitar permisos es inmediato.
-// Se compara con lo que quedará tras aplicar la regla de los dos interruptores (activar «participar» activa también «leer»), igual que el servidor.
-export function needsGuardianDeclaration(current: MinorFlags, next: MinorFlags): boolean {
-  return (next.canRead && !current.canRead) || (next.canParticipate && !current.canParticipate)
-}
-
-export const MINORS_RULES_NOTE =
-  'Las personas menores de edad participan sin fotos. Cuando una de ellas publique o comente, las personas que administran la familia recibirán un aviso.'
-
-export const MINORS_INTRO ='Las personas menores de 15 años no pueden entrar en Comunidad. De 15 a 17 años solo entran si vosotros lo autorizáis. Desde los 18 entran con normalidad.'
-export const MINORS_LEGAL_REMINDER =
-  'Quien autoriza debe ser la madre, el padre o la persona tutora legal de la persona menor. Puedes retirar el permiso cuando quieras y se aplica enseguida.'
-export const MINORS_EMPTY = 'Ahora mismo nadie de vuestra familia necesita este permiso.'
-export const READ_LABEL = 'Permitir leer Comunidad'
-export const READ_HELP = 'Solo podrá consultar publicaciones, comentarios y perfiles.'
-export const PARTICIPATE_LABEL = 'Permitir participar en Comunidad'
-export const PARTICIPATE_HELP = 'Podrá publicar, comentar, valorar recetas, guardar y seguir conversaciones. Necesita también poder leer.'
-
-export function under15Text(m: Pick<MinorPermission, 'name' | 'age'>): string {
-  return `${m.name}${m.age !== null ? ` (${m.age} años)` : ''}: aún no puede acceder. Podrá pedirlo al cumplir 15 años.`
-}
-
-export function needsBirthdateText(m: Pick<MinorPermission, 'name'>): string {
-  return `${m.name}: todavía no sabemos su edad. Añade su fecha de nacimiento en su ficha de familia para poder decidir su permiso.`
-}
-
-// Errores del panel de permisos: los textos generales de Comunidad hablan de la «administración de Comunidad», que aquí confundiría.
-export function minorPermissionErrorText(error: unknown): string {
-  // El error llega ya convertido (CommunityError) desde la capa de datos: se lee su código sin volver a analizar su frase en español.
-  const code: CommunityErrorCode = communityErrorCode(error)
-  if (code === 'NOT_ADMIN') return 'Solo quien administra la familia puede cambiar estos permisos.'
-  if (code === 'NOT_AVAILABLE') return 'Este permiso ya no se puede cambiar (puede que haya cambiado la edad o la ficha de la persona). Vuelve a abrir la lista para verla al día.'
-  if (code === 'GUARDIAN_DECLARATION_REQUIRED') return 'Para dar este permiso tienes que confirmar que eres madre, padre o tutor legal de esa persona.'
-  if (code === 'AUTH_REQUIRED') return 'Entra de nuevo en tu cuenta de PEPA para cambiar estos permisos.'
-  return 'No se ha podido guardar el cambio. Inténtalo de nuevo.'
-}

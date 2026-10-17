@@ -243,7 +243,7 @@ describe('29/30. no banco, no migración, no cambios de datos', () => {
     // 0226 (registro de uso por cuenta para el panel de propietaria), 0227 (servicios estructurados y
     // versionado de ofertas de proveedores, event_task_group_offer_items — tabla nueva) y 0228 (trazabilidad
     // oferta→encargo, offer_id en event_task_groups/event_task_group_resolutions) tampoco tocan esta funcionalidad.
-    expect(Math.max(...numbers)).toBe(283) // 0283: avisos de tareas por persona (hoy / atrasadas); 0281: Comunidad abierta sin páginas públicas ni IA; 0282: recetas estructuradas en publicaciones; 0280: el resumen diario de tareas guarda el listado completo en el aviso (antes, 0279: alergias e intolerancias de la ficha privada); la numeración la sube quien añada la siguiente
+    expect(Math.max(...numbers)).toBe(284) // 0284: solo adultas, seguir a Pepa, importar sin etiquetas automáticas y propuestas de temas; 0283: avisos de tareas por persona (hoy / atrasadas); 0281: Comunidad abierta sin páginas públicas ni IA; 0282: recetas estructuradas en publicaciones; 0280: el resumen diario de tareas guarda el listado completo en el aviso (antes, 0279: alergias e intolerancias de la ficha privada); la numeración la sube quien añada la siguiente
   })
   it('el sync bancario sigue con /^anul\\b/i intacta; solo referencia REFUND_CATALOG_KEY donde corresponde (FASE DEV-1)', () => {
     // Ver el mismo razonamiento en src/data/refundsGuards.test.ts — DEV-1 (posterior, auditada aparte)

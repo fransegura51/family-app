@@ -72,11 +72,11 @@ describe('acceso: solo administración', () => {
 })
 
 describe('barra de pestañas', () => {
-  it('tiene las 8 pestañas con roles accesibles y solo la activa entra con Tab', () => {
+  it('tiene las 9 pestañas con roles accesibles y solo la activa entra con Tab', () => {
     const html = page('usuarios')
     expect(html).toContain('role="tablist"')
-    expect(html.match(/role="tab"/g)).toHaveLength(8)
-    for (const t of ['Resumen', 'Moderación', 'Usuarios', 'Contenido oficial', 'Encuestas', 'Destacados', 'Configuración', 'Historial']) expect(html).toContain(t)
+    expect(html.match(/role="tab"/g)).toHaveLength(9)
+    for (const t of ['Resumen', 'Moderación', 'Usuarios', 'Contenido oficial', 'Temas propuestos', 'Encuestas', 'Destacados', 'Configuración', 'Historial']) expect(html).toContain(t)
     expect(html).toMatch(/id="cadm-tab-usuarios"[^>]*aria-selected="true"[^>]*tabindex="0"|aria-selected="true"[^>]*id="cadm-tab-usuarios"/)
     expect(html).toContain('role="tabpanel"')
     expect(html).toContain('aria-labelledby="cadm-tab-usuarios"')

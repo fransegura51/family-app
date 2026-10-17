@@ -890,7 +890,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           {placesOpen && (
             <div className="event-list">
               {places.map((place) => (
-                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onNotifyChanged={() => reload(true)} onRoute={setRoutePolyline} />
+                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onNotifyChanged={(enabled) => setPlaces((prev) => prev.map((p) => (p.id === place.id ? { ...p, notifyArrivals: enabled } : p)))} onRoute={setRoutePolyline} />
               ))}
               {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
             </div>
@@ -1223,9 +1223,9 @@ function PlaceRow({
   locations: MemberLocation[]
   members: FamilyMember[]
   onChanged: () => void
-  // Al marcar o desmarcar el aviso se refresca en segundo plano (sin «Cargando…»): con el refresco normal la pantalla se borraba y volvía a pintarse, y el
-  // móvil saltaba arriba (petición real, 17/10/2026: «cuando tico o destico se me sale de la pantalla»).
-  onNotifyChanged: () => void
+  // Al marcar o desmarcar el aviso NO se vuelve a pedir nada ni se repinta el resto de la pantalla (mapa, miembros, fotos): solo se cambia ese lugar en la
+  // lista. Con el refresco, la pantalla se repintaba y el móvil saltaba (petición real, 17/10/2026: «cuando tico o destico se me sale de la pantalla»).
+  onNotifyChanged: (enabled: boolean) => void
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — se llama con el
   // trazado en cuanto se calcula el tiempo en coche, para dibujarlo en el mapa de arriba.
   onRoute: (polyline: string | null) => void
@@ -1255,7 +1255,8 @@ function PlaceRow({
   const [editRadius, setEditRadius] = useState(place.radiusM)
   // «Avisarme cuando alguien llegue o se vaya» va VISIBLE en la tarjeta (petición real, 17/10/2026: sin entrar a «Editar»): se guarda al marcarlo o desmarcarlo.
   const [notifyOn, setNotifyOn] = useState(place.notifyArrivals)
-  const [notifyBusy, setNotifyBusy] = useState(false)
+  // Ref y no estado: la casilla NO se desactiva mientras guarda (al desactivarse un campo con el foco, el móvil puede saltar de sitio).
+  const notifyBusyRef = useRef(false)
   const [notifyError, setNotifyError] = useState<string | null>(null)
   useEffect(() => {
     setNotifyOn(place.notifyArrivals)
@@ -1272,17 +1273,23 @@ function PlaceRow({
   }
 
   async function handleToggleNotify(enabled: boolean) {
+    if (notifyBusyRef.current) return
+    // La pantalla se queda donde está: se apunta cuánto se había bajado y se restaura tras repintar, pase lo que pase.
+    const scrollY = window.scrollY
+    const keepScroll = () => requestAnimationFrame(() => window.scrollTo(0, scrollY))
+    notifyBusyRef.current = true
     setNotifyOn(enabled)
-    setNotifyBusy(true)
     setNotifyError(null)
+    keepScroll()
     try {
       await setPlaceNotifyArrivals(place.id, enabled)
-      onNotifyChanged()
+      onNotifyChanged(enabled)
     } catch (err) {
       setNotifyOn(!enabled)
       setNotifyError(errorMessage(err, 'No se pudo cambiar el aviso'))
     } finally {
-      setNotifyBusy(false)
+      notifyBusyRef.current = false
+      keepScroll()
     }
   }
 
@@ -1384,7 +1391,7 @@ function PlaceRow({
         )}
         <p className="muted">Radio {place.radiusM} m</p>
         <label className="inline-fields" style={{ alignItems: 'center' }}>
-          <input type="checkbox" checked={notifyOn} disabled={notifyBusy} onChange={(e) => void handleToggleNotify(e.target.checked)} />
+          <input type="checkbox" checked={notifyOn} onChange={(e) => void handleToggleNotify(e.target.checked)} />
           🔔 Avisarme cuando alguien llegue o se vaya de aquí
         </label>
         {notifyError && <p className="error">{notifyError}</p>}

@@ -28,11 +28,14 @@ describe('tarjeta de lugar: aviso de llegada y salida', () => {
     expect(row).not.toContain('editNotify')
   })
 
-  it('al ticar no se pone «Cargando…» (la pantalla no se mueve): se refresca en segundo plano', () => {
-    expect(row).toContain('onNotifyChanged()')
+  it('al ticar la pantalla no se mueve: no se recarga nada, solo cambia ese lugar en la lista, y se conserva el desplazamiento', () => {
     const toggle = row.slice(row.indexOf('async function handleToggleNotify'), row.indexOf('async function handleSaveEdit'))
+    expect(toggle).toContain('onNotifyChanged(enabled)')
     expect(toggle).not.toContain('onChanged()')
-    expect(src).toContain('onNotifyChanged={() => reload(true)}')
+    expect(toggle).toContain('window.scrollTo(0, scrollY)')
+    expect(src).toContain('onNotifyChanged={(enabled) => setPlaces((prev) => prev.map((p) => (p.id === place.id ? { ...p, notifyArrivals: enabled } : p)))}')
+    // La casilla no se desactiva mientras guarda (un campo con el foco que se desactiva puede mover la pantalla).
+    expect(card).not.toContain('disabled={notifyBusy}')
   })
 
   it('si falla guardar, vuelve a como estaba y avisa', () => {

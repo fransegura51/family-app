@@ -26,6 +26,8 @@ import { lastComparablePriceByStore, type MeasurementUnit } from '@/domain/measu
 import { pendingSpending, type PendingSpending } from '@/domain/pending'
 import { isRefund, refundLabel } from '@/domain/refunds'
 import { buildFoodReceiptIds, buildProductKindSets, isFoodPurchase } from '@/domain/products'
+import { FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
+import { resolveProductClassSafe } from '@/domain/productClass'
 import { MONTHS } from '@/domain/spokenDate'
 import type { Budget, BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
 import { normalize } from '@/domain/voiceQuery'
@@ -150,6 +152,8 @@ export type TargetResolution =
   | { kind: 'store'; name: string }
   // Un concepto: aparece en el nombre de la categoría, el comercio o el texto del movimiento ("luz").
   | { kind: 'concept'; stems: string[]; label: string }
+  // Una CLASE de producto de los tickets («Bebidas alcohólicas», «Carne», «Fruta»…): no es una categoría de presupuesto sino el tipo de producto de cada línea de ticket.
+  | { kind: 'productClass'; name: string }
   | { kind: 'ambiguous'; options: string[] }
   | { kind: 'none' }
 
@@ -168,7 +172,88 @@ export function conceptMatches(e: Pick<Expense, 'category' | 'store' | 'notes'>,
 }
 
 // "alimentación", "comida", "restaurantes", "supermercados", "Mercadona", "luz": contra lo que existe de verdad.
-export function resolveTarget(target: string, data: Pick<FinanceData, 'categories' | 'expenses' | 'storeNames'>): TargetResolution {
+// ─── Clases de producto (tipo de alimento / no alimento de cada línea de ticket) ───
+// Petición real (17/10/2026): «cuánto hemos gastado en bebidas alcohólicas este mes… me dice que no lo reconoce». «Bebidas alcohólicas» no es una categoría
+// de presupuesto sino una CLASE de producto de los tickets (domain/foodTypes.ts); antes solo se buscaba entre categorías, tiendas y conceptos.
+// Sinónimos hablados -> nombre de la clase (sin acentos; «bebidas» a secas NO está: es ambiguo y se pregunta cuál).
+const CLASS_SYNONYMS: Record<string, string> = {
+  alcohol: 'Bebidas alcohólicas',
+  alcoholes: 'Bebidas alcohólicas',
+  'bebidas con alcohol': 'Bebidas alcohólicas',
+  'bebida alcoholica': 'Bebidas alcohólicas',
+  licores: 'Bebidas alcohólicas',
+  'bebidas sin alcohol': 'Bebidas no alcohólicas',
+  refrescos: 'Bebidas no alcohólicas',
+  'bebidas no alcoholicas': 'Bebidas no alcohólicas',
+  helados: 'Congelados y helados',
+  dulces: 'Snacks y dulces',
+  golosinas: 'Snacks y dulces',
+  pan: 'Panadería y bollería',
+  bolleria: 'Panadería y bollería',
+  huevos: 'Lácteos y huevos',
+  marisco: 'Pescado y marisco',
+  verduras: 'Verdura y hortalizas',
+  hortalizas: 'Verdura y hortalizas',
+  frutas: 'Fruta',
+  carnes: 'Carne',
+  limpieza: 'Limpieza del hogar',
+  juguetes: 'Juguetes',
+  mascotas: 'Mascotas',
+  farmacia: 'Farmacia y salud',
+  ropa: 'Ropa y calzado',
+}
+
+function classLabelBase(label: string): string {
+  return label.split('(')[0].trim()
+}
+
+// Nombres de clase conocidos: las de fábrica y las que la familia haya puesto a sus productos.
+function classNames(products: readonly Pick<Product, 'category'>[] = []): string[] {
+  const own = products.map((p) => p.category?.trim() ?? '').filter(Boolean)
+  return [...new Set([...FOOD_TYPES.map((t) => classLabelBase(t.label)), ...NO_FOOD_TYPES.map((t) => classLabelBase(t.label)), ...own])]
+}
+
+// ¿Lo que se ha pedido es una clase de producto? Devuelve los nombres que encajan (0 = ninguna, 1 = esa, varias = ambiguo).
+export function matchProductClasses(target: string, products: readonly Pick<Product, 'category'>[] = []): string[] {
+  const wanted = words(target).map(stem)
+  if (wanted.length === 0) return []
+  const phrase = words(target).join(' ')
+  const synonym = CLASS_SYNONYMS[phrase]
+  if (synonym) return [synonym]
+  const matches = classNames(products).filter((name) => {
+    const have = new Set(words(name).map(stem))
+    return wanted.every((w) => have.has(w))
+  })
+  // Con una coincidencia exacta («bebidas alcohólicas») no se pregunta por las que solo la contienen («bebidas NO alcohólicas»).
+  const exact = matches.filter((name) => words(name).length === wanted.length)
+  return exact.length > 0 ? exact : matches
+}
+
+// ¿Merece la pena cargar los tickets para esta pregunta de gasto? (solo si lo pedido PUEDE ser una clase de producto)
+export function mayBeProductClass(target: string | null | undefined): boolean {
+  return !!target && matchProductClasses(target).length > 0
+}
+
+// Suma de las líneas de ticket del periodo cuya clase de producto es `className` (precio × cantidad), con la clase resuelta como en Compras:
+// la elegida a mano, la histórica o, si no hay, la que adivina el clasificador por el nombre del producto.
+export function productClassSpending(data: Pick<FinanceData, 'prices' | 'products'>, from: string, to: string, className: string): { total: number; lines: number } {
+  const byId = new Map(data.products.map((p) => [p.id, p]))
+  const want = normalize(className)
+  let total = 0
+  let lines = 0
+  for (const pr of data.prices) {
+    if (pr.recordedDate < from || pr.recordedDate > to) continue
+    const product = byId.get(pr.productId)
+    const cls = resolveProductClassSafe({ name: product?.displayName ?? '', product: product ?? null, kind: product?.nonFood ? 'no_alimentos' : 'alimentacion', familyClasses: [] }).className
+    if (normalize(cls) !== want) continue
+    const qty = Number(pr.quantity)
+    total += pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+    lines += 1
+  }
+  return { total: Math.round(total * 100) / 100, lines }
+}
+
+export function resolveTarget(target: string, data: Pick<FinanceData, 'categories' | 'expenses' | 'storeNames'> & Partial<Pick<FinanceData, 'products'>>, options: { allowClass?: boolean } = {}): TargetResolution {
   const wanted = words(target).map((w) => stem(CATEGORY_ALIASES[w] ?? w))
   if (wanted.length === 0) return { kind: 'none' }
 
@@ -197,6 +282,13 @@ export function resolveTarget(target: string, data: Pick<FinanceData, 'categorie
     const best = tops.length > 0 ? tops : pool
     if (best.length === 1) return { kind: 'category', name: best[0].name }
     return { kind: 'ambiguous', options: best.map((b) => b.name) }
+  }
+
+  // 1b) Una CLASE de producto de los tickets («bebidas alcohólicas», «carne»…): solo para preguntas de gasto (options.allowClass).
+  if (options.allowClass) {
+    const classes = matchProductClasses(target, data.products ?? [])
+    if (classes.length === 1) return { kind: 'productClass', name: classes[0] }
+    if (classes.length > 1 && !data.storeNames.some((s) => storeMatches(s, target))) return { kind: 'ambiguous', options: classes }
   }
 
   // 2) Una TIENDA real (dada de alta o vista en los movimientos).
@@ -315,6 +407,7 @@ export function spanText(from: string, to: string): string {
 
 function targetPhrase(target: TargetResolution): string {
   if (target.kind === 'concept') return ` en «${target.label}» (movimientos cuya categoría, comercio o concepto lo mencionan)`
+  if (target.kind === 'productClass') return ` en ${target.name} (según los productos de vuestros tickets)`
   return target.kind === 'category' || target.kind === 'store' ? ` en ${target.name}` : ''
 }
 
@@ -340,9 +433,18 @@ function answerSpent(query: FinanceQuery, data: FinanceData, today: Date): Finan
   const q = { ...query, period: spec }
   let target: TargetResolution = { kind: 'none' }
   if (query.target) {
-    target = resolveTarget(query.target, data)
+    target = resolveTarget(query.target, data, { allowClass: true })
     const problem = answerTargetProblem(target, query.target)
     if (problem) return { text: problem, query: q }
+  }
+  if (target.kind === 'productClass') {
+    // Por tipo de producto solo hay datos en los tickets: se dice, y no se mezcla con los movimientos (ver «LAS FUENTES NO SE MEZCLAN» arriba).
+    const spent = productClassSpending(data, resolved.from, resolved.to, target.name)
+    if (spent.lines === 0) {
+      return { text: `No tengo ningún producto de «${target.name}» en vuestros tickets ${whenOf(resolved)}, así que no puedo decir cuánto habéis gastado. Solo cuento lo que viene desglosado en los tickets.${staleNote(data)}`, query: { ...q, target: target.name } }
+    }
+    const lead = resolved.ongoing ? `${subjectOf(resolved)} lleváis` : `${subjectOf(resolved)} habéis gastado`
+    return { text: `${lead} ${formatEuros(spent.total)}${targetPhrase(target)}. Solo cuento lo que viene desglosado en los tickets guardados.${staleNote(data)}`, query: { ...q, target: target.name } }
   }
   const filter = filterOf(target)
   const where = targetPhrase(target)
@@ -749,6 +851,37 @@ function answerCheapest(query: FinanceQuery, data: FinanceData): FinanceAnswer {
   return { text: lines.join('\n'), query: q }
 }
 
+// «¿Cuánto cuesta la leche?»: lo ÚLTIMO que se pagó por el producto, según las líneas de ticket (nunca el precio de hoy en la tienda). La última palabra
+// puede ser la tienda («leche mercadona»): se prueba primero con todo como producto y luego quitando palabras del final como tienda.
+function answerLastPrice(query: FinanceQuery, data: FinanceData): FinanceAnswer {
+  const term = query.product ?? ''
+  const q = { ...query }
+  const tokens = words(term).map(stem)
+  if (tokens.length === 0) return { text: '¿De qué producto quieres saber el precio?', query: q }
+  for (let k = 0; k <= Math.min(2, tokens.length - 1); k++) {
+    const productWords = tokens.slice(0, tokens.length - k)
+    const storeWords = tokens.slice(tokens.length - k)
+    const matches = data.products.filter((p) => {
+      const have = new Set(words(`${p.displayName} ${p.normalizedName}`).map(stem))
+      return productWords.every((w) => have.has(w))
+    })
+    if (matches.length === 0) continue
+    const ids = new Set(matches.map((m) => m.id))
+    let lines = data.prices.filter((p) => ids.has(p.productId))
+    if (storeWords.length > 0) lines = lines.filter((p) => p.store != null && storeWords.every((w) => new Set(words(p.store).map(stem)).has(w)))
+    if (lines.length === 0) continue
+    const latestByProduct = new Map<string, ProductPrice>()
+    for (const l of [...lines].sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))) if (!latestByProduct.has(l.productId)) latestByProduct.set(l.productId, l)
+    const rows = [...latestByProduct.values()].slice(0, 3).map((l) => {
+      const name = data.products.find((p) => p.id === l.productId)?.displayName ?? term
+      const date = `${dayOf(l.recordedDate)} de ${MONTHS[Number(l.recordedDate.slice(5, 7)) - 1]}`
+      return `${name}: ${formatEurosPerUnit(l.price, (l.unit === 'kg' ? 'kg' : 'unit') as MeasurementUnit)} en ${l.store ?? 'una tienda sin indicar'} (${date})`
+    })
+    return { text: `Según tus tickets, lo último que habéis pagado: ${rows.join(' · ')}. Es lo que costó la última vez, no el precio de hoy en la tienda.`, query: q }
+  }
+  return { text: `No tengo compras registradas de «${term}» en tus tickets, así que no sé a cuánto está.`, query: q }
+}
+
 export function answerFinanceQuery(query: FinanceQuery, data: FinanceData, today: Date): FinanceAnswer {
   switch (query.metric) {
     case 'spent':
@@ -773,6 +906,8 @@ export function answerFinanceQuery(query: FinanceQuery, data: FinanceData, today
       return answerPrices(query, data, today, 'down')
     case 'cheapest_store':
       return answerCheapest(query, data)
+    case 'last_price':
+      return answerLastPrice(query, data)
     default:
       // Las consultas de análisis las responde financeAnswer (motor de análisis), no estas cifras sueltas.
       return { text: 'Esa consulta se responde con el análisis de Economía.', query }

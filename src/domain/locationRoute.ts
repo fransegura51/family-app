@@ -9,7 +9,8 @@ export type LocationIntent =
   | { type: 'search'; term: string }
   // name = null cuando no se ha dicho un nombre nuevo ("guárdalo") — se usa el del sitio encontrado.
   | { type: 'save'; name: string | null }
-  | { type: 'eta'; place: string }
+  // traffic = la pregunta era por el TRÁFICO («¿cómo está el tráfico hasta Madrid?»): mismo cálculo, pero la respuesta empieza por cómo está el tráfico.
+  | { type: 'eta'; place: string; traffic?: boolean }
   | { type: 'nearest'; place: string }
   | { type: 'weather'; place: string }
 
@@ -42,6 +43,23 @@ const SAVE_AS_RE = /^guarda(?:lo|la|me(?:lo|la)?)?\s+como\s+(.+)$/
 // Ubicación, que no termina en "a/hasta/hacia + sitio").
 const ETA_RE =
   /(?:cuant[oa]s?|que)\s+(?:(?:tiempo|kilometros|km|distancia)\s+)?(?:se tarda|tardamos|tardo|tengo|tenemos|hay|quedan?|faltan?)(?:\s+(?:en\s+(?:coche|el coche|llegar)|para\s+llegar))?\s+(?:a(?:l)?|hasta|hacia)\s+(.+)$/
+
+// «Cómo está el tráfico hasta Madrid», «cómo va el tráfico a Murcia», «qué tal el tráfico para ir al cole», «hay tráfico hasta Alicante», «hay atascos
+// hacia Valencia», «hay retenciones en la carretera a Madrid», «cómo está la carretera hasta el trabajo», «dime el tráfico a Elche», «tráfico en Madrid»
+// — petición real (17/10/2026): «¿cómo está el tráfico hasta Madrid? ya tiene Google Maps integrado… o hasta un punto». Sin "^" delante (mismo motivo que
+// ETA_RE: el dictado mete ruido delante). El destino es lo ÚLTIMO de la frase; se quitan los rellenos de después («ahora mismo», «hoy»…) en
+// cleanTrafficPlace. Una frase sin destino («hay tráfico») no encaja.
+const TRAFFIC_RE =
+  /(?:trafico|atascos?|retenciones?|caravanas?|carretera)(?:\s+(?:en|por)\s+la\s+carretera)?[\s\S]*?\s(?:para ir a(?:l)?|para llegar a(?:l)?|de camino a(?:l)?|camino (?:de|a(?:l)?)|hasta|hacia|a(?:l)?|en)\s+(.+)$/
+
+// Quita del final lo que no es el sitio: «madrid ahora mismo» -> «madrid».
+export function cleanTrafficPlace(raw: string): string {
+  return raw
+    .replace(/\s+(?:ahora mismo|ahora|hoy|ya|por favor|gracias|a esta hora|en este momento|en coche|con el coche)\s*$/g, '')
+    .replace(/\s+(?:ahora mismo|ahora|hoy|ya|por favor|gracias|a esta hora|en este momento|en coche|con el coche)\s*$/g, '')
+    .replace(/[?!.,;]+$/g, '')
+    .trim()
+}
 
 // "Quién está más cerca de X", "quién anda más cerca del cole".
 const NEAREST_RE = /^quien(?:\s+(?:esta|anda|vive))?\s+mas cerca\s+(?:de(?:l)?|a)\s+(.+)$/
@@ -92,6 +110,12 @@ export function routeLocation(text: string): LocationIntent | null {
 
   const eta = ETA_RE.exec(n)
   if (eta) return { type: 'eta', place: eta[1].trim() }
+
+  const traffic = TRAFFIC_RE.exec(n)
+  if (traffic) {
+    const place = cleanTrafficPlace(traffic[1])
+    if (place) return { type: 'eta', place, traffic: true }
+  }
 
   const nearest = NEAREST_RE.exec(n)
   if (nearest) return { type: 'nearest', place: nearest[1].trim() }

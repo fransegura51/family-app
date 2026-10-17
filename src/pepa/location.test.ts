@@ -404,3 +404,29 @@ describe('locationAction: «¿dónde está Eric?» (solo gente de la misma famil
     expect(searchFirstPlace).toHaveBeenCalled()
   })
 })
+
+describe('locationAction: tráfico hasta un destino (petición real, 17/10/2026)', () => {
+  it('«¿cómo está el tráfico hasta la farmacia?» contesta primero el estado del tráfico y luego el tiempo', async () => {
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 12, km: 4.5, delayMinutes: 0, polyline: null })
+    const outcome = await locationAction('¿cómo está el tráfico hasta la farmacia?', makeDeps({ drivingEta }))
+    expect(outcome).toEqual({
+      kind: 'answer',
+      text: 'El tráfico hasta Farmacia está fluido, sin retenciones. Desde donde estás se tarda unos 12 minutos en coche (4.5 km).',
+    })
+  })
+
+  it('con retrasos lo dice: algo de tráfico y retenciones importantes', async () => {
+    const algo = await locationAction('hay tráfico hasta la farmacia', makeDeps({ drivingEta: vi.fn().mockResolvedValue({ minutes: 20, km: 9, delayMinutes: 2, polyline: null }) }))
+    expect(algo).toMatchObject({ kind: 'answer', text: expect.stringContaining('con algo de tráfico (unos 2 minutos más de lo normal)') })
+    const mucho = await locationAction('hay atascos hasta la farmacia', makeDeps({ drivingEta: vi.fn().mockResolvedValue({ minutes: 40, km: 9, delayMinutes: 20, polyline: null }) }))
+    expect(mucho).toMatchObject({ kind: 'answer', text: expect.stringContaining('con retenciones importantes (unos 20 minutos más de lo normal)') })
+  })
+
+  it('un sitio que no está guardado se busca en Google Maps (igual que «cuánto se tarda»)', async () => {
+    const searchFirstPlace = vi.fn().mockResolvedValue(found('Madrid', 40.41, -3.69))
+    const drivingEta = vi.fn().mockResolvedValue({ minutes: 240, km: 400, delayMinutes: 5, polyline: null })
+    const outcome = await locationAction('cómo está el tráfico hasta Madrid', makeDeps({ searchFirstPlace, drivingEta }))
+    expect(searchFirstPlace).toHaveBeenCalled()
+    expect(outcome).toMatchObject({ kind: 'answer', text: expect.stringContaining('El tráfico hasta Madrid está') })
+  })
+})

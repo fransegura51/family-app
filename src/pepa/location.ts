@@ -138,7 +138,7 @@ async function handleSave(name: string | null): Promise<TalkOutcome> {
   }
 }
 
-async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkOutcome> {
+async function handleEta(spokenPlace: string, deps: LocationDeps, traffic = false): Promise<TalkOutcome> {
   const resolved = await resolveDestination(spokenPlace, deps)
   if (!resolved.ok) return { kind: 'answer', text: resolved.reason === 'daily-limit' ? DAILY_LIMIT : NOT_FOUND(spokenPlace) }
   const destination = resolved.destination
@@ -151,6 +151,14 @@ async function handleEta(spokenPlace: string, deps: LocationDeps): Promise<TalkO
   // patrón que ya usaba "busca una tienda" con "family-app:focus-store", en VoiceCapture.tsx).
   if (eta.polyline && typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('family-app:route-computed', { detail: { polyline: eta.polyline } }))
+  }
+  if (traffic) {
+    // «¿Cómo está el tráfico hasta Madrid?»: se contesta primero lo que se ha preguntado (el tráfico) y luego el tiempo y los km.
+    const state = eta.delayMinutes <= 1 ? 'fluido, sin retenciones' : eta.delayMinutes / Math.max(1, eta.minutes - eta.delayMinutes) < 0.15 ? `con algo de tráfico (unos ${eta.delayMinutes} minutos más de lo normal)` : `con retenciones importantes (unos ${eta.delayMinutes} minutos más de lo normal)`
+    return {
+      kind: 'answer',
+      text: `El tráfico hasta ${destination.label} está ${state}. Desde donde estás se tarda unos ${formatDuration(eta.minutes)} en coche (${eta.km} km).`,
+    }
   }
   return {
     kind: 'answer',
@@ -269,7 +277,7 @@ export async function locationAction(text: string, deps: LocationDeps): Promise<
     case 'save':
       return handleSave(intent.name)
     case 'eta':
-      return handleEta(intent.place, deps)
+      return handleEta(intent.place, deps, intent.traffic === true)
     case 'nearest':
       return handleNearest(intent.place, deps)
     case 'weather':

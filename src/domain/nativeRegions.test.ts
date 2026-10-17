@@ -93,3 +93,24 @@ describe('la app entrega los bordes al iPhone', () => {
     expect(nativeLocation).toContain('JSON.stringify(regions)')
   })
 })
+
+describe('código nativo del iPhone: saltos de GPS aislados', () => {
+  it('una posición que se aleja más de 150 m de la última enviada hace menos de 2 min espera a que la siguiente lectura la confirme', () => {
+    expect(swift).toContain('jumpMeters: CLLocationDistance = 150')
+    expect(swift).toContain('jumpWindowSeconds: TimeInterval = 120')
+    expect(swift).toContain('jumpConfirmMeters: CLLocationDistance = 100')
+    expect(swift).toContain('jumpConfirmSeconds: TimeInterval = 60')
+    expect(swift).toContain('location.distance(from: last) > PepaNativeLocation.jumpMeters')
+    expect(swift).toMatch(/if !confirmed \{\s*pendingJump = location\s*return\s*\}/)
+  })
+
+  it('solo lo que se envía actualiza la última posición y el reloj de envíos; el salto descartado no cambia nada', () => {
+    expect(swift).toMatch(/pendingJump = nil\s*lastSentLocation = location\s*lastUploadAt = now\s*upload\(location\)/)
+  })
+
+  it('mantiene los filtros de siempre (precisión peor de 100 m y un envío cada 10 s) antes de mirar el salto', () => {
+    expect(swift.indexOf('maxAccuracy { return }')).toBeLessThan(swift.indexOf('jumpMeters {'))
+    expect(swift).toContain('minUploadGap { return }')
+  })
+})
+

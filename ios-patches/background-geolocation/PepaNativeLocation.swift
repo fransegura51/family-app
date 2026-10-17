@@ -31,9 +31,19 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     // Mismos límites que Android: no más de un envío cada 10 s y se descartan posiciones peores de 100 m de precisión.
     private static let minUploadGap: TimeInterval = 10
     private static let maxAccuracy: CLLocationAccuracy = 100
+    // Saltos de GPS (iPhone, 16/10/2026): una posición suelta a 245 m que 4 s después se corrigió generó un aviso falso de salida y de llegada. Una posición que
+    // se aleja más de jumpMeters de la última enviada hace menos de jumpWindowSeconds NO se envía hasta que la siguiente lectura (en menos de jumpConfirmSeconds)
+    // la confirma a menos de jumpConfirmMeters; si la siguiente vuelve a la zona de antes, el salto se descarta. Un desplazamiento real (coche, a pie) se confirma
+    // con la lectura siguiente; si pasó más tiempo desde el último envío (por ejemplo, tras despertar por un cambio significativo) se envía sin esperar.
+    private static let jumpMeters: CLLocationDistance = 150
+    private static let jumpWindowSeconds: TimeInterval = 120
+    private static let jumpConfirmMeters: CLLocationDistance = 100
+    private static let jumpConfirmSeconds: TimeInterval = 60
 
     private var manager: CLLocationManager?
     private var lastUploadAt: Date = .distantPast
+    private var lastSentLocation: CLLocation?
+    private var pendingJump: CLLocation?
     private var idleTimer: Timer?
     private let defaults = UserDefaults.standard
 
@@ -155,6 +165,20 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
         let now = Date()
         if now.timeIntervalSince(lastUploadAt) < PepaNativeLocation.minUploadGap { return }
         if location.horizontalAccuracy < 0 || location.horizontalAccuracy > PepaNativeLocation.maxAccuracy { return }
+        if let last = lastSentLocation,
+           location.timestamp.timeIntervalSince(last.timestamp) < PepaNativeLocation.jumpWindowSeconds,
+           location.distance(from: last) > PepaNativeLocation.jumpMeters {
+            let confirmed = pendingJump.map {
+                location.timestamp.timeIntervalSince($0.timestamp) < PepaNativeLocation.jumpConfirmSeconds
+                    && location.distance(from: $0) <= PepaNativeLocation.jumpConfirmMeters
+            } ?? false
+            if !confirmed {
+                pendingJump = location
+                return
+            }
+        }
+        pendingJump = nil
+        lastSentLocation = location
         lastUploadAt = now
         upload(location)
     }

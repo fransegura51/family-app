@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react'
 import { createFamily, joinFamilyWithCode } from '@/data/family'
 import { errorMessage } from '@/domain/errorMessage'
+import { BIRTH_DATE_HELP, MIN_BIRTH_DATE, birthDateError, signupBirthDateServerMessage, todayIso } from '@/domain/signupBirthDate'
 
 type Mode = 'choose' | 'create' | 'join'
 
@@ -49,18 +50,24 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
   const [familyName, setFamilyName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [accessCode, setAccessCode] = useState('')
+  const [birthDate, setBirthDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    const dateProblem = birthDateError(birthDate)
+    if (dateProblem) {
+      setError(dateProblem)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      await createFamily(familyName, displayName, accessCode)
+      await createFamily(familyName, displayName, accessCode, birthDate)
       await onDone()
     } catch (err) {
-      setError(errorMessage(err, 'Error al crear la familia'))
+      setError(signupBirthDateServerMessage(err) ?? errorMessage(err, 'Error al crear la familia'))
     } finally {
       setLoading(false)
     }
@@ -91,6 +98,7 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
             required
           />
         </label>
+        <BirthDateField value={birthDate} onChange={setBirthDate} />
         <label>
           Código de acceso
           <input
@@ -118,18 +126,24 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
 function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBack: () => void }) {
   const [code, setCode] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const [birthDate, setBirthDate] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
+    const dateProblem = birthDateError(birthDate)
+    if (dateProblem) {
+      setError(dateProblem)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
-      await joinFamilyWithCode(code, displayName)
+      await joinFamilyWithCode(code, displayName, birthDate)
       await onDone()
     } catch (err) {
-      setError(errorMessage(err, 'Código no válido o caducado'))
+      setError(signupBirthDateServerMessage(err) ?? errorMessage(err, 'Código no válido o caducado'))
     } finally {
       setLoading(false)
     }
@@ -154,6 +168,7 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
           Tu nombre
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
         </label>
+        <BirthDateField value={birthDate} onChange={setBirthDate} />
         {error && <p className="error">{error}</p>}
         <div className="form-actions">
           <button type="submit" disabled={loading}>
@@ -165,5 +180,18 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
         </div>
       </form>
     </div>
+  )
+}
+
+// Campo OBLIGATORIO de las dos altas de cuenta (crear familia y unirse con código). Selector de fecha del propio móvil; el servidor lo exige igual.
+function BirthDateField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label>
+      Tu fecha de nacimiento
+      <input type="date" value={value} min={MIN_BIRTH_DATE} max={todayIso()} onChange={(e) => onChange(e.target.value)} required autoComplete="bday" />
+      <span className="muted" style={{ fontSize: 13 }}>
+        {BIRTH_DATE_HELP}
+      </span>
+    </label>
   )
 }

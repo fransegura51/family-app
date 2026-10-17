@@ -8,11 +8,13 @@ import type { FamilyMember, MemberSex, MemberType } from '@/domain/types'
 // supabase/migrations/0002_create_family_bootstrap.sql). No hay INSERT
 // directo posible en families/profiles desde el cliente — evita que un
 // usuario se una a la familia de otro manipulando family_id (Skill 27).
-export async function createFamily(familyName: string, displayName: string, accessCode: string): Promise<string> {
+// La fecha de nacimiento (AAAA-MM-DD) es OBLIGATORIA (0286): la ficha de quien crea la familia nace con ella.
+export async function createFamily(familyName: string, displayName: string, accessCode: string, birthDate: string): Promise<string> {
   const { data, error } = await supabase.rpc('create_family', {
     p_family_name: familyName,
     p_display_name: displayName,
     p_access_code: accessCode,
+    p_birth_date: birthDate,
   })
   if (error) throw error
   return data as string
@@ -31,10 +33,12 @@ export async function generateMemberInviteCode(memberId: string): Promise<string
 // Se llama justo después de auth.signUp(), con sesión ya activa pero
 // sin `profiles` row todavía — enlaza esa cuenta nueva al miembro cuyo
 // código coincide, en vez de pasar por create_family().
-export async function joinFamilyWithCode(code: string, displayName: string): Promise<string> {
+// La fecha de nacimiento es OBLIGATORIA (0286): si la ficha ya la traía (la puso quien administra) se respeta esa; si no, se guarda esta.
+export async function joinFamilyWithCode(code: string, displayName: string, birthDate: string): Promise<string> {
   const { data, error } = await supabase.rpc('join_family_with_code', {
     p_code: code,
     p_display_name: displayName,
+    p_birth_date: birthDate,
   })
   if (error) throw error
   return data as string

@@ -2,6 +2,7 @@
 // «Lugares frecuentes» es una tarjeta grande y plegable, y ticar no mueve la pantalla.
 import { describe, expect, it } from 'vitest'
 import screen from '@/ui/LocationScreen.tsx?raw'
+import locationData from '@/data/location.ts?raw'
 import { readFileSync } from 'node:fs'
 
 const src = screen.replace(/\r\n/g, '\n')
@@ -56,5 +57,14 @@ describe('«Lugares frecuentes»: tarjeta grande y plegable', () => {
   it('el título es grande (22 px) y la tarjeta tiene borde para que no pase desapercibida', () => {
     expect(css).toMatch(/\.places-toggle-title \{\n\s*font-size: 22px;/)
     expect(css).toMatch(/\.places-toggle-card \{[^}]*border: 2px solid var\(--primary\)/)
+  })
+})
+
+describe('lista de lugares: siempre en el mismo orden', () => {
+  it('se ordena por fecha de creación, así un lugar al que se le cambia el aviso no baja al final', () => {
+    const data = locationData.split('\r\n').join('\n')
+    expect(data).toContain('notify_arrivals,created_at')
+    expect(data).toContain('notify_arrivals, created_at')
+    expect(data).toContain("data.sort((a, b) => (a.created_at ?? '').localeCompare(b.created_at ?? ''))")
   })
 })

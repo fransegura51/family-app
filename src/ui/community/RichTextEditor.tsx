@@ -5,6 +5,9 @@ import { applyBold, applyBullets, applyItalic, applyLink, applyNumbered, safeLin
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import '@/ui/community/communityEditor.css'
 
+// Números del contador con separador de miles español (no son fechas).
+const NUMBER_ES = new Intl.NumberFormat('es-ES')
+
 // Editor de texto de Pregunta, Consejo y Anécdota (y presentación de una Receta): campo GRANDE que crece al escribir (y se puede ampliar a mano), barra con
 // negrita, cursiva, lista con viñetas, lista numerada y enlace, vista previa con el mismo pintado que verá el lector, contador de caracteres y aviso cuando un
 // enlace sale de PEPA. El texto se guarda como texto sencillo con marcas (**negrita**, *cursiva*, «- » y «1. » en listas, [texto](https://…)): nunca HTML.
@@ -194,8 +197,8 @@ export function RichTextEditor({
 
       <div className="ce-meta">
         <span id={countId} className={'ce-counter' + (counter.over ? ' over' : counter.nearLimit ? ' near' : '')}>
-          {counter.used.toLocaleString('es-ES')} de {maxLength.toLocaleString('es-ES')} caracteres
-          {counter.over ? ` (te pasas ${(-counter.left).toLocaleString('es-ES')})` : ''}
+          {NUMBER_ES.format(counter.used)} de {NUMBER_ES.format(maxLength)} caracteres
+          {counter.over ? ` (te pasas ${NUMBER_ES.format(-counter.left)})` : ''}
         </span>
       </div>
       {hosts.length > 0 && (

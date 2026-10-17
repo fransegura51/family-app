@@ -2723,6 +2723,54 @@ select {
   cursor: pointer;
 }
 
+/* Ubicación → Lugares: tarjeta grande y plegable «Lugares frecuentes» (antes un título pequeño que pasaba desapercibido). */
+.places-toggle-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 76px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 2px solid var(--primary);
+  border-radius: 16px;
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.places-toggle-icon {
+  flex: none;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.places-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.places-toggle-title {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.places-toggle-sub {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.places-toggle-chevron {
+  flex: none;
+  font-size: 28px;
+  color: var(--primary);
+}
+
 .guest-breakdown-chevron {
   color: var(--muted);
   flex: none;

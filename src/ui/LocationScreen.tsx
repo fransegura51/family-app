@@ -870,18 +870,27 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
               entera, delante del formulario para añadir uno nuevo. */}
           <AddPlaceForm onAdded={reload} />
 
-          <button type="button" className="guest-breakdown-toggle" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} style={{ marginTop: 20 }}>
-            <span className="section-title" style={{ marginTop: 0 }}>
-              Lugares frecuentes
+          {/* Petición real (17/10/2026): «Lugares frecuentes» pasaba muy desapercibido y costaba encontrarlo: tarjeta grande, con el título grande y
+              cuántos lugares hay guardados. Sigue siendo plegable. */}
+          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen}>
+            <span className="places-toggle-icon" aria-hidden="true">
+              🏠
             </span>
-            <span className="guest-breakdown-chevron" aria-hidden="true">
+            <span className="places-toggle-text">
+              <span className="places-toggle-title">Lugares frecuentes</span>
+              <span className="places-toggle-sub">
+                {places.length === 0 ? 'Ninguno guardado todavía' : places.length === 1 ? '1 lugar guardado' : `${places.length} lugares guardados`} ·{' '}
+                {placesOpen ? 'toca para ocultar' : 'toca para ver'}
+              </span>
+            </span>
+            <span className="places-toggle-chevron" aria-hidden="true">
               {placesOpen ? '︿' : '⌄'}
             </span>
           </button>
           {placesOpen && (
             <div className="event-list">
               {places.map((place) => (
-                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onRoute={setRoutePolyline} />
+                <PlaceRow key={place.id} place={place} locations={locations} members={members} onChanged={reload} onNotifyChanged={() => reload(true)} onRoute={setRoutePolyline} />
               ))}
               {places.length === 0 && <p className="muted">No hay lugares guardados.</p>}
             </div>
@@ -1207,12 +1216,16 @@ function PlaceRow({
   locations,
   members,
   onChanged,
+  onNotifyChanged,
   onRoute,
 }: {
   place: LocationPlace
   locations: MemberLocation[]
   members: FamilyMember[]
   onChanged: () => void
+  // Al marcar o desmarcar el aviso se refresca en segundo plano (sin «Cargando…»): con el refresco normal la pantalla se borraba y volvía a pintarse, y el
+  // móvil saltaba arriba (petición real, 17/10/2026: «cuando tico o destico se me sale de la pantalla»).
+  onNotifyChanged: () => void
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — se llama con el
   // trazado en cuanto se calcula el tiempo en coche, para dibujarlo en el mapa de arriba.
   onRoute: (polyline: string | null) => void
@@ -1264,7 +1277,7 @@ function PlaceRow({
     setNotifyError(null)
     try {
       await setPlaceNotifyArrivals(place.id, enabled)
-      onChanged()
+      onNotifyChanged()
     } catch (err) {
       setNotifyOn(!enabled)
       setNotifyError(errorMessage(err, 'No se pudo cambiar el aviso'))

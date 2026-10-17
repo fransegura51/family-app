@@ -14,6 +14,8 @@ interface PepaNativeUploadPlugin {
   getBackgroundLocationStatus(): Promise<{ granted: boolean }>
   // Solo iPhone: lista de bordes de lugares (JSON) que iOS vigila aunque la app esté cerrada. Ver domain/nativeRegions.ts.
   setNativeRegions(options: { regionsJson: string }): Promise<void>
+  // Solo Android: registro del servicio de ubicación (se entrega una vez). En iPhone o en una app anterior no existe: takeNativeDiagnostics lo captura.
+  getNativeDiagnostics(): Promise<{ log?: string; lastOkAt?: number }>
 }
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin & PepaNativeUploadPlugin>('BackgroundGeolocation')

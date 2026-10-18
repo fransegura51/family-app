@@ -1,3 +1,4 @@
+import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
@@ -598,12 +599,12 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           de la cabecera de color de antes (esa desaparece con la
           foto), pasan a su propio bloque justo debajo, sobre el fondo
           normal de la página. */}
-      <div className="kitchen-header">
-        <img src={economiaHeaderImg} alt="Economía" className="kitchen-header-img" />
-        <button
-          type="button"
-          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
-          onClick={() => {
+      <KitchenHeaderWithMenu
+        imgSrc={economiaHeaderImg}
+        alt="Economía"
+        open={economiaMenuOpen}
+        ariaLabel={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
+        onToggle={() => {
             // El desplegable se abre pegado a la cabecera (arriba del
             // todo) — si el botón flotante se toca con la página ya
             // desplazada, hay que subir para que el menú no se abra
@@ -611,11 +612,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
             if (!economiaMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setEconomiaMenuOpen((v) => !v)
           }}
-          aria-label={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
-        >
-          {economiaMenuOpen ? '✕' : '☰'} Menú
-        </button>
-      </div>
+      />
       {/* "Presupuestos" es una corrección deliberada sobre la etiqueta del menú ("Presupuesto(s)") —
           coincide con el <h2> real dentro de esa pestaña (petición real: "se llama Presupuestos, porque
           cada usuario puede crear uno o varios"). El resto reutiliza tal cual ECONOMIA_MENU_ITEM_META. */}

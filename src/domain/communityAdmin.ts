@@ -1509,6 +1509,12 @@ export interface TopicProposalGroup {
   lastAt: string
   texts: string[]
   ids: string[]
+  // Cuántas personas aceptaron que se las mencione (sin decir quiénes), el artículo enlazado y si ya se avisó.
+  creditPeople: number
+  itemId: string | null
+  itemTitle: string | null
+  itemStatus: string | null
+  notified: boolean
 }
 
 export function toTopicProposalGroups(raw: unknown): TopicProposalGroup[] {
@@ -1529,6 +1535,11 @@ export function toTopicProposalGroups(raw: unknown): TopicProposalGroup[] {
       lastAt: typeof g.lastAt === 'string' ? g.lastAt : '',
       texts: Array.isArray(g.texts) ? g.texts.filter((t): t is string => typeof t === 'string') : [],
       ids: Array.isArray(g.ids) ? g.ids.filter((t): t is string => typeof t === 'string') : [],
+      creditPeople: typeof g.creditPeople === 'number' ? g.creditPeople : 0,
+      itemId: typeof g.itemId === 'string' ? g.itemId : null,
+      itemTitle: typeof g.itemTitle === 'string' ? g.itemTitle : null,
+      itemStatus: typeof g.itemStatus === 'string' ? g.itemStatus : null,
+      notified: g.notified === true,
     })
   }
   return out

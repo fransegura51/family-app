@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { addMenuShoppingLines } from '@/data/food'
 import { errorMessage } from '@/domain/errorMessage'
+import { EMPTY_STORE_CHOICE, storeForRow, type StoreChoice } from '@/domain/storeAssignment'
 import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
 import type { ShoppingStoreEntry } from '@/domain/types'
 import { showToast } from '@/state/toast'
 import { clearPendingMenuShoppingRequestId, pendingMenuShoppingRequestId } from '@/state/menuShoppingRequestId'
+import { RowStoreSelect, StoreChoiceBar } from '@/ui/ShoppingStoreChoice'
 
 // Una fila de la revisión. `line` es null para un producto añadido a mano.
 interface ReviewRow {
@@ -13,7 +15,6 @@ interface ReviewRow {
   name: string
   include: boolean
   quantity: string
-  store: string
 }
 
 // Revisión ANTES de guardar: nada se añade a Compras hasta pulsar el botón de confirmar.
@@ -33,8 +34,11 @@ export function MenuShoppingModal({
   onSaved: () => void
 }) {
   const [rows, setRows] = useState<ReviewRow[]>(() =>
-    lines.map((l) => ({ id: l.key, line: l, name: l.name, include: true, quantity: l.quantity ?? '', store: '' })),
+    lines.map((l) => ({ id: l.key, line: l, name: l.name, include: true, quantity: l.quantity ?? '' })),
   )
+  // Tienda de destino: una para todo o repartido entre varias (las tiendas habituales de la familia).
+  // En esta revisión cada producto lleva SIEMPRE su selector de tienda (como antes): la tienda general es el valor por defecto de los que no se tocan.
+  const [choice, setChoice] = useState<StoreChoice>({ ...EMPTY_STORE_CHOICE, split: true })
   // Identificador de ESTA confirmación: un reintento con el mismo valor no duplica nada en Compras.
   // Persistido por evento (no solo en memoria) — si la app se cierra justo después de confirmar, o el
   // modal se desmonta antes de recibir la respuesta, al volver se reutiliza el MISMO id en vez de uno
@@ -44,19 +48,19 @@ export function MenuShoppingModal({
   const [error, setError] = useState<string | null>(null)
   const selected = rows.filter((r) => r.include && r.name.trim()).length
 
-  function update(id: string, patch: Partial<{ name: string; include: boolean; quantity: string; store: string }>) {
+  function update(id: string, patch: Partial<{ name: string; include: boolean; quantity: string }>) {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)))
   }
 
   // Producto añadido a mano: entra en la revisión como cualquier otra fila (sin cantidad ni tienda por defecto).
   function addManual() {
-    setRows((prev) => [...prev, { id: `manual:${prev.length}:${Date.now()}`, line: null, name: '', include: true, quantity: '', store: '' }])
+    setRows((prev) => [...prev, { id: `manual:${prev.length}:${Date.now()}`, line: null, name: '', include: true, quantity: '' }])
   }
 
   async function confirm() {
     const chosen = rows
       .filter((r) => r.include && r.name.trim())
-      .map((r) => ({ name: r.name.trim(), quantity: r.quantity.trim(), store: r.store || null }))
+      .map((r) => ({ name: r.name.trim(), quantity: r.quantity.trim(), store: storeForRow(choice, r.id, stores) }))
     if (chosen.length === 0) return
     setSaving(true)
     setError(null)
@@ -87,6 +91,7 @@ export function MenuShoppingModal({
         </header>
         <div className="menu-shopping-body">
           {rows.length === 0 && <p className="muted">No hay nada que proponer de este menú. Puedes añadir un producto a mano.</p>}
+          <StoreChoiceBar stores={stores} choice={choice} onChange={setChoice} keys={rows.filter((r) => r.include && r.name.trim()).map((r) => r.id)} hideSplit />
           {rows.map((row) => (
             <article key={row.id} className="menu-shopping-item">
               <label className="menu-shopping-check">
@@ -122,14 +127,7 @@ export function MenuShoppingModal({
                   onChange={(e) => update(row.id, { quantity: e.target.value })}
                   aria-label={`Cantidad de ${row.name || "producto nuevo"}`}
                 />
-                <select className="menu-shopping-store" value={row.store} onChange={(e) => update(row.id, { store: e.target.value })} aria-label={`Tienda de ${row.name || "producto nuevo"}`}>
-                  <option value="">Sin tienda</option>
-                  {stores.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+                <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={row.id} name={row.name || 'producto nuevo'} className="menu-shopping-store" />
               </div>
               <p className="menu-shopping-sources">Para: {row.line ? [...new Set(row.line.sources.map((s) => s.dishName))].join(', ') : 'Añadido a mano'}</p>
               {row.line?.hint && <p className="menu-shopping-notes">{row.line.hint}</p>}

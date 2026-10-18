@@ -34,6 +34,8 @@ export function ProposeTopicDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  // Agradecimiento público opcional (desmarcado por defecto): si la idea se publica, se menciona el alias público.
+  const [credit, setCredit] = useState(false)
   const valid = topic !== '' && text.trim().length >= TOPIC_MIN
 
   async function submit(e: FormEvent) {
@@ -43,7 +45,7 @@ export function ProposeTopicDialog({ onClose }: { onClose: () => void }) {
     setError(null)
     try {
       if (!(await requireParticipation())) return
-      await proposeTopic(topic, text.trim())
+      await proposeTopic(topic, text.trim(), credit)
       setDone(true)
     } catch (err) {
       setError(communityErrorText(err))
@@ -55,10 +57,14 @@ export function ProposeTopicDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
       <div ref={dialogRef} className="modal-sheet community-touch-scope" role="dialog" aria-modal="true" aria-label="Propón un tema" onClick={(e) => e.stopPropagation()}>
-        <h2>💡 Propón un tema</h2>
         {done ? (
           <>
-            <p role="status">¡Gracias! Hemos recibido tu idea. La revisa el equipo antes de decidir si escribir un artículo: no se publica nada automáticamente.</p>
+            <h2>💡 ¡Gracias por tu idea!</h2>
+            <div role="status">
+              <p>Nos encanta que nos ayudes a hacer crecer la Comunidad PEPA. ❤️</p>
+              <p>El equipo revisará tu propuesta e intentará incluirla entre los próximos artículos programados lo antes posible.</p>
+              <p>¡Las mejores ideas nacen de las propias familias!</p>
+            </div>
             <div className="modal-actions">
               <button type="button" className="primary" onClick={onClose}>
                 Cerrar
@@ -67,6 +73,7 @@ export function ProposeTopicDialog({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <form onSubmit={(e) => void submit(e)}>
+            <h2>💡 Propón un tema</h2>
             <p className="muted">¿Sobre qué te gustaría leer un artículo? Cuéntanoslo en una frase. Es distinto del buzón de sugerencias para mejorar la aplicación.</p>
             <label htmlFor="propose-topic-category">Categoría</label>
             <select id="propose-topic-category" value={topic} onChange={(e) => setTopic(e.target.value)}>
@@ -82,6 +89,10 @@ export function ProposeTopicDialog({ onClose }: { onClose: () => void }) {
             <p className="muted" style={{ fontSize: 13 }}>
               Entre {TOPIC_MIN} y {TOPIC_MAX} letras. Máximo 5 propuestas al día.
             </p>
+            <label className="checkbox-label community-propose-credit">
+              <input type="checkbox" checked={credit} onChange={(e) => setCredit(e.target.checked)} />
+              <span>Si mi idea se convierte en un artículo, podéis agradecerme la propuesta mencionando mi alias público</span>
+            </label>
             {error && (
               <p className="error" role="alert">
                 {error}

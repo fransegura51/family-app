@@ -28,7 +28,9 @@ describe('Preparar compra del menú — revisión antes de guardar', () => {
   it('en la revisión se puede desmarcar cada línea, editar la cantidad y elegir tienda', () => {
     expect(MODAL).toContain('type="checkbox"')
     expect(MODAL).toContain('aria-label={`Cantidad de ${row.name || "producto nuevo"}`}')
-    expect(MODAL).toContain('aria-label={`Tienda de ${row.name || "producto nuevo"}`}')
+    expect(MODAL).toContain('<RowStoreSelect')
+    expect(MODAL).toContain('className="menu-shopping-store"')
+    expect(MODAL).toContain('rowKey={row.id}')
   })
 
   it('cada línea muestra de qué platos viene', () => {
@@ -145,7 +147,7 @@ describe('modal de revisión — contador, cantidades desconocidas y lógica int
 
   it('la lógica de confirmación no cambió: solo guarda las filas marcadas con su cantidad y tienda', () => {
     expect(MODAL).toContain('.filter((r) => r.include && r.name.trim())')
-    expect(MODAL).toContain('store: r.store || null')
+    expect(MODAL).toContain('store: storeForRow(choice, r.id, stores)')
   })
 })
 

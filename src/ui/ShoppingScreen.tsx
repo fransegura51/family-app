@@ -1,3 +1,4 @@
+import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
 import {
   ChangeEvent,
   FormEvent,
@@ -237,20 +238,16 @@ export function ShoppingScreen() {
       {/* Petición real, con imagen de referencia: "cabecera para la
           sección de compras, hacer lo mismo que con las anteriores"
           (mismo tratamiento que "La cocina de Pepa" y Calendario). */}
-      <div className="kitchen-header">
-        <img src={comprasHeaderImg} alt="Compras" className="kitchen-header-img" />
-        <button
-          type="button"
-          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
-          onClick={() => {
+      <KitchenHeaderWithMenu
+        imgSrc={comprasHeaderImg}
+        alt="Compras"
+        open={menuOpen}
+        ariaLabel={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
+        onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
           }}
-          aria-label={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
-        >
-          {menuOpen ? '✕' : '☰'} Menú
-        </button>
-      </div>
+      />
       {/* "Lista de la Compra" en el breadcrumb coincide a propósito con el nuevo título de la propia
           pestaña (antes "Pendientes") — el menú ☰ sigue diciendo "Lista de la compra", sin tocar. */}
       <SectionBreadcrumb subsection={tab === 'Lista' ? 'Lista de la Compra' : COMPRAS_MENU_ITEM_META[tab].label} />

@@ -1,11 +1,14 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { addShoppingItems, listShoppingItems } from '@/data/shopping'
-import { markShoppingDuplicates, type MenuShoppingRow } from '@/domain/communityMenu'
+import { markShoppingDuplicates } from '@/domain/communityMenu'
 import { errorMessage } from '@/domain/errorMessage'
+import { EMPTY_STORE_CHOICE, storeForRow, type StoreChoice } from '@/domain/storeAssignment'
 import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
+import type { ShoppingItem } from '@/domain/types'
 import { showToast } from '@/state/toast'
 import { useDialogFocus } from '@/ui/community/useDialogFocus'
+import { RowStoreSelect, StoreChoiceBar, useShoppingStores } from '@/ui/ShoppingStoreChoice'
 import '@/ui/community/menu/communityMenu.css'
 
 // Hoja «Añadir a Compras» de una lista de ingredientes ya calculada (suma, escalado y redondeo de compra los hace menuShoppingPlan.ts). La usan el menú de Comunidad y
@@ -15,7 +18,7 @@ import '@/ui/community/menu/communityMenu.css'
 //   · nada se guarda hasta pulsar el botón, y se guarda de una vez (todo o nada).
 // Cada ingrediente ocupa UNA fila compacta: casilla, nombre, cantidad ya calculada y, discreto, cuántas recetas lo usan; «Ver platos» despliega cuáles (no se listan siempre).
 // Pulsar el botón dos veces no duplica: el segundo toque se ignora mientras se guarda, y al terminar la hoja pasa a «Añadido».
-type ListState = { status: 'loading' } | { status: 'ok'; rows: MenuShoppingRow[] } | { status: 'error'; message: string }
+type LoadState = { status: 'loading' } | { status: 'ok'; items: ShoppingItem[] } | { status: 'error'; message: string }
 
 export function distinctDishes(line: ShoppingPlanLine): string[] {
   return [...new Set(line.sources.map((s) => s.dishName))]
@@ -24,36 +27,49 @@ export function distinctDishes(line: ShoppingPlanLine): string[] {
 export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: ReactNode; lines: ShoppingPlanLine[]; onClose: () => void; note?: ReactNode }) {
   const uid = useId()
   const dialogRef = useDialogFocus<HTMLDivElement>()
-  const [state, setState] = useState<ListState>({ status: 'loading' })
+  const [load, setLoad] = useState<LoadState>({ status: 'loading' })
   const [reloadKey, setReloadKey] = useState(0)
   // Casillas marcadas (por clave de línea). Las que ya estaban en la lista empiezan sin marcar.
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState<Set<string>>(new Set())
+  // Tienda de destino: una para todo o repartido entre varias (las tiendas habituales de la familia).
+  const { stores } = useShoppingStores()
+  const [choice, setChoice] = useState<StoreChoice>(EMPTY_STORE_CHOICE)
   const [saving, setSaving] = useState(false)
   const [added, setAdded] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const sending = useRef(false)
+  const knownKeys = useRef<Set<string> | null>(null)
 
-  // Una lectura de la lista de la compra al abrir (para avisar de lo que ya está). Si no se puede leer, no se deja guardar a ciegas: se puede reintentar.
+  // Una lectura de la lista de la compra al abrir (para avisar de lo que ya está); NO se vuelve a pedir si cambian las cantidades (p. ej. otro número de personas). Si no se puede
+  // leer, no se deja guardar a ciegas: se puede reintentar.
   useEffect(() => {
     let cancelled = false
-    setState({ status: 'loading' })
+    setLoad({ status: 'loading' })
     listShoppingItems()
       .then((items) => {
-        if (cancelled) return
-        const rows = markShoppingDuplicates(lines, items)
-        setState({ status: 'ok', rows })
-        setChecked(new Set(rows.filter((r) => !r.inList).map((r) => r.line.key)))
+        if (!cancelled) setLoad({ status: 'ok', items })
       })
       .catch((e) => {
-        if (!cancelled) setState({ status: 'error', message: errorMessage(e, 'No se ha podido leer tu lista de la compra.') })
+        if (!cancelled) setLoad({ status: 'error', message: errorMessage(e, 'No se ha podido leer tu lista de la compra.') })
       })
     return () => {
       cancelled = true
     }
-  }, [lines, reloadKey])
+  }, [reloadKey])
 
-  const rows = state.status === 'ok' ? state.rows : []
+  const rows = useMemo(() => (load.status === 'ok' ? markShoppingDuplicates(lines, load.items) : []), [lines, load])
+  const state: { status: 'loading' } | { status: 'ok' } | { status: 'error'; message: string } = load.status === 'ok' ? { status: 'ok' } : load
+
+  // La primera vez, todo marcado salvo lo que ya está en la lista. Si luego cambian las cantidades, se CONSERVA lo que la persona había marcado o desmarcado de cada producto que sigue
+  // ahí (y su tienda); solo los productos nuevos entran con la regla de siempre.
+  useEffect(() => {
+    if (load.status !== 'ok') return
+    const before = knownKeys.current
+    knownKeys.current = new Set(rows.map((r) => r.line.key))
+    setChecked((prev) => new Set(rows.filter((r) => (before && before.has(r.line.key) ? prev.has(r.line.key) : !r.inList)).map((r) => r.line.key)))
+  }, [rows, load.status])
+
   const selectedCount = rows.filter((r) => checked.has(r.line.key)).length
   const inListCount = rows.filter((r) => r.inList).length
 
@@ -74,7 +90,9 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
     try {
       const chosen = rows.filter((r) => checked.has(r.line.key))
       // Cantidad con su unidad en el texto («320 g», «3 unidades»); sin cantidad conocida se deja vacía (nunca 0). «al gusto» se conserva tal cual.
-      await addShoppingItems(chosen.map((r) => ({ name: r.line.name, quantity: r.line.quantity ?? '', unit: '', priority: 'normal' as const, tripId: null })))
+      await addShoppingItems(
+        chosen.map((r) => ({ name: r.line.name, quantity: r.line.quantity ?? '', unit: '', priority: 'normal' as const, tripId: null, store: storeForRow(choice, r.line.key, stores) })),
+      )
       setAdded(chosen.length)
       showToast(`Añadidos ${chosen.length} a Compras`)
     } catch (e) {
@@ -145,6 +163,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                       </button>
                     </div>
                   )}
+                  <StoreChoiceBar stores={stores} choice={choice} onChange={setChoice} keys={rows.filter((r) => checked.has(r.line.key)).map((r) => r.line.key)} />
                   <ul className="community-menu-shop-list community-menu-shop-compact">
                     {rows.map((r) => {
                       const dishes = distinctDishes(r.line)
@@ -157,7 +176,13 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                               <span className="community-menu-shop-text">
                                 <strong>{r.line.name}</strong>
                                 {r.line.quantity && <span className="community-menu-shop-qty"> · {r.line.quantity}</span>}
-                                {r.inList && <span className="community-menu-badge reuse"> Ya está en tu lista</span>}
+                                {r.inList && (
+                                  <span className="community-menu-badge reuse">
+                                    {' '}
+                                    Ya está en tu lista
+                                    {r.inListStores.some((s) => s) ? ` (${[...new Set(r.inListStores.map((s) => s ?? 'sin tienda'))].join(', ')})` : ''}
+                                  </span>
+                                )}
                               </span>
                             </label>
                             {dishes.length > 0 && (
@@ -172,6 +197,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                               </button>
                             )}
                           </div>
+                          <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={r.line.key} name={r.line.name} />
                           {expanded && <p className="community-menu-shop-for">Para: {dishes.join(', ')}</p>}
                           {r.line.hint && <p className="community-menu-shop-notes">{r.line.hint}</p>}
                         </li>

@@ -325,10 +325,15 @@ export const adminApproveProposal = (id: string, confirmText = false) =>
 // Menú semanal oficial: lista (todos los estados + valor de weekly_menu_autopublish), detalle con revisión de calidad, reprogramar (fecha = sábado 10:00 de
 // Madrid futuro; null cancela la programación) y reintentar una publicación con error.
 // ---- Propón un tema (0284): ideas de artículos que interesan a las familias. Separado del buzón de sugerencias de la app; nada se publica solo.
-export const proposeTopic = (topicId: string, text: string) => rpc<string>('community_propose_topic', { p_topic: topicId, p_text: text })
+// `credit` = la persona acepta que, si su idea se convierte en artículo, se la agradezca con su alias público (opcional, desmarcado por defecto; no es retroactivo).
+export const proposeTopic = (topicId: string, text: string, credit = false) => rpc<string>('community_propose_topic', { p_topic: topicId, p_text: text, p_credit: credit })
 export const adminListTopicProposals = (status: 'new' | 'drafted' | 'dismissed' = 'new') => rpc<Record<string, unknown>[]>('community_admin_list_topic_proposals', { p_status: status })
 export const adminGroupTopicProposals = (ids: string[], label: string | null) => rpc<number>('community_admin_group_topic_proposals', { p_ids: ids, p_label: label })
 export const adminTopicProposalsToDraft = (groupKey: string, title: string) => rpc<string>('community_admin_topic_proposals_to_draft', { p_group_key: groupKey, p_title: title })
+// Vínculo editorial con un artículo oficial, deshacerlo antes de publicar y añadir la línea de agradecimiento (solo con alias de quienes aceptaron).
+export const adminLinkTopicProposals = (groupKey: string, itemId: string) => rpc<number>('community_admin_link_topic_proposals', { p_group_key: groupKey, p_item: itemId })
+export const adminUnlinkTopicProposals = (groupKey: string) => rpc<number>('community_admin_unlink_topic_proposals', { p_group_key: groupKey })
+export const adminAddCredit = (itemId: string) => rpc<{ line: string; aliases: number }>('community_admin_add_credit', { p_item: itemId })
 export const adminDismissTopicProposals = (groupKey: string) => rpc<number>('community_admin_dismiss_topic_proposals', { p_group_key: groupKey })
 
 export const adminListMenus = (limit = 50) => rpc<Record<string, unknown>>('community_admin_list_menus', { p_limit: limit })

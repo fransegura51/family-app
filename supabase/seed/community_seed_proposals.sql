@@ -299,15 +299,28 @@ Calienta la leche con el azúcar, la canela y el limón sin que hierva. Apártal
 Corta el pan en trozos pequeños o desmigalo, rocíalo con el agua con sal, mézclalo y déjalo tapado con un paño de 2 a 3 horas (o de un día para otro). Dora el ajo y el chorizo en el aceite, añade el pan y remueve a fuego medio-bajo unos 15-20 minutos, hasta que queden sueltas y doradas. Van muy bien con uvas, pimientos fritos o un huevo frito encima. 🍇$b$,
        $j${}$j$::jsonb, $b$tip$b$),
       ($b$inicial-10-arroz-blanco$b$, $b$recetas$b$, $b$recetas-faciles$b$, $b$Arroz blanco que sale bien siempre$b$,
-       $b$No hay una proporción de agua que valga para todos los arroces: depende de la variedad. Lo que siempre funciona es saber qué método le va a cada uno.
+       $b$No hay una proporción de agua que valga para todos los arroces: cambia con la variedad, la marca y el método. Estas son medidas orientativas. Una «medida» es un vaso o una taza, la misma para el arroz y para el agua. Si el paquete indica otra cosa, hazle caso y apunta la que te funcione.
 
-**Según el tipo de arroz**
+**Dos formas de cocerlo**
 
-- **Redondo o bomba:** absorbe mucho líquido y suelta almidón, así que queda meloso y tierno. Sofríe un diente de ajo en aceite, rehoga el arroz un minuto, añade agua o caldo caliente y cuece tapado a fuego suave, sin remover. Sigue la proporción y el tiempo del paquete, porque cambian de una marca a otra.
-- **Largo, basmati y similares:** lávalo en un colador hasta que el agua salga casi clara, para que los granos queden sueltos. Puedes cocerlo en abundante agua con sal, como la pasta, y escurrirlo. O por absorción, con la medida del paquete.
-- **Vaporizado:** es el más fácil: no se pasa ni se pega. Cuécelo en abundante agua con sal, el tiempo que indique el paquete (suele tardar algo más que el blanco normal), y escúrrelo.
+- **Por absorción:** el arroz se cuece tapado, a fuego suave, con una cantidad de agua medida que se bebe entera. No se escurre. Queda con más sabor y más tierno.
+- **En abundante agua:** como la pasta, destapado y con sal (unas 6-8 medidas de agua por 1 de arroz). Se escurre al acabar. Es la más fácil para que quede suelto y no se pase.
 
-Truco para los métodos por absorción: al acabar, deja el arroz tapado 5 minutos fuera del fuego antes de servir. Queda más suelto.
+**Según el tipo de arroz** (por absorción, con el agua ya caliente)
+
+- **Redondo:** no lo laves, porque su almidón da ternura. Rehógalo 1 minuto en aceite caliente, con un diente de ajo si quieres. 2 medidas de agua por 1 de arroz y 15-18 minutos tapado a fuego suave. Con 2,5-3 medidas y removiendo de vez en cuando, queda meloso.
+- **Bomba:** absorbe más líquido y aguanta mejor el punto. Rehógalo igual y usa 2,5-3 medidas de agua o caldo, unos 16-18 minutos. Sin remover queda entero y suelto; removiendo, más cremoso.
+- **Largo:** lávalo en un colador hasta que el agua salga casi clara. Usa 1,75-2 medidas de agua por 1 de arroz, tapado y a fuego mínimo, 12-15 minutos. En abundante agua, 10-12 minutos.
+- **Basmati:** lávalo y déjalo en remojo en agua fría 20-30 minutos; escúrrelo. 1,5 medidas de agua por 1 de arroz, tapado y a fuego mínimo, 10-12 minutos. En abundante agua, 8-10 minutos.
+- **Vaporizado:** no hace falta lavarlo y casi no se pasa. Por absorción, 2 medidas de agua y 18-20 minutos tapado. En abundante agua, 15-18 minutos, y se escurre.
+
+**Cuándo tapar, remover y dejar reposar**
+
+- **Tapado o destapado:** por absorción, siempre tapado y sin levantar la tapa; así no se escapa el vapor que lo cuece. En abundante agua, destapado.
+- **Remover:** nada más hervir, mueve el arroz una vez y no lo toques más. Si lo remueves, suelta almidón y se apelmaza. Solo se remueve a propósito cuando lo quieres meloso.
+- **Reposo:** al acabar, apártalo del fuego y déjalo tapado 5-10 minutos. Termina de hidratarse y los granos se separan.
+- **Suelto:** lava el arroz largo y el basmati, rehoga el redondo, no remuevas, no destapes, deja reposar y ahueca con un tenedor.
+- **Meloso:** arroz redondo o bomba sin lavar, caldo caliente, remover a menudo y servir enseguida, un poco antes de que se seque del todo.
 
 **Cinco ideas para transformarlo (para 2 raciones, con unos 250-300 g de arroz ya cocido)**
 

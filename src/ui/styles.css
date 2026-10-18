@@ -7897,3 +7897,71 @@ textarea {
   min-width: 0;
   flex-wrap: wrap;
 }
+
+/* Cocina · menú semanal, bloque de cada comida (18/10/2026): la etiqueta (Comida, Cena…) arriba a la derecha, el nombre del plato en su propia línea a todo el ancho y los iconos
+   pequeños (🛒 ✏️ 🗑️, de 40 px de toque) en una línea aparte debajo, a la derecha. Los acompañamientos cuelgan del plato principal con una línea a la izquierda. */
+.menu-slot {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 2px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.menu-slot-meal {
+  align-self: flex-end;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+}
+
+.menu-slot-name {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.menu-slot-name .link-button {
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  text-align: left;
+  align-self: auto;
+}
+
+.menu-slot-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0;
+  margin-top: -2px;
+}
+
+.menu-slot-extras {
+  margin: 2px 0 0 8px;
+  padding-left: 10px;
+  border-left: 3px solid rgba(0, 0, 0, 0.12);
+}
+
+.menu-slot-extra + .menu-slot-extra {
+  margin-top: 2px;
+  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+}
+
+.menu-slot-extra .menu-slot-name {
+  font-size: 14px;
+}
+
+.menu-slot .menu-picker {
+  width: 100%;
+}
+
+/* Botón «☰ Menú» flotante de las secciones con cabecera ilustrada: se pinta en <body> (ver KitchenHeaderWithMenu.tsx), fijo en la pantalla arriba a la izquierda. Su altura la fija el
+   componente (media altura de la cabecera con la página arriba del todo); este valor solo vale hasta que se mide. */
+.kitchen-header-menu-fab.menu-fab-portal {
+  position: fixed;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: auto;
+  z-index: 39;
+}

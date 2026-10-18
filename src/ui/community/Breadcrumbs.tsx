@@ -19,7 +19,7 @@ export function Breadcrumbs({ crumbs }: { crumbs: Crumb[] }) {
           const last = i === crumbs.length - 1
           return (
             <li key={`${c.label}-${i}`} aria-current={last ? 'page' : undefined}>
-              {c.to && !last ? <Link to={c.to}>{c.label}</Link> : <span>{c.label}</span>}
+              {c.to && !last ? <Link to={c.to} state={c.state}>{c.label}</Link> : <span>{c.label}</span>}
               {!last && <span aria-hidden="true"> › </span>}
             </li>
           )

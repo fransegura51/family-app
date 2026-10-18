@@ -1,3 +1,4 @@
+import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
 import { ChangeEvent, FormEvent, Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { eventMenuPath } from '@/domain/eventMenuHub'
@@ -157,20 +158,16 @@ export function AlimentacionScreen() {
           una píldora opaca con sombra (en vez del círculo gris de
           section-menu-fab, pensado para fondos lisos), para que se
           vea igual de bien encima de cualquier parte de la foto. */}
-      <div className="kitchen-header">
-        <img src={kitchenHeaderImg} alt="La cocina de Pepa" className="kitchen-header-img" />
-        <button
-          type="button"
-          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
-          onClick={() => {
+      <KitchenHeaderWithMenu
+        imgSrc={kitchenHeaderImg}
+        alt="La cocina de Pepa"
+        open={menuOpen}
+        ariaLabel={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
+        onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
           }}
-          aria-label={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
-        >
-          {menuOpen ? '✕' : '☰'} Menú
-        </button>
-      </div>
+      />
       <SectionBreadcrumb subsection={ALIMENTACION_MENU_ITEM_META[tab].label} />
       {menuOpen && (
         <AlimentacionMenuDropdown
@@ -699,96 +696,80 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                   🛒
                 </button>
               ) : null
-            return (
-              <Fragment key={meal.value}>
-              <div className="menu-row">
-                <span className="muted menu-meal-label">{meal.label}</span>
-                {entry && isEditing ? (
-                  <MenuEntryPicker
-                    recipes={recipes}
-                    initialRecipeId={entry.recipeId}
-                    initialFreeText={entry.freeText}
-                    onPick={async (pick) => {
-                      await updateMenuEntry(entry.id, pick)
-                      setEditingId(null)
-                      reload()
-                    }}
-                    onCancel={() => setEditingId(null)}
-                  />
-                ) : entry ? (
-                  <>
-                    <span className="menu-row-main">
-                      {recipe ? (
-                        <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(recipe.id)} aria-label={`Ver la receta ${recipe.title}`}>
-                          📖 {recipe.title}
-                        </button>
-                      ) : (
-                        <span>{entry.freeText}</span>
-                      )}
-                    </span>
-                    <span className="menu-row-actions">
-                      {cart(entry, recipe?.title ?? entry.freeText ?? 'este plato')}
-                      <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${recipe?.title ?? entry.freeText ?? 'este plato'}`} onClick={() => setEditingId(entry.id)}>
+            // Un plato: su nombre en una línea propia (ancho completo) y debajo, a la derecha, los iconos 🛒 ✏️ 🗑️.
+            const dish = (e: MenuEntry, r: Recipe | null | undefined, withEdit: boolean) => {
+              const label = r?.title ?? e.freeText ?? 'este plato'
+              return (
+                <div className="menu-slot-dish">
+                  <div className="menu-slot-name">
+                    {r ? (
+                      <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(r.id)} aria-label={`Ver la receta ${r.title}`}>
+                        📖 {r.title}
+                      </button>
+                    ) : (
+                      <span>{e.freeText}</span>
+                    )}
+                  </div>
+                  <div className="menu-slot-actions">
+                    {cart(e, label)}
+                    {withEdit && (
+                      <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
                         ✏️
                       </button>
-                      <ConfirmIconButton
-                        icon="🗑️"
-                        className="menu-icon-btn"
-                        ariaLabel={`Quitar ${recipe?.title ?? entry.freeText ?? 'este plato'} del menú`}
-                        onConfirm={() => deleteMenuEntry(entry.id).then(reload)}
-                      />
-                    </span>
-                  </>
-                ) : isAdding ? (
-                  <MenuEntryPicker
-                    recipes={recipes}
-                    onPick={async (pick) => {
-                      await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
-                      setAddingFor(null)
-                      reload()
-                    }}
-                    onCancel={() => setAddingFor(null)}
-                  />
-                ) : (
-                  <span className="menu-row-main">
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() => setAddingFor({ date, meal: meal.value })}
-                    >
-                      + Añadir
-                    </button>
-                  </span>
-                )}
-              </div>
-              {extraEntries.map((extra) => {
-                const extraRecipe = extra.recipeId ? recipes.find((r) => r.id === extra.recipeId) : undefined
-                return (
-                  <div key={extra.id} className="menu-row">
-                    <span className="muted menu-meal-label" aria-hidden="true">
-                      +
-                    </span>
-                    <span className="menu-row-main">
-                      {extraRecipe ? (
-                        <button type="button" className="link-button menu-recipe-link" onClick={() => setViewRecipeId(extraRecipe.id)} aria-label={`Ver la receta ${extraRecipe.title}`}>
-                          📖 {extraRecipe.title}
-                        </button>
-                      ) : (
-                        <span>{extra.freeText}</span>
-                      )}
-                    </span>
-                    <span className="menu-row-actions">
-                      {cart(extra, extraRecipe?.title ?? extra.freeText ?? 'este plato')}
-                      <ConfirmIconButton
-                        icon="🗑️"
-                        className="menu-icon-btn"
-                        ariaLabel={`Quitar ${extraRecipe?.title ?? extra.freeText ?? 'este plato'} del menú`}
-                        onConfirm={() => deleteMenuEntry(extra.id).then(reload)}
-                      />
-                    </span>
+                    )}
+                    <ConfirmIconButton icon="🗑️" className="menu-icon-btn" ariaLabel={`Quitar ${label} del menú`} onConfirm={() => deleteMenuEntry(e.id).then(reload)} />
                   </div>
-                )
-              })}
+                </div>
+              )
+            }
+            return (
+              <Fragment key={meal.value}>
+                <div className="menu-slot">
+                  <span className="muted menu-slot-meal">{meal.label}</span>
+                  {entry && isEditing ? (
+                    <MenuEntryPicker
+                      recipes={recipes}
+                      initialRecipeId={entry.recipeId}
+                      initialFreeText={entry.freeText}
+                      onPick={async (pick) => {
+                        await updateMenuEntry(entry.id, pick)
+                        setEditingId(null)
+                        reload()
+                      }}
+                      onCancel={() => setEditingId(null)}
+                    />
+                  ) : entry ? (
+                    dish(entry, recipe, true)
+                  ) : isAdding ? (
+                    <MenuEntryPicker
+                      recipes={recipes}
+                      onPick={async (pick) => {
+                        await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
+                        setAddingFor(null)
+                        reload()
+                      }}
+                      onCancel={() => setAddingFor(null)}
+                    />
+                  ) : (
+                    <div className="menu-slot-name">
+                      <button type="button" className="link-button" onClick={() => setAddingFor({ date, meal: meal.value })}>
+                        + Añadir
+                      </button>
+                    </div>
+                  )}
+                  {extraEntries.length > 0 && (
+                    <div className="menu-slot-extras" aria-label={`Acompañamientos de ${meal.label}`}>
+                      {extraEntries.map((extra) => {
+                        const extraRecipe = extra.recipeId ? recipes.find((r) => r.id === extra.recipeId) : undefined
+                        return (
+                          <div key={extra.id} className="menu-slot-extra">
+                            {dish(extra, extraRecipe, false)}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </Fragment>
             )
           })}

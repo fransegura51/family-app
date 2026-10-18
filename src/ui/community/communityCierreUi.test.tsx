@@ -127,12 +127,12 @@ describe('Cocina → Menú semanal', () => {
   })
 
   it('los platos con receta guardada son un enlace que abre su ficha emergente (ingredientes, raciones, preparación, foto) y desde ahí la receta completa', () => {
-    expect(kitchenSrc).toContain('setViewRecipeId(recipe.id)')
+    expect(kitchenSrc).toContain('setViewRecipeId(r.id)')
     expect(kitchenSrc).toContain('function RecipeQuickViewModal(')
     expect(kitchenSrc).toContain('Abrir la receta completa (y editarla)')
     expect(kitchenSrc).toContain('<RecipeImage imagePath={recipe.imagePath}')
     // El texto libre sigue siendo texto: solo las entradas con receta real son enlace.
-    expect(kitchenSrc).toContain('<span>{entry.freeText}</span>')
+    expect(kitchenSrc).toContain('<span>{e.freeText}</span>')
   })
 
   it('el menú semanal publicado: el artículo completo a la vista y el importador debajo', () => {

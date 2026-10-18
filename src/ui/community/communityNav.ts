@@ -62,13 +62,44 @@ export const paths = {
 export interface Crumb {
   label: string
   to?: string
+  // Estado de navegación que viaja con el enlace (p. ej. «recupera la lista tal como estaba»).
+  state?: unknown
+}
+
+// Último filtro (tema, tipo y orden) de cada sección de Comunidad, en esta pestaña. Al volver a la sección desde una publicación con la miga «Recetas y cocina» (en el móvil no hay
+// botón «atrás»), la lista reaparece con lo que la persona había elegido en vez de empezar de cero. Solo se guarda en esta sesión del navegador: nada viaja al servidor.
+const SECTION_QUERY_KEY = 'community:section-query:'
+
+export function rememberSectionQuery(section: CommunitySection, search: string): void {
+  try {
+    const q = search.replace(/^\?/, '')
+    if (q) window.sessionStorage.setItem(SECTION_QUERY_KEY + section, q)
+    else window.sessionStorage.removeItem(SECTION_QUERY_KEY + section)
+  } catch {
+    // sin almacenamiento (ventana privada): no pasa nada, la sección empieza limpia.
+  }
+}
+
+export function savedSectionQuery(section: CommunitySection): string {
+  try {
+    const q = window.sessionStorage.getItem(SECTION_QUERY_KEY + section)
+    return q ? `?${q}` : ''
+  } catch {
+    return ''
+  }
 }
 
 // Migas: Inicio › Comunidad › [Recetas y cocina | Hogar y familia] › Publicación. NO llevan el título de la publicación (ni recortado): el título completo
 // va debajo, como encabezado de la propia página. Las páginas especiales (perfiles, buscador…) adaptan el último tramo sin enseñar datos privados.
 export function postCrumbs(section: CommunitySection): Crumb[] {
   const s = SECTIONS.find((x) => x.id === section)
-  return [{ label: 'Inicio', to: '/' }, { label: 'Comunidad', to: paths.home }, { label: s?.title ?? 'Sección', to: paths.section(section) }, { label: 'Publicación' }]
+  // La miga de la sección vuelve con el filtro que había (orden, temas y tipo) y recupera la lista y el desplazamiento.
+  return [
+    { label: 'Inicio', to: '/' },
+    { label: 'Comunidad', to: paths.home },
+    { label: s?.title ?? 'Sección', to: paths.section(section) + savedSectionQuery(section), state: { restoreList: true } },
+    { label: 'Publicación' },
+  ]
 }
 
 export function sectionCrumbs(section: CommunitySection): Crumb[] {

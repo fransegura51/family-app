@@ -1,3 +1,4 @@
+import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
@@ -110,20 +111,16 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
       {/* Petición real, con imagen de referencia: "cabecera Ubicación,
           mismas instrucciones que antes" (mismo tratamiento que las
           demás cabeceras con foto). */}
-      <div className="kitchen-header">
-        <img src={ubicacionHeaderImg} alt="Ubicación" className="kitchen-header-img" />
-        <button
-          type="button"
-          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating kitchen-header-menu-fab-floating-lower"
-          onClick={() => {
+      <KitchenHeaderWithMenu
+        imgSrc={ubicacionHeaderImg}
+        alt="Ubicación"
+        open={menuOpen}
+        ariaLabel={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
+        onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
           }}
-          aria-label={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
-        >
-          {menuOpen ? '✕' : '☰'} Menú
-        </button>
-      </div>
+      />
       <SectionBreadcrumb subsection={UBICACION_MENU_ITEM_META[tab].label} />
       <p className="muted">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El

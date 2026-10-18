@@ -1,11 +1,14 @@
 // Selector de ingredientes de una receta → Lista de la compra. ÚNICO para toda la app: lo usa «La cocina de PEPA»
-// (Recetas) y «Menú del evento». La familia decide qué ingredientes pasan (y, si quiere, en qué tienda); PEPA no
-// envía nada por su cuenta ni inventa ingredientes: solo existen los que la familia escribió en la receta.
+// (Recetas) y «Menú del evento». La familia decide qué ingredientes pasan y en qué tienda (una para todos o repartidos
+// entre varias, con el selector compartido ShoppingStoreChoice); PEPA no envía nada por su cuenta ni inventa
+// ingredientes: solo existen los que la familia escribió en la receta.
 // `eventId` (opcional) deja el producto ligado al evento, igual que ya hacía el flujo de Eventos.
 import { useState } from 'react'
 import { addRecipeIngredientsToShoppingList } from '@/data/food'
 import { errorMessage } from '@/domain/errorMessage'
+import { EMPTY_STORE_CHOICE, storeForRow, type StoreChoice } from '@/domain/storeAssignment'
 import type { Recipe, ShoppingStoreEntry } from '@/domain/types'
+import { RowStoreSelect, StoreChoiceBar } from '@/ui/ShoppingStoreChoice'
 
 export function PickIngredientsModal({
   recipe,
@@ -27,7 +30,7 @@ export function PickIngredientsModal({
   onError: (message: string) => void
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set(recipe.ingredients.map((i) => i.id)))
-  const [storeByIngredient, setStoreByIngredient] = useState<Map<string, string>>(new Map())
+  const [choice, setChoice] = useState<StoreChoice>(EMPTY_STORE_CHOICE)
   const [saving, setSaving] = useState(false)
 
   function toggle(id: string) {
@@ -44,7 +47,7 @@ export function PickIngredientsModal({
     try {
       const selections = [...selected].map((ingredientId) => ({
         ingredientId,
-        store: storeByIngredient.get(ingredientId) || null,
+        store: storeForRow(choice, ingredientId, stores),
       }))
       await addRecipeIngredientsToShoppingList(recipe, selections, eventId)
       onDone(selections.length)
@@ -73,6 +76,7 @@ export function PickIngredientsModal({
         )}
         <p className="muted">Elige qué ingredientes hacen falta y, si quieres, en qué tienda comprar cada uno.</p>
         {recipe.ingredients.length === 0 && <p className="muted">Esta receta todavía no tiene ingredientes escritos.</p>}
+        <StoreChoiceBar stores={stores} choice={choice} onChange={setChoice} keys={[...selected]} />
         <div className="event-list">
           {recipe.ingredients.map((i) => (
             <div key={i.id} className="card" style={{ padding: 10 }}>
@@ -81,16 +85,7 @@ export function PickIngredientsModal({
                 {i.name}
                 {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
               </label>
-              {selected.has(i.id) && (
-                <select value={storeByIngredient.get(i.id) ?? ''} onChange={(e) => setStoreByIngredient((prev) => new Map(prev).set(i.id, e.target.value))}>
-                  <option value="">Sin tienda concreta</option>
-                  {stores.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+              {selected.has(i.id) && <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={i.id} name={i.name} />}
             </div>
           ))}
         </div>

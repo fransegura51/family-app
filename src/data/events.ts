@@ -2067,8 +2067,8 @@ export async function deleteEventDecorationItem(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function transferDecorationItemToShopping(item: EventDecorationItem): Promise<void> {
-  await addShoppingItem({ name: item.name, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: item.eventId })
+export async function transferDecorationItemToShopping(item: EventDecorationItem, store: string | null = null): Promise<void> {
+  await addShoppingItem({ name: item.name, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: item.eventId, store })
   const { error } = await supabase.from('event_decoration_items').update({ transferred_to_shopping: true }).eq('id', item.id)
   if (error) throw error
 }
@@ -2125,9 +2125,9 @@ export async function deleteEventActivity(id: string): Promise<void> {
   if (error) throw error
 }
 
-export async function transferActivityMaterialsToShopping(activity: EventActivity): Promise<void> {
+export async function transferActivityMaterialsToShopping(activity: EventActivity, store: string | null = null): Promise<void> {
   if (!activity.materialsNote?.trim()) return
-  await addShoppingItem({ name: activity.materialsNote, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: activity.eventId })
+  await addShoppingItem({ name: activity.materialsNote, quantity: '', unit: '', priority: 'normal', tripId: null, eventId: activity.eventId, store })
   const { error } = await supabase.from('event_activities').update({ transferred_to_shopping: true }).eq('id', activity.id)
   if (error) throw error
 }

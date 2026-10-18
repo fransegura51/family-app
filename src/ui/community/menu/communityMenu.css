@@ -189,8 +189,9 @@
 .community-menu-sheet {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 16px);
-  max-height: calc(100dvh - 16px);
+  /* La hoja nunca sube por debajo de la hora y los indicadores del teléfono (zona segura de arriba). */
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - 16px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 16px);
   padding: 0;
   overflow: hidden;
 }
@@ -578,6 +579,7 @@ p.community-menu-freeze {
 
 .community-menu-diners {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   font-weight: 600;

@@ -1,3 +1,4 @@
+import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
 import { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -880,20 +881,16 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
     <div className="screen">
       {/* Petición real, con imagen de referencia: "ahora lo mismo con
           Calendario" (mismo tratamiento que "La cocina de Pepa"). */}
-      <div className="kitchen-header">
-        <img src={calendarHeaderImg} alt="Calendario" className="kitchen-header-img" />
-        <button
-          type="button"
-          className="kitchen-header-menu-fab kitchen-header-menu-fab-floating"
-          onClick={() => {
+      <KitchenHeaderWithMenu
+        imgSrc={calendarHeaderImg}
+        alt="Calendario"
+        open={calendarMenuOpen}
+        ariaLabel={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
+        onToggle={() => {
             if (!calendarMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setCalendarMenuOpen((v) => !v)
           }}
-          aria-label={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
-        >
-          {calendarMenuOpen ? '✕' : '☰'} Menú
-        </button>
-      </div>
+      />
       <SectionBreadcrumb subsection={CALENDARIO_MENU_ITEM_META[view].label} />
       {error && <p className="error">{error}</p>}
       {shareNotice && <p className="points-badge">{shareNotice}</p>}

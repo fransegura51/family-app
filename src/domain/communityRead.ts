@@ -27,4 +27,15 @@ export function readBadge(item: CommunityCardItem): ReadBadge {
   return s === 'read' || s === 'updated' ? s : null
 }
 
+// «No leídas primero» en pantalla: lo no leído (o actualizado) antes que lo leído, de más reciente a más antiguo dentro de cada grupo. El servidor ya lo ordena así; esto reordena en
+// el momento una lista recuperada de la memoria al volver de una publicación (la que acabas de abrir pasa al grupo de leídas sin volver a pedir nada).
+export function sortUnreadFirst<T extends CommunityCardItem>(items: T[]): T[] {
+  const group = (i: T) => (readBadge(i) === 'read' ? 1 : 0)
+  const time = (i: T) => ('createdAt' in i && typeof i.createdAt === 'string' ? Date.parse(i.createdAt) || 0 : 0)
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => group(a.item) - group(b.item) || time(b.item) - time(a.item) || a.index - b.index)
+    .map((x) => x.item)
+}
+
 export const READ_LABELS: Record<'read' | 'updated', string> = { read: '✓ Leído', updated: 'Actualizada' }

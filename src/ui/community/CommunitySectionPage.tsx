@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { Navigate, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { Navigate, useLocation, useNavigate, useNavigationType, useParams, useSearchParams } from 'react-router-dom'
 import { listPosts } from '@/data/community'
 import { KIND_ICONS, KIND_LABELS, ORDER_LABELS, SECTIONS, type CommunitySection, type PostKind } from '@/domain/community'
 import {
@@ -24,7 +24,8 @@ import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { FavoriteTopicsDialog } from '@/ui/community/FavoriteTopicsDialog'
-import { paths, sectionCrumbs } from '@/ui/community/communityNav'
+import { paths, rememberSectionQuery, sectionCrumbs } from '@/ui/community/communityNav'
+import { sortUnreadFirst } from '@/domain/communityRead'
 import { PostCardView } from '@/ui/community/PostCardView'
 import { useCommunityList } from '@/ui/community/useCommunityList'
 import { useCommunityTopics } from '@/ui/community/useCommunityTopics'
@@ -51,7 +52,9 @@ function SectionContent({ section }: { section: CommunitySection }) {
   const [sp, setSp] = useSearchParams()
   const [favOpen, setFavOpen] = useState(false)
   // Solo al VOLVER ATRÁS se recupera lo que había (filtros, orden, lo cargado y el desplazamiento). Cualquier otra entrada empieza en «Más recientes».
-  const [restore] = useState(() => navType === 'POP')
+  // También al volver con la miga «Recetas y cocina» de una publicación (state.restoreList): en el móvil no hay botón «atrás».
+  const location = useLocation()
+  const [restore] = useState(() => navType === 'POP' || (location.state as { restoreList?: boolean } | null)?.restoreList === true)
 
   // El tema, el orden y el tipo viven en la dirección (?tema=&orden=&tipo=): compartibles y recuperables con «atrás».
   const sectionTopics = useMemo(() => (topics ? topicsForSection(topics, section) : []), [topics, section])
@@ -64,6 +67,12 @@ function SectionContent({ section }: { section: CommunitySection }) {
   // «Ver todos los temas» / «Ver menos»: solo cambia lo que se enseña, no los filtros.
   const [allTopics, setAllTopics] = useState(false)
   const { featured, rest } = useMemo(() => splitFeaturedTopics(section, sectionTopics, filters.topics), [section, sectionTopics, filters.topics])
+
+  // Se recuerda el último filtro de la sección para que la miga de una publicación vuelva con él.
+  const searchKey = sp.toString()
+  useEffect(() => {
+    rememberSectionQuery(section, searchKey)
+  }, [section, searchKey])
 
   const list = useCommunityList({
     storageKey: `section:${section}`,
@@ -203,7 +212,7 @@ function SectionContent({ section }: { section: CommunitySection }) {
 
         {list.items.length > 0 && (
           <div className="community-card-list">
-            {list.items.map((item) => (
+            {(filters.order === 'no_leidas' ? sortUnreadFirst(list.items) : list.items).map((item) => (
               <PostCardView key={item.id} item={item} onUnblocked={list.reload} />
             ))}
           </div>

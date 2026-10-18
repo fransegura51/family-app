@@ -21,6 +21,7 @@ import { MenuPostPanel } from '@/ui/community/menu/MenuPostPanel'
 
 vi.mock('@/data/communityMenu', () => ({ previewMenuImport: vi.fn(), runMenuImport: vi.fn() }))
 vi.mock('@/data/shopping', () => ({ listShoppingItems: vi.fn(), addShoppingItems: vi.fn() }))
+vi.mock('@/data/shoppingStores', () => ({ listShoppingStores: vi.fn(async () => []) }))
 vi.mock('@/data/community', () => ({ camelize: (x: unknown) => x, getPost: vi.fn() }))
 // El acceso a Comunidad lo decide useCommunityAccess; aquí se simula acceso completo o solo lectura.
 let canParticipate = true

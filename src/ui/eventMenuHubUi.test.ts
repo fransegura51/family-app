@@ -224,7 +224,7 @@ describe('Herramientas contextuales: Recetas y Compras (27–36)', () => {
     expect(ALIMENTACION).not.toContain('function PickIngredientsModal(')
     expect(MENU).toContain('<PickIngredientsModal')
     expect(MENU).toContain('eventId={event.id}')
-    expect(PICKER).toContain('Sin tienda concreta')
+    expect(PICKER).toContain('StoreChoiceBar')
     expect(PICKER).toContain('addRecipeIngredientsToShoppingList(recipe, selections, eventId)')
     expect((Object.values(FILES).join('\n').match(/function PickIngredientsModal\(|export function PickIngredientsModal\(/g) ?? []).length).toBe(1)
   })

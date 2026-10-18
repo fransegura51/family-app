@@ -1,0 +1,58 @@
+/* Selector de tienda compartido de los envíos a Compras: compacto, para móvil. */
+.store-choice-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e3e7ef);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+}
+
+.store-choice-general {
+  display: flex;
+  flex-direction: row;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.store-choice-general select {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.store-choice-split {
+  display: flex;
+  flex-direction: row;
+  text-align: left;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.store-choice-split input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.store-choice-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Selector de tienda de un producto (solo con «Repartir entre varias tiendas»): ocupa su propia línea bajo el nombre. */
+.store-choice-row {
+  flex: 1 1 100%;
+  min-height: 40px;
+  min-width: 0;
+  margin: 0 0 4px 32px;
+  max-width: calc(100% - 32px);
+  font-size: 13px;
+}

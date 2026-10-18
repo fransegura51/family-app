@@ -637,6 +637,7 @@ import { analyzeProviderContactDocument, type ProviderContactScanResult } from '
 import { analyzeOfferBudgetDocument, type OfferBudgetScanItem, type OfferBudgetScanResult } from '@/services/offerBudgetDocument'
 import { exportInvitationImage } from '@/services/invitationExport'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { AddToShoppingStoreDialog } from '@/ui/AddToShoppingStoreDialog'
 import { FileOrPdfPicker } from '@/ui/FileOrPdfPicker'
 import { ChoiceRow } from '@/ui/ChoiceRow'
 import { DayPlanSection } from '@/ui/EventDayPlan'
@@ -15650,13 +15651,17 @@ function DecorationSection({ eventId }: { eventId: string }) {
     }
   }
 
-  async function handleTransfer(item: EventDecorationItem) {
+  // «→ Compras» pregunta primero en qué tienda habitual se apunta (si la familia no tiene tiendas, se apunta directamente).
+  const [transferring, setTransferring] = useState<EventDecorationItem | null>(null)
+  async function handleTransfer(item: EventDecorationItem, store: string | null) {
     try {
-      await transferDecorationItemToShopping(item)
+      await transferDecorationItemToShopping(item, store)
       setNotice(`✓ "${item.name}" añadido a Compras.`)
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo traspasar'))
+    } finally {
+      setTransferring(null)
     }
   }
 
@@ -15678,7 +15683,7 @@ function DecorationSection({ eventId }: { eventId: string }) {
               {i.transferredToShopping ? ' · ✓ en Compras' : ''}
             </span>
             {!i.transferredToShopping && (
-              <button type="button" className="link-button" onClick={() => handleTransfer(i)}>
+              <button type="button" className="link-button" onClick={() => setTransferring(i)}>
                 → Compras
               </button>
             )}
@@ -15691,6 +15696,14 @@ function DecorationSection({ eventId }: { eventId: string }) {
         <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="+ Añadir idea" style={{ flex: 1 }} />
         <button type="submit">Añadir</button>
       </form>
+      {transferring && (
+        <AddToShoppingStoreDialog
+          title="Añadir a Compras"
+          productName={transferring.name}
+          onConfirm={(store) => handleTransfer(transferring, store)}
+          onCancel={() => setTransferring(null)}
+        />
+      )}
     </div>
   )
 }
@@ -15712,13 +15725,16 @@ function ActivitiesSection({ eventId }: { eventId: string }) {
   }
   useEffect(reload, [eventId])
 
-  async function handleTransfer(activity: EventActivity) {
+  const [transferring, setTransferring] = useState<EventActivity | null>(null)
+  async function handleTransfer(activity: EventActivity, store: string | null) {
     try {
-      await transferActivityMaterialsToShopping(activity)
+      await transferActivityMaterialsToShopping(activity, store)
       setNotice(`✓ Material de "${activity.title}" añadido a Compras.`)
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo traspasar'))
+    } finally {
+      setTransferring(null)
     }
   }
 
@@ -15745,7 +15761,7 @@ function ActivitiesSection({ eventId }: { eventId: string }) {
                 </p>
               )}
               {a.materialsNote && !a.transferredToShopping && (
-                <button type="button" className="link-button" onClick={() => handleTransfer(a)}>
+                <button type="button" className="link-button" onClick={() => setTransferring(a)}>
                   → Compras
                 </button>
               )}
@@ -15757,6 +15773,14 @@ function ActivitiesSection({ eventId }: { eventId: string }) {
       <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
         + Añadir actividad
       </button>
+      {transferring && (
+        <AddToShoppingStoreDialog
+          title="Añadir material a Compras"
+          productName={transferring.materialsNote ?? transferring.title}
+          onConfirm={(store) => handleTransfer(transferring, store)}
+          onCancel={() => setTransferring(null)}
+        />
+      )}
       {showAdd && (
         <AddActivityModal
           eventId={eventId}

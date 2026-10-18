@@ -460,12 +460,22 @@ export interface MenuShoppingRow {
   line: ShoppingPlanLine
   // Ya hay un producto con ese nombre SIN comprar en la lista de la familia (se enseña y se deja sin marcar; la persona puede marcarlo igualmente).
   inList: boolean
+  // En qué tienda(s) está ya apuntado (null = sin tienda). Solo informa: nunca se fusiona con otra tienda ni se cambia su asignación.
+  inListStores: (string | null)[]
 }
 
 // Marca los productos que ya están en la lista (solo los pendientes de comprar; los ya comprados no cuentan). Compara solo el nombre, sin tildes ni mayúsculas
 // (la misma regla que «Pepa» al añadir los ingredientes de un menú): que haya «cebolla» no dice si hay bastante, por eso solo se avisa, no se bloquea.
-export function markShoppingDuplicates(lines: ShoppingPlanLine[], current: Pick<ShoppingItem, 'name' | 'status'>[]): MenuShoppingRow[] {
-  const pending = new Set(current.filter((c) => c.status === 'pendiente').map((c) => normalizeKey(c.name)))
-  return lines.map((line) => ({ line, inList: pending.has(normalizeKey(line.name)) }))
+export function markShoppingDuplicates(lines: ShoppingPlanLine[], current: (Pick<ShoppingItem, 'name' | 'status'> & { store?: string | null })[]): MenuShoppingRow[] {
+  const pending = new Map<string, (string | null)[]>()
+  for (const c of current) {
+    if (c.status !== 'pendiente') continue
+    const key = normalizeKey(c.name)
+    pending.set(key, [...(pending.get(key) ?? []), c.store ?? null])
+  }
+  return lines.map((line) => {
+    const stores = pending.get(normalizeKey(line.name)) ?? []
+    return { line, inList: stores.length > 0, inListStores: stores }
+  })
 }
 

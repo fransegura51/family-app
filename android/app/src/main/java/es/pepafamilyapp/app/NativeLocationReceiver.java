@@ -39,9 +39,14 @@ public class NativeLocationReceiver extends BroadcastReceiver {
     private static final int MAX_BAD_ANSWERS = 3;
     // Filtro de saltos de GPS (ver acceptAfterJumpCheck).
     private static final float JUMP_DISTANCE_M = 150f;
-    private static final float JUMP_CONFIRM_RADIUS_M = 100f;
-    private static final long JUMP_CONFIRM_WINDOW_MS = 60_000L;
-    private static final long JUMP_CHECK_WINDOW_MS = 10 * 60_000L;
+    private static final float JUMP_STEP_RADIUS_M = 100f;
+    private static final long JUMP_HOLD_GAP_MS = 10 * 60_000L;
+    private static final long JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000L;
+    private static final long JUMP_PERSIST_MS = 30 * 60_000L;
+    private static final float MIN_MOVING_SPEED_MS = 0.5f;
+    private static final float JUMP_MIN_AWAY_STEP_M = 15f;
+    private static final int JUMP_SPEED_READINGS = 2;
+    private static final int JUMP_AWAY_READINGS = 3;
     private static final int MAX_DIAG_LINES = 60;
 
     @Override
@@ -101,11 +106,12 @@ public class NativeLocationReceiver extends BroadcastReceiver {
     }
 
     /**
-     * Filtro de saltos de GPS (17/10/2026: «Paco se ha ido de Casa» falso — un único punto a 349 m, 4 min después del anterior a 17 m, y 44 min después
-     * otro a 4 m; Paco no había salido). Una lectura a más de JUMP_DISTANCE_M del último punto enviado (si ese punto es de hace menos de
-     * JUMP_CHECK_WINDOW_MS) se RETIENE; solo se envía si la lectura siguiente la confirma (a menos de JUMP_CONFIRM_RADIUS_M de ella y en menos de
-     * JUMP_CONFIRM_WINDOW_MS). Si la siguiente vuelve a la zona de antes, la retenida se descarta. Moviéndose de verdad llegan lecturas seguidas, así
-     * que el retraso es de una lectura; sin movimiento no llega ninguna y el punto suelto no se envía nunca. Con el último envío muy antiguo no se filtra.
+     * Filtro de saltos de GPS (misma regla que src/domain/gpsJump.ts, que lo aplica con la app abierta). Casos reales: 17/10/2026 21:44 y 18/10/2026 (Paco, quieto
+     * en casa de una habitación a otra): una POSICIÓN DE RED mal colocada a ~350 m que el móvil devolvía una y otra vez (mismas coordenadas, sin velocidad).
+     *
+     * Una lectura a más de JUMP_DISTANCE_M del último punto enviado (si ese punto es de hace menos de un día) se RETIENE. Solo se envía con pruebas de movimiento real:
+     * dos lecturas seguidas CON velocidad, o tres seguidas cada una MÁS lejos que la anterior, o 30 minutos seguidos en el mismo sitio. Si una lectura vuelve a la zona
+     * de antes, la retenida se descarta. Sin último punto reciente no se filtra nada.
      */
     private static boolean acceptAfterJumpCheck(Context context, SharedPreferences prefs, Location loc, long now) {
         double lat = loc.getLatitude();
@@ -123,22 +129,44 @@ public class NativeLocationReceiver extends BroadcastReceiver {
             markSent(prefs, lat, lng, now);
             return true;
         }
-        long heldAt = prefs.getLong("jump_at", 0L);
-        if (heldAt > 0L && now - heldAt >= 0L && now - heldAt <= JUMP_CONFIRM_WINDOW_MS) {
-            double heldLat = Double.longBitsToDouble(prefs.getLong("jump_lat", 0L));
-            double heldLng = Double.longBitsToDouble(prefs.getLong("jump_lng", 0L));
-            if (distanceMeters(heldLat, heldLng, lat, lng) <= JUMP_CONFIRM_RADIUS_M) {
-                diag(context, "receptor: lectura lejana (" + Math.round(fromLast) + " m) confirmada, se envía");
-                markSent(prefs, lat, lng, now);
-                return true;
-            }
+
+        // Lectura lejana.
+        long heldFirstAt = prefs.getLong("jump_first_at", 0L);
+        long heldLastAt = prefs.getLong("jump_last_at", 0L);
+        double heldLat = Double.longBitsToDouble(prefs.getLong("jump_lat", 0L));
+        double heldLng = Double.longBitsToDouble(prefs.getLong("jump_lng", 0L));
+        boolean sameTrip = heldLastAt > 0L && now - heldLastAt >= 0L && now - heldLastAt <= JUMP_HOLD_GAP_MS && distanceMeters(heldLat, heldLng, lat, lng) <= JUMP_STEP_RADIUS_M;
+        boolean hasSpeed = loc.hasSpeed();
+        float speed = hasSpeed ? loc.getSpeed() : 0f;
+        String detail = "(" + Math.round(fromLast) + " m del último punto, " + (hasSpeed ? "velocidad " + Math.round(speed * 10f) / 10f + " m/s" : "sin velocidad") + (loc.hasAccuracy() ? ", precisión " + Math.round(loc.getAccuracy()) + " m" : "") + ")";
+        if (!sameTrip) {
+            prefs.edit()
+                .putLong("jump_first_at", now)
+                .putLong("jump_last_at", now)
+                .putLong("jump_lat", Double.doubleToRawLongBits(lat))
+                .putLong("jump_lng", Double.doubleToRawLongBits(lng))
+                .putInt("jump_speed_n", 0)
+                .putInt("jump_away_n", 0)
+                .apply();
+            diag(context, "receptor: lectura lejana retenida " + detail);
+            return false;
+        }
+        float previousFar = distanceMeters(lastLat, lastLng, heldLat, heldLng);
+        int speedN = hasSpeed && speed >= MIN_MOVING_SPEED_MS ? prefs.getInt("jump_speed_n", 0) + 1 : 0;
+        int awayN = fromLast - previousFar >= JUMP_MIN_AWAY_STEP_M ? prefs.getInt("jump_away_n", 0) + 1 : 0;
+        if (speedN >= JUMP_SPEED_READINGS || awayN >= JUMP_AWAY_READINGS || now - heldFirstAt >= JUMP_PERSIST_MS) {
+            diag(context, "receptor: movimiento real confirmado " + detail + ", se envía");
+            markSent(prefs, lat, lng, now);
+            return true;
         }
         prefs.edit()
-            .putLong("jump_at", now)
+            .putLong("jump_last_at", now)
             .putLong("jump_lat", Double.doubleToRawLongBits(lat))
             .putLong("jump_lng", Double.doubleToRawLongBits(lng))
+            .putInt("jump_speed_n", speedN)
+            .putInt("jump_away_n", awayN)
             .apply();
-        diag(context, "receptor: lectura lejana (" + Math.round(fromLast) + " m del último punto) retenida hasta confirmarla");
+        diag(context, "receptor: lectura lejana sigue retenida " + detail);
         return false;
     }
 
@@ -147,9 +175,12 @@ public class NativeLocationReceiver extends BroadcastReceiver {
             .putLong("sent_at", now)
             .putLong("sent_lat", Double.doubleToRawLongBits(lat))
             .putLong("sent_lng", Double.doubleToRawLongBits(lng))
-            .remove("jump_at")
+            .remove("jump_first_at")
+            .remove("jump_last_at")
             .remove("jump_lat")
             .remove("jump_lng")
+            .remove("jump_speed_n")
+            .remove("jump_away_n")
             .apply();
     }
 

@@ -58,7 +58,7 @@ async function freshModule() {
   return { mod, data }
 }
 
-async function ping(coords: { latitude: number; longitude: number }) {
+async function ping(coords: { latitude: number; longitude: number; speed?: number | null }) {
   capturedOnUpdate?.(coords)
   await flush()
 }
@@ -119,11 +119,14 @@ describe('historial de sitios: ruido de GPS (bug real: "burla de llamadas")', ()
 
     // Filtro de saltos de GPS (domain/gpsJump.ts): la primera lectura lejana se retiene hasta que la siguiente la confirma; el «empieza a estar fuera»
     // cuenta desde esa confirmación.
-    await ping(FAR) // retenida (podría ser un salto)
+    // Movimiento real: lecturas lejanas CON velocidad. La primera se retiene; la tercera ya es movimiento confirmado.
+    await ping({ ...FAR, speed: 1.4 }) // retenida (podría ser un salto)
     await vi.advanceTimersByTimeAsync(20_000)
-    await ping(FAR) // confirmada: empieza a estar fuera
+    await ping({ ...FAR, speed: 1.4 })
+    await vi.advanceTimersByTimeAsync(20_000)
+    await ping({ ...FAR, speed: 1.4 }) // confirmada: empieza a estar fuera
     await vi.advanceTimersByTimeAsync(AWAY_CONFIRM_MS)
-    await ping(FAR) // sigue fuera, ya confirmado
+    await ping({ ...FAR, speed: 1.4 }) // sigue fuera, ya confirmado
 
     expect(data.closePlaceVisit).toHaveBeenCalledWith('visita-1', expect.any(String))
   })
@@ -301,5 +304,24 @@ describe('historial de sitios: dejar de compartir', () => {
     mod.stopSharing()
     expect(data.closePlaceVisit).toHaveBeenCalledWith('visita-x', expect.any(String))
     expect(localStorage.getItem('familyapp:location-visit-candidate')).toBeNull()
+  })
+})
+
+describe('filtro de saltos de GPS con la app abierta (18/10/2026: posición de red falsa a ~350 m, repetida)', () => {
+  it('una posición lejana repetida sin velocidad NO se guarda ni se enseña: no sale un aviso falso de «se ha ido de casa»', async () => {
+    const { mod, data } = await freshModule()
+    mod.startSharing('m1')
+    await ping(HOME)
+    const writesAtHome = vi.mocked(data.updateMemberLocation).mock.calls.length
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(60_000)
+      await ping(FAR) // la misma posición falsa una y otra vez, sin velocidad
+    }
+    expect(vi.mocked(data.updateMemberLocation).mock.calls.length).toBe(writesAtHome) // nada nuevo llegó al servidor
+    expect(mod.getLastPosition()).toMatchObject({ latitude: HOME.latitude, longitude: HOME.longitude })
+    // Cuando vuelve una lectura buena en casa, sí se guarda.
+    await vi.advanceTimersByTimeAsync(60_000)
+    await ping({ latitude: HOME.latitude + 0.00005, longitude: HOME.longitude })
+    expect(vi.mocked(data.updateMemberLocation).mock.calls.length).toBeGreaterThan(writesAtHome)
   })
 })

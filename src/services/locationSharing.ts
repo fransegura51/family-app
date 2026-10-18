@@ -86,8 +86,27 @@ const MIN_LIVE_DISTANCE_M = 15
 const MIN_LIVE_INTERVAL_MS = 20 * 1000
 const MIN_WRITE_GAP_MS = 10 * 1000
 let lastLiveWrite: { latitude: number; longitude: number; at: number } | null = null
-// Filtro de saltos de GPS de la app abierta (domain/gpsJump.ts). Se reinicia al cambiar de persona y al dejar de compartir.
+// Filtro de saltos de GPS de la app abierta (domain/gpsJump.ts). Se reinicia al cambiar de persona y al dejar de compartir. Su «último punto aceptado» se guarda
+// en el móvil para que, al reabrir la app, la primera lectura (que puede ser una posición de red falsa) no se acepte sin comprobar.
 const jumpFilter = createJumpFilter()
+const LAST_ACCEPTED_KEY = 'family-app:gps-last-accepted'
+function rememberLastAccepted(memberId: string, latitude: number, longitude: number, at: number): void {
+  try {
+    localStorage.setItem(LAST_ACCEPTED_KEY, JSON.stringify({ memberId, latitude, longitude, at }))
+  } catch {
+    // Sin almacenamiento no pasa nada: el filtro sigue funcionando en memoria.
+  }
+}
+function seedJumpFilter(memberId: string): void {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAST_ACCEPTED_KEY) ?? 'null') as { memberId?: string; latitude?: number; longitude?: number; at?: number } | null
+    if (saved && saved.memberId === memberId && Number.isFinite(saved.latitude) && Number.isFinite(saved.longitude) && Number.isFinite(saved.at)) {
+      jumpFilter.seed({ latitude: saved.latitude as number, longitude: saved.longitude as number, at: saved.at as number })
+    }
+  } catch {
+    // Dato roto o sin almacenamiento: se empieza sin último punto.
+  }
+}
 
 function shouldWriteLivePosition(latitude: number, longitude: number, now: number): boolean {
   if (!lastLiveWrite) return true
@@ -343,6 +362,7 @@ export function startSharing(memberId: string, force = false) {
     lastLiveWrite = null
     jumpFilter.reset()
   }
+  seedJumpFilter(memberId)
   currentStop?.()
   lastError = null
   currentMemberId = memberId
@@ -356,7 +376,8 @@ export function startSharing(memberId: string, force = false) {
       lastUpdateAt = Date.now()
       // Un salto de GPS aislado (un punto lejano que vuelve enseguida) no se enseña ni se guarda: en el servidor dispara un aviso falso de «se ha ido de…».
       // Se retiene hasta que la lectura siguiente lo confirme (domain/gpsJump.ts; el servicio nativo de Android y el iPhone aplican la misma regla).
-      if (!jumpFilter.accept({ latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt })) return
+      if (!jumpFilter.accept({ latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt, speed: coords.speed ?? null })) return
+      rememberLastAccepted(memberId, coords.latitude, coords.longitude, lastUpdateAt)
       // El pin de ESTE teléfono en su propia pantalla se actualiza al
       // instante, en cada lectura — es solo memoria, no cuesta nada.
       // Escribir en Supabase (lo que ven los DEMÁS) es aparte y con freno,

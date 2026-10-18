@@ -56,7 +56,10 @@ describe('ubicación en segundo plano (app nativa)', () => {
     await flush()
     const callback = plugin.addWatcher.mock.calls[0][1] as (l: unknown, e?: unknown) => void
     callback({ latitude: 38.1, longitude: -0.85, accuracy: 9, time: 1 })
-    expect(seen).toEqual([{ latitude: 38.1, longitude: -0.85 }])
+    // La velocidad (null si el móvil no la da) viaja con la posición: el filtro de saltos de GPS la usa como prueba de movimiento real.
+    expect(seen).toEqual([{ latitude: 38.1, longitude: -0.85, speed: null }])
+    callback({ latitude: 38.1, longitude: -0.85, accuracy: 9, speed: 1.4, time: 2 })
+    expect(seen[1]).toEqual({ latitude: 38.1, longitude: -0.85, speed: 1.4 })
   })
   it('sin permiso: avisa con el código 1 (el mismo que la API web, que hace que PEPA deje de compartir) y abre los ajustes', async () => {
     const errors: [string, number][] = []

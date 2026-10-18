@@ -7,6 +7,8 @@ import { watchNativePosition } from '@/services/nativeLocation'
 export interface Coordinates {
   latitude: number
   longitude: number
+  // Velocidad en m/s si el móvil la da (una posición de red no la trae): el filtro de saltos de GPS (domain/gpsJump.ts) la usa como prueba de movimiento real.
+  speed?: number | null
 }
 
 export function isGeolocationSupported(): boolean {
@@ -82,7 +84,7 @@ export function watchPosition(
   // prácticamente al segundo pero deja que el proveedor de ubicación
   // funcione en su modo normal, continuo y fiable.
   const id = navigator.geolocation.watchPosition(
-    (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+    (pos) => onUpdate({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, speed: pos.coords.speed }),
     (err) => onError?.(geolocationErrorMessage(err), err.code),
     { enableHighAccuracy: true, maximumAge: 5_000, timeout: 20_000 },
   )

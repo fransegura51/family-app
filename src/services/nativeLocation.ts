@@ -23,6 +23,8 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin & PepaN
 export interface NativeCoords {
   latitude: number
   longitude: number
+  // Velocidad en m/s si el móvil la da (null = no la trae, típico de una posición de red).
+  speed?: number | null
 }
 
 // Metros mínimos entre dos posiciones: ahorra batería y envíos; los lugares de PEPA miden 50 m por defecto (el aviso de salida salta a unos 82 m, ver evaluate_location_rules), así que 25 sobra para detectar llegadas y salidas.
@@ -112,7 +114,7 @@ export function watchNativePosition(onUpdate: (coords: NativeCoords) => void, on
           }
           return
         }
-        if (location) onUpdate({ latitude: location.latitude, longitude: location.longitude })
+        if (location) onUpdate({ latitude: location.latitude, longitude: location.longitude, speed: location.speed ?? null })
       }),
     )
     .then((id) => {

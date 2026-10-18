@@ -44,10 +44,10 @@ El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla 
 - El servidor contesta `ok` / `off` / `revoked` / `invalid`; con `off` o `revoked` el servicio se para y borra su configuración.
 - Tras REINICIAR el móvil o ACTUALIZAR la app (17/10/2026): `NativeBootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED) vuelve a registrar el aviso al receptor y
   prueba a relanzar el servicio en primer plano; si Android no lo deja, queda anotado en el registro (`pepa_bg_geo_diag`). Sin probar en un móvil real.
-- Filtro de saltos de GPS (18/10/2026, APK 1.0.23): un aviso de salida falso («Paco se ha ido de Casa», 17/10 21:44) vino de UN punto a 349 m entre uno a 17 m y otro
-  a 4 m. `NativeLocationReceiver.acceptAfterJumpCheck` retiene una lectura a más de 150 m del último punto enviado (si éste es de hace menos de 10 min) y solo la
-  envía si la siguiente la confirma (≤ 100 m de ella y en < 60 s); si la siguiente vuelve a la zona, se descarta. Mismo criterio que el filtro del iPhone
-  (`PepaNativeLocation.swift`). Con la app ABIERTA manda JavaScript: el mismo día (18/10, 11:08) otro salto de ~355 m coló un aviso falso por ese camino, así que `domain/gpsJump.ts` aplica la misma regla en `services/locationSharing.ts` (confirmación de hasta 5 min). **Sin probar en un móvil real.**
+- Filtro de posiciones falsas (18/10/2026, APK 1.0.24): avisos de salida falsos con el móvil quieto en casa (17/10 21:44; 18/10 11:08 y 11:59). Los datos mostraron una posición de
+  RED (wifi/antena) mal colocada a ~350 m que el móvil devolvía repetida (mismas coordenadas, sin velocidad). Regla en `NativeLocationReceiver.acceptAfterJumpCheck` (app cerrada) y en
+  `domain/gpsJump.ts` + `services/locationSharing.ts` (app abierta, Android/iPhone/web): una lectura a más de 150 m del último punto (de hace < 1 día) se retiene y solo se envía con dos lecturas
+  seguidas con velocidad, o tres seguidas cada vez más lejos, o 30 min seguidos en el mismo sitio. El registro anota cada retenida (distancia, velocidad, precisión). **Sin probar con un salto real.**
 - Envío nativo robusto (16/10/2026): un fallo real (Paco salió a las 17:45 y el Xiaomi no mandó nada hasta abrir la app, con «Permitir siempre» ya dado y la
   pausa de actividad apagada) mostró que depender de que el servicio siga vivo no basta (Android 12+ no deja poner en primer plano un servicio
   reiniciado desde segundo plano). Ahora las posiciones se piden a Play Services con un `PendingIntent` a

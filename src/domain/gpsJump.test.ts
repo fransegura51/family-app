@@ -1,73 +1,111 @@
-// Filtro de saltos de GPS (app abierta). Casos reales: 17/10/2026 21:44 y 18/10/2026 11:08 (Paco, un punto a ~350 m con el móvil quieto en casa).
+// Filtro de saltos de GPS (app abierta). Casos reales del 18/10/2026 (Paco, quieto en casa de una habitación a otra): una posición de red mal colocada a
+// ~350 m que el móvil devolvía una y otra vez, sin velocidad.
 import { describe, expect, it } from 'vitest'
-import { createJumpFilter, JUMP_CHECK_WINDOW_MS, JUMP_CONFIRM_WINDOW_MS, type GpsReading } from './gpsJump'
+import { createJumpFilter, JUMP_CHECK_WINDOW_MS, JUMP_PERSIST_MS, type GpsReading } from './gpsJump'
 
-const CASA = { latitude: 38.1053157, longitude: -0.8499646 }
-const SALTO = { latitude: 38.1034229509181, longitude: -0.853230781071963 } // ~350 m de Casa (el punto falso del 18/10)
+const CASA = { latitude: 38.1053157, longitude: -0.8499646 } // 09:02:54, en casa
+// Los puntos falsos reales de hoy (09:08:16 y 09:59:24 con las MISMAS coordenadas; 10:00:58, 10:01:46 y 10:03:22 idénticas; 10:03:28 otra a ~55 m).
+const FALSO_A = { latitude: 38.1034229509181, longitude: -0.853230781071963 }
+const FALSO_B = { latitude: 38.1034352442769, longitude: -0.853170395309096 }
+const FALSO_C = { latitude: 38.1029699845638, longitude: -0.853589078277245 }
 const MIN = 60_000
 const T0 = 1_000_000_000_000
 
-function r(p: { latitude: number; longitude: number }, minutes: number, extraSeconds = 0): GpsReading {
-  return { ...p, at: T0 + minutes * MIN + extraSeconds * 1000 }
+function r(p: { latitude: number; longitude: number }, minutes: number, extraSeconds = 0, speed: number | null = null): GpsReading {
+  return { ...p, at: T0 + minutes * MIN + extraSeconds * 1000, speed }
 }
 
-describe('filtro de saltos de GPS', () => {
-  it('el caso real: quieto en casa, un punto a ~350 m y vuelta a casa — el punto suelto NO se envía', () => {
+// Un camino que se aleja de casa hacia el sur, `meters` metros (1 m ≈ 0,000009 grados de latitud).
+function sur(meters: number) {
+  return { latitude: CASA.latitude - meters * 0.000009, longitude: CASA.longitude }
+}
+
+describe('el caso real del 18/10: posición de red falsa a ~350 m', () => {
+  it('11:08 — un punto falso suelto y vuelta a casa: no se envía el falso, sí lo bueno', () => {
+    const f = createJumpFilter()
+    expect(f.accept(r(CASA, 0))).toBe(true)
+    expect(f.accept(r(FALSO_A, 5, 22))).toBe(false)
+    expect(f.accept(r({ latitude: 38.10532, longitude: -0.84997 }, 5, 40))).toBe(true)
+  })
+
+  it('11:59 — 57 min después del último punto en casa, la misma posición falsa REPETIDA varias veces seguidas no se acepta nunca (sin velocidad, sin alejarse)', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true) // 09:02:54
-    expect(f.accept(r(SALTO, 5, 22))).toBe(false) // 09:08:16 — salto
-    expect(f.accept(r({ latitude: 38.10532, longitude: -0.84997 }, 5, 40))).toBe(true) // vuelve a casa: se envía lo bueno
+    expect(f.accept(r(FALSO_A, 56, 30))).toBe(false) // 09:59:24
+    expect(f.accept(r(FALSO_B, 58))).toBe(false) // 10:00:58
+    expect(f.accept(r(FALSO_B, 58, 48))).toBe(false) // 10:01:46 (idéntica)
+    expect(f.accept(r(FALSO_B, 60, 22))).toBe(false) // 10:03:22 (idéntica)
+    expect(f.accept(r(FALSO_C, 60, 28))).toBe(false) // 10:03:28 (otra a ~55 m: una sola lectura que se aleja no basta)
   })
 
-  it('moviéndose de verdad: la primera lectura lejana se retiene y la siguiente la confirma', () => {
+  it('cuando por fin vuelve una lectura buena en casa, se envía normal', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(SALTO, 4))).toBe(false)
-    // 20 s después, a ~30 m del punto retenido: es movimiento real.
-    expect(f.accept(r({ latitude: SALTO.latitude - 0.0002, longitude: SALTO.longitude - 0.0002 }, 4, 20))).toBe(true)
+    expect(f.accept(r(FALSO_A, 56, 30))).toBe(false)
+    expect(f.accept(r(CASA, 70))).toBe(true)
   })
+})
 
-  it('una lectura cercana (10 m) siempre se acepta, no se confunde con un salto', () => {
+describe('un movimiento de verdad SÍ se acepta', () => {
+  it('andando: lecturas con velocidad — se acepta a la tercera lectura lejana', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r({ latitude: CASA.latitude + 0.00009, longitude: CASA.longitude }, 1))).toBe(true)
+    expect(f.accept(r(sur(200), 10, 0, 1.4))).toBe(false)
+    expect(f.accept(r(sur(228), 10, 20, 1.4))).toBe(false)
+    expect(f.accept(r(sur(256), 10, 40, 1.4))).toBe(true)
   })
 
-  it('si la lectura que confirma llega muy tarde (más de 5 minutos), no confirma: la retenida se sustituye', () => {
+  it('sin velocidad pero alejándose de verdad (cada lectura más lejos que la anterior): se acepta', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(SALTO, 4))).toBe(false)
-    expect(f.accept(r(SALTO, 4, JUMP_CONFIRM_WINDOW_MS / 1000 + 5))).toBe(false)
+    expect(f.accept(r(sur(200), 10))).toBe(false)
+    expect(f.accept(r(sur(230), 10, 20))).toBe(false)
+    expect(f.accept(r(sur(260), 10, 40))).toBe(false)
+    expect(f.accept(r(sur(290), 10, 60))).toBe(true)
   })
 
-  it('con lecturas espaciadas (web en segundo plano, 2 minutos entre una y otra) una salida real SÍ se confirma', () => {
+  it('una lectura cada pocos metros (movimiento normal) pasa siempre sin retención', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(SALTO, 4))).toBe(false)
-    expect(f.accept(r(SALTO, 6))).toBe(true)
+    for (let m = 25; m <= 500; m += 25) expect(f.accept(r(sur(m), 1, m))).toBe(true)
   })
 
-  it('con el último punto muy antiguo (más de 10 min) no se filtra: puede ser un viaje de verdad', () => {
+  it('una mudanza real: 30 minutos seguidos en el mismo sitio lejano acaban aceptándose', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(SALTO, JUMP_CHECK_WINDOW_MS / MIN + 1))).toBe(true)
+    expect(f.accept(r(sur(400), 5))).toBe(false)
+    for (let m = 13; m < 5 + JUMP_PERSIST_MS / MIN; m += 8) expect(f.accept(r(sur(400), m))).toBe(false)
+    expect(f.accept(r(sur(402), 5 + JUMP_PERSIST_MS / MIN))).toBe(true)
   })
+})
 
-  it('el primer punto de todos se acepta siempre', () => {
-    expect(createJumpFilter().accept(r(SALTO, 0))).toBe(true)
-  })
-
-  it('reset olvida todo: tras cambiar de persona, el primer punto vuelve a aceptarse', () => {
+describe('otros casos', () => {
+  it('una lectura cercana (10 m) siempre se acepta', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
+    expect(f.accept(r(sur(10), 1))).toBe(true)
+  })
+
+  it('con el último punto de más de un día no se filtra (el móvil estuvo apagado)', () => {
+    const f = createJumpFilter()
+    expect(f.accept(r(CASA, 0))).toBe(true)
+    expect(f.accept(r(FALSO_A, JUMP_CHECK_WINDOW_MS / MIN + 1))).toBe(true)
+  })
+
+  it('el primer punto de todos se acepta siempre; reset olvida todo', () => {
+    const f = createJumpFilter()
+    expect(f.accept(r(FALSO_A, 0))).toBe(true)
     f.reset()
-    expect(f.accept(r(SALTO, 1))).toBe(true)
+    expect(f.accept(r(CASA, 1))).toBe(true)
+    expect(f.accept(r(FALSO_A, 2))).toBe(false)
+    f.reset()
+    expect(f.accept(r(FALSO_A, 3))).toBe(true)
   })
 
-  it('dos saltos sueltos seguidos a sitios distintos no se confirman entre sí', () => {
+  it('dos posiciones falsas en sitios distintos no se confirman entre sí', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(SALTO, 1))).toBe(false)
-    expect(f.accept(r({ latitude: SALTO.latitude + 0.01, longitude: SALTO.longitude }, 1, 10))).toBe(false)
+    expect(f.accept(r(FALSO_A, 1))).toBe(false)
+    expect(f.accept(r({ latitude: FALSO_A.latitude + 0.01, longitude: FALSO_A.longitude }, 1, 10, 3))).toBe(false)
   })
 })

@@ -126,15 +126,16 @@ describe('servicio de Android que sigue con la app cerrada', () => {
     expect(service).toContain('"fgs_pid"')
   })
 
-  it('un salto de GPS aislado no se envía: se retiene hasta que la lectura siguiente lo confirme (aviso de salida falso del 17/10)', () => {
-    expect(receiver).toContain('JUMP_DISTANCE_M = 150f')
-    expect(receiver).toContain('JUMP_CONFIRM_RADIUS_M = 100f')
-    expect(receiver).toContain('JUMP_CONFIRM_WINDOW_MS = 60_000L')
-    expect(receiver).toContain('JUMP_CHECK_WINDOW_MS = 10 * 60_000L')
+  it('una posición lejana sin pruebas de movimiento no se envía: se retiene (posición de red falsa a ~350 m, 17 y 18/10)', () => {
+    for (const constant of ['JUMP_DISTANCE_M = 150f', 'JUMP_STEP_RADIUS_M = 100f', 'JUMP_HOLD_GAP_MS = 10 * 60_000L', 'JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000L', 'JUMP_PERSIST_MS = 30 * 60_000L', 'MIN_MOVING_SPEED_MS = 0.5f', 'JUMP_SPEED_READINGS = 2', 'JUMP_AWAY_READINGS = 3']) {
+      expect(receiver).toContain(constant)
+    }
     expect(receiver).toContain('if (!acceptAfterJumpCheck(context, prefs, location, now)) {')
     // El filtro va ANTES de marcar el envío y de lanzar el hilo que sube la posición.
     expect(receiver.indexOf('acceptAfterJumpCheck(context, prefs, location, now)')).toBeLessThan(receiver.indexOf('goAsync()'))
-    expect(receiver).toContain('retenida hasta confirmarla')
+    expect(receiver).toContain('lectura lejana retenida')
+    expect(receiver).toContain('movimiento real confirmado')
+    expect(receiver).toContain('loc.hasSpeed()')
     expect(receiver).toContain('Location.distanceBetween(')
   })
 

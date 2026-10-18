@@ -117,7 +117,11 @@ describe('historial de sitios: ruido de GPS (bug real: "burla de llamadas")', ()
     await ping(HOME)
     expect(data.recordPlaceVisit).toHaveBeenCalledTimes(1)
 
-    await ping(FAR) // empieza a estar fuera
+    // Filtro de saltos de GPS (domain/gpsJump.ts): la primera lectura lejana se retiene hasta que la siguiente la confirma; el «empieza a estar fuera»
+    // cuenta desde esa confirmación.
+    await ping(FAR) // retenida (podría ser un salto)
+    await vi.advanceTimersByTimeAsync(20_000)
+    await ping(FAR) // confirmada: empieza a estar fuera
     await vi.advanceTimersByTimeAsync(AWAY_CONFIRM_MS)
     await ping(FAR) // sigue fuera, ya confirmado
 

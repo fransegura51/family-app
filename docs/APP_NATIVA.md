@@ -47,7 +47,7 @@ El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla 
 - Filtro de saltos de GPS (18/10/2026, APK 1.0.23): un aviso de salida falso («Paco se ha ido de Casa», 17/10 21:44) vino de UN punto a 349 m entre uno a 17 m y otro
   a 4 m. `NativeLocationReceiver.acceptAfterJumpCheck` retiene una lectura a más de 150 m del último punto enviado (si éste es de hace menos de 10 min) y solo la
   envía si la siguiente la confirma (≤ 100 m de ella y en < 60 s); si la siguiente vuelve a la zona, se descarta. Mismo criterio que el filtro del iPhone
-  (`PepaNativeLocation.swift`). Solo cubre el envío con la app cerrada: con la app abierta manda JavaScript (sin este filtro). **Sin probar en un móvil real.**
+  (`PepaNativeLocation.swift`). Con la app ABIERTA manda JavaScript: el mismo día (18/10, 11:08) otro salto de ~355 m coló un aviso falso por ese camino, así que `domain/gpsJump.ts` aplica la misma regla en `services/locationSharing.ts` (confirmación de hasta 5 min). **Sin probar en un móvil real.**
 - Envío nativo robusto (16/10/2026): un fallo real (Paco salió a las 17:45 y el Xiaomi no mandó nada hasta abrir la app, con «Permitir siempre» ya dado y la
   pausa de actividad apagada) mostró que depender de que el servicio siga vivo no basta (Android 12+ no deja poner en primer plano un servicio
   reiniciado desde segundo plano). Ahora las posiciones se piden a Play Services con un `PendingIntent` a

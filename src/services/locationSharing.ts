@@ -19,6 +19,7 @@ import { appendLocationHistoryPoint, closePlaceVisit, listPlaces, recordPlaceVis
 import { watchPosition } from '@/services/geolocation'
 import { disableNativeUpload, enableNativeUpload } from '@/services/nativeUpload'
 import { distanceMeters } from '@/domain/geo'
+import { createJumpFilter } from '@/domain/gpsJump'
 import { reverseGeocodePlaceName } from '@/services/reverseGeocode'
 
 const STORAGE_KEY = 'familyapp:location-sharing-member-id'
@@ -85,6 +86,8 @@ const MIN_LIVE_DISTANCE_M = 15
 const MIN_LIVE_INTERVAL_MS = 20 * 1000
 const MIN_WRITE_GAP_MS = 10 * 1000
 let lastLiveWrite: { latitude: number; longitude: number; at: number } | null = null
+// Filtro de saltos de GPS de la app abierta (domain/gpsJump.ts). Se reinicia al cambiar de persona y al dejar de compartir.
+const jumpFilter = createJumpFilter()
 
 function shouldWriteLivePosition(latitude: number, longitude: number, now: number): boolean {
   if (!lastLiveWrite) return true
@@ -310,6 +313,7 @@ export function stopSharing() {
   lastUpdateAt = 0
   lastHistoryPoint = null
   lastLiveWrite = null
+  jumpFilter.reset()
   persist(null)
   // Cierra la parada actual (si llegó a reconocerse) al dejar de
   // compartir — que "hasta cuándo" quede fijado en vez de abierto para
@@ -337,6 +341,7 @@ export function startSharing(memberId: string, force = false) {
   if (currentMemberId !== memberId) {
     lastHistoryPoint = null
     lastLiveWrite = null
+    jumpFilter.reset()
   }
   currentStop?.()
   lastError = null
@@ -349,6 +354,9 @@ export function startSharing(memberId: string, force = false) {
     (coords) => {
       lastError = null
       lastUpdateAt = Date.now()
+      // Un salto de GPS aislado (un punto lejano que vuelve enseguida) no se enseña ni se guarda: en el servidor dispara un aviso falso de «se ha ido de…».
+      // Se retiene hasta que la lectura siguiente lo confirme (domain/gpsJump.ts; el servicio nativo de Android y el iPhone aplican la misma regla).
+      if (!jumpFilter.accept({ latitude: coords.latitude, longitude: coords.longitude, at: lastUpdateAt })) return
       // El pin de ESTE teléfono en su propia pantalla se actualiza al
       // instante, en cada lectura — es solo memoria, no cuesta nada.
       // Escribir en Supabase (lo que ven los DEMÁS) es aparte y con freno,

@@ -7815,8 +7815,8 @@ textarea {
 .menu-day {
   gap: 0;
   margin-bottom: 8px;
-  padding-top: 10px;
-  padding-bottom: 6px;
+  padding-top: 8px;
+  padding-bottom: 4px;
 }
 
 .menu-day-head {
@@ -7824,7 +7824,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  min-height: 32px;
+  min-height: 28px;
 }
 
 .menu-day .menu-row {
@@ -7865,15 +7865,27 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: none;
+  /* Zona táctil de 40×40 px; el icono (SVG de 17 px) se ve pequeño. */
   width: 40px;
   height: 40px;
   padding: 0;
   border: 0;
   border-radius: 10px;
   background: transparent;
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1;
   cursor: pointer;
+  color: var(--muted, #4b5563);
+}
+
+.menu-icon-btn svg {
+  display: block;
+  pointer-events: none;
+}
+
+.menu-icon-btn:hover,
+.menu-icon-btn:focus-visible {
   color: var(--text);
 }
 
@@ -7898,59 +7910,71 @@ textarea {
   flex-wrap: wrap;
 }
 
-/* Cocina · menú semanal, bloque de cada comida (18/10/2026): la etiqueta (Comida, Cena…) arriba a la derecha, el nombre del plato en su propia línea a todo el ancho y los iconos
-   pequeños (🛒 ✏️ 🗑️, de 40 px de toque) en una línea aparte debajo, a la derecha. Los acompañamientos cuelgan del plato principal con una línea a la izquierda. */
+/* Cocina · menú semanal, bloque de cada comida (18/10/2026, compactado el 19/10): la etiqueta (Comida, Cena…) arriba a la derecha, el nombre del plato en su propia línea a todo el
+   ancho y los iconos de interfaz (carrito, lápiz, papelera; 17 px) en una línea aparte debajo, a la derecha. Cada icono conserva una zona de toque de 40×40 px que se solapa un poco
+   con el aire de la línea para no gastar altura. Los acompañamientos van debajo del plato principal con un «+» delante: sin rayas ni sangrías. */
 .menu-slot {
   display: flex;
   flex-direction: column;
-  padding: 4px 0 2px;
+  padding: 3px 0 0;
   border-top: 1px solid rgba(0, 0, 0, 0.07);
 }
 
 .menu-slot-meal {
   align-self: flex-end;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .menu-slot-name {
   width: 100%;
   text-align: left;
   overflow-wrap: anywhere;
+  line-height: 1.3;
 }
 
 .menu-slot-name .link-button {
   display: block;
   width: 100%;
-  padding: 4px 0;
+  padding: 1px 0;
   text-align: left;
   align-self: auto;
+  line-height: 1.3;
 }
 
 .menu-slot-actions {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 0;
-  margin-top: -2px;
+  gap: 2px;
+  height: 32px;
+  margin: 0;
 }
 
 .menu-slot-extras {
-  margin: 2px 0 0 8px;
-  padding-left: 10px;
-  border-left: 3px solid rgba(0, 0, 0, 0.12);
+  margin: 0;
+  padding: 0;
 }
 
-.menu-slot-extra + .menu-slot-extra {
-  margin-top: 2px;
-  border-top: 1px dashed rgba(0, 0, 0, 0.1);
+/* Acompañamiento: sin borde ni sangría; el «+» lo une a su plato. */
+.menu-slot-extra .menu-slot-dish {
+  margin-top: 0;
 }
 
 .menu-slot-extra .menu-slot-name {
+  display: flex;
+  gap: 6px;
   font-size: 14px;
+}
+
+.menu-slot-extra .menu-slot-name::before {
+  content: '+';
+  flex: none;
+  color: var(--muted, #6b7280);
+  font-weight: 700;
 }
 
 .menu-slot .menu-picker {

@@ -71,7 +71,7 @@ export function ConfirmIconButton({
   ariaLabel,
 }: {
   onConfirm: () => void
-  icon?: string
+  icon?: ReactNode
   className?: string
   ariaLabel?: string
 }) {

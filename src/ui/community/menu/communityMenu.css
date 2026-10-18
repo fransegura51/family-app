@@ -589,3 +589,43 @@ p.community-menu-freeze {
   min-height: 44px;
   min-width: 80px;
 }
+
+/* Revisión de Compras: separación clara entre ingredientes de recetas y productos escritos a mano (nombre, cantidad y unidad editables). */
+.community-menu-shop-heading {
+  margin: 8px 0 2px;
+  font-size: 14px;
+}
+
+.community-menu-shop-heading .muted {
+  font-weight: 400;
+  font-size: 12px;
+}
+
+.community-menu-shop-manual-item .community-menu-shop-row {
+  gap: 10px;
+}
+
+.community-menu-shop-manual-item input[type='checkbox'] {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.community-menu-shop-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  font-weight: 600;
+}
+
+.community-menu-shop-manual-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 4px 32px;
+}
+
+.community-menu-shop-manual-fields input {
+  min-width: 0;
+  min-height: 40px;
+}

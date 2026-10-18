@@ -52,7 +52,8 @@ import { recipeText } from '@/domain/share'
 import { fetchAsShareableFile, shareFiles, shareText } from '@/services/share'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
 import { KitchenMenuShoppingSheet } from '@/ui/KitchenMenuShoppingSheet'
-import { hasShoppableRecipe, type KitchenShoppingScope } from '@/domain/kitchenMenuShopping'
+import { hasShoppableEntry, type KitchenShoppingScope } from '@/domain/kitchenMenuShopping'
+import { CartIcon, PencilIcon, TrashIcon } from '@/ui/MenuActionIcons'
 import { DietaryWarnings } from '@/ui/DietaryWarnings'
 // EL editor de campos de receta (raciones, etiquetas, ingredientes y pasos) es el MISMO que usa Comunidad: ver src/ui/recipeEditor/RecipeEditorFields.tsx.
 import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEditorFields'
@@ -648,11 +649,11 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
           📥 Importar menú de Comunidad
         </button>
       )}
-      {hasShoppableRecipe(entries, recipes, { scope: 'week' }) && (
+      {hasShoppableEntry(entries, recipes, { scope: 'week' }) && (
         <button
           type="button"
           className="menu-week-shop-btn"
-          onClick={() => setShopping({ scope: { scope: 'week' }, title: 'Los platos con receta de toda la semana' })}
+          onClick={() => setShopping({ scope: { scope: 'week' }, title: 'Todos los platos de toda la semana' })}
         >
           🛒 Añadir semana a Compras
         </button>
@@ -663,13 +664,13 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
         <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
           <div className="menu-day-head">
             <strong>{dayLabel}</strong>
-            {hasShoppableRecipe(entries, recipes, { scope: 'day', date }) && (
+            {hasShoppableEntry(entries, recipes, { scope: 'day', date }) && (
               <button
                 type="button"
                 className="menu-icon-btn"
-                title="Añadir a Compras los ingredientes de este día"
-                aria-label={`Añadir a Compras los ingredientes de ${dayLabel}`}
-                onClick={() => setShopping({ scope: { scope: 'day', date }, title: `Los platos con receta de ${dayLabel}` })}
+                title="Añadir a Compras los platos de este día"
+                aria-label={`Añadir a Compras los platos de ${dayLabel}`}
+                onClick={() => setShopping({ scope: { scope: 'day', date }, title: `Los platos de ${dayLabel}` })}
               >
                 🛒
               </button>
@@ -682,23 +683,38 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
             const extraEntries = slotEntries.slice(1)
             const recipe = entry?.recipeId ? recipes.find((r) => r.id === entry.recipeId) : null
             const isAdding = addingFor?.date === date && addingFor.meal === meal.value
-            const isEditing = entry && editingId === entry.id
-            // Carrito de un plato: solo si tiene receta enlazada con ingredientes (un plato escrito a mano no se descompone).
+            // Carrito de un plato: con receta enlazada (sus ingredientes reales) o escrito a mano (un producto con ese texto). Solo se oculta si la receta no tiene ingredientes.
             const cart = (e: MenuEntry, title: string) =>
-              hasShoppableRecipe([e], recipes, { scope: 'entry', entryId: e.id }) ? (
+              hasShoppableEntry([e], recipes, { scope: 'entry', entryId: e.id }) ? (
                 <button
                   type="button"
                   className="menu-icon-btn"
-                  title="Añadir sus ingredientes a Compras"
-                  aria-label={`Añadir a Compras los ingredientes de ${title}`}
+                  title={e.recipeId ? 'Añadir sus ingredientes a Compras' : 'Añadir a Compras'}
+                  aria-label={e.recipeId ? `Añadir a Compras los ingredientes de ${title}` : `Añadir a Compras ${title}`}
                   onClick={() => setShopping({ scope: { scope: 'entry', entryId: e.id }, title: `«${title}»` })}
                 >
-                  🛒
+                  <CartIcon />
                 </button>
               ) : null
-            // Un plato: su nombre en una línea propia (ancho completo) y debajo, a la derecha, los iconos 🛒 ✏️ 🗑️.
-            const dish = (e: MenuEntry, r: Recipe | null | undefined, withEdit: boolean) => {
+            // Un plato (principal o acompañamiento, con receta o escrito a mano): su nombre en una línea propia (ancho completo) y debajo, a la derecha, los iconos pequeños de
+            // carrito, lápiz y papelera. Editar cambia solo la receta o el texto: la fecha, la comida y su lugar (principal o acompañamiento) se conservan.
+            const dish = (e: MenuEntry, r: Recipe | null | undefined) => {
               const label = r?.title ?? e.freeText ?? 'este plato'
+              if (editingId === e.id) {
+                return (
+                  <MenuEntryPicker
+                    recipes={recipes}
+                    initialRecipeId={e.recipeId}
+                    initialFreeText={e.freeText}
+                    onPick={async (pick) => {
+                      await updateMenuEntry(e.id, pick)
+                      setEditingId(null)
+                      reload()
+                    }}
+                    onCancel={() => setEditingId(null)}
+                  />
+                )
+              }
               return (
                 <div className="menu-slot-dish">
                   <div className="menu-slot-name">
@@ -712,12 +728,10 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                   </div>
                   <div className="menu-slot-actions">
                     {cart(e, label)}
-                    {withEdit && (
-                      <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
-                        ✏️
-                      </button>
-                    )}
-                    <ConfirmIconButton icon="🗑️" className="menu-icon-btn" ariaLabel={`Quitar ${label} del menú`} onConfirm={() => deleteMenuEntry(e.id).then(reload)} />
+                    <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
+                      <PencilIcon />
+                    </button>
+                    <ConfirmIconButton icon={<TrashIcon />} className="menu-icon-btn" ariaLabel={`Quitar ${label} del menú`} onConfirm={() => deleteMenuEntry(e.id).then(reload)} />
                   </div>
                 </div>
               )
@@ -726,20 +740,8 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
               <Fragment key={meal.value}>
                 <div className="menu-slot">
                   <span className="muted menu-slot-meal">{meal.label}</span>
-                  {entry && isEditing ? (
-                    <MenuEntryPicker
-                      recipes={recipes}
-                      initialRecipeId={entry.recipeId}
-                      initialFreeText={entry.freeText}
-                      onPick={async (pick) => {
-                        await updateMenuEntry(entry.id, pick)
-                        setEditingId(null)
-                        reload()
-                      }}
-                      onCancel={() => setEditingId(null)}
-                    />
-                  ) : entry ? (
-                    dish(entry, recipe, true)
+                  {entry ? (
+                    dish(entry, recipe)
                   ) : isAdding ? (
                     <MenuEntryPicker
                       recipes={recipes}
@@ -763,7 +765,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                         const extraRecipe = extra.recipeId ? recipes.find((r) => r.id === extra.recipeId) : undefined
                         return (
                           <div key={extra.id} className="menu-slot-extra">
-                            {dish(extra, extraRecipe, false)}
+                            {dish(extra, extraRecipe)}
                           </div>
                         )
                       })}

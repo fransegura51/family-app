@@ -72,7 +72,7 @@ describe('Cocina · menú semanal por bloques', () => {
     expect(alim).toContain('<span>{e.freeText}</span>')
     expect(alim).toContain('+ Añadir')
     expect(alim).toContain('Añadir semana a Compras')
-    expect(alim).toContain('Añadir a Compras los ingredientes de ${dayLabel}')
+    expect(alim).toContain('Añadir a Compras los platos de ${dayLabel}')
   })
   it('los iconos mantienen un toque de 40 px aunque se vean pequeños y llevan etiqueta accesible', () => {
     expect(css).toMatch(/\.menu-icon-btn \{[^}]*width: 40px;[^}]*height: 40px/)

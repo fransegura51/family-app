@@ -1,5 +1,9 @@
 // Menú semanal de la Cocina → Compras. Reutiliza el mismo código de «Preparar compra del menú» (menuShoppingPlan.ts): misma suma, escalado y redondeo de compra.
-// Solo cuentan los platos con RECETA enlazada y con ingredientes: un plato escrito a mano («Pizza del sábado») no se inventa ni se descompone. Nada se guarda aquí.
+// Dos clases de entrada, que la revisión distingue con claridad:
+//  · con RECETA enlazada (y con ingredientes): sus ingredientes reales, escalados a las personas elegidas;
+//  · escrita A MANO («Fruta de temporada»): se añade como UN producto con ese texto. No se inventan ingredientes ni se deduce una receta; el nombre, la cantidad y la unidad se
+//    revisan antes de confirmar (la cantidad empieza vacía: nunca se impone una).
+// Nada se guarda aquí.
 import { buildMenuShoppingPlan, type ShoppingPlanLine } from '@/domain/menuShoppingPlan'
 import type { EventMenuItem, FamilyMember, MenuEntry, Recipe } from '@/domain/types'
 
@@ -12,27 +16,43 @@ export function defaultDiners(members: Pick<FamilyMember, 'memberType'>[] | null
   return Math.min(Math.max(eating, 1), 12)
 }
 
-// Entradas del menú que entran en el ámbito elegido y que tienen una receta con ingredientes.
+const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim()
+
+// Texto de una entrada escrita a mano (null si tiene receta o está vacía).
+export function manualText(e: Pick<MenuEntry, 'recipeId' | 'freeText'>): string | null {
+  if (e.recipeId) return null
+  const t = (e.freeText ?? '').replace(/\s+/g, ' ').trim()
+  return t === '' ? null : t
+}
+
+// Entradas del menú que entran en el ámbito elegido: las que tienen una receta con ingredientes y las escritas a mano (con texto).
 export function shoppableEntries(entries: MenuEntry[], recipes: Recipe[], scope: KitchenShoppingScope): MenuEntry[] {
   const byId = new Map(recipes.map((r) => [r.id, r]))
   return entries.filter((e) => {
-    if (!e.recipeId) return false
-    const r = byId.get(e.recipeId)
-    if (!r || r.ingredients.length === 0) return false
+    if (e.recipeId) {
+      const r = byId.get(e.recipeId)
+      if (!r || r.ingredients.length === 0) return false
+    } else if (manualText(e) === null) {
+      return false
+    }
     if (scope.scope === 'day') return e.entryDate === scope.date
     if (scope.scope === 'entry') return e.id === scope.entryId
     return true
   })
 }
 
-export function hasShoppableRecipe(entries: MenuEntry[], recipes: Recipe[], scope: KitchenShoppingScope): boolean {
+export function hasShoppableEntry(entries: MenuEntry[], recipes: Recipe[], scope: KitchenShoppingScope): boolean {
   return shoppableEntries(entries, recipes, scope).length > 0
 }
 
+// Prefijo de la clave de las líneas escritas a mano (la hoja de revisión las reconoce por `direct`).
+export const MANUAL_KEY_PREFIX = 'text:'
+
 export function kitchenMenuShopping(entries: MenuEntry[], recipes: Recipe[], scope: KitchenShoppingScope, diners: number): ShoppingPlanLine[] {
   const picked = shoppableEntries(entries, recipes, scope)
+  const withRecipe = picked.filter((e) => e.recipeId)
   const byId = new Map(recipes.map((r) => [r.id, r]))
-  const items: EventMenuItem[] = picked.map((e, n) => ({
+  const items: EventMenuItem[] = withRecipe.map((e, n) => ({
     id: e.id,
     eventId: '',
     familyId: e.familyId,
@@ -50,5 +70,20 @@ export function kitchenMenuShopping(entries: MenuEntry[], recipes: Recipe[], sco
     kind: 'dish',
   }))
   // «familia»: todo se cocina en casa (así entran los ingredientes de todos los platos con receta).
-  return buildMenuShoppingPlan(items, recipes, diners, 'familia')
+  const fromRecipes = buildMenuShoppingPlan(items, recipes, diners, 'familia')
+
+  // Escritas a mano: un producto por texto (el mismo texto varias veces es UN producto, para no duplicar). Sin cantidad ni unidad hasta que la persona las ponga.
+  const manual = new Map<string, ShoppingPlanLine>()
+  for (const e of picked) {
+    const text = manualText(e)
+    if (text === null) continue
+    const key = MANUAL_KEY_PREFIX + norm(text)
+    const existing = manual.get(key)
+    if (existing) {
+      existing.sources.push({ dishName: text, ingredientText: text })
+      continue
+    }
+    manual.set(key, { key, name: text, quantity: null, unit: '', sources: [{ dishName: text, ingredientText: text }], notes: [], direct: true, hint: null })
+  }
+  return [...fromRecipes.filter((l) => !l.direct), ...manual.values()]
 }

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { addShoppingItems, listShoppingItems } from '@/data/shopping'
-import { markShoppingDuplicates } from '@/domain/communityMenu'
+import { markShoppingDuplicates, type MenuShoppingRow } from '@/domain/communityMenu'
 import { errorMessage } from '@/domain/errorMessage'
 import { EMPTY_STORE_CHOICE, storeForRow, type StoreChoice } from '@/domain/storeAssignment'
 import type { ShoppingPlanLine } from '@/domain/menuShoppingPlan'
@@ -40,6 +40,8 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
   const [error, setError] = useState<string | null>(null)
   const sending = useRef(false)
   const knownKeys = useRef<Set<string> | null>(null)
+  // Cambios de la persona en los productos ESCRITOS A MANO (nombre, cantidad y unidad). Se conservan aunque cambien las personas u otras cantidades.
+  const [edits, setEdits] = useState<Record<string, { name?: string; quantity?: string; unit?: string }>>({})
 
   // Una lectura de la lista de la compra al abrir (para avisar de lo que ya está); NO se vuelve a pedir si cambian las cantidades (p. ej. otro número de personas). Si no se puede
   // leer, no se deja guardar a ciegas: se puede reintentar.
@@ -70,7 +72,13 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
     setChecked((prev) => new Set(rows.filter((r) => (before && before.has(r.line.key) ? prev.has(r.line.key) : !r.inList)).map((r) => r.line.key)))
   }, [rows, load.status])
 
-  const selectedCount = rows.filter((r) => checked.has(r.line.key)).length
+  // Un producto escrito a mano sin nombre no se puede añadir (se nota en el contador y no se envía).
+  const nameOf = (r: MenuShoppingRow) => (r.line.direct ? (edits[r.line.key]?.name ?? r.line.name).trim() : r.line.name)
+  const usable = (r: MenuShoppingRow) => checked.has(r.line.key) && nameOf(r) !== ''
+  const selectedCount = rows.filter(usable).length
+  function setEdit(key: string, patch: { name?: string; quantity?: string; unit?: string }) {
+    setEdits((prev) => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }
   const inListCount = rows.filter((r) => r.inList).length
 
   function toggleIn(setter: typeof setChecked, key: string) {
@@ -88,10 +96,15 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
     setSaving(true)
     setError(null)
     try {
-      const chosen = rows.filter((r) => checked.has(r.line.key))
-      // Cantidad con su unidad en el texto («320 g», «3 unidades»); sin cantidad conocida se deja vacía (nunca 0). «al gusto» se conserva tal cual.
+      const chosen = rows.filter(usable)
+      // Ingredientes de receta: cantidad con su unidad en el texto («320 g», «3 unidades»); sin cantidad conocida se deja vacía (nunca 0). «al gusto» se conserva tal cual.
+      // Escritos a mano: el nombre, la cantidad y la unidad que la persona haya puesto (vacías si no puso nada; nunca se inventan).
       await addShoppingItems(
-        chosen.map((r) => ({ name: r.line.name, quantity: r.line.quantity ?? '', unit: '', priority: 'normal' as const, tripId: null, store: storeForRow(choice, r.line.key, stores) })),
+        chosen.map((r) =>
+          r.line.direct
+            ? { name: nameOf(r), quantity: (edits[r.line.key]?.quantity ?? '').trim(), unit: (edits[r.line.key]?.unit ?? '').trim(), priority: 'normal' as const, tripId: null, store: storeForRow(choice, r.line.key, stores) }
+            : { name: r.line.name, quantity: r.line.quantity ?? '', unit: '', priority: 'normal' as const, tripId: null, store: storeForRow(choice, r.line.key, stores) },
+        ),
       )
       setAdded(chosen.length)
       showToast(`Añadidos ${chosen.length} a Compras`)
@@ -101,6 +114,93 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
       sending.current = false
       setSaving(false)
     }
+  }
+
+  const recipeRows = rows.filter((r) => !r.line.direct)
+  const manualRows = rows.filter((r) => r.line.direct)
+
+  const inListBadge = (r: MenuShoppingRow) =>
+    r.inList && (
+      <span className="community-menu-badge reuse">
+        {' '}
+        Ya está en tu lista
+        {r.inListStores.some((s) => s) ? ` (${[...new Set(r.inListStores.map((s) => s ?? 'sin tienda'))].join(', ')})` : ''}
+      </span>
+    )
+
+  function renderRecipeRow(r: MenuShoppingRow) {
+    const dishes = distinctDishes(r.line)
+    const expanded = open.has(r.line.key)
+    return (
+      <li key={r.line.key} className="community-menu-shop-item">
+        <div className="community-menu-shop-row">
+          <label className="community-menu-shop-check">
+            <input type="checkbox" checked={checked.has(r.line.key)} onChange={() => toggleIn(setChecked, r.line.key)} />
+            <span className="community-menu-shop-text">
+              <strong>{r.line.name}</strong>
+              {r.line.quantity && <span className="community-menu-shop-qty"> · {r.line.quantity}</span>}
+              {inListBadge(r)}
+            </span>
+          </label>
+          {dishes.length > 0 && (
+            <button
+              type="button"
+              className="link-button community-menu-shop-dishes-btn"
+              aria-expanded={expanded}
+              aria-label={`${expanded ? 'Ocultar' : 'Ver'} los platos que usan ${r.line.name}`}
+              onClick={() => toggleIn(setOpen, r.line.key)}
+            >
+              {dishes.length} {dishes.length === 1 ? 'receta' : 'recetas'} {expanded ? '▴' : '▾'}
+            </button>
+          )}
+        </div>
+        <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={r.line.key} name={r.line.name} />
+        {expanded && <p className="community-menu-shop-for">Para: {dishes.join(', ')}</p>}
+        {r.line.hint && <p className="community-menu-shop-notes">{r.line.hint}</p>}
+      </li>
+    )
+  }
+
+  // Producto escrito a mano: nombre, cantidad y unidad editables (la cantidad empieza vacía; no se impone ninguna).
+  function renderManualRow(r: MenuShoppingRow) {
+    const e = edits[r.line.key] ?? {}
+    return (
+      <li key={r.line.key} className="community-menu-shop-item community-menu-shop-manual-item">
+        <div className="community-menu-shop-row">
+          <input type="checkbox" checked={checked.has(r.line.key)} onChange={() => toggleIn(setChecked, r.line.key)} aria-label={`Añadir ${nameOf(r) || 'producto'} a Compras`} />
+          <input
+            className="community-menu-shop-name-input"
+            type="text"
+            value={e.name ?? r.line.name}
+            maxLength={120}
+            placeholder="Nombre del producto"
+            aria-label={`Nombre de ${r.line.name}`}
+            onChange={(ev) => setEdit(r.line.key, { name: ev.target.value })}
+          />
+        </div>
+        <div className="community-menu-shop-manual-fields">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={e.quantity ?? ''}
+            maxLength={20}
+            placeholder="Cantidad"
+            aria-label={`Cantidad de ${nameOf(r) || r.line.name}`}
+            onChange={(ev) => setEdit(r.line.key, { quantity: ev.target.value })}
+          />
+          <input
+            type="text"
+            value={e.unit ?? ''}
+            maxLength={20}
+            placeholder="Unidad"
+            aria-label={`Unidad de ${nameOf(r) || r.line.name}`}
+            onChange={(ev) => setEdit(r.line.key, { unit: ev.target.value })}
+          />
+        </div>
+        {inListBadge(r) && <p className="community-menu-shop-notes">{inListBadge(r)}</p>}
+        <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={r.line.key} name={nameOf(r) || r.line.name} />
+      </li>
+    )
   }
 
   const titleId = `${uid}-title`
@@ -164,46 +264,20 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                     </div>
                   )}
                   <StoreChoiceBar stores={stores} choice={choice} onChange={setChoice} keys={rows.filter((r) => checked.has(r.line.key)).map((r) => r.line.key)} />
-                  <ul className="community-menu-shop-list community-menu-shop-compact">
-                    {rows.map((r) => {
-                      const dishes = distinctDishes(r.line)
-                      const expanded = open.has(r.line.key)
-                      return (
-                        <li key={r.line.key} className="community-menu-shop-item">
-                          <div className="community-menu-shop-row">
-                            <label className="community-menu-shop-check">
-                              <input type="checkbox" checked={checked.has(r.line.key)} onChange={() => toggleIn(setChecked, r.line.key)} />
-                              <span className="community-menu-shop-text">
-                                <strong>{r.line.name}</strong>
-                                {r.line.quantity && <span className="community-menu-shop-qty"> · {r.line.quantity}</span>}
-                                {r.inList && (
-                                  <span className="community-menu-badge reuse">
-                                    {' '}
-                                    Ya está en tu lista
-                                    {r.inListStores.some((s) => s) ? ` (${[...new Set(r.inListStores.map((s) => s ?? 'sin tienda'))].join(', ')})` : ''}
-                                  </span>
-                                )}
-                              </span>
-                            </label>
-                            {dishes.length > 0 && (
-                              <button
-                                type="button"
-                                className="link-button community-menu-shop-dishes-btn"
-                                aria-expanded={expanded}
-                                aria-label={`${expanded ? 'Ocultar' : 'Ver'} los platos que usan ${r.line.name}`}
-                                onClick={() => toggleIn(setOpen, r.line.key)}
-                              >
-                                {dishes.length} {dishes.length === 1 ? 'receta' : 'recetas'} {expanded ? '▴' : '▾'}
-                              </button>
-                            )}
-                          </div>
-                          <RowStoreSelect stores={stores} choice={choice} onChange={setChoice} rowKey={r.line.key} name={r.line.name} />
-                          {expanded && <p className="community-menu-shop-for">Para: {dishes.join(', ')}</p>}
-                          {r.line.hint && <p className="community-menu-shop-notes">{r.line.hint}</p>}
-                        </li>
-                      )
-                    })}
-                  </ul>
+                  {recipeRows.length > 0 && (
+                    <>
+                      {manualRows.length > 0 && <h3 className="community-menu-shop-heading">Ingredientes de recetas</h3>}
+                      <ul className="community-menu-shop-list community-menu-shop-compact">{recipeRows.map(renderRecipeRow)}</ul>
+                    </>
+                  )}
+                  {manualRows.length > 0 && (
+                    <>
+                      <h3 className="community-menu-shop-heading">
+                        Escritos a mano <span className="muted">(se añaden tal cual, sin recetas: revisa el nombre y pon la cantidad si quieres)</span>
+                      </h3>
+                      <ul className="community-menu-shop-list community-menu-shop-compact community-menu-shop-manual">{manualRows.map(renderManualRow)}</ul>
+                    </>
+                  )}
                 </>
               )}
               {error && (

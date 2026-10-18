@@ -12,7 +12,15 @@ export function StarPicker({ value, label, onPick, disabled }: { value: number; 
           disabled={disabled}
           onClick={() => onPick(n)}
         >
-          {n <= value ? '★' : '☆'}
+          <svg viewBox="0 0 24 24" width="32" height="32" aria-hidden="true" focusable="false">
+            <path
+              d="M12 2.5l2.94 5.96 6.58.96-4.76 4.64 1.12 6.55L12 17.52l-5.88 3.09 1.12-6.55L2.48 9.42l6.58-.96L12 2.5z"
+              fill={n <= value ? 'currentColor' : 'none'}
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       ))}
     </div>

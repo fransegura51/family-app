@@ -111,7 +111,7 @@ describe('pantalla Reseñas y opiniones', () => {
   })
 
   it('lo simple por delante: las secciones y los comentarios van plegados (cerrados de entrada) y se abren a mano', () => {
-    expect(screen).toContain('<details className="review-sections">')
+    expect(screen).toContain('<details className="card review-sections">')
     expect(screen).toContain('<details className="review-more">')
     expect(screen).not.toMatch(/<details[^>]*\bopen\b/)
   })
@@ -133,4 +133,20 @@ describe('pantalla Reseñas y opiniones', () => {
     expect(stars).toMatch(/aria-label=\{`\$\{n\} \$\{n === 1 \? 'estrella' : 'estrellas'\}`\}/)
     expect(css).toMatch(/\.review-star \{[^}]*min-width: 44px;[^}]*min-height: 44px/)
   })
+
+
+  it('«Valorar cada sección» es una tarjeta igual de grande que las demás, con una flecha que gira al abrirla (también en «Contar qué me gusta y qué no»)', () => {
+    expect(screen).toContain('<details className="card review-sections">')
+    expect((screen.match(/className="review-chevron"/g) ?? []).length).toBe(2)
+    expect(css).toMatch(/\.review-sections > summary \{[^}]*min-height: 72px/)
+    expect(css).toMatch(/details\[open\] > summary > \.review-chevron \{[^}]*rotate\(180deg\)/)
+    expect(css).toContain('::-webkit-details-marker')
+  })
+
+  it('las estrellas son dibujos (SVG), no letras: así se distingue lo vacío de lo lleno en cualquier móvil', () => {
+    expect(stars).toContain('<svg viewBox="0 0 24 24"')
+    expect(stars).toContain("fill={n <= value ? 'currentColor' : 'none'}")
+    expect(stars).not.toMatch(/[★☆]/)
+  })
 })
+

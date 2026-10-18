@@ -8046,3 +8046,51 @@ textarea {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* «Valorar cada sección» como tarjeta desplegable, con flecha que gira al abrirse. */
+.review-sections {
+  margin-top: 12px;
+  padding: 0;
+}
+.review-sections > summary {
+  min-height: 72px;
+  padding: 12px 16px;
+}
+.review-sections > .review-row {
+  margin: 0 12px 12px;
+  box-shadow: none;
+  border: 1px solid var(--border, #d9dee8);
+}
+.review-sections > summary,
+.review-more > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.review-sections > summary::-webkit-details-marker,
+.review-more > summary::-webkit-details-marker {
+  display: none;
+}
+.review-summary-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.review-summary-main strong {
+  font-size: 17px;
+}
+.review-chevron {
+  flex: none;
+  font-size: 22px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+details[open] > summary > .review-chevron {
+  transform: rotate(180deg);
+}
+.review-star svg {
+  display: block;
+  margin: auto;
+}

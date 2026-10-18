@@ -46,7 +46,12 @@ function ReviewRow({ section, review, onChanged, onError, big }: { section: Revi
         <StarPicker value={stars} label={section.label} disabled={busy} onPick={(n) => run(() => saveAppReview({ section: section.id, stars: n, liked, disliked }))} />
       </div>
       <details className="review-more">
-        <summary>{review?.liked || review?.disliked ? 'Mi comentario' : 'Contar qué me gusta y qué no'}</summary>
+        <summary>
+          <span>{review?.liked || review?.disliked ? 'Mi comentario' : 'Contar qué me gusta y qué no'}</span>
+          <span className="review-chevron" aria-hidden="true">
+            ▾
+          </span>
+        </summary>
         {stars === 0 && <p className="muted">Primero elige las estrellas.</p>}
         <label>
           Lo que me gusta
@@ -116,8 +121,16 @@ export function ReviewsScreen() {
 
       <ReviewRow big section={GENERAL_SECTION} review={mine.get(GENERAL_SECTION.id)} onChanged={reload} onError={setError} />
 
-      <details className="review-sections">
-        <summary>Valorar cada sección (opcional)</summary>
+      <details className="card review-sections">
+        <summary>
+          <span className="review-summary-main">
+            <strong>📋 Valorar cada sección (opcional)</strong>
+            <span className="muted">Compras, Economía, Galería, Ubicación… cada una con sus estrellas</span>
+          </span>
+          <span className="review-chevron" aria-hidden="true">
+            ▾
+          </span>
+        </summary>
         {REVIEW_SECTIONS.map((s) => (
           <ReviewRow key={s.id} section={s} review={mine.get(s.id)} onChanged={reload} onError={setError} />
         ))}

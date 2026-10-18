@@ -1,4 +1,5 @@
 import { useCallback, useId, useState } from 'react'
+import { ARTICLE_CRITERIA, checkArticleCriteria } from '@/domain/communityArticleCriteria'
 import { Link } from 'react-router-dom'
 import { adminApproveProposal, adminEditProposal, adminListProposals, adminRejectProposal, listCommunityTopics } from '@/data/community'
 import {
@@ -267,6 +268,34 @@ export function ProposalContent({ proposal: p }: { proposal: Proposal }) {
   )
 }
 
+// Número de fichas de recetas importables que lleva la propuesta (el texto no debe repetirlas).
+function recipeCardCount(p: Proposal): number {
+  const r = (p.payload as { recipes?: unknown } | null)?.recipes
+  return Array.isArray(r) ? r.length : 0
+}
+
+// Criterio editorial permanente (ayuda, nunca bloquea): los puntos acordados y avisos sencillos sobre el texto que se está escribiendo.
+function EditorialCriteria({ body, hasRecipeCards }: { body: string; hasRecipeCards: boolean }) {
+  const warnings = checkArticleCriteria({ body, hasRecipeCards })
+  return (
+    <details className="cadm-criteria">
+      <summary>Criterio editorial de Pepa{warnings.length > 0 ? ` · ${warnings.length} ${warnings.length === 1 ? 'aviso' : 'avisos'}` : ''}</summary>
+      {warnings.length > 0 && (
+        <ul className="cadm-criteria-warnings" role="status">
+          {warnings.map((w) => (
+            <li key={w}>⚠️ {w}</li>
+          ))}
+        </ul>
+      )}
+      <ol className="cadm-small">
+        {ARTICLE_CRITERIA.map((c) => (
+          <li key={c}>{c}</li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
 // Edición: título, texto, tema y, según el tipo, opciones de encuesta o fuentes del artículo.
 export function ProposalEditForm({
   proposal: p,
@@ -307,6 +336,7 @@ export function ProposalEditForm({
 
       <label htmlFor={`${id}-body`}>Texto</label>
       <textarea id={`${id}-body`} rows={6} value={form.body} maxLength={10000} onChange={(e) => set({ body: e.target.value })} />
+      {(p.kind === 'article' || p.kind === 'tip') && <EditorialCriteria body={form.body} hasRecipeCards={recipeCardCount(p) > 0} />}
 
       {topics.length > 0 && (
         <>

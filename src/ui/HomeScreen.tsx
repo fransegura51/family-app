@@ -526,8 +526,8 @@ function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
     )
   }
 
-  // Comunidad PEPA: SOLO texto útil (sin ilustraciones ni cabeceras decorativas) con publicaciones reales: las más recientes, la más comentada y una pregunta sin
-  // responder. Cada línea abre su publicación; el título y el enlace de abajo abren Comunidad. Mismo marco (tamaño) que las demás diapositivas.
+  // Comunidad PEPA: SOLO texto útil (sin ilustraciones ni cabeceras decorativas) con hasta tres publicaciones reales elegidas para esta persona: primero las no leídas, luego las
+  // novedades (respuestas sin ver), luego donde ha participado y, por último, lo reciente (ver communityCarouselLines). Cada línea abre su publicación; el título y el enlace de abajo abren Comunidad. Mismo marco (tamaño) que las demás diapositivas.
   if (current.kind === 'community') {
     return (
       <div className="home-photo-banner home-community-banner" style={{ background: NAV_SECTION_COLORS.get('comunidad') }} aria-label="Comunidad PEPA" {...pointerProps}>

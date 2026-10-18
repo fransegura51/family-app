@@ -107,6 +107,16 @@ export function sectionCrumbs(section: CommunitySection): Crumb[] {
   return [{ label: 'Inicio', to: '/' }, { label: 'Comunidad', to: paths.home }, { label: s?.title ?? 'Sección' }]
 }
 
+// Migas de «Mis medallas» y «Mis ajustes»: pasan por «Mi perfil» para poder volver a él (con su punto de desplazamiento si se vuelve con «atrás»).
+export function myProfileSubCrumbs(label: string, profileId: string | null | undefined): Crumb[] {
+  return [
+    { label: 'Inicio', to: '/' },
+    { label: 'Comunidad', to: paths.home },
+    { label: 'Mi perfil', to: profileId ? paths.profile(profileId) : paths.myProfile },
+    { label },
+  ]
+}
+
 export function pageCrumbs(label: string): Crumb[] {
   return [{ label: 'Inicio', to: '/' }, { label: 'Comunidad', to: paths.home }, { label }]
 }

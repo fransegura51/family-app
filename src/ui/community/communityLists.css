@@ -292,3 +292,25 @@
   font-weight: 600;
   text-decoration: none;
 }
+
+/* Novedades · «Últimas publicaciones»: los dos grupos (sin leer / ya leídas) se distinguen con un encabezado y una franja suave en lo pendiente. */
+.community-recent-group-title {
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+
+.community-recent-count {
+  font-weight: 500;
+  color: var(--muted, #6b7280);
+}
+
+.community-recent-unread {
+  padding: 2px 10px 8px;
+  border-left: 4px solid var(--primary, #4c6ef5);
+  border-radius: 10px;
+  background: rgba(76, 110, 245, 0.06);
+}
+
+.community-recent-read .community-recent-group-title {
+  color: var(--muted, #6b7280);
+}

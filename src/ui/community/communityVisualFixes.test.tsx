@@ -28,8 +28,12 @@ describe('marco de Comunidad: «☰ Menú» desplegable + barra de herramientas 
   })
 
   it('el botón «☰ Menú» anuncia si está abierto (aria-expanded / aria-controls) y el panel se cierra con Escape, tocando fuera, al elegir y con «Cerrar»', () => {
-    expect(layoutSrc).toContain('aria-expanded={menuOpen}')
-    expect(layoutSrc).toContain('aria-controls="community-menu"')
+    // El botón es el flotante compartido (MenuFab): el diseño le pasa si está abierto y qué panel controla, y él lo anuncia.
+    expect(layoutSrc).toContain('expanded={menuOpen}')
+    expect(layoutSrc).toContain('controls="community-menu"')
+    const fabSrc = readFileSync(join(process.cwd(), 'src/ui/KitchenHeaderWithMenu.tsx'), 'utf8')
+    expect(fabSrc).toContain('aria-expanded={expanded}')
+    expect(fabSrc).toContain('aria-controls={controls}')
     expect(menuSrc).toContain('id="community-menu"')
     expect(layoutSrc).toContain("e.key === 'Escape'")
     expect(layoutSrc).toContain("document.addEventListener('mousedown', onOutside)")

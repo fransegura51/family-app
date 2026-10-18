@@ -84,7 +84,8 @@ describe('Medallas: render', () => {
   })
   it('la página explica que no hay clasificaciones ni premios', () => {
     expect(medalsSrc).toContain('no hay clasificaciones ni premios')
-    expect(medalsSrc).toContain("pageCrumbs('Medallas')")
+    // La miga pasa por «Mi perfil» para poder volver a él.
+    expect(medalsSrc).toContain("myProfileSubCrumbs('Medallas', me?.id)")
   })
 })
 
@@ -121,7 +122,7 @@ describe('Perfil público: privacidad y acciones', () => {
     expect(profileSrc).toContain('getPublicProfile(id)')
     expect(profileSrc).toContain('author: profileId')
     expect(profileSrc).toContain('getMedals(id)')
-    expect(profileSrc).toContain("pageCrumbs('Perfil')")
+    expect(profileSrc).toContain("pageCrumbs(profile?.isMe ? 'Mi perfil' : 'Perfil')")
   })
   it('perfil no disponible y bloqueado por mí tienen su mensaje', () => {
     expect(profileSrc).toContain('Este perfil ya no está disponible')
@@ -171,7 +172,7 @@ describe('Mi perfil y ajustes', () => {
       expect(settingsSrc, fn).toContain(`${fn}(`)
     }
     expect(settingsSrc).toContain('AliasDialog')
-    expect(settingsSrc).toContain("pageCrumbs('Mi perfil')")
+    expect(settingsSrc).toContain("myProfileSubCrumbs('Mis ajustes', me?.id)")
     expect(settingsSrc).toContain('paths.rules')
   })
   it('los avisos usan getNotificationPrefs/saveNotificationPrefs (franja y sugerencias)', () => {

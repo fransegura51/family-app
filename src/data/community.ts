@@ -32,7 +32,7 @@ import type {
   SuggestItem,
   SummaryState,
 } from '@/domain/community'
-import { markOpenedLocally } from '@/domain/communityRead'
+import { markOpenedLocally, notifyCommunityStateChange } from '@/domain/communityRead'
 import { POST_RECIPE_ERROR_MESSAGES, postRecipeErrorCode, type PostRecipeImportResult } from '@/domain/communityPostRecipes'
 
 // snake_case → camelCase en profundidad (las claves de recetas/ingredientes ya son simples y no cambian).
@@ -174,14 +174,25 @@ export const listComments = (postId: string, order: CommentOrder = 'antiguos', l
   rpc<CommentList | null>('community_list_comments', { p_post: postId, p_order: order, p_limit: limit, p_offset: offset })
 
 export const addComment = (postId: string, body: string, photoPath: string | null, replyTo: string | null) =>
-  rpc<string>('community_add_comment', { p_post: postId, p_body: body, p_photo: photoPath, p_reply_to: replyTo })
+  rpc<string>('community_add_comment', { p_post: postId, p_body: body, p_photo: photoPath, p_reply_to: replyTo }).then((id) => {
+    notifyCommunityStateChange()
+    return id
+  })
 
 export const editComment = (id: string, body: string) => rpc<void>('community_edit_comment', { p_id: id, p_body: body })
 export const deleteComment = (id: string) => rpc<void>('community_delete_comment', { p_id: id })
-export const markCommentsSeen = (ids: string[]) => rpc<number>('community_mark_comments_seen', { p_ids: ids })
+export const markCommentsSeen = (ids: string[]) =>
+  rpc<number>('community_mark_comments_seen', { p_ids: ids }).then((n) => {
+    notifyCommunityStateChange()
+    return n
+  })
 
 // ---- Interacciones
-export const toggleLike = (type: 'post' | 'comment', id: string) => rpc<{ liked: boolean; likeCount: number }>('community_toggle_like', { p_type: type, p_id: id })
+export const toggleLike = (type: 'post' | 'comment', id: string) =>
+  rpc<{ liked: boolean; likeCount: number }>('community_toggle_like', { p_type: type, p_id: id }).then((r) => {
+    notifyCommunityStateChange()
+    return r
+  })
 export const toggleSave = (postId: string) => rpc<{ saved: boolean; saveCount: number }>('community_toggle_save', { p_post: postId })
 export const toggleFollowConversation = (postId: string) => rpc<boolean>('community_toggle_follow_conversation', { p_post: postId })
 export const followUser = (profileId: string, mode: FollowMode = 'smart') => rpc<void>('community_follow_user', { p_cp: profileId, p_mode: mode })

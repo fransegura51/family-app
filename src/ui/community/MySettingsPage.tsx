@@ -41,7 +41,7 @@ import { AliasDialog } from '@/ui/community/AliasDialog'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
-import { pageCrumbs, paths } from '@/ui/community/communityNav'
+import { myProfileSubCrumbs, paths } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
 import { CommunityAvatar } from '@/ui/community/ProfileParts'
 import '@/ui/community/communityProfile.css'
@@ -56,8 +56,8 @@ export function MySettingsPage() {
 
   return (
     <>
-      <Breadcrumbs crumbs={pageCrumbs('Mi perfil')} />
-      <h1>Mi perfil y ajustes</h1>
+      <Breadcrumbs crumbs={myProfileSubCrumbs('Mis ajustes', me?.id)} />
+      <h1>Mis ajustes de Comunidad</h1>
 
       {notice && <BanBox notice={notice} onChanged={refresh} />}
 

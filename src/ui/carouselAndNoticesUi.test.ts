@@ -137,7 +137,13 @@ describe('carrusel de Inicio', () => {
     expect(home).toContain("const wantsCommunity = order.includes('comunidad')")
     expect(home).toContain('if (!wantsCommunity) return')
     expect(slideSrc).toContain('const TTL_MS = 3 * 60 * 1000')
-    expect(slideSrc.match(/listPosts\(/g)).toHaveLength(3)
+    // Tres consultas pequeñas que ya existían (publicaciones «no leídas primero», desglose de la campana y mis comentarios): ninguna tabla ni consulta periódica nueva.
+    expect(slideSrc.match(/listPosts\(/g)).toHaveLength(1)
+    expect(slideSrc).toContain("order: 'no_leidas'")
+    expect(slideSrc).toContain('newsBreakdown()')
+    expect(slideSrc).toContain('listMyComments(30)')
+    // La tarjeta se actualiza cuando la persona cambia algo relevante, no mientras lee.
+    expect(slideSrc).toContain('onCommunityStateChange(clearCommunityHomeLines)')
     expect(readFileSync(join(process.cwd(), 'src/data/communityStatusCache.ts'), 'utf8')).toContain('clearCommunityHomeLines()')
   })
 

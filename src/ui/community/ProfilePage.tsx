@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigationType, useParams } from 'react-router-dom'
 import { blockUser, followUser, getMedals, getPublicProfile, listFollowing, listPosts, unblockUser, unfollowUser } from '@/data/community'
 import type { CommunityCardItem, FollowMode, MedalsView, PublicProfileInfo } from '@/domain/community'
 import { communityErrorText } from '@/domain/communityErrors'
 import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { DEFAULT_FOLLOW_MODE, FOLLOW_MODES, constancyText, earnedMedals, formatLongDate } from '@/domain/communityProfile'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
-import { MedalsContent } from '@/ui/community/MedalsPage'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { pageCrumbs, paths } from '@/ui/community/communityNav'
+import { saveProfileScroll, takeProfileScroll } from '@/ui/community/profileScroll'
 import { PostCardView } from '@/ui/community/PostCardView'
 import { CommunityAvatar, ConfirmDialog, ReportUserDialog } from '@/ui/community/ProfileParts'
 import '@/ui/community/communityProfile.css'
@@ -44,8 +44,8 @@ export function ProfilePage() {
       if (current.current !== id) return
       setProfile(p)
       setMedals(null)
-      if (p && !p.blockedByMe && !p.isOfficial) {
-        // Las medallas solo se piden si hay perfil visible (una llamada más, no en bucle).
+      if (p && !p.blockedByMe && !p.isOfficial && !p.isMe) {
+        // Las medallas de OTRA persona solo se piden si hay perfil visible (una llamada más, no en bucle). Las mías se ven en «Mis medallas».
         getMedals(id).then(
           (m) => {
             if (current.current === id) setMedals(m)
@@ -126,7 +126,22 @@ export function ProfilePage() {
       await load()
     })
 
-  const crumbs = <Breadcrumbs crumbs={pageCrumbs('Perfil')} />
+  // Al volver a este perfil con «atrás» se recupera el punto de la pantalla donde estabas (p. ej. tras abrir una publicación o «Mis medallas»).
+  const navType = useNavigationType()
+  const [restoreScroll] = useState(() => navType === 'POP')
+  const scrollY = useRef(0)
+  useEffect(() => {
+    const onScroll = () => {
+      scrollY.current = window.scrollY
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      saveProfileScroll(id, scrollY.current)
+    }
+  }, [id])
+
+  const crumbs = <Breadcrumbs crumbs={pageCrumbs(profile?.isMe ? 'Mi perfil' : 'Perfil')} />
 
   if (loadError) {
     return (
@@ -194,10 +209,11 @@ export function ProfilePage() {
   return (
     <>
       {crumbs}
+      {profile.isMe && <h1 className="community-profile-title">Mi perfil de Comunidad</h1>}
       <header className="community-profile-head">
         <CommunityAvatar alias={alias} emoji={profile.avatarEmoji} size="lg" official={profile.isOfficial} />
         <div>
-          <h1 className="community-profile-name">{alias}</h1>
+          {profile.isMe ? <h2 className="community-profile-name">{alias}</h2> : <h1 className="community-profile-name">{alias}</h1>}
           {profile.isOfficial && <span className="community-tag-official">Cuenta oficial</span>}
           {profile.memberSince && <p className="muted">En Comunidad desde {formatLongDate(profile.memberSince)}</p>}
         </div>
@@ -222,13 +238,24 @@ export function ProfilePage() {
         </li>
       </ul>
 
+      {/* SOLO en el perfil propio (el servidor decide `isMe`): dos accesos iguales, uno a las medallas y otro a los ajustes privados. En el perfil de otra persona no hay nada de esto. */}
       {profile.isMe && (
-        <p className="card">
-          Este es tu perfil público, tal como lo ven las demás familias. Solo se ve cuántas personas te siguen, nunca quiénes.{' '}
-          <Link to={paths.myProfile} className="link-button">
-            Cambiar mi alias y mis ajustes
+        <nav className="community-profile-tiles" aria-label="Mis medallas y mis ajustes">
+          <Link to={paths.medals} className="community-profile-tile">
+            <span className="community-profile-tile-icon" aria-hidden="true">
+              🏅
+            </span>
+            <strong>Mis medallas</strong>
+            <span className="muted">Logros y reconocimientos</span>
           </Link>
-        </p>
+          <Link to={paths.myProfile} className="community-profile-tile">
+            <span className="community-profile-tile-icon" aria-hidden="true">
+              ⚙️
+            </span>
+            <strong>Mis ajustes</strong>
+            <span className="muted">Alias, avisos y privacidad</span>
+          </Link>
+        </nav>
       )}
 
       {canFollow && (
@@ -275,16 +302,6 @@ export function ProfilePage() {
         </p>
       )}
 
-      {/* Mi perfil: las medallas completas (con su progreso y la constancia) viven aquí; en el perfil de otra persona solo se ven las que ha conseguido. */}
-      {profile.isMe && medals && (
-        <section aria-labelledby="profile-medals-mine">
-          <h2 id="profile-medals-mine">🏅 Mis medallas</h2>
-          <p className="muted">Son un reconocimiento amable: no hay clasificaciones ni premios, y no compites con nadie.</p>
-          <MedalsContent view={medals} />
-        </section>
-      )}
-      {profile.isMe && !medals && <p className="muted">Cargando medallas…</p>}
-
       {!profile.isOfficial && !profile.isMe && (
         <section className="card" aria-labelledby="profile-medals">
           <h2 id="profile-medals">Medallas</h2>
@@ -303,7 +320,7 @@ export function ProfilePage() {
         </section>
       )}
 
-      <ProfilePosts profileId={id} recipeCount={profile.recipeCount ?? 0} alias={alias} />
+      <ProfilePosts profileId={id} recipeCount={profile.recipeCount ?? 0} alias={alias} mine={profile.isMe === true} restoreScroll={restoreScroll} />
 
       {confirmBlock && (
         <ConfirmDialog title={`¿Bloquear a ${alias}?`} confirmLabel="Sí, bloquear" busy={busy} error={actionError} onConfirm={() => void block()} onCancel={() => setConfirmBlock(false)}>
@@ -316,7 +333,7 @@ export function ProfilePage() {
 }
 
 // Publicaciones del perfil: «Todo lo publicado» (con recetas incluidas) y «Recetas» (se pide solo si se abre esa pestaña), con paginación.
-function ProfilePosts({ profileId, recipeCount, alias }: { profileId: string; recipeCount: number; alias: string }) {
+function ProfilePosts({ profileId, recipeCount, alias, mine, restoreScroll }: { profileId: string; recipeCount: number; alias: string; mine: boolean; restoreScroll: boolean }) {
   const [tab, setTab] = useState<Tab>('todo')
   const [lists, setLists] = useState<Record<Tab, { items: CommunityCardItem[]; done: boolean; loaded: boolean }>>({
     todo: { items: [], done: false, loaded: false },
@@ -352,6 +369,15 @@ function ProfilePosts({ profileId, recipeCount, alias }: { profileId: string; re
 
   const list = lists[tab]
 
+  // Con «atrás», una vez pintada la primera lista se vuelve al punto donde estaba la persona (una sola vez).
+  const scrolled = useRef(false)
+  useEffect(() => {
+    if (!restoreScroll || scrolled.current || !lists.todo.loaded) return
+    scrolled.current = true
+    const y = takeProfileScroll(profileId)
+    if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y))
+  }, [restoreScroll, lists.todo.loaded, profileId])
+
   function choose(next: Tab) {
     setTab(next)
     // La lista de recetas solo se pide la primera vez que se abre.
@@ -360,7 +386,7 @@ function ProfilePosts({ profileId, recipeCount, alias }: { profileId: string; re
 
   return (
     <section aria-labelledby="profile-posts">
-      <h2 id="profile-posts">Lo que ha compartido</h2>
+      <h2 id="profile-posts">{mine ? 'Lo que he compartido' : 'Lo que ha compartido'}</h2>
       <div className="community-profile-tabs" role="group" aria-label="Qué ver">
         <button type="button" aria-pressed={tab === 'todo'} className={tab === 'todo' ? 'active' : ''} onClick={() => choose('todo')}>
           Todo lo publicado

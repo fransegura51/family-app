@@ -88,7 +88,8 @@ describe('barra de herramientas', () => {
 
 describe('Novedades, Mi perfil y medallas', () => {
   it('Novedades = últimas publicaciones por fecha (la más reciente primero), no los avisos personales; la ruta existe y los comentarios sin leer siguen aparte', () => {
-    expect(recentSrc).toContain("order: 'recientes'")
+    // «Últimas publicaciones»: primero lo no leído y debajo lo leído (cada grupo por fecha); «Seguidos» sigue por fecha.
+    expect(recentSrc).toContain("order: following ? 'recientes' : 'no_leidas'")
     expect(recentSrc).toContain('listPosts(')
     expect(recentSrc).not.toContain('newsBreakdown')
     expect(routesSrc).toContain('path="recientes"')
@@ -97,9 +98,9 @@ describe('Novedades, Mi perfil y medallas', () => {
   })
 
   it('las medallas viven en Mi perfil (con su progreso) y ya no hay una entrada Medallas en el menú ni en la barra', () => {
-    expect(profileSrc).toContain("import { MedalsContent } from '@/ui/community/MedalsPage'")
-    expect(profileSrc).toContain('profile.isMe && medals')
-    expect(profileSrc).toContain('<MedalsContent view={medals} />')
+    // Las medallas con su progreso viven en «Mis medallas» (una tarjeta de acceso en Mi perfil), no como lista larga en el perfil.
+    expect(profileSrc).toContain('<Link to={paths.medals} className="community-profile-tile">')
+    expect(profileSrc).not.toContain('<MedalsContent')
     expect(layoutSrc).not.toContain('Medallas')
   })
 })

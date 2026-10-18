@@ -104,9 +104,9 @@ describe('filtros de varios temas en las secciones', () => {
 })
 
 describe('orden del marco de Comunidad', () => {
-  it('menú, cabecera, migas, barra de herramientas (una sola vez) y contenido', () => {
-    const iMenu = layoutSrc.indexOf('community-menu-btn')
-    const iHeader = layoutSrc.indexOf('<CommunityHeader />', iMenu)
+  it('botón de menú flotante, cabecera, migas, barra de herramientas (una sola vez) y contenido', () => {
+    const iMenu = layoutSrc.indexOf('<MenuFab')
+    const iHeader = layoutSrc.indexOf('<CommunityHeader headerRef', iMenu)
     const iCrumbs = layoutSrc.indexOf('community-crumb-slot', iHeader)
     const iToolbar = layoutSrc.indexOf('<CommunityToolbar', iCrumbs)
     const iOutlet = layoutSrc.indexOf('<Outlet />', iToolbar)

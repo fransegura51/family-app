@@ -73,7 +73,7 @@ export function TopicProposalsTab({ onChanged }: { onChanged: () => void }) {
       <InfoBox>
         Ideas de artículos que proponen las familias, de las más pedidas a las menos. Aquí no se ve quién las propone. Convertir un tema en borrador lo añade a «Contenido oficial» como
         propuesta pendiente: hay que redactarlo, añadir fuentes y aprobarlo. Nada se publica automáticamente. Al publicarse un artículo nacido de una propuesta, quien la envió recibe un
-        aviso privado.
+        aviso privado. Al redactar el borrador se aplica el criterio editorial de Pepa (introducción breve, contenido útil y recetas importables desarrolladas una sola vez, en sus fichas).
       </InfoBox>
       <div className="cadm-actions" role="group" aria-label="Estado de las propuestas">
         <button type="button" className={'cadm-btn' + (status === 'new' ? ' cadm-btn-primary' : '')} aria-pressed={status === 'new'} onClick={() => setStatus('new')}>

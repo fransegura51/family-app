@@ -387,3 +387,49 @@
   font-weight: 700;
   margin: 6px 0;
 }
+
+/* Mi perfil de Comunidad: título y dos tarjetas de acceso iguales (medallas / ajustes), una al lado de la otra, compactas y sin desbordar en móvil. */
+.community-profile-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+.community-profile-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.community-profile-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 14px;
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.community-profile-tile strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.community-profile-tile .muted {
+  font-size: 12.5px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.community-profile-tile-icon {
+  font-size: 24px;
+  line-height: 1;
+  margin-bottom: 2px;
+}

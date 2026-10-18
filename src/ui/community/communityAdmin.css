@@ -624,3 +624,22 @@
   height: 24px;
   flex: none;
 }
+
+/* Criterio editorial de Pepa al editar un borrador: plegado, con avisos sencillos arriba. */
+.cadm-criteria {
+  margin: 4px 0 8px;
+  font-size: 13px;
+}
+
+.cadm-criteria summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 32px;
+}
+
+.cadm-criteria-warnings {
+  margin: 4px 0;
+  padding-left: 18px;
+  list-style: none;
+  color: #8a5a00;
+}

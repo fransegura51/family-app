@@ -7,8 +7,22 @@ export type ReadBadge = 'read' | 'updated' | null
 
 const openedHere = new Set<string>()
 
+// Quien necesite enterarse de que cambió algo relevante (leído, «me gusta», un comentario) se apunta aquí; no hay consultas periódicas: solo se avisa cuando la persona hace algo.
+const stateListeners = new Set<() => void>()
+
+export function onCommunityStateChange(fn: () => void): () => void {
+  stateListeners.add(fn)
+  return () => stateListeners.delete(fn)
+}
+
+export function notifyCommunityStateChange(): void {
+  for (const fn of stateListeners) fn()
+}
+
 export function markOpenedLocally(postId: string): void {
+  const isNew = !openedHere.has(postId)
   openedHere.add(postId)
+  if (isNew) notifyCommunityStateChange()
 }
 
 export function wasOpenedLocally(postId: string): boolean {
@@ -36,6 +50,15 @@ export function sortUnreadFirst<T extends CommunityCardItem>(items: T[]): T[] {
     .map((item, index) => ({ item, index }))
     .sort((a, b) => group(a.item) - group(b.item) || time(b.item) - time(a.item) || a.index - b.index)
     .map((x) => x.item)
+}
+
+// «Últimas publicaciones» de Novedades: dos grupos (sin leer y ya leídas) con el orden de «No leídas primero». `grouped` solo es cierto si hay algo sin leer: sin ninguna pendiente
+// se enseñan las leídas normalmente, sin encabezados ni bloque vacío.
+export function groupByRead<T extends CommunityCardItem>(items: T[]): { unread: T[]; read: T[]; grouped: boolean } {
+  const sorted = sortUnreadFirst(items)
+  const unread = sorted.filter((i) => readBadge(i) !== 'read')
+  const read = sorted.filter((i) => readBadge(i) === 'read')
+  return { unread, read, grouped: unread.length > 0 }
 }
 
 export const READ_LABELS: Record<'read' | 'updated', string> = { read: '✓ Leído', updated: 'Actualizada' }

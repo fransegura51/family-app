@@ -906,12 +906,12 @@
   "inicial-10-arroz-blanco": [
     {
       "key": "arroz-con-curry",
-      "anchor": "1. **Con curry.**",
+      "anchor": "Cinco ideas para transformar tu arroz blanco",
       "title": "Arroz blanco con curry",
       "servings": 2,
       "tags": [
         "arroz",
-        "aprovechamiento",
+        "arroz ya cocido",
         "plato único"
       ],
       "ingredients": [
@@ -946,16 +946,16 @@
         "Añade 1 cucharadita de curry y remueve 30 segundos.",
         "Echa el arroz y un puñado de guisantes o pasas, y calienta bien."
       ],
-      "tip": "Con el arroz que sobra, enfríalo en menos de una hora y consúmelo en 24 horas, recalentado una sola vez hasta que humee por todo."
+      "tip": "Parte de arroz blanco ya cocido (de otro día o cocido antes, como se explica arriba). Si lo guardas, enfríalo en menos de una hora, tenlo en la nevera y consúmelo en 24 horas; recaliéntalo una sola vez, hasta que humee por todo."
     },
     {
       "key": "arroz-a-la-cubana",
-      "anchor": "2. **A la cubana.**",
+      "anchor": "Cinco ideas para transformar tu arroz blanco",
       "title": "Arroz a la cubana",
       "servings": 2,
       "tags": [
         "arroz",
-        "aprovechamiento",
+        "arroz ya cocido",
         "rápida"
       ],
       "ingredients": [
@@ -985,16 +985,16 @@
         "Pon un huevo frito encima.",
         "Si quieres, añade unos trozos de salchicha o plátano frito."
       ],
-      "tip": "Con el arroz que sobra, enfríalo en menos de una hora y consúmelo en 24 horas, recalentado una sola vez hasta que humee por todo."
+      "tip": "Parte de arroz blanco ya cocido (de otro día o cocido antes, como se explica arriba). Si lo guardas, enfríalo en menos de una hora, tenlo en la nevera y consúmelo en 24 horas; recaliéntalo una sola vez, hasta que humee por todo."
     },
     {
       "key": "arroz-con-ajo-y-limon",
-      "anchor": "3. **Con ajo y limón.**",
+      "anchor": "Cinco ideas para transformar tu arroz blanco",
       "title": "Arroz con ajo y limón",
       "servings": 2,
       "tags": [
         "arroz",
-        "aprovechamiento",
+        "arroz ya cocido",
         "rápida"
       ],
       "ingredients": [
@@ -1034,16 +1034,16 @@
         "Añade el arroz y la ralladura de medio limón.",
         "Termina con un chorrito de zumo de limón y perejil por encima."
       ],
-      "tip": "Con el arroz que sobra, enfríalo en menos de una hora y consúmelo en 24 horas, recalentado una sola vez hasta que humee por todo."
+      "tip": "Parte de arroz blanco ya cocido (de otro día o cocido antes, como se explica arriba). Si lo guardas, enfríalo en menos de una hora, tenlo en la nevera y consúmelo en 24 horas; recaliéntalo una sola vez, hasta que humee por todo."
     },
     {
       "key": "arroz-salteado-con-verduras",
-      "anchor": "4. **Salteado con verduras.**",
+      "anchor": "Cinco ideas para transformar tu arroz blanco",
       "title": "Arroz salteado con verduras",
       "servings": 2,
       "tags": [
         "arroz",
-        "aprovechamiento",
+        "arroz ya cocido",
         "verdura"
       ],
       "ingredients": [
@@ -1088,15 +1088,16 @@
         "Añade el arroz y 1-2 cucharadas de salsa de soja.",
         "Remata con un huevo revuelto."
       ],
-      "tip": "Sale mejor con arroz del día anterior, bien enfriado."
+      "tip": "Parte de arroz ya cocido. Sale mejor con arroz del día anterior, bien enfriado. Enfríalo en menos de una hora tras cocerlo, guárdalo en la nevera y recaliéntalo una sola vez, hasta que humee por todo."
     },
     {
       "key": "arroz-cremoso-con-champinones",
-      "anchor": "5. **Cremoso con champiñones**",
+      "anchor": "Cinco ideas para transformar tu arroz blanco",
       "title": "Arroz cremoso con champiñones",
       "servings": 2,
       "tags": [
         "arroz",
+        "arroz crudo",
         "champiñones",
         "plato único"
       ],
@@ -1131,7 +1132,8 @@
         "Pocha 1/2 cebolla, añade 200 g de champiñones laminados y dóralos.",
         "Echa el arroz, rehoga y ve añadiendo unos 500 ml de caldo caliente poco a poco durante 18 minutos, removiendo a menudo.",
         "Al final, añade 30 g de queso rallado o 1 cucharada de mantequilla."
-      ]
+      ],
+      "tip": "Parte de arroz redondo crudo: se cocina en la propia sartén, así que no necesitas arroz cocido."
     }
   ],
   "inicial-19-tarros-de-cristal": [

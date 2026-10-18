@@ -10,44 +10,10 @@
   padding-top: 6px;
 }
 
-/* Franja compacta de arriba: botón «☰ Menú» (mismo desplegable que Compras) y el nombre de dónde estás. El desplegable ocupa toda la fila, justo debajo del botón. */
-.community-topstrip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 0 6px;
-}
-
-.community-menu-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 8px 16px;
-  border-radius: 999px;
-  border: 1px solid var(--border, #d9dee8);
-  background: #fff;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-}
-
-.community-topstrip-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.community-topstrip .economia-menu-dropdown {
-  flex: 1 0 100%;
-  margin: 0;
+/* El botón «☰ Menú» de Comunidad es el MISMO botón flotante del resto de PEPA (ver KitchenHeaderWithMenu.tsx y .menu-fab-portal en styles.css): fijo en pantalla, a media altura de la
+   cabecera con la página arriba y respetando la zona segura. Aquí no hay reglas propias de posición. El desplegable se abre en el flujo, justo debajo de la cabecera. */
+.community-menu-host {
+  margin: 0 0 8px;
 }
 
 .community-menu-admin {

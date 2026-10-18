@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { validateWeeklyMenuArticle, WEEKLY_MENU_ARTICLE_MAX_CHARS } from '@/domain/communityMenuArticle'
 
 const dir = join(process.cwd(), 'supabase/seed/community_initial_posts')
+const recipesJson = JSON.parse(readFileSync(join(process.cwd(), 'supabase/seed/community_post_recipes.json'), 'utf8')) as Record<string, unknown>
 
 interface Post {
   file: string
@@ -128,8 +129,34 @@ describe('decisiones editoriales concretas', () => {
     expect(byNum(7).body.toLowerCase()).toMatch(/moho|mal olor|estrop/)
     expect(byNum(10).body.toLowerCase()).toMatch(/enfr/)
     expect(byNum(10).body.toLowerCase()).toMatch(/nevera/)
-    for (const w of ['curry', 'cubana', 'limón', 'verduras', 'champiñones']) expect(byNum(10).body.toLowerCase()).toContain(w)
     expect(byNum(10).body).not.toMatch(/1 medida de arroz por 2 de agua/i)
+  })
+
+  it('10 arroz: las cinco ideas se desarrollan UNA sola vez, en sus fichas importables, y no como texto repetido en el artículo', () => {
+    const body = byNum(10).body
+    // El artículo solo las presenta: título del apartado y una introducción; ni ingredientes ni pasos numerados.
+    expect(body).toContain('**🍳 Cinco ideas para transformar tu arroz blanco**')
+    expect(body).toContain('¿Te gustaría variar de vez en cuando y preparar algo diferente con arroz?')
+    expect(body).not.toMatch(/^\d\. \*\*/m)
+    for (const w of ['curry', 'cubana', 'champiñones', 'soja', 'guisantes']) expect(body.toLowerCase()).not.toContain(w)
+    // Y no son «recetas de aprovechamiento»: no se llaman así ni en el texto ni en las fichas.
+    expect(body.toLowerCase()).not.toContain('aprovechamiento')
+    // La conservación del arroz cocinado va ANTES del apartado de ideas (las fichas se muestran justo debajo del final del artículo).
+    expect(body.indexOf('Cómo guardar el arroz cocinado')).toBeGreaterThan(-1)
+    expect(body.indexOf('Cómo guardar el arroz cocinado')).toBeLessThan(body.indexOf('Cinco ideas para transformar'))
+    expect(body.trim().endsWith('descubre cómo prepararla.')).toBe(true)
+    // Las cinco fichas siguen ahí, con sus identificadores, y distinguen el arroz ya cocido del arroz crudo.
+    const cards = recipesJson['inicial-10-arroz-blanco'] as { key: string; title: string; tags: string[]; tip?: string; ingredients: { name: string }[] }[]
+    expect(cards.map((r) => r.key)).toEqual(['arroz-con-curry', 'arroz-a-la-cubana', 'arroz-con-ajo-y-limon', 'arroz-salteado-con-verduras', 'arroz-cremoso-con-champinones'])
+    for (const r of cards.slice(0, 4)) {
+      expect(r.ingredients[0].name).toContain('ya cocido')
+      expect(r.tags).toContain('arroz ya cocido')
+      expect(r.tags).not.toContain('aprovechamiento')
+      expect(r.tip).toMatch(/Parte de arroz (blanco )?ya cocido/)
+    }
+    expect(cards[4].ingredients[0].name).toContain('crudo')
+    expect(cards[4].tags).toContain('arroz crudo')
+    expect(cards[4].tip).toMatch(/arroz redondo crudo/)
   })
 
   it('08 hierbas: las cuatro combinaciones y nunca ajo en aceite a temperatura ambiente', () => {

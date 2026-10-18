@@ -133,36 +133,87 @@ const card = (n: number, change: Partial<PostCard> = {}): PostCard =>
     ...change,
   }) as PostCard
 
-describe('diapositiva de Comunidad: solo publicaciones reales', () => {
-  it('recientes, la más comentada (con comentarios de verdad) y una pregunta sin responder, sin repetir', () => {
+describe('diapositiva de Comunidad: selección personalizada de hasta tres publicaciones reales', () => {
+  const none = { news: [], commentedPostIds: [] }
+
+  it('primero las no leídas, de la más reciente a la más antigua (el orden lo da el servidor), hasta tres', () => {
     const lines = communityCarouselLines({
-      recientes: [card(1), card(2), card(3), card(4)],
-      comentados: [card(2, { commentCount: 9 }), card(5, { commentCount: 4 })],
-      sin_respuesta: [card(1, { unanswered: true }), card(6, { kind: 'pregunta', unanswered: true })],
+      unreadFirst: [card(1, { readState: null }), card(2, { readState: null }), card(3, { readState: null }), card(4, { readState: null }), card(5, { readState: 'read' })],
+      ...none,
     })
-    expect(lines.map((l) => l.id)).toEqual(['post-1', 'post-2', 'post-3', 'post-5', 'post-6'])
-    expect(lines.map((l) => l.icon)).toEqual(['🆕', '🆕', '🆕', '💬', '❓'])
-    expect(lines[3].meta).toBe('4 comentarios')
-    expect(lines[4].meta).toBe('Sin respuesta todavía')
+    expect(lines.map((l) => l.id)).toEqual(['post-1', 'post-2', 'post-3'])
+    expect(lines[0].icon).toBe('🆕')
+    expect(lines[0].meta).toContain('Sin leer')
   })
 
-  it('no inventa: sin comentarios no hay línea de «más comentada» y sin publicaciones no hay líneas', () => {
-    const none = communityCarouselLines({ recientes: [], comentados: [], sin_respuesta: [] })
-    expect(none).toEqual([])
-    const noComments = communityCarouselLines({ recientes: [card(1)], comentados: [card(2, { commentCount: 0 })], sin_respuesta: [] })
-    expect(noComments.map((l) => l.id)).toEqual(['post-1'])
+  it('una publicación actualizada tras leerla cuenta como pendiente y lo dice', () => {
+    const lines = communityCarouselLines({ unreadFirst: [card(1, { readState: 'updated' }), card(2, { readState: 'read' })], ...none })
+    expect(lines[0]).toMatchObject({ id: 'post-1', meta: 'Actualizada desde que la leíste' })
   })
 
-  it('las publicaciones de personas bloqueadas no se enseñan y el máximo es 5', () => {
+  it('después de lo no leído, las conversaciones con respuestas nuevas', () => {
+    const lines = communityCarouselLines({
+      unreadFirst: [card(1, { readState: null }), card(2, { readState: 'read' }), card(3, { readState: 'read' })],
+      news: [{ postId: 'post-9', title: 'Mi receta', count: 2 }, { postId: 'post-3', title: 'Otra', count: 1 }],
+      commentedPostIds: [],
+    })
+    expect(lines.map((l) => l.id)).toEqual(['post-1', 'post-9', 'post-3'])
+    expect(lines[1]).toMatchObject({ icon: '💬', meta: '2 respuestas nuevas' })
+    expect(lines[2].meta).toBe('1 respuesta nueva')
+  })
+
+  it('si no hay suficientes pendientes, completa con donde ha comentado o dado «Me gusta», y luego con lo reciente', () => {
+    const lines = communityCarouselLines({
+      unreadFirst: [card(1, { readState: null }), card(2, { readState: 'read' }), card(3, { readState: 'read', likedByMe: true }), card(4, { readState: 'read' })],
+      news: [],
+      commentedPostIds: ['post-4'],
+    })
+    // 1 sin leer; después, por orden del servidor, la que me gustó (3) y en la que comenté (4) antes que la reciente (2).
+    expect(lines.map((l) => l.id)).toEqual(['post-1', 'post-3', 'post-4'])
+    expect(lines.map((l) => l.meta)).toEqual(['Sin leer · Tema 1', 'Te gustó', 'Has participado en esta conversación'])
+    const filler = communityCarouselLines({ unreadFirst: [card(2, { readState: 'read' }), card(4, { readState: 'read' })], ...none })
+    expect(filler.map((l) => l.id)).toEqual(['post-2', 'post-4'])
+    expect(filler[0].icon).toBe('📰')
+  })
+
+  it('no se repite ninguna publicación y no hay huecos si existen publicaciones', () => {
+    const lines = communityCarouselLines({
+      unreadFirst: [card(1, { readState: null, likedByMe: true }), card(2, { readState: 'read' }), card(3, { readState: 'read' })],
+      news: [{ postId: 'post-1', title: 'Repetida', count: 3 }],
+      commentedPostIds: ['post-1', 'post-2'],
+    })
+    const ids = lines.map((l) => l.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toEqual(['post-1', 'post-2', 'post-3'])
+  })
+
+  it('con menos de tres publicaciones se enseñan las que haya; sin ninguna, nada', () => {
+    expect(communityCarouselLines({ unreadFirst: [card(1, { readState: 'read' })], ...none }).map((l) => l.id)).toEqual(['post-1'])
+    expect(communityCarouselLines({ unreadFirst: [], ...none })).toEqual([])
+  })
+
+  it('las publicaciones de personas bloqueadas no se enseñan (ni siquiera por una novedad) y el máximo es 3', () => {
     const blocked: CommunityCardItem = { blockedByMe: true, id: 'b1', authorId: 'x' }
-    const lines = communityCarouselLines({ recientes: [blocked, card(1), card(2), card(3), card(4)], comentados: [card(9, { commentCount: 2 })], sin_respuesta: [card(8)] })
+    const lines = communityCarouselLines({
+      unreadFirst: [blocked, card(1, { readState: null }), card(2, { readState: null }), card(3, { readState: null }), card(4, { readState: null })],
+      news: [{ postId: 'b1', title: 'De una persona bloqueada', count: 4 }],
+      commentedPostIds: [],
+    })
     expect(lines.map((l) => l.id)).not.toContain('b1')
-    expect(lines.length).toBeLessThanOrEqual(5)
-    expect(lines.map((l) => l.id)).toEqual(['post-1', 'post-2', 'post-3', 'post-9', 'post-8'])
+    expect(lines.length).toBe(3)
   })
 
-  it('un solo comentario se dice en singular', () => {
-    expect(communityCarouselLines({ recientes: [], comentados: [card(1, { commentCount: 1 })], sin_respuesta: [] })[0].meta).toBe('1 comentario')
+  it('la selección sigue la relevancia real, no el azar: la misma entrada da siempre la misma salida', () => {
+    const src = { unreadFirst: [card(1, { readState: 'read' }), card(2, { readState: null }), card(3, { readState: 'read' })], ...none }
+    expect(communityCarouselLines(src)).toEqual(communityCarouselLines(src))
+  })
+
+  it('al abrir la primera pendiente, la siguiente visita a Inicio ya no la repite entre las pendientes', () => {
+    const before = communityCarouselLines({ unreadFirst: [card(1, { readState: null }), card(2, { readState: null }), card(3, { readState: 'read' })], ...none })
+    expect(before.map((l) => l.id)).toEqual(['post-1', 'post-2', 'post-3'])
+    const after = communityCarouselLines({ unreadFirst: [card(2, { readState: null }), card(1, { readState: 'read' }), card(3, { readState: 'read' })], ...none })
+    expect(after[0]).toMatchObject({ id: 'post-2', icon: '🆕' })
+    expect(after[1]).toMatchObject({ id: 'post-1', icon: '📰' })
   })
 })
 

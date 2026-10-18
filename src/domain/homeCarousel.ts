@@ -59,30 +59,47 @@ export interface CommunityCarouselLine {
 }
 
 export interface CommunityCarouselSources {
-  recientes: readonly CommunityCardItem[]
-  comentados: readonly CommunityCardItem[]
-  sin_respuesta: readonly CommunityCardItem[]
+  // Publicaciones en el orden del servidor «No leídas primero» (lo no abierto o cambiado desde que se abrió, y luego lo leído; cada grupo de más reciente a más antigua).
+  // Cada tarjeta lleva su estado de lectura y si me ha gustado: con eso basta para elegir sin crear ninguna base de datos nueva.
+  unreadFirst: readonly CommunityCardItem[]
+  // Conversaciones con respuestas o comentarios sin ver (el mismo desglose de la campana), de la más reciente a la más antigua.
+  news: readonly { postId: string; title: string; count: number }[]
+  // Publicaciones en las que he comentado (de la más reciente a la más antigua).
+  commentedPostIds: readonly string[]
 }
+
+export const COMMUNITY_CAROUSEL_MAX = 3
 
 const isPost = (c: CommunityCardItem): c is PostCard => !('blockedByMe' in c && c.blockedByMe === true)
 
-// Líneas REALES de la diapositiva de Comunidad (nunca inventa nada): las 3 publicaciones más recientes, la más comentada (con comentarios de verdad) y la primera
-// pregunta sin responder; sin repetir ninguna y como mucho 5. Las publicaciones de personas bloqueadas no vienen con contenido y se saltan.
+// Líneas REALES de la diapositiva de Comunidad (nunca inventa nada), hasta 3, sin repetir y sin dejar huecos si hay publicaciones. Prioridad (relevancia real, no azar):
+//   1. no leídas (incluidas las actualizadas tras leerlas), de la más reciente a la más antigua;
+//   2. conversaciones con novedades que todavía no he visto (respuestas nuevas);
+//   3. publicaciones en las que he comentado o que me han gustado;
+//   4. el resto de publicaciones recientes.
+// Las publicaciones de personas bloqueadas no vienen con contenido y se saltan; solo salen publicaciones que el servidor ha devuelto para esta persona.
 export function communityCarouselLines(src: CommunityCarouselSources): CommunityCarouselLine[] {
   const seen = new Set<string>()
   const out: CommunityCarouselLine[] = []
-  const take = (items: readonly CommunityCardItem[], max: number, icon: string, meta: (p: PostCard) => string, accept: (p: PostCard) => boolean = () => true) => {
-    let n = 0
-    for (const item of items) {
-      if (n >= max || out.length >= 5) break
-      if (!isPost(item) || seen.has(item.id) || !accept(item)) continue
-      seen.add(item.id)
-      out.push({ id: item.id, icon, title: item.title, meta: meta(item) })
-      n++
-    }
+  const push = (id: string, icon: string, title: string, meta: string) => {
+    if (out.length >= COMMUNITY_CAROUSEL_MAX || seen.has(id)) return
+    seen.add(id)
+    out.push({ id, icon, title, meta })
   }
-  take(src.recientes, 3, '🆕', (p) => p.topicLabel)
-  take(src.comentados, 1, '💬', (p) => `${p.commentCount} comentario${p.commentCount === 1 ? '' : 's'}`, (p) => p.commentCount > 0)
-  take(src.sin_respuesta, 1, '❓', () => 'Sin respuesta todavía')
+  const posts = src.unreadFirst.filter(isPost)
+  const blocked = new Set(src.unreadFirst.filter((c) => !isPost(c)).map((c) => c.id))
+  const isUnread = (p: PostCard) => p.readState !== 'read'
+  // 1. No leídas.
+  for (const p of posts) if (isUnread(p)) push(p.id, '🆕', p.title, p.readState === 'updated' ? 'Actualizada desde que la leíste' : `Sin leer · ${p.topicLabel}`)
+  // 2. Novedades (respuestas sin ver).
+  for (const n of src.news) if (!blocked.has(n.postId) && n.title) push(n.postId, '💬', n.title, `${n.count} ${n.count === 1 ? 'respuesta nueva' : 'respuestas nuevas'}`)
+  // 3. Mis comentarios y mis «Me gusta».
+  const commented = new Set(src.commentedPostIds)
+  for (const p of posts) {
+    if (commented.has(p.id)) push(p.id, '💬', p.title, 'Has participado en esta conversación')
+    else if (p.likedByMe) push(p.id, '❤️', p.title, 'Te gustó')
+  }
+  // 4. Lo demás, lo más reciente primero.
+  for (const p of posts) push(p.id, '📰', p.title, p.topicLabel)
   return out
 }

@@ -72,3 +72,5 @@ Cada receta trae sus propios consejos de conservación y seguridad. Si en casa h
 
 - Ejecutar `validateWeeklyMenuArticle(texto, payload.menu)` (lo hace `npx vitest run src/domain/communityMenuArticle.test.ts` con el menú vigente) y arreglar lo que avise.
 - Repasar que los consejos del artículo anterior que valgan para este menú están ya en `tip` o `freeze` de sus recetas.
+
+Criterio editorial general de todos los artículos: ver `_criterio-editorial.md` (introducción breve, contenido útil, recetas importables desarrolladas una sola vez en sus fichas).

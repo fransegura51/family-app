@@ -12,11 +12,13 @@ import {
   medalStatusText,
 } from '@/domain/communityProfile'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
-import { pageCrumbs, paths } from '@/ui/community/communityNav'
+import { myProfileSubCrumbs, paths } from '@/ui/community/communityNav'
+import { useCommunity } from '@/ui/community/CommunityProvider'
 import '@/ui/community/communityProfile.css'
 
 // Medallas (sec. 11): 12 medallas permanentes en tres familias + el nivel de constancia actual. SIN rankings, tablas competitivas ni recompensas.
 export function MedalsPage() {
+  const { me } = useCommunity()
   const [view, setView] = useState<MedalsView | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,7 +37,7 @@ export function MedalsPage() {
 
   return (
     <>
-      <Breadcrumbs crumbs={pageCrumbs('Medallas')} />
+      <Breadcrumbs crumbs={myProfileSubCrumbs('Medallas', me?.id)} />
       <h1>Mis medallas</h1>
       <p className="muted">Son un reconocimiento amable: no hay clasificaciones ni premios, y no compites con nadie.</p>
       {error && (

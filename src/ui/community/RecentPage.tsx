@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigationType, useSearchParams } from 'react-router-dom'
 import { listPosts } from '@/data/community'
 import { LIST_PAGE_SIZE } from '@/domain/communityDiscovery'
+import { groupByRead } from '@/domain/communityRead'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { pageCrumbs, paths, PEPA_PROFILE_ID } from '@/ui/community/communityNav'
 import { PostCardView } from '@/ui/community/PostCardView'
@@ -9,7 +10,10 @@ import { useCommunityList } from '@/ui/community/useCommunityList'
 import '@/ui/community/communityLists.css'
 import '@/ui/community/communityProfile.css'
 
-// ✨ Novedades de la barra: las publicaciones más recientes de Comunidad, por fecha de publicación (la última primero). Es una vista de lectura de TODA la comunidad
+// ✨ Novedades de la barra, «Últimas publicaciones»: PRIMERO lo que todavía no he leído y debajo lo ya leído (cada grupo, de más reciente a más antigua). El servidor da ese orden
+// (orden «no_leidas», por cuenta) y aquí se recoloca al momento lo que acabo de abrir al volver atrás, sin volver a pedirlo. Con todo leído, no hay encabezados: se ve como siempre.
+// «Seguidos» no cambia: sigue siendo lo último de las cuentas que sigo, por fecha.
+// Antes: las publicaciones más recientes de Comunidad, por fecha de publicación (la última primero). Es una vista de lectura de TODA la comunidad
 // (mismas tarjetas, mismo servidor y mismas reglas de bloqueo y edad que «Más recientes»), sin repetir los avisos personales: los comentarios sin leer y las
 // respuestas siguen en la campana 🔔 de Inicio y en «Comentarios sin leer» (enlace al final).
 // «👥 Seguidos»: las publicaciones de las cuentas que sigo (Pepa y otras personas), con el mismo listado (?ver=seguidos). Cuánto aviso recibo de cada una se ajusta en su
@@ -20,13 +24,19 @@ export function RecentPage() {
   const following = sp.get('ver') === 'seguidos'
   const [restore] = useState(() => navType === 'POP')
   const list = useCommunityList({
-    storageKey: following ? 'recent-following' : 'recent',
-    signature: following ? 'recent-following' : 'recent',
+    storageKey: following ? 'recent-following' : 'recent-unread-first',
+    signature: following ? 'recent-following' : 'recent-unread-first',
     pageSize: LIST_PAGE_SIZE,
     restore,
-    meta: { order: 'recientes', topic: null, kind: null },
-    fetchPage: (offset) => listPosts({ order: 'recientes', limit: LIST_PAGE_SIZE, offset, following }),
+    meta: { order: following ? 'recientes' : 'no_leidas', topic: null, kind: null },
+    fetchPage: (offset) => listPosts({ order: following ? 'recientes' : 'no_leidas', limit: LIST_PAGE_SIZE, offset, following }),
   })
+
+  // «Últimas publicaciones»: no leídas arriba y leídas debajo (cada grupo por fecha). En «Seguidos» el orden es el de siempre.
+  const split = groupByRead(list.items)
+  const unread = following ? [] : split.unread
+  const read = following ? list.items : split.read
+  const grouped = !following && split.grouped
 
   return (
     <>
@@ -41,7 +51,7 @@ export function RecentPage() {
         </button>
       </div>
       <p className="muted community-list-intro">
-        {following ? 'Lo último de las cuentas que sigues, de la más reciente a la más antigua.' : 'Lo último que se ha publicado en Comunidad, de la más reciente a la más antigua.'}
+        {following ? 'Lo último de las cuentas que sigues, de la más reciente a la más antigua.' : 'Primero lo que todavía no has leído y, debajo, lo que ya has abierto. En cada grupo, de la más reciente a la más antigua.'}
       </p>
 
       <div aria-live="polite" aria-busy={list.status === 'loading'}>
@@ -85,12 +95,31 @@ export function RecentPage() {
           </div>
         )}
 
-        {list.items.length > 0 && (
-          <div className="community-card-list">
-            {list.items.map((item) => (
-              <PostCardView key={item.id} item={item} onUnblocked={list.reload} />
-            ))}
-          </div>
+        {list.items.length > 0 && grouped && (
+          <section className="community-recent-group community-recent-unread" aria-labelledby="recent-unread-title">
+            <h2 id="recent-unread-title" className="community-recent-group-title">
+              📬 Sin leer <span className="community-recent-count">({unread.length})</span>
+            </h2>
+            <div className="community-card-list">
+              {unread.map((item) => (
+                <PostCardView key={item.id} item={item} onUnblocked={list.reload} />
+              ))}
+            </div>
+          </section>
+        )}
+        {list.items.length > 0 && read.length > 0 && (
+          <section className={grouped ? 'community-recent-group community-recent-read' : undefined} aria-labelledby={grouped ? 'recent-read-title' : undefined}>
+            {grouped && (
+              <h2 id="recent-read-title" className="community-recent-group-title">
+                ✓ Ya leídas
+              </h2>
+            )}
+            <div className="community-card-list">
+              {read.map((item) => (
+                <PostCardView key={item.id} item={item} onUnblocked={list.reload} />
+              ))}
+            </div>
+          </section>
         )}
 
         {list.moreError && (

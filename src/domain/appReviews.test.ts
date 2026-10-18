@@ -5,6 +5,7 @@ import path from 'node:path'
 import { cleanReviewText, GENERAL_SECTION, isValidStars, REVIEW_SECTIONS, REVIEW_TEXT_MAX, sectionLabel, starsText, summarizeReviews } from '@/domain/appReviews'
 import { NAV_TABS } from '@/domain/navTabs'
 import screen from '@/ui/ReviewsScreen.tsx?raw'
+import stars from '@/ui/StarPicker.tsx?raw'
 import data from '@/data/appReviews.ts?raw'
 import app from '@/App.tsx?raw'
 import nav from '@/ui/NavShell.tsx?raw'
@@ -102,7 +103,7 @@ describe('pantalla Reseñas y opiniones', () => {
   })
 
   it('estrellas de 1 a 5 de la app en general y de cada sección, con «lo que me gusta» y «lo que no me gusta»', () => {
-    expect(screen).toContain('[1, 2, 3, 4, 5].map')
+    expect(stars).toContain('[1, 2, 3, 4, 5].map')
     expect(screen).toContain('section={GENERAL_SECTION}')
     expect(screen).toContain('REVIEW_SECTIONS.map')
     expect(screen).toContain('Lo que me gusta')
@@ -128,8 +129,8 @@ describe('pantalla Reseñas y opiniones', () => {
   })
 
   it('accesible: cada estrella es un botón con nombre y estado, de 44 px', () => {
-    expect(screen).toContain('aria-pressed={n === value}')
-    expect(screen).toMatch(/aria-label=\{`\$\{n\} \$\{n === 1 \? 'estrella' : 'estrellas'\}`\}/)
+    expect(stars).toContain('aria-pressed={n === value}')
+    expect(stars).toMatch(/aria-label=\{`\$\{n\} \$\{n === 1 \? 'estrella' : 'estrellas'\}`\}/)
     expect(css).toMatch(/\.review-star \{[^}]*min-width: 44px;[^}]*min-height: 44px/)
   })
 })

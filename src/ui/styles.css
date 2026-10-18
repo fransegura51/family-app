@@ -8038,3 +8038,11 @@ textarea {
   margin: 6px 0 0;
   padding-left: 18px;
 }
+
+/* Invitación a valorar PEPA (Inicio). */
+.review-invite {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}

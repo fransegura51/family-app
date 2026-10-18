@@ -47,6 +47,13 @@ export async function saveAppReview(input: { section: string; stars: number; lik
   if (error) throw error
 }
 
+// ¿Esta persona ya valoró la app en general? (la invitación de Inicio solo se enseña a quien no)
+export async function hasMyGeneralReview(profileId: string): Promise<boolean> {
+  const { data, error } = await supabase.from('app_reviews').select('id').eq('profile_id', profileId).eq('section', 'general').limit(1)
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+
 export async function deleteAppReview(section: string): Promise<void> {
   const { data: userResult } = await supabase.auth.getUser()
   if (!userResult.user) throw new Error('No autenticado')

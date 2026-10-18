@@ -9,6 +9,7 @@ import { carouselSlideOrder, pickCarouselPhotos, showEmptyGalleryCard, type Comm
 import { useHomeCarouselPrefs } from '@/state/homeCarouselPrefs'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
+import { ReviewInviteCard } from '@/ui/ReviewInviteCard'
 import { getGalleryPhotoUrls, listGalleryPhotos } from '@/data/gallery'
 import { loadCommunityHomeLines, peekCommunityHomeLines } from '@/data/communityHomeSlide'
 import { listFamilyMembers } from '@/data/family'
@@ -175,6 +176,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <InviteFriendsButton />
 
       <NotificationsOnboarding />
+
+      <ReviewInviteCard />
 
       {/* Petición real: "quiero que se puedan organizar como yo quiera,
           que se puedan mover de sitio" — el orden es solo de este

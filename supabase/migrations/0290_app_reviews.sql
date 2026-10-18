@@ -36,3 +36,6 @@ create policy "app_reviews: cada persona cambia las suyas" on public.app_reviews
 create policy "app_reviews: cada persona borra las suyas" on public.app_reviews
   for delete
   using (profile_id = (select auth.uid()));
+
+-- La app solo la usa gente con sesión: sin acceso para visitantes anónimos (la RLS ya lo impediría; esto lo deja explícito).
+revoke all on public.app_reviews from anon;

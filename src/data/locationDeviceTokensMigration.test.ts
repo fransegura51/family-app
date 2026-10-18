@@ -126,6 +126,18 @@ describe('servicio de Android que sigue con la app cerrada', () => {
     expect(service).toContain('"fgs_pid"')
   })
 
+  it('un salto de GPS aislado no se envía: se retiene hasta que la lectura siguiente lo confirme (aviso de salida falso del 17/10)', () => {
+    expect(receiver).toContain('JUMP_DISTANCE_M = 150f')
+    expect(receiver).toContain('JUMP_CONFIRM_RADIUS_M = 100f')
+    expect(receiver).toContain('JUMP_CONFIRM_WINDOW_MS = 60_000L')
+    expect(receiver).toContain('JUMP_CHECK_WINDOW_MS = 10 * 60_000L')
+    expect(receiver).toContain('if (!acceptAfterJumpCheck(context, prefs, location, now)) {')
+    // El filtro va ANTES de marcar el envío y de lanzar el hilo que sube la posición.
+    expect(receiver.indexOf('acceptAfterJumpCheck(context, prefs, location, now)')).toBeLessThan(receiver.indexOf('goAsync()'))
+    expect(receiver).toContain('retenida hasta confirmarla')
+    expect(receiver).toContain('Location.distanceBetween(')
+  })
+
   it('al volver a abrir la app se retira el envío nativo (no hay envíos duplicados)', () => {
     expect(service).toContain('removeWatcherById(NATIVE_WATCHER_ID);')
     expect(service).toMatch(/public IBinder onBind\(Intent intent\) \{\s*appIsBack\(\);/)

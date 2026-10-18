@@ -37,6 +37,11 @@ public class NativeLocationReceiver extends BroadcastReceiver {
     private static final float MAX_ACCURACY_M = 100f;
     // «off» o «revoked» seguidos antes de darse por vencido: un solo aviso suelto no debe apagar el envío para siempre.
     private static final int MAX_BAD_ANSWERS = 3;
+    // Filtro de saltos de GPS (ver acceptAfterJumpCheck).
+    private static final float JUMP_DISTANCE_M = 150f;
+    private static final float JUMP_CONFIRM_RADIUS_M = 100f;
+    private static final long JUMP_CONFIRM_WINDOW_MS = 60_000L;
+    private static final long JUMP_CHECK_WINDOW_MS = 10 * 60_000L;
     private static final int MAX_DIAG_LINES = 60;
 
     @Override
@@ -66,6 +71,10 @@ public class NativeLocationReceiver extends BroadcastReceiver {
         if (location.hasAccuracy() && location.getAccuracy() > MAX_ACCURACY_M) {
             return;
         }
+        // Un salto de GPS aislado (un punto lejano que vuelve enseguida) no debe disparar «se ha ido de…»: se retiene hasta que la lectura siguiente lo confirme.
+        if (!acceptAfterJumpCheck(context, prefs, location, now)) {
+            return;
+        }
         prefs.edit().putLong("last_upload_at", now).apply();
         // Si el servicio en primer plano no está vivo en este proceso (Android mató el proceso y lo ha vuelto a lanzar solo para este aviso), se intenta relanzar:
         // en segundo plano Android espacia mucho las posiciones, con el servicio en primer plano no.
@@ -89,6 +98,65 @@ public class NativeLocationReceiver extends BroadcastReceiver {
                 }
             }
         ).start();
+    }
+
+    /**
+     * Filtro de saltos de GPS (17/10/2026: «Paco se ha ido de Casa» falso — un único punto a 349 m, 4 min después del anterior a 17 m, y 44 min después
+     * otro a 4 m; Paco no había salido). Una lectura a más de JUMP_DISTANCE_M del último punto enviado (si ese punto es de hace menos de
+     * JUMP_CHECK_WINDOW_MS) se RETIENE; solo se envía si la lectura siguiente la confirma (a menos de JUMP_CONFIRM_RADIUS_M de ella y en menos de
+     * JUMP_CONFIRM_WINDOW_MS). Si la siguiente vuelve a la zona de antes, la retenida se descarta. Moviéndose de verdad llegan lecturas seguidas, así
+     * que el retraso es de una lectura; sin movimiento no llega ninguna y el punto suelto no se envía nunca. Con el último envío muy antiguo no se filtra.
+     */
+    private static boolean acceptAfterJumpCheck(Context context, SharedPreferences prefs, Location loc, long now) {
+        double lat = loc.getLatitude();
+        double lng = loc.getLongitude();
+        long sentAt = prefs.getLong("sent_at", 0L);
+        boolean hasRecent = sentAt > 0L && now - sentAt >= 0L && now - sentAt <= JUMP_CHECK_WINDOW_MS;
+        if (!hasRecent) {
+            markSent(prefs, lat, lng, now);
+            return true;
+        }
+        double lastLat = Double.longBitsToDouble(prefs.getLong("sent_lat", 0L));
+        double lastLng = Double.longBitsToDouble(prefs.getLong("sent_lng", 0L));
+        float fromLast = distanceMeters(lastLat, lastLng, lat, lng);
+        if (fromLast <= JUMP_DISTANCE_M) {
+            markSent(prefs, lat, lng, now);
+            return true;
+        }
+        long heldAt = prefs.getLong("jump_at", 0L);
+        if (heldAt > 0L && now - heldAt >= 0L && now - heldAt <= JUMP_CONFIRM_WINDOW_MS) {
+            double heldLat = Double.longBitsToDouble(prefs.getLong("jump_lat", 0L));
+            double heldLng = Double.longBitsToDouble(prefs.getLong("jump_lng", 0L));
+            if (distanceMeters(heldLat, heldLng, lat, lng) <= JUMP_CONFIRM_RADIUS_M) {
+                diag(context, "receptor: lectura lejana (" + Math.round(fromLast) + " m) confirmada, se envía");
+                markSent(prefs, lat, lng, now);
+                return true;
+            }
+        }
+        prefs.edit()
+            .putLong("jump_at", now)
+            .putLong("jump_lat", Double.doubleToRawLongBits(lat))
+            .putLong("jump_lng", Double.doubleToRawLongBits(lng))
+            .apply();
+        diag(context, "receptor: lectura lejana (" + Math.round(fromLast) + " m del último punto) retenida hasta confirmarla");
+        return false;
+    }
+
+    private static void markSent(SharedPreferences prefs, double lat, double lng, long now) {
+        prefs.edit()
+            .putLong("sent_at", now)
+            .putLong("sent_lat", Double.doubleToRawLongBits(lat))
+            .putLong("sent_lng", Double.doubleToRawLongBits(lng))
+            .remove("jump_at")
+            .remove("jump_lat")
+            .remove("jump_lng")
+            .apply();
+    }
+
+    private static float distanceMeters(double lat1, double lng1, double lat2, double lng2) {
+        float[] out = new float[1];
+        Location.distanceBetween(lat1, lng1, lat2, lng2, out);
+        return out[0];
     }
 
     private void upload(Context context, SharedPreferences prefs, String url, String apikey, String token, double latitude, double longitude, long time) {

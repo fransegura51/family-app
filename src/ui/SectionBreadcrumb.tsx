@@ -8,6 +8,7 @@ import { NAV_TABS, type NavTab } from '@/domain/navTabs'
 const EXTRA_SECTIONS: NavTab[] = [
   { to: '/ayuda', label: 'Ayuda', icon: '❓' },
   { to: '/sugerencias', label: 'Buzón', icon: '💡' },
+  { to: '/resenas', label: 'Reseñas', icon: '⭐' },
   { to: '/menu-organizar', label: 'Configuración', icon: '⚙️' },
 ]
 const ALL_SECTIONS: NavTab[] = [...NAV_TABS, ...EXTRA_SECTIONS]

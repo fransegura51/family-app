@@ -45,6 +45,7 @@ const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({
 const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
 const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
+const ReviewsScreen = lazy(() => import('@/ui/ReviewsScreen').then((m) => ({ default: m.ReviewsScreen })))
 const AdminUsageScreen = lazy(() => import('@/ui/AdminUsageScreen').then((m) => ({ default: m.AdminUsageScreen })))
 const CommunityRoutes = lazy(() => import('@/ui/community/CommunityRoutes').then((m) => ({ default: m.CommunityRoutes })))
 
@@ -168,6 +169,7 @@ function AuthedApp() {
             <Route path="/admin-uso" element={<AdminUsageScreen />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />
+            <Route path="/resenas" element={<ReviewsScreen />} />
             <Route path="/comunidad/*" element={<CommunityRoutes />} />
           </Route>
         </Routes>

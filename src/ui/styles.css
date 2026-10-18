@@ -7989,3 +7989,52 @@ textarea {
   right: auto;
   z-index: 39;
 }
+
+
+/* Reseñas y opiniones (17/10/2026): estrellas de 1 a 5 por sección. Objetivos táctiles de 44 px. */
+.review-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.review-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.review-stars {
+  display: flex;
+  gap: 2px;
+}
+.review-star {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 28px;
+  line-height: 1;
+  color: #9aa3b2;
+  cursor: pointer;
+}
+.review-star-on {
+  color: #f5a623;
+}
+.review-more > summary,
+.review-sections > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.review-more label {
+  display: block;
+  margin-top: 8px;
+}
+.review-summary {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}

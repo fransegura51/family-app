@@ -119,6 +119,8 @@ Deno.serve(async (req) => {
       return json({ error: "enablebanking_error", detail }, 502)
     }
     const authJson = await authRes.json()
+    // Identificador del intento (lo pide el soporte de Enable Banking para investigar un fallo con un banco). Solo el id y el banco: ni la URL ni datos de la persona.
+    console.log("enablebanking_auth_started", JSON.stringify({ authorization_id: authJson.authorization_id ?? null, aspsp: aspspName, country: aspspCountry, native: native === true }))
 
     return json({ url: authJson.url })
   } catch (err) {

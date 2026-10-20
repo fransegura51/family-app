@@ -13,7 +13,8 @@ import {
   uploadMemberPhoto,
   type AccountsMode,
 } from '@/data/family'
-import { adminResetProfilePin } from '@/data/appLock'
+import { getMyAccount, listFamilyAccountEmails, type FamilyAccountEmail } from '@/data/account'
+import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
@@ -100,6 +101,22 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       .catch(() => {})
   }, [])
   const isAdmin = profile.role === 'admin'
+
+  // Correos de las cuentas (solo las fichas con cuenta propia tienen): la administradora ve los de toda la familia (una llamada a la base de datos, solo para
+  // ella); el resto, solo el suyo (sale de la sesión, sin llamada). Los miembros sin cuenta (bebés, niños sin acceso…) no tienen correo: no se enseña nada.
+  const [emails, setEmails] = useState<Record<string, FamilyAccountEmail>>({})
+  function loadEmails() {
+    if (isAdmin) {
+      listFamilyAccountEmails()
+        .then((rows) => setEmails(Object.fromEntries(rows.map((r) => [r.profileId, r]))))
+        .catch(() => {})
+    } else {
+      getMyAccount()
+        .then((a) => setEmails({ [profile.id]: { profileId: profile.id, email: a.email, confirmed: a.confirmed, changePending: Boolean(a.pendingEmail) } }))
+        .catch(() => {})
+    }
+  }
+  useEffect(loadEmails, [isAdmin, profile.id])
 
   // Orden arrastrable con el dedo — petición real: "los miembros de la
   // familia los cojo y los puedo arrastrar y poner primero Jennifer,
@@ -240,6 +257,14 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                 <span className="member-role-pill">
                   {memberTypeLabel(effectiveMemberType(m.memberType, m.birthDate, babyUntilMonths, new Date().toISOString().slice(0, 10)))}
                 </span>
+                {m.linkedProfileId && emails[m.linkedProfileId]?.email && (
+                  <span className="muted" style={{ display: 'block', fontSize: 12, overflowWrap: 'anywhere' }}>
+                    ✉️ {emails[m.linkedProfileId].email}
+                    {!emails[m.linkedProfileId].confirmed && ' · sin confirmar'}
+                    {emails[m.linkedProfileId].changePending && ' · cambio pendiente'}
+                  </span>
+                )}
+                {m.linkedProfileId === profile.id && <ChangeEmailPanel compact onChanged={loadEmails} />}
               </div>
               {isAdmin && (
                 <button
@@ -258,7 +283,6 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
                     ✏️ Editar
                   </button>
-                  {m.linkedProfileId && <ResetPinButton profileId={m.linkedProfileId} />}
                   {/* Solo tiene sentido para quien todavía no tiene su
                       propia cuenta — ligado hoy a la sesión de otro (p. ej.
                       Paco entrando siempre como Jennifer). El código enlaza
@@ -325,34 +349,6 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
       {uploading ? 'Subiendo…' : '📷 Foto'}
       <input type="file" accept="image/*" onChange={handleChange} style={{ display: 'none' }} disabled={uploading} />
     </label>
-  )
-}
-
-// Solo admin — "reiniciar" (nunca ver ni mandar) el PIN de bloqueo de
-// otra persona cuando se le olvida: la próxima vez que abra el
-// bloqueo tendrá que crear uno nuevo (ver 0083_profile_app_lock.sql).
-// Solo tiene sentido para quien tiene su propia cuenta (linkedProfileId).
-function ResetPinButton({ profileId }: { profileId: string }) {
-  const [done, setDone] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleReset() {
-    setError(null)
-    try {
-      await adminResetProfilePin(profileId)
-      setDone(true)
-      setTimeout(() => setDone(false), 2500)
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo reiniciar el PIN'))
-    }
-  }
-
-  if (done) return <span className="muted">✓ PIN reiniciado</span>
-  return (
-    <>
-      <ConfirmButton label="🔓 Reiniciar PIN" confirmLabel="Reiniciar" onConfirm={handleReset} />
-      {error && <p className="error">{error}</p>}
-    </>
   )
 }
 

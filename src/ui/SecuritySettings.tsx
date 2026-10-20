@@ -1,0 +1,598 @@
+import { FormEvent, useEffect, useState } from 'react'
+import { recoveryFlow } from '@/auth/recoveryFlow'
+import {
+  changePasswordWithCurrent,
+  getMyAccount,
+  requestPasswordRecoveryCode,
+  signOutOtherDevices,
+  signOutThisDevice,
+  verifyPasswordRecoveryCode,
+  type MyAccount,
+} from '@/data/account'
+import {
+  changeOwnPin,
+  clearOwnPinWithPin,
+  deleteWebauthnCredential,
+  hasOwnPin,
+  listWebauthnCredentials,
+  registerPasskey,
+  setOwnPin,
+  type WebauthnCredentialInfo,
+} from '@/data/appLock'
+import { APP_LOCK_CHANGED_EVENT } from '@/domain/appLockPolicy'
+import { authErrorMessage } from '@/domain/authErrors'
+import { errorMessage } from '@/domain/errorMessage'
+import { isCompleteOtp } from '@/domain/otpCode'
+import { disableNativeUpload } from '@/services/nativeUpload'
+import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
+import { ConfirmButton } from '@/ui/ConfirmButton'
+import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
+
+// Configuración → Seguridad, en tres apartados que se entienden sin saber de informática:
+//  · Mi cuenta: con qué correo entras, si está confirmado, cambiar el correo y la contraseña, y qué hacer si se olvida la contraseña.
+//  · Bloqueo personal: el PIN y la huella / Face ID de ESTE móvil y cuenta (es un candado extra, aparte de la contraseña).
+//  · Sesiones: cerrar sesión aquí o en los demás dispositivos.
+// Cada persona gestiona lo suyo; nada de esto depende de un administrador de la familia.
+export function SecuritySettings({ displayName }: { displayName: string }) {
+  return (
+    <>
+      <MyAccountCard />
+      <PersonalLockCard />
+      <SessionsCard displayName={displayName} />
+    </>
+  )
+}
+
+function Heading({ children }: { children: string }) {
+  return <strong style={{ display: 'block', fontSize: 16 }}>{children}</strong>
+}
+
+// ---------------------------------------------------------------- Mi cuenta
+function MyAccountCard() {
+  const [account, setAccount] = useState<MyAccount | null>(null)
+  const [loadError, setLoadError] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  function reload() {
+    getMyAccount()
+      .then(setAccount)
+      .catch(() => setLoadError(true))
+  }
+
+  useEffect(reload, [])
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <Heading>🔐 Mi cuenta</Heading>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Con este correo y tu contraseña entras en PEPA desde cualquier móvil u ordenador.
+      </p>
+      {loadError && <p className="error">No se pudo cargar tu cuenta. Inténtalo de nuevo más tarde.</p>}
+      {account && (
+        <>
+          <p style={{ margin: '8px 0 2px' }}>
+            <span className="muted">Correo de acceso: </span>
+            <strong style={{ overflowWrap: 'anywhere' }}>{account.email ?? '—'}</strong>
+          </p>
+          <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+            {account.confirmed ? '✓ Correo confirmado' : '⚠️ Correo sin confirmar'}
+          </p>
+          <ChangeEmailPanel onChanged={reload} />
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }}>
+            {changingPassword ? (
+              <ChangePasswordPanel email={account.email} onClose={() => setChangingPassword(false)} />
+            ) : (
+              <button type="button" className="link-button" onClick={() => setChangingPassword(true)}>
+                🔑 Cambiar contraseña
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Cambiar la contraseña: sabiendo la actual (se comprueba volviendo a entrar con ella) o, si no se recuerda, con un código de seis cifras al correo
+// (la misma recuperación de la pantalla de entrada: después sale «elige tu contraseña nueva»). Nunca depende de otra persona.
+function ChangePasswordPanel({ email, onClose }: { email: string | null; onClose: () => void }) {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+  const [forgot, setForgot] = useState<'no' | 'asking-code'>('no')
+  const [code, setCode] = useState('')
+  const cooldown = useResendCooldown()
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    if (next !== confirm) {
+      setError('Las dos contraseñas nuevas no coinciden.')
+      return
+    }
+    setBusy(true)
+    try {
+      await changePasswordWithCurrent(current, next)
+      setCurrent('')
+      setNext('')
+      setConfirm('')
+      setDone(true)
+    } catch (err) {
+      setError(authErrorMessage(err, 'No se pudo cambiar la contraseña. Inténtalo de nuevo.'))
+    }
+    setBusy(false)
+  }
+
+  async function sendCode() {
+    if (!email) return
+    setBusy(true)
+    setError(null)
+    try {
+      await requestPasswordRecoveryCode(email)
+      cooldown.restart()
+      setCode('')
+      setForgot('asking-code')
+    } catch (err) {
+      setError(authErrorMessage(err, 'No se pudo enviar el código. Inténtalo de nuevo en unos minutos.'))
+    }
+    setBusy(false)
+  }
+
+  async function verifyCode(e: FormEvent) {
+    e.preventDefault()
+    if (!email) return
+    setBusy(true)
+    setError(null)
+    // Al confirmar el código, la app enseña sola «elige tu contraseña nueva» (auth/recoveryFlow.ts).
+    recoveryFlow.begin()
+    try {
+      await verifyPasswordRecoveryCode(email, code)
+    } catch (err) {
+      recoveryFlow.end()
+      setError(authErrorMessage(err, 'No se pudo comprobar el código.'))
+    }
+    setBusy(false)
+  }
+
+  if (done) {
+    return (
+      <div>
+        <p className="muted">✓ Contraseña cambiada. Desde ahora entras con la nueva.</p>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cerrar
+        </button>
+      </div>
+    )
+  }
+
+  if (forgot === 'asking-code') {
+    return (
+      <form onSubmit={verifyCode} className="member-form">
+        <strong>Escribe el código del correo</strong>
+        <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+          Te hemos mandado un código de 6 cifras a tu correo. Al confirmarlo podrás elegir una contraseña nueva sin saber la anterior.
+        </p>
+        <OtpCodeField value={code} onChange={setCode} autoFocus />
+        {error && <p className="error">{error}</p>}
+        <div className="inline-fields">
+          <button type="submit" disabled={busy || !isCompleteOtp(code)}>
+            {busy ? 'Comprobando…' : 'Comprobar código'}
+          </button>
+          <button type="button" className="link-button" onClick={sendCode} disabled={busy || cooldown.left > 0}>
+            {cooldown.left > 0 ? `Reenviar (en ${cooldown.left} s)` : 'Reenviar código'}
+          </button>
+          <button type="button" className="link-button" onClick={() => setForgot('no')}>
+            Atrás
+          </button>
+        </div>
+      </form>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="member-form">
+      <label>
+        Contraseña actual
+        <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
+      </label>
+      <label>
+        Contraseña nueva
+        <input type="password" value={next} onChange={(e) => setNext(e.target.value)} minLength={6} autoComplete="new-password" required />
+      </label>
+      <label>
+        Repite la contraseña nueva
+        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={6} autoComplete="new-password" required />
+      </label>
+      {error && <p className="error">{error}</p>}
+      <div className="inline-fields">
+        <button type="submit" disabled={busy || !current || !next}>
+          {busy ? 'Guardando…' : 'Cambiar contraseña'}
+        </button>
+        <button type="button" className="link-button" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+      <button type="button" className="link-button" onClick={sendCode} disabled={busy || !email}>
+        No recuerdo mi contraseña actual
+      </button>
+    </form>
+  )
+}
+
+// ---------------------------------------------------------------- Bloqueo personal
+// Petición real: "que te dé la opción de poder bloquearla y
+// desbloquearla con... un PIN... hazlo opcional, si alguien no lo
+// quiere poner que no lo ponga". Es por login (auth.uid()), no por
+// family_member — cada adulto tiene su propia cuenta en su propio
+// móvil (ver 0083_profile_app_lock.sql), así que esta sección solo
+// afecta al PIN de quien la está viendo ahora mismo.
+// Cuentas y seguridad: cambiar o desactivar el PIN pide el PIN actual; «He olvidado mi PIN» se identifica con la cuenta (PinRecoveryPanel).
+type LockMode = 'idle' | 'setup' | 'change' | 'confirm-remove' | 'recover'
+
+function announcePinChanged() {
+  window.dispatchEvent(new Event(APP_LOCK_CHANGED_EVENT))
+}
+
+function PersonalLockCard() {
+  const [loading, setLoading] = useState(true)
+  const [enabled, setEnabled] = useState(false)
+  const [mode, setMode] = useState<LockMode>('idle')
+  const [currentPin, setCurrentPin] = useState('')
+  const [pin, setPin] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [passkeys, setPasskeys] = useState<WebauthnCredentialInfo[]>([])
+  const [addingPasskey, setAddingPasskey] = useState(false)
+  const [passkeyLabel, setPasskeyLabel] = useState('')
+  const [passkeyBusy, setPasskeyBusy] = useState(false)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
+
+  function reload() {
+    hasOwnPin()
+      .then(setEnabled)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+    listWebauthnCredentials()
+      .then(setPasskeys)
+      .catch(() => {})
+  }
+
+  useEffect(reload, [])
+
+  function open(next: LockMode) {
+    setCurrentPin('')
+    setPin('')
+    setPinConfirm('')
+    setError(null)
+    setMode(next)
+  }
+
+  function pinProblem(): string | null {
+    if (!/^[0-9]{4,6}$/.test(pin)) return 'El PIN debe tener entre 4 y 6 dígitos'
+    if (pin !== pinConfirm) return 'Los dos PIN no coinciden'
+    return null
+  }
+
+  function pinFailure(err: unknown, fallback: string): string {
+    return errorMessage(err, '') === 'PIN_LOCKED' ? 'Demasiados intentos — espera unos minutos e inténtalo de nuevo.' : errorMessage(err, fallback)
+  }
+
+  async function handleSetup(e: FormEvent) {
+    e.preventDefault()
+    const problem = pinProblem()
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await setOwnPin(pin)
+      setEnabled(true)
+      setMode('idle')
+      announcePinChanged()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo activar el PIN'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleChange(e: FormEvent) {
+    e.preventDefault()
+    const problem = pinProblem()
+    if (problem) {
+      setError(problem)
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await changeOwnPin(currentPin, pin)
+      if (result === 'ok') {
+        setMode('idle')
+        announcePinChanged()
+      } else if (result === 'no_pin') {
+        setEnabled(false)
+        setMode('idle')
+      } else {
+        setError('El PIN actual no es correcto')
+        setCurrentPin('')
+      }
+    } catch (err) {
+      setError(pinFailure(err, 'No se pudo cambiar el PIN'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRemove(e: FormEvent) {
+    e.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      const result = await clearOwnPinWithPin(currentPin)
+      if (result === 'wrong_pin') {
+        setError('El PIN no es correcto')
+        setCurrentPin('')
+      } else {
+        setEnabled(false)
+        setPasskeys([])
+        setMode('idle')
+        announcePinChanged()
+      }
+    } catch (err) {
+      setError(pinFailure(err, 'No se pudo quitar el PIN'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleAddPasskey(e: FormEvent) {
+    e.preventDefault()
+    setPasskeyBusy(true)
+    setPasskeyError(null)
+    try {
+      await registerPasskey(passkeyLabel.trim() || 'Este dispositivo')
+      setAddingPasskey(false)
+      setPasskeyLabel('')
+      setPasskeys(await listWebauthnCredentials())
+    } catch (err) {
+      setPasskeyError(errorMessage(err, 'No se pudo activar la huella/Face ID'))
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  async function handleDeletePasskey(id: string) {
+    setPasskeyBusy(true)
+    setPasskeyError(null)
+    try {
+      await deleteWebauthnCredential(id)
+      setPasskeys(await listWebauthnCredentials())
+    } catch (err) {
+      setPasskeyError(errorMessage(err, 'No se pudo quitar'))
+    } finally {
+      setPasskeyBusy(false)
+    }
+  }
+
+  if (loading) return null
+
+  const pinFields = (label: string) => (
+    <>
+      <label>
+        {label}
+        <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
+      </label>
+      <label>
+        Repite el PIN
+        <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} />
+      </label>
+    </>
+  )
+
+  const currentPinField = (label: string) => (
+    <label>
+      {label}
+      <input
+        type="password"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={6}
+        value={currentPin}
+        onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
+        autoFocus
+      />
+    </label>
+  )
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <Heading>🔒 Bloqueo personal</Heading>
+      <p className="muted" style={{ marginTop: 4 }}>
+        {enabled
+          ? 'Tienes un PIN activado: se pide al abrir la app y cuando vuelves a ella tras estar un minuto o más fuera.'
+          : 'Desactivado — cualquiera con el móvil desbloqueado puede entrar directamente.'}
+      </p>
+
+      {mode === 'setup' && (
+        <form onSubmit={handleSetup} className="member-form">
+          {pinFields('Nuevo PIN (4-6 dígitos)')}
+          {error && <p className="error">{error}</p>}
+          <div className="inline-fields">
+            <button type="submit" disabled={saving}>
+              {saving ? 'Guardando…' : 'Activar PIN'}
+            </button>
+            <button type="button" className="link-button" onClick={() => open('idle')}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === 'change' && (
+        <form onSubmit={handleChange} className="member-form">
+          {currentPinField('PIN actual')}
+          {pinFields('PIN nuevo (4-6 dígitos)')}
+          {error && <p className="error">{error}</p>}
+          <div className="inline-fields">
+            <button type="submit" disabled={saving || currentPin.length < 4}>
+              {saving ? 'Guardando…' : 'Cambiar PIN'}
+            </button>
+            <button type="button" className="link-button" onClick={() => open('idle')}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === 'confirm-remove' && (
+        <form onSubmit={handleRemove} className="member-form">
+          {currentPinField('Escribe tu PIN para desactivarlo')}
+          <p className="muted" style={{ fontSize: 13, margin: '4px 0' }}>
+            Al desactivarlo también se quitan las huellas y Face ID registrados.
+          </p>
+          {error && <p className="error">{error}</p>}
+          <div className="inline-fields">
+            <button type="submit" disabled={saving || currentPin.length < 4}>
+              {saving ? 'Quitando…' : 'Desactivar PIN'}
+            </button>
+            <button type="button" className="link-button" onClick={() => open('idle')}>
+              Cancelar
+            </button>
+          </div>
+        </form>
+      )}
+
+      {mode === 'recover' && (
+        <PinRecoveryPanel
+          onFinished={() => {
+            open('idle')
+            reload()
+          }}
+          onCancel={() => open('idle')}
+        />
+      )}
+
+      {mode === 'idle' && (
+        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+          {enabled ? (
+            <>
+              <button type="button" className="link-button" onClick={() => open('change')}>
+                Cambiar PIN
+              </button>
+              <button type="button" className="link-button" onClick={() => open('confirm-remove')}>
+                Desactivar PIN
+              </button>
+              <button type="button" className="link-button" onClick={() => open('recover')}>
+                He olvidado mi PIN
+              </button>
+            </>
+          ) : (
+            <button type="button" className="link-button" onClick={() => open('setup')}>
+              Activar PIN
+            </button>
+          )}
+        </div>
+      )}
+
+      {enabled && (
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }}>
+          <strong style={{ fontSize: 14 }}>👆 Huella / Face ID</strong>
+          <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+            Capa opcional además del PIN — si falla o la quitas, siempre puedes seguir usando el PIN.
+          </p>
+
+          {passkeys.length > 0 && (
+            <div className="event-list" style={{ marginTop: 8 }}>
+              {passkeys.map((p) => (
+                <div key={p.id} className="inline-fields">
+                  <span className="muted" style={{ flex: 1 }}>
+                    {p.deviceLabel || 'Dispositivo'}
+                  </span>
+                  <button type="button" className="link-button" onClick={() => handleDeletePasskey(p.id)} disabled={passkeyBusy}>
+                    Quitar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {addingPasskey ? (
+            <form onSubmit={handleAddPasskey} className="member-form" style={{ marginTop: 8 }}>
+              <label>
+                Nombre de este dispositivo (opcional)
+                <input type="text" value={passkeyLabel} onChange={(e) => setPasskeyLabel(e.target.value)} placeholder="Mi móvil" autoFocus />
+              </label>
+              {passkeyError && <p className="error">{passkeyError}</p>}
+              <div className="inline-fields">
+                <button type="submit" disabled={passkeyBusy}>
+                  {passkeyBusy ? 'Comprobando…' : 'Activar'}
+                </button>
+                <button type="button" className="link-button" onClick={() => setAddingPasskey(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div style={{ marginTop: 8 }}>
+              <button type="button" className="link-button" onClick={() => setAddingPasskey(true)}>
+                + Activar huella/Face ID en este dispositivo
+              </button>
+              {passkeyError && <p className="error">{passkeyError}</p>}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- Sesiones
+// «Cerrar sesión» (antes en Familia, 16/10/2026; ahora aquí, en Seguridad → Sesiones). Hace falta para que cada persona pueda tener su PROPIA cuenta en su
+// propio móvil en vez de compartir el login de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella).
+// Cerrar sesión aquí cierra SOLO este dispositivo (antes cerraba los de todos: signOut() sin alcance es «global»).
+function SessionsCard({ displayName }: { displayName: string }) {
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSignOutHere() {
+    // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
+    await disableNativeUpload()
+    await signOutThisDevice()
+  }
+
+  async function handleSignOutOthers() {
+    setError(null)
+    setMessage(null)
+    try {
+      await signOutOtherDevices()
+      setMessage('✓ Se han cerrado las sesiones de tus otros dispositivos. Este sigue abierto. Pueden tardar unos minutos en notarlo.')
+    } catch (err) {
+      setError(authErrorMessage(err, 'No se pudieron cerrar las otras sesiones. Inténtalo de nuevo.'))
+    }
+  }
+
+  return (
+    <div className="card event-card" style={{ marginBottom: 16 }}>
+      <Heading>📱 Sesiones</Heading>
+      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
+        Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.
+      </p>
+      <button type="button" className="link-button" onClick={handleSignOutHere}>
+        🚪 Cerrar sesión en este dispositivo ({displayName})
+      </button>
+      <div style={{ marginTop: 8 }}>
+        <ConfirmButton label="Cerrar sesión en los demás dispositivos" confirmLabel="Cerrar las demás" confirmMessage="¿Cerrar las sesiones de tus otros dispositivos? Este se queda abierto." onConfirm={handleSignOutOthers} />
+        {message && <p className="muted">{message}</p>}
+        {error && <p className="error">{error}</p>}
+      </div>
+    </div>
+  )
+}

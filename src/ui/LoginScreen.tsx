@@ -1,23 +1,38 @@
 import { FormEvent, useEffect, useState } from 'react'
 import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
+import { recoveryFlow } from '@/auth/recoveryFlow'
+import { requestPasswordRecoveryCode, resendSignupCode, verifyPasswordRecoveryCode, verifySignupCode } from '@/data/account'
 import { supabase } from '@/data/supabaseClient'
+import { authErrorMessage } from '@/domain/authErrors'
+import { isCompleteOtp } from '@/domain/otpCode'
 import { forgetSignupOrigin, parseSignupOrigin, rememberSignupOrigin, signupMetadata } from '@/domain/signupOrigin'
+import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+
+type Mode = 'signin' | 'signup' | 'signup-code' | 'reset' | 'reset-code'
 
 export function LoginScreen() {
   // Quien llega desde el botón "Crear mi familia" de la demo pública de
   // la web (?origen=demo) ya ha decidido registrarse: se abre directo en
   // "Crear cuenta" en vez de en "Entrar".
-  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(() =>
-    parseSignupOrigin(window.location.search) ? 'signup' : 'signin',
-  )
+  const [mode, setMode] = useState<Mode>(() => (parseSignupOrigin(window.location.search) ? 'signup' : 'signin'))
   useEffect(() => {
     rememberSignupOrigin(window.location.search)
   }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [code, setCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // «Reenviar código»: la cuenta atrás se reinicia cada vez que se manda uno (Supabase exige 60 s entre envíos a la misma cuenta).
+  const cooldown = useResendCooldown()
+
+  function goTo(next: Mode) {
+    setMode(next)
+    setError(null)
+    setInfo(null)
+    setCode('')
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -29,22 +44,45 @@ export function LoginScreen() {
       // Petición real: "se me ha borrado la cuenta de administrador no
       // tengo la contraseña" — la cuenta seguía existiendo, lo que
       // faltaba era una forma de recuperar la contraseña sin tener que
-      // pedírmelo a mí. Mismo redirectTo que la confirmación de alta
-      // (la raíz real de la app, nunca una ruta que necesite el truco
-      // de 404.html de GitHub Pages — un enlace de email es justo el
-      // caso más frágil para ese doble salto, ver HomeOrBankReturn en
-      // App.tsx) — ahí, ResetPasswordScreen reconoce el enlace de
-      // recuperación por su hash (#type=recovery) antes de nada.
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + import.meta.env.BASE_URL,
-      })
-      if (error) {
-        setError(error.message)
-      } else {
+      // pedírmelo a mí. Ahora Supabase manda un CÓDIGO de seis cifras
+      // (plantilla en supabase/email-templates) que se escribe en el
+      // siguiente paso; el redirectTo se mantiene para que los correos
+      // con enlace que ya se enviaron sigan funcionando.
+      try {
+        await requestPasswordRecoveryCode(email)
         // Nunca se confirma si ese email tiene cuenta o no (evita que
         // alguien use este formulario para comprobar qué emails están
         // registrados) — el mensaje es el mismo se encuentre o no.
-        setInfo('Si ese email tiene una cuenta, te hemos mandado un enlace para elegir una contraseña nueva.')
+        goTo('reset-code')
+        cooldown.restart()
+        setInfo('Si ese email tiene una cuenta, te hemos mandado un correo con un código de 6 cifras. Escríbelo aquí para elegir una contraseña nueva.')
+      } catch (err) {
+        setError(authErrorMessage(err, 'No se pudo enviar el correo. Inténtalo de nuevo en unos minutos.'))
+      }
+      setLoading(false)
+      return
+    }
+
+    if (mode === 'reset-code') {
+      // Al confirmar el código Supabase abre una sesión de recuperación: se avisa a la app para que enseñe «elige tu contraseña nueva»
+      // y no crea que la persona ya ha entrado (ver auth/recoveryFlow.ts).
+      recoveryFlow.begin()
+      try {
+        await verifyPasswordRecoveryCode(email, code)
+      } catch (err) {
+        recoveryFlow.end()
+        setError(authErrorMessage(err, 'No se pudo comprobar el código.'))
+      }
+      setLoading(false)
+      return
+    }
+
+    if (mode === 'signup-code') {
+      try {
+        await verifySignupCode(email, code)
+        forgetSignupOrigin()
+      } catch (err) {
+        setError(authErrorMessage(err, 'No se pudo comprobar el código.'))
       }
       setLoading(false)
       return
@@ -52,7 +90,21 @@ export function LoginScreen() {
 
     if (mode === 'signin') {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) setError(error.message)
+      if (error) {
+        // «Email not confirmed»: la persona se registró pero no escribió el código; se le lleva a escribirlo (y se le manda uno nuevo).
+        if (error.code === 'email_not_confirmed') {
+          try {
+            await resendSignupCode(email)
+            cooldown.restart()
+          } catch {
+            // Si el reenvío falla (límite de envíos), el botón «Reenviar código» de la pantalla siguiente deja reintentarlo.
+          }
+          goTo('signup-code')
+          setInfo('Todavía no habías confirmado tu correo. Te hemos mandado un código de 6 cifras: escríbelo aquí.')
+        } else {
+          setError(authErrorMessage(error, error.message))
+        }
+      }
     } else {
       // Bug real: el enlace de confirmación del email llevaba a
       // localhost:3000 (el "Site URL" que trae Supabase por defecto) y,
@@ -74,14 +126,31 @@ export function LoginScreen() {
       })
       if (!error) forgetSignupOrigin()
       if (error) {
-        setError(error.message)
+        setError(authErrorMessage(error, error.message))
       } else if (!data.session) {
-        // Confirmación de email activada en el proyecto: no hay sesión todavía.
-        setInfo('Cuenta creada. Revisa tu email para confirmar antes de entrar.')
+        // Confirmación de email activada en el proyecto: no hay sesión todavía. Se escribe el código de 6 cifras que llega por correo
+        // (si el correo aún trajera un botón en vez de código —plantilla antigua—, pulsarlo sigue funcionando).
+        goTo('signup-code')
+        cooldown.restart()
+        setInfo('Cuenta creada. Te hemos mandado un correo con un código de 6 cifras: escríbelo aquí para confirmar tu correo. (Si el correo trae un botón en vez de código, púlsalo.)')
       }
     }
     setLoading(false)
   }
+
+  async function handleResend() {
+    setError(null)
+    try {
+      if (mode === 'signup-code') await resendSignupCode(email)
+      else await requestPasswordRecoveryCode(email)
+      cooldown.restart()
+      setInfo('Te hemos enviado un código nuevo. El anterior ya no vale.')
+    } catch (err) {
+      setError(authErrorMessage(err, 'No se pudo reenviar el código. Espera un minuto e inténtalo de nuevo.'))
+    }
+  }
+
+  const askingCode = mode === 'signup-code' || mode === 'reset-code'
 
   return (
     <div className="screen screen-centered">
@@ -94,50 +163,51 @@ export function LoginScreen() {
       <form onSubmit={handleSubmit} className="card">
         <label>
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required readOnly={askingCode} />
         </label>
-        {mode !== 'reset' && (
+        {mode !== 'reset' && !askingCode && (
           <label>
             Contraseña
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
-              required
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
           </label>
         )}
+        {askingCode && <OtpCodeField value={code} onChange={setCode} autoFocus />}
         {error && <p className="error">{error}</p>}
         {info && <p className="muted">{info}</p>}
-        <button type="submit" disabled={loading}>
-          {loading ? 'Procesando…' : mode === 'signin' ? 'Entrar' : mode === 'signup' ? 'Crear cuenta' : 'Mandar enlace'}
+        <button type="submit" disabled={loading || (askingCode && !isCompleteOtp(code))}>
+          {loading
+            ? 'Procesando…'
+            : mode === 'signin'
+              ? 'Entrar'
+              : mode === 'signup'
+                ? 'Crear cuenta'
+                : mode === 'reset'
+                  ? 'Mandar código'
+                  : mode === 'signup-code'
+                    ? 'Confirmar mi correo'
+                    : 'Comprobar código'}
         </button>
+        {askingCode && (
+          <button type="button" className="link-button" onClick={handleResend} disabled={cooldown.left > 0}>
+            {cooldown.left > 0 ? `Reenviar código (en ${cooldown.left} s)` : 'Reenviar código'}
+          </button>
+        )}
       </form>
       {mode === 'signin' && (
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => {
-            setMode('reset')
-            setError(null)
-            setInfo(null)
-          }}
-        >
+        <button type="button" className="link-button" onClick={() => goTo('reset')}>
           ¿Olvidaste tu contraseña?
         </button>
       )}
-      <button
-        type="button"
-        className="link-button"
-        onClick={() => {
-          setMode(mode === 'signin' ? 'signup' : 'signin')
-          setError(null)
-          setInfo(null)
-        }}
-      >
-        {mode === 'signin' ? '¿No tienes cuenta? Crear una' : '¿Ya tienes cuenta? Entrar'}
-      </button>
+      {(mode === 'reset' || askingCode) && (
+        <button type="button" className="link-button" onClick={() => goTo('signin')}>
+          Volver a entrar
+        </button>
+      )}
+      {(mode === 'signin' || mode === 'signup') && (
+        <button type="button" className="link-button" onClick={() => goTo(mode === 'signin' ? 'signup' : 'signin')}>
+          {mode === 'signin' ? '¿No tienes cuenta? Crear una' : '¿Ya tienes cuenta? Entrar'}
+        </button>
+      )}
       {/* Una persona tiene que poder leer la política ANTES de crear la
           cuenta (RGPD) — páginas estáticas de public/, sin sesión. */}
       <p className="muted" style={{ fontSize: 12, marginTop: 24, textAlign: 'center' }}>

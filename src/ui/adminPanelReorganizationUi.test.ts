@@ -73,7 +73,7 @@ describe('MenuSettingsScreen — el enlace se renombra, la señal de acceso no c
   })
 
   it('sigue siendo el mismo mecanismo real: solo visible si list_app_usage() devuelve filas (profiles.is_app_owner) — la ruta sigue siendo /admin-uso', () => {
-    const fn = slice(MENU_SETTINGS_SRC, 'function AdminUsageLink() {', '\n\n// Petición real: "que te dé la opción')
+    const fn = slice(MENU_SETTINGS_SRC, 'function AdminUsageLink() {', '\n\n// Petición real: "darle al usuario a elegir qué clases de tonos')
     expect(fn).toContain('setVisible(rows.length > 0)')
     expect(fn).toContain('<Link to="/admin-uso"')
   })

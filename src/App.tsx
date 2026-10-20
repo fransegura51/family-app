@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
 import { useSession } from '@/auth/useSession'
+import { useRecoveryFlowActive } from '@/auth/recoveryFlow'
 import { LoginScreen } from '@/ui/LoginScreen'
 import { ResetPasswordScreen } from '@/ui/ResetPasswordScreen'
 import { OnboardingScreen } from '@/ui/OnboardingScreen'
@@ -124,6 +125,10 @@ export function App() {
 
 function AuthedApp() {
   const { session, profile, loading, refreshProfile } = useSession()
+  // Contraseña olvidada con código de seis cifras: al confirmarlo hay ya una sesión de recuperación, pero la persona aún tiene que elegir su contraseña
+  // nueva (ver auth/recoveryFlow.ts). Va antes que todo lo demás, también que el bloqueo por PIN: si se ha perdido la contraseña, el PIN no pinta nada.
+  const recoveringPassword = useRecoveryFlowActive()
+  if (recoveringPassword) return <ResetPasswordScreen />
 
   if (loading) return <div className="screen screen-centered">Cargando…</div>
   if (!session) return <LoginScreen />

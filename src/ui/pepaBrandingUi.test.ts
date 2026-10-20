@@ -42,7 +42,9 @@ describe('Login — branding genérico "Family App" sustituido por el logo+nombr
   it('el resto de la autenticación (Supabase Auth, entrar/crear cuenta/recuperar, términos/privacidad) sigue intacto', () => {
     expect(LOGIN_SRC).toContain('supabase.auth.signInWithPassword')
     expect(LOGIN_SRC).toContain('supabase.auth.signUp')
-    expect(LOGIN_SRC).toContain('supabase.auth.resetPasswordForEmail')
+    // La recuperación sigue siendo resetPasswordForEmail de Supabase Auth, ahora en data/account.ts (con código de 6 cifras en vez de enlace).
+    expect(LOGIN_SRC).toContain('requestPasswordRecoveryCode')
+    expect(LOGIN_SRC).toContain('verifyPasswordRecoveryCode')
     expect(LOGIN_SRC).toContain('términos de uso')
     expect(LOGIN_SRC).toContain('política de privacidad')
   })

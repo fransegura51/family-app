@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import family from '@/ui/FamilyScreen.tsx?raw'
 import settings from '@/ui/MenuSettingsScreen.tsx?raw'
+import security from '@/ui/SecuritySettings.tsx?raw'
 import app from '@/App.tsx?raw'
 import onboarding from '@/ui/NotificationsOnboarding.tsx?raw'
 import ayuda from '@/ui/AyudaScreen.tsx?raw'
@@ -36,11 +37,17 @@ describe('Configuración tiene lo que salió de Familia, en temas que se abren y
     expect(settings).toMatch(/title="Pepa"[\s\S]*?<PepaPreferencesCard \/>\s*<ClassicButtonsCard \/>/)
   })
 
-  it('tema «Mi cuenta»: cerrar sesión (anulando antes la llave de ubicación) y borrar mi cuenta, con el rol real de quien mira', () => {
+  it('tema «Mi cuenta»: borrar mi cuenta, con el rol real de quien mira', () => {
     expect(settings).toContain('title="Mi cuenta"')
-    expect(settings).toContain('<SignOutCard displayName={profile.displayName} />')
-    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
     expect(settings).toContain("<DeleteAccountCard isAdmin={profile.role === 'admin'} />")
+  })
+
+  // Cuentas y seguridad (PEPA-CUENTAS): «Cerrar sesión» pasó de «Mi cuenta» a Seguridad → Sesiones (un solo sitio, sin duplicados). Conserva lo que protegía: antes de
+  // cerrar sesión se anula la llave de envío de ubicación; y ahora cierra SOLO este dispositivo (signOut() sin alcance cerraba los de todos).
+  it('Cerrar sesión vive en Seguridad → Sesiones: anula antes la llave de ubicación y cierra solo este dispositivo', () => {
+    expect(settings).toContain('<SecuritySettings displayName={profile.displayName} />')
+    expect(settings).not.toContain('SignOutCard')
+    expect(security).toMatch(/await disableNativeUpload\(\)\s*await signOutThisDevice\(\)/)
   })
 
   it('todos los temas tienen su propio color (se pide uno más por cada tema nuevo; los de antes no cambian)', () => {

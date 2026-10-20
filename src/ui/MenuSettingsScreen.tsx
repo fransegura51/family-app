@@ -62,19 +62,9 @@ import { TaskNotifyModeCard } from '@/ui/TaskNotifyModeCard'
 import { BackgroundLocationCard } from '@/ui/BackgroundLocationCard'
 import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
-import { supabase } from '@/data/supabaseClient'
-import { disableNativeUpload } from '@/services/nativeUpload'
 import { listAppUsage } from '@/data/appUsage'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
-import {
-  clearOwnPin,
-  deleteWebauthnCredential,
-  hasOwnPin,
-  listWebauthnCredentials,
-  registerPasskey,
-  setOwnPin,
-  type WebauthnCredentialInfo,
-} from '@/data/appLock'
+import { SecuritySettings } from '@/ui/SecuritySettings'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateTime } from '@/domain/dateFormat'
@@ -451,246 +441,6 @@ function AdminUsageLink() {
     <Link to="/admin-uso" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
       🛠️ Panel de admin
     </Link>
-  )
-}
-
-// Petición real: "que te dé la opción de poder bloquearla y
-// desbloquearla con... un PIN... hazlo opcional, si alguien no lo
-// quiere poner que no lo ponga". Es por login (auth.uid()), no por
-// family_member — cada adulto tiene su propia cuenta en su propio
-// móvil (ver 0083_profile_app_lock.sql), así que esta sección solo
-// afecta al PIN de quien la está viendo ahora mismo.
-function AppLockSection() {
-  const [loading, setLoading] = useState(true)
-  const [enabled, setEnabled] = useState(false)
-  const [mode, setMode] = useState<'idle' | 'setup' | 'confirm-remove'>('idle')
-  const [pin, setPin] = useState('')
-  const [pinConfirm, setPinConfirm] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [passkeys, setPasskeys] = useState<WebauthnCredentialInfo[]>([])
-  const [addingPasskey, setAddingPasskey] = useState(false)
-  const [passkeyLabel, setPasskeyLabel] = useState('')
-  const [passkeyBusy, setPasskeyBusy] = useState(false)
-  const [passkeyError, setPasskeyError] = useState<string | null>(null)
-
-  function reload() {
-    hasOwnPin()
-      .then(setEnabled)
-      .catch(() => {})
-      .finally(() => setLoading(false))
-    listWebauthnCredentials()
-      .then(setPasskeys)
-      .catch(() => {})
-  }
-
-  useEffect(reload, [])
-
-  async function handleAddPasskey(e: FormEvent) {
-    e.preventDefault()
-    setPasskeyBusy(true)
-    setPasskeyError(null)
-    try {
-      await registerPasskey(passkeyLabel.trim() || 'Este dispositivo')
-      setAddingPasskey(false)
-      setPasskeyLabel('')
-      setPasskeys(await listWebauthnCredentials())
-    } catch (err) {
-      setPasskeyError(errorMessage(err, 'No se pudo activar la huella/Face ID'))
-    } finally {
-      setPasskeyBusy(false)
-    }
-  }
-
-  async function handleDeletePasskey(id: string) {
-    setPasskeyBusy(true)
-    setPasskeyError(null)
-    try {
-      await deleteWebauthnCredential(id)
-      setPasskeys(await listWebauthnCredentials())
-    } catch (err) {
-      setPasskeyError(errorMessage(err, 'No se pudo quitar'))
-    } finally {
-      setPasskeyBusy(false)
-    }
-  }
-
-  function startSetup() {
-    setPin('')
-    setPinConfirm('')
-    setError(null)
-    setMode('setup')
-  }
-
-  async function handleSetup(e: FormEvent) {
-    e.preventDefault()
-    if (!/^[0-9]{4,6}$/.test(pin)) {
-      setError('El PIN debe tener entre 4 y 6 dígitos')
-      return
-    }
-    if (pin !== pinConfirm) {
-      setError('Los dos PIN no coinciden')
-      return
-    }
-    setSaving(true)
-    setError(null)
-    try {
-      await setOwnPin(pin)
-      setEnabled(true)
-      setMode('idle')
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo activar el PIN'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function handleRemove() {
-    setSaving(true)
-    setError(null)
-    try {
-      await clearOwnPin()
-      setEnabled(false)
-      setMode('idle')
-    } catch (err) {
-      setError(errorMessage(err, 'No se pudo quitar el PIN'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return null
-
-  return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
-      <strong>🔒 Bloqueo de la app</strong>
-      <p className="muted" style={{ marginTop: 4 }}>
-        {enabled
-          ? 'Tienes un PIN activado: se pedirá cada vez que abras la app.'
-          : 'Desactivado — cualquiera con el móvil desbloqueado puede entrar directamente.'}
-      </p>
-
-      {mode === 'setup' && (
-        <form onSubmit={handleSetup} className="member-form">
-          <label>
-            Nuevo PIN (4-6 dígitos)
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              autoFocus
-            />
-          </label>
-          <label>
-            Repite el PIN
-            <input
-              type="password"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={6}
-              value={pinConfirm}
-              onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))}
-            />
-          </label>
-          {error && <p className="error">{error}</p>}
-          <div className="inline-fields">
-            <button type="submit" disabled={saving}>
-              {saving ? 'Guardando…' : 'Activar PIN'}
-            </button>
-            <button type="button" className="link-button" onClick={() => setMode('idle')}>
-              Cancelar
-            </button>
-          </div>
-        </form>
-      )}
-
-      {mode === 'confirm-remove' && (
-        <div className="inline-fields" style={{ marginTop: 8 }}>
-          <span className="muted">¿Quitar el PIN?</span>
-          <button type="button" onClick={handleRemove} disabled={saving}>
-            {saving ? 'Quitando…' : 'Sí, quitar'}
-          </button>
-          <button type="button" className="link-button" onClick={() => setMode('idle')}>
-            Cancelar
-          </button>
-        </div>
-      )}
-
-      {mode === 'idle' && (
-        <div style={{ marginTop: 8 }}>
-          {enabled ? (
-            <button type="button" className="link-button" onClick={() => setMode('confirm-remove')}>
-              Quitar PIN
-            </button>
-          ) : (
-            <button type="button" className="link-button" onClick={startSetup}>
-              Activar PIN
-            </button>
-          )}
-        </div>
-      )}
-
-      {enabled && (
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }}>
-          <strong style={{ fontSize: 14 }}>👆 Huella / Face ID</strong>
-          <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-            Capa opcional además del PIN — si falla o la quitas, siempre puedes seguir usando el PIN.
-          </p>
-
-          {passkeys.length > 0 && (
-            <div className="event-list" style={{ marginTop: 8 }}>
-              {passkeys.map((p) => (
-                <div key={p.id} className="inline-fields">
-                  <span className="muted" style={{ flex: 1 }}>{p.deviceLabel || 'Dispositivo'}</span>
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => handleDeletePasskey(p.id)}
-                    disabled={passkeyBusy}
-                  >
-                    Quitar
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {addingPasskey ? (
-            <form onSubmit={handleAddPasskey} className="member-form" style={{ marginTop: 8 }}>
-              <label>
-                Nombre de este dispositivo (opcional)
-                <input
-                  type="text"
-                  value={passkeyLabel}
-                  onChange={(e) => setPasskeyLabel(e.target.value)}
-                  placeholder="Mi móvil"
-                  autoFocus
-                />
-              </label>
-              {passkeyError && <p className="error">{passkeyError}</p>}
-              <div className="inline-fields">
-                <button type="submit" disabled={passkeyBusy}>
-                  {passkeyBusy ? 'Comprobando…' : 'Activar'}
-                </button>
-                <button type="button" className="link-button" onClick={() => setAddingPasskey(false)}>
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          ) : (
-            <div style={{ marginTop: 8 }}>
-              <button type="button" className="link-button" onClick={() => setAddingPasskey(true)}>
-                + Activar huella/Face ID en este dispositivo
-              </button>
-              {passkeyError && <p className="error">{passkeyError}</p>}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -1901,29 +1651,6 @@ function CalendarExternalLinksSection() {
 
 type SettingsGroupId = 'menu' | 'inicio' | 'colores' | 'familia' | 'pepa' | 'avisos' | 'cuenta' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
 
-// «Cerrar sesión» (antes en Familia, 16/10/2026). Hace falta para que cada persona pueda tener su PROPIA cuenta en su propio móvil en vez de compartir el login
-// de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella): cierra esta sesión para poder entrar con la cuenta nueva
-// creada con el código de invitación.
-function SignOutCard({ displayName }: { displayName: string }) {
-  return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
-      <strong>🚪 Cerrar sesión</strong>
-      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.</p>
-      <button
-        type="button"
-        className="link-button"
-        onClick={async () => {
-          // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
-          await disableNativeUpload()
-          await supabase.auth.signOut()
-        }}
-      >
-        Cerrar sesión ({displayName})
-      </button>
-    </div>
-  )
-}
-
 export function MenuSettingsScreen({ profile }: { profile: Profile }) {
   // Un solo tema abierto a la vez — la pantalla queda como una lista
   // limpia y recogida, y al tocar un tema se abre su sección.
@@ -2039,8 +1766,8 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         />
       </SettingsGroup>
 
-      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="PIN, huella y Face ID" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
-        <AppLockSection />
+      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="Correo, contraseña, PIN, huella y sesiones" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
+        <SecuritySettings displayName={profile.displayName} />
       </SettingsGroup>
 
       <SettingsGroup
@@ -2076,11 +1803,10 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         color={groupColors[10]}
         icon="👤"
         title="Mi cuenta"
-        summary="Cerrar sesión y borrar mi cuenta"
+        summary="Borrar mi cuenta (cerrar sesión está en Seguridad)"
         open={openGroup === 'cuenta'}
         onToggle={() => toggle('cuenta')}
       >
-        <SignOutCard displayName={profile.displayName} />
         <DeleteAccountCard isAdmin={profile.role === 'admin'} />
       </SettingsGroup>
 

@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { authenticateWithPasskey, listWebauthnCredentials, verifyOwnPin } from '@/data/appLock'
 import { errorMessage } from '@/domain/errorMessage'
+import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
 
 // Pantalla de bloqueo — solo se muestra si esta persona activó un PIN
 // en Ajustes (ver AppLockSection en MenuSettingsScreen.tsx); si nunca
@@ -11,6 +12,8 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
   const [checking, setChecking] = useState(false)
   const [hasPasskey, setHasPasskey] = useState(false)
   const [passkeyBusy, setPasskeyBusy] = useState(false)
+  // «¿Has olvidado tu PIN?»: la persona se identifica con su cuenta (contraseña o código del correo), sin administradores de por medio.
+  const [recovering, setRecovering] = useState(false)
 
   useEffect(() => {
     listWebauthnCredentials()
@@ -68,38 +71,39 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
     <div className="screen screen-centered">
       <div className="card app-lock-card">
         <h1 style={{ marginTop: 0 }}>🔒 App bloqueada</h1>
-        <p className="muted">Introduce tu PIN para continuar.</p>
-        <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            autoFocus
-            maxLength={6}
-            value={pin}
-            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-            className="app-lock-input"
-            aria-label="PIN"
-          />
-          {error && <p className="error">{error}</p>}
-          <button type="submit" disabled={checking || pin.length < 4} style={{ width: '100%', marginTop: 8 }}>
-            {checking ? 'Comprobando…' : 'Desbloquear'}
-          </button>
-        </form>
-        {hasPasskey && (
-          <button
-            type="button"
-            className="link-button"
-            onClick={handlePasskey}
-            disabled={passkeyBusy}
-            style={{ width: '100%', marginTop: 8 }}
-          >
-            {passkeyBusy ? 'Comprobando…' : '👆 Usar huella / Face ID'}
-          </button>
+        {recovering ? (
+          <PinRecoveryPanel onFinished={onUnlock} onCancel={() => setRecovering(false)} />
+        ) : (
+          <>
+            <p className="muted">Introduce tu PIN para continuar.</p>
+            <form onSubmit={handleSubmit}>
+              <input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoFocus
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                className="app-lock-input"
+                aria-label="PIN"
+              />
+              {error && <p className="error">{error}</p>}
+              <button type="submit" disabled={checking || pin.length < 4} style={{ width: '100%', marginTop: 8 }}>
+                {checking ? 'Comprobando…' : 'Desbloquear'}
+              </button>
+            </form>
+            {hasPasskey && (
+              <button type="button" className="link-button" onClick={handlePasskey} disabled={passkeyBusy} style={{ width: '100%', marginTop: 8 }}>
+                {passkeyBusy ? 'Comprobando…' : '👆 Usar huella / Face ID'}
+              </button>
+            )}
+            <button type="button" className="link-button" onClick={() => setRecovering(true)} style={{ width: '100%', marginTop: 8 }}>
+              ¿Has olvidado tu PIN?
+            </button>
+            <p className="muted app-lock-hint">Lo recuperas tú misma con tu contraseña o con un código que te llega al correo; no hace falta que nadie de la familia te ayude.</p>
+          </>
         )}
-        <p className="muted app-lock-hint">
-          ¿Has olvidado el PIN? Pide a un administrador de la familia que te lo reinicie desde Familia.
-        </p>
       </div>
     </div>
   )

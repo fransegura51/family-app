@@ -34,11 +34,43 @@ export async function verifyOwnPin(pin: string): Promise<boolean> {
   return data as boolean
 }
 
-// Solo admin — deja a otra persona sin PIN para que tenga que crear uno
-// nuevo la próxima vez, sin que el admin llegue a ver el antiguo.
-export async function adminResetProfilePin(profileId: string): Promise<void> {
-  const { error } = await supabase.rpc('admin_reset_profile_pin', { p_profile_id: profileId })
-  if (error) throw error
+// Cuentas y seguridad (0292). Cada persona gestiona SU PIN: la administradora ya no puede reiniciar el de otra (el botón «Reiniciar PIN» de Familia se
+// quitó; la función de la base de datos se retira al aplicar supabase/pending-migrations/0293, cuando se haya comprobado la recuperación).
+//
+// Cambiar o quitar el PIN pide el actual. Un PIN actual mal NO es un error: devuelve «wrong_pin» y la base de datos ya ha contado el intento (si fuera un
+// error se revertiría el contador y se podría probar sin límite). PIN_LOCKED sí es un error: demasiados intentos seguidos.
+export type PinCheckResult = 'ok' | 'wrong_pin' | 'no_pin'
+
+function asPinCheckResult(data: unknown): PinCheckResult {
+  return data === 'ok' || data === 'no_pin' ? data : 'wrong_pin'
+}
+
+function throwPinError(error: { message?: string } | null): void {
+  if (!error) return
+  if (error.message?.includes('PIN_LOCKED')) throw new Error('PIN_LOCKED')
+  throw error
+}
+
+export async function changeOwnPin(currentPin: string, newPin: string): Promise<PinCheckResult> {
+  const { data, error } = await supabase.rpc('change_own_pin', { p_old: currentPin, p_new: newPin })
+  throwPinError(error)
+  return asPinCheckResult(data)
+}
+
+export async function clearOwnPinWithPin(pin: string): Promise<PinCheckResult> {
+  const { data, error } = await supabase.rpc('clear_own_pin_with_pin', { p_pin: pin })
+  throwPinError(error)
+  return asPinCheckResult(data)
+}
+
+// «He olvidado mi PIN»: solo funciona si la persona se acaba de identificar (contraseña o código del correo, en los últimos 5 minutos). Quita el PIN y
+// borra las huellas / Face ID anteriores, para que no vuelvan a valer cuando se cree un PIN nuevo.
+export async function resetOwnPinAfterRecentAuth(): Promise<void> {
+  const { error } = await supabase.rpc('reset_own_pin_after_recent_auth')
+  if (error) {
+    if (error.message?.includes('RECENT_AUTH_REQUIRED')) throw new Error('RECENT_AUTH_REQUIRED')
+    throw error
+  }
 }
 
 // Huella dactilar / Face ID — capa opcional POR ENCIMA del PIN (ver

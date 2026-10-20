@@ -13,7 +13,7 @@ Cada dato está marcado como **[Código]** (leído en el código), **[Docs]** (d
 | Cambiar contraseña (con la actual o con código al correo) + pantalla de nueva contraseña con el logo de PEPA | Hecho |
 | PIN: cambiar y desactivar pidiendo el PIN; «He olvidado mi PIN» (contraseña o código al correo); relock al volver de segundo plano | Hecho en la app. **Necesita la migración 0292** |
 | Botón «Reiniciar PIN» de Familia | **Quitado de la app.** La función de la base de datos sigue hasta aplicar 0293 |
-| Pantalla Seguridad en tres apartados (Mi cuenta, Bloqueo personal, Sesiones) | Hecha |
+| Pantalla Seguridad en dos apartados (Correo y contraseña, Bloqueo personal). **«Cerrar sesión» no se ha movido ni duplicado: sigue en Configuración → Mi cuenta, como en producción** (decisión 20/10/2026) | Hecha |
 | Migración `0292_account_security.sql` (solo funciones nuevas) | Escrita y probada como texto. **Sin aplicar.** Prueba en vivo preparada: `supabase/pending-migrations/0292_live_test.sql` |
 | Endurecimiento `0293` (retirar reinicio por administradora, «quitar PIN» sin comprobar, `set_own_pin` sin sobrescribir) | Escrito en `supabase/pending-migrations/`. **No debe aplicarse hasta validar la recuperación del PIN** |
 | SMTP de OVH / Supabase / DNS | **Nada tocado.** Ver §3 |
@@ -124,6 +124,7 @@ Regla: **ninguna persona se queda sin acceso**: no se desactiva el reinicio por 
 - Los miembros sin cuenta (bebés, niños sin acceso) **no tienen correo ni se les pide**: son filas de `family_members` sin `linked_profile_id`.
 - Un niño con cuenta propia es un perfil con `role = 'child'` (migración 0097) enlazado a su ficha. **No existe ninguna relación «tutor de» entre cuentas.** Lo único parecido es la declaración «soy madre/padre/tutor legal» al activar permisos de Comunidad para 15–17 años (`community_minor_permission_log`, migración 0277), que no sirve para esto.
 - Por eso **no se ha implementado** que un padre o tutor cambie el correo de un hijo: hoy cualquier cambio sobre la cuenta de otra persona exigiría una función privilegiada (clave de servicio) sin ninguna relación comprobable que la proteja. Reglas ya aplicadas: cada adulto cambia solo su correo; la administradora **ve** los correos pero no puede cambiarlos; «Cambiar correo» solo sale en la ficha propia.
+- **Estudio ampliado (20/10/2026, sin implementar): `docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md`** — vínculo «Es mi hijo/a», invitaciones de Familia y un hallazgo sobre el rol de las cuentas de niños/invitados creadas con código.
 - Diseño propuesto para una fase posterior (necesita tu aprobación): tabla `account_guardians (child_profile_id, guardian_profile_id, declared_at)` con declaración explícita y registro; función de servidor que (1) comprueba la relación, (2) exige identificación reciente del tutor, (3) manda el código de confirmación **a la dirección nueva** y (4) solo aplica el cambio cuando esa dirección lo confirma; sin que el tutor vea ni toque la contraseña del menor.
 
 ## 7. Huella y Face ID: dependencia del dominio [Código]
@@ -156,9 +157,13 @@ Hecho en esta rama (ordenador, sin producción): comprobación de tipos, anális
 | 14 | iPhone, Android y escritorio (incluida la vuelta de segundo plano) | Sin probar |
 | 15 | Entrega en Gmail, Outlook, iCloud y otros | Sin probar |
 
-## 9. Decisiones pendientes de ti
+## 9. Decisiones
 
-1. Qué servicio de OVH tienes y si se prueba con él antes de decidir entre OVH y Resend (§3, §4).
-2. Un minuto fuera de la app antes de volver a pedir el PIN: ¿te parece bien o lo prefieres más corto/largo? (constante `RELOCK_AFTER_BACKGROUND_MS`).
-3. «Cerrar sesión» se ha movido de «Mi cuenta» a Seguridad → Sesiones para no tenerlo duplicado. ¿Lo prefieres también en «Mi cuenta»?
-4. Diseño de tutores para menores con cuenta (§6): ¿se aprueba la tabla de tutores?
+**Aprobadas (20/10/2026):**
+1. PIN: se vuelve a pedir tras **un minuto** en segundo plano, **solo cuando el PIN está activado** (ya es así; sin PIN no cambia nada).
+2. «Cerrar sesión» se queda en **Configuración → Mi cuenta**, tal como está en producción: no se traslada a Seguridad ni se duplica.
+
+**Pendientes de ti:**
+1. Qué servicio de OVH tienes y si se prueba antes de decidir entre OVH y Resend (§3, §4).
+2. «Cerrar sesión» de producción llama a `signOut()` sin alcance, y Supabase lo trata como **global: cierra la sesión de TODOS tus dispositivos**, aunque la tarjeta dice «en este móvil». Se ha dejado exactamente como en producción. ¿Se cambia a «solo este dispositivo» (una línea) y se añade, dentro de esa misma tarjeta, «cerrar las demás»?
+3. Vínculo padres–hijos e invitaciones familiares: ver `docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md` (estudio, sin implementar).

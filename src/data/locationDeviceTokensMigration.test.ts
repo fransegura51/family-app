@@ -10,7 +10,6 @@ import androidWorkflow from '../../.github/workflows/android-apk.yml?raw'
 import packageJson from '../../package.json?raw'
 import sharing from '@/services/locationSharing.ts?raw'
 import settings from '@/ui/MenuSettingsScreen.tsx?raw'
-import securitySettings from '@/ui/SecuritySettings.tsx?raw'
 import manifest from '../../android/app/src/main/AndroidManifest.xml?raw'
 import locationActions from '@/pepa/actions/locationActions.ts?raw'
 import locationScreen from '@/ui/LocationScreen.tsx?raw'
@@ -165,8 +164,7 @@ describe('la app entrega y retira la llave en el momento justo', () => {
     expect(sharing).toContain('void disableNativeUpload()')
   })
   it('al cerrar sesión se anula la llave antes de salir', () => {
-    // «Cerrar sesión» vive ahora en Seguridad → Sesiones (cuentas y seguridad) y cierra solo este dispositivo.
-    expect(securitySettings).toMatch(/await disableNativeUpload\(\)\s*await signOutThisDevice\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
   })
 })
 

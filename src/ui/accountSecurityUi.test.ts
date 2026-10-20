@@ -96,20 +96,30 @@ describe('Contraseña: cambiar, recuperar con código y pantalla con la marca de
   })
 })
 
-describe('Seguridad: tres apartados (Mi cuenta, Bloqueo personal, Sesiones)', () => {
-  it('la pantalla de Configuración usa SecuritySettings y ya no tiene el bloqueo antiguo ni SignOutCard', () => {
-    expect(settings).toContain('<SecuritySettings displayName={profile.displayName} />')
+describe('Seguridad: dos apartados (Correo y contraseña, Bloqueo personal); Cerrar sesión se queda en Mi cuenta', () => {
+  it('la pantalla de Configuración usa SecuritySettings y ya no tiene el bloqueo antiguo', () => {
+    expect(settings).toContain('<SecuritySettings />')
     expect(settings).not.toContain('AppLockSection')
-    expect(settings).not.toContain('SignOutCard')
     expect(settings).not.toContain('clearOwnPin')
   })
-  it('los tres apartados con su encabezado', () => {
-    for (const h of ['🔐 Mi cuenta', '🔒 Bloqueo personal', '📱 Sesiones']) expect(security).toContain(h)
+  it('«Cerrar sesión» NO se ha movido ni duplicado (decisión 20/10/2026): sigue en Configuración → Mi cuenta, como en producción, y Seguridad no tiene nada de sesiones', () => {
+    expect(settings).toContain('<SignOutCard displayName={profile.displayName} />')
+    expect(settings).toMatch(/title="Mi cuenta"[\s\S]*?<SignOutCard displayName=\{profile\.displayName\} \/>\s*<DeleteAccountCard/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect((settings.match(/Cerrar sesión/g) ?? []).length).toBeGreaterThanOrEqual(1)
+    const securityCode = security.replace(/^\s*\/\/.*$/gm, '')
+    expect(securityCode).not.toContain('signOut')
+    expect(securityCode).not.toContain('Cerrar sesión')
+    expect(securityCode).not.toContain('Sesiones')
+    expect(account).not.toContain('signOut')
+  })
+  it('los dos apartados con su encabezado (el primero no se llama «Mi cuenta» para no chocar con el tema de Configuración)', () => {
+    for (const h of ['🔐 Correo y contraseña', '🔒 Bloqueo personal']) expect(security).toContain(h)
+    expect(security).not.toContain('<Heading>🔐 Mi cuenta</Heading>')
     expect(security).toContain('<MyAccountCard />')
     expect(security).toContain('<PersonalLockCard />')
-    expect(security).toContain('<SessionsCard displayName={displayName} />')
   })
-  it('Mi cuenta: correo de acceso, confirmado o no, cambiar correo y cambiar contraseña', () => {
+  it('Correo y contraseña: correo de acceso, confirmado o no, cambiar correo y cambiar contraseña', () => {
     expect(security).toContain('Correo de acceso')
     expect(security).toContain('✓ Correo confirmado')
     expect(security).toContain('⚠️ Correo sin confirmar')
@@ -135,13 +145,6 @@ describe('Seguridad: tres apartados (Mi cuenta, Bloqueo personal, Sesiones)', ()
   it('activar, cambiar o quitar el PIN avisa al bloqueo para que lo sepa sin recargar', () => {
     expect((security.match(/announcePinChanged\(\)/g) ?? []).length).toBeGreaterThanOrEqual(4)
     expect(security).toContain('window.dispatchEvent(new Event(APP_LOCK_CHANGED_EVENT))')
-  })
-  it('Sesiones: cerrar sesión SOLO en este dispositivo (scope local) y, aparte, en los demás (scope others)', () => {
-    expect(account).toContain("supabase.auth.signOut({ scope: 'local' })")
-    expect(account).toContain("supabase.auth.signOut({ scope: 'others' })")
-    expect(account).not.toMatch(/supabase\.auth\.signOut\(\)/)
-    expect(security).toContain('await disableNativeUpload()')
-    expect(security).toContain('Cerrar sesión en los demás dispositivos')
   })
 })
 

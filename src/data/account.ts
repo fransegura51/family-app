@@ -94,19 +94,6 @@ export async function verifyEmailChangeCode(emailThatReceivedIt: string, token: 
   if (error) throw error
 }
 
-// ---- Sesiones
-/** Cierra la sesión SOLO de este dispositivo (antes se cerraban las de todos: signOut() sin alcance es «global»). */
-export async function signOutThisDevice(): Promise<void> {
-  const { error } = await supabase.auth.signOut({ scope: 'local' })
-  if (error) throw error
-}
-
-/** Cierra las sesiones de los demás dispositivos y deja esta. Las ya abiertas pueden seguir funcionando hasta que caduque su acceso (menos de una hora). */
-export async function signOutOtherDevices(): Promise<void> {
-  const { error } = await supabase.auth.signOut({ scope: 'others' })
-  if (error) throw error
-}
-
 // ---- Correos de las fichas de Familia
 export interface FamilyAccountEmail {
   profileId: string

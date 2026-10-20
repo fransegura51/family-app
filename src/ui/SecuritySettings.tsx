@@ -4,8 +4,6 @@ import {
   changePasswordWithCurrent,
   getMyAccount,
   requestPasswordRecoveryCode,
-  signOutOtherDevices,
-  signOutThisDevice,
   verifyPasswordRecoveryCode,
   type MyAccount,
 } from '@/data/account'
@@ -23,23 +21,20 @@ import { APP_LOCK_CHANGED_EVENT } from '@/domain/appLockPolicy'
 import { authErrorMessage } from '@/domain/authErrors'
 import { errorMessage } from '@/domain/errorMessage'
 import { isCompleteOtp } from '@/domain/otpCode'
-import { disableNativeUpload } from '@/services/nativeUpload'
 import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
-import { ConfirmButton } from '@/ui/ConfirmButton'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
 import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
 
-// Configuración → Seguridad, en tres apartados que se entienden sin saber de informática:
-//  · Mi cuenta: con qué correo entras, si está confirmado, cambiar el correo y la contraseña, y qué hacer si se olvida la contraseña.
+// Configuración → Seguridad, en dos apartados que se entienden sin saber de informática:
+//  · Correo y contraseña: con qué correo entras, si está confirmado, cambiar el correo y la contraseña, y qué hacer si se olvida la contraseña.
 //  · Bloqueo personal: el PIN y la huella / Face ID de ESTE móvil y cuenta (es un candado extra, aparte de la contraseña).
-//  · Sesiones: cerrar sesión aquí o en los demás dispositivos.
+// «Cerrar sesión» NO está aquí: sigue donde estaba en producción, en Configuración → Mi cuenta (decisión de la usuaria, 20/10/2026: no trasladarlo ni duplicarlo).
 // Cada persona gestiona lo suyo; nada de esto depende de un administrador de la familia.
-export function SecuritySettings({ displayName }: { displayName: string }) {
+export function SecuritySettings() {
   return (
     <>
       <MyAccountCard />
       <PersonalLockCard />
-      <SessionsCard displayName={displayName} />
     </>
   )
 }
@@ -64,7 +59,7 @@ function MyAccountCard() {
 
   return (
     <div className="card event-card" style={{ marginBottom: 16 }}>
-      <Heading>🔐 Mi cuenta</Heading>
+      <Heading>🔐 Correo y contraseña</Heading>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Con este correo y tu contraseña entras en PEPA desde cualquier móvil u ordenador.
       </p>
@@ -550,49 +545,6 @@ function PersonalLockCard() {
           )}
         </div>
       )}
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------- Sesiones
-// «Cerrar sesión» (antes en Familia, 16/10/2026; ahora aquí, en Seguridad → Sesiones). Hace falta para que cada persona pueda tener su PROPIA cuenta en su
-// propio móvil en vez de compartir el login de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella).
-// Cerrar sesión aquí cierra SOLO este dispositivo (antes cerraba los de todos: signOut() sin alcance es «global»).
-function SessionsCard({ displayName }: { displayName: string }) {
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSignOutHere() {
-    // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
-    await disableNativeUpload()
-    await signOutThisDevice()
-  }
-
-  async function handleSignOutOthers() {
-    setError(null)
-    setMessage(null)
-    try {
-      await signOutOtherDevices()
-      setMessage('✓ Se han cerrado las sesiones de tus otros dispositivos. Este sigue abierto. Pueden tardar unos minutos en notarlo.')
-    } catch (err) {
-      setError(authErrorMessage(err, 'No se pudieron cerrar las otras sesiones. Inténtalo de nuevo.'))
-    }
-  }
-
-  return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
-      <Heading>📱 Sesiones</Heading>
-      <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-        Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.
-      </p>
-      <button type="button" className="link-button" onClick={handleSignOutHere}>
-        🚪 Cerrar sesión en este dispositivo ({displayName})
-      </button>
-      <div style={{ marginTop: 8 }}>
-        <ConfirmButton label="Cerrar sesión en los demás dispositivos" confirmLabel="Cerrar las demás" confirmMessage="¿Cerrar las sesiones de tus otros dispositivos? Este se queda abierto." onConfirm={handleSignOutOthers} />
-        {message && <p className="muted">{message}</p>}
-        {error && <p className="error">{error}</p>}
-      </div>
     </div>
   )
 }

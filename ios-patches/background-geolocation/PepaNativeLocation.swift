@@ -31,21 +31,33 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     // Mismos límites que Android: no más de un envío cada 10 s y se descartan posiciones peores de 100 m de precisión.
     private static let minUploadGap: TimeInterval = 10
     private static let maxAccuracy: CLLocationAccuracy = 100
-    // Saltos de GPS (iPhone, 16/10/2026): una posición suelta a 245 m que 4 s después se corrigió generó un aviso falso de salida y de llegada. Una posición que
-    // se aleja más de jumpMeters de la última enviada hace menos de jumpWindowSeconds NO se envía hasta que la siguiente lectura (en menos de jumpConfirmSeconds)
-    // la confirma a menos de jumpConfirmMeters; si la siguiente vuelve a la zona de antes, el salto se descarta. Un desplazamiento real (coche, a pie) se confirma
-    // con la lectura siguiente; si pasó más tiempo desde el último envío (por ejemplo, tras despertar por un cambio significativo) se envía sin esperar.
-    // Causa real (17/10/2026): al relanzar iOS la app cerrada, la PRIMERA lectura es a menudo la última posición guardada (antigua, 244 m más allá) y el servidor,
-    // que cambia por «ahora» toda hora de hace más de 10 minutos, la daba por reciente: aviso falso de salida y de llegada 5 s después. Una lectura de más de
-    // maxReadingAgeSeconds de antigüedad no se envía; y la última posición enviada se guarda en el móvil para que el filtro de saltos valga también tras relanzar.
+    // Saltos de GPS (iPhone): una lectura lejana NO se envía mientras no haya pruebas de movimiento real, porque en el servidor dispara un aviso FALSO de
+    // «se ha ido de Casa». Casos reales: 16/10/2026 (posición a 245 m que se corrigió 4 s después) y 21/10/2026 (una posición de RED mal colocada a ~400 m,
+    // las mismas coordenadas una y otra vez con la hora al día, 242 lecturas lejanas en un día, avisos de salida y llegada alternados). Un salto que se «confirma»
+    // con una segunda lectura igual de falsa no sirve; por eso la misma regla que Android (NativeLocationReceiver.acceptAfterJumpCheck) y la app abierta
+    // (src/domain/gpsJump.ts): una lectura a más de jumpMeters de la última enviada (si es de hace menos de un día) se RETIENE y solo se acepta con
+    //   · dos lecturas seguidas CON velocidad (≥ minMovingSpeed; una posición de red no trae velocidad), o
+    //   · tres lecturas seguidas, cada una más lejos de la última enviada que la anterior (un camino de verdad se aleja; una posición que baila, no), o
+    //   · 30 min seguida en el mismo sitio (una mudanza real).
+    // Si la lectura vuelve a la zona de antes, la retenida se descarta.
+    // Causa del 17/10/2026: al relanzar iOS la app cerrada, la PRIMERA lectura es a menudo la última posición guardada (antigua) y el servidor, que cambia por
+    // «ahora» toda hora de hace más de 10 minutos, la daba por reciente. Una lectura de más de maxReadingAgeSeconds de antigüedad no se envía; y la última
+    // posición enviada se guarda en el móvil para que el filtro valga también tras relanzar.
     private static let maxReadingAgeSeconds: TimeInterval = 15
     private static let keyLastLat = "pepa.nativeUpload.lastLat"
     private static let keyLastLon = "pepa.nativeUpload.lastLon"
     private static let keyLastAt = "pepa.nativeUpload.lastAt"
     private static let jumpMeters: CLLocationDistance = 150
-    private static let jumpWindowSeconds: TimeInterval = 120
-    private static let jumpConfirmMeters: CLLocationDistance = 100
-    private static let jumpConfirmSeconds: TimeInterval = 60
+    // Entre lecturas retenidas seguidas (mismo recorrido): más lejos que esto no se consideran del mismo sitio.
+    private static let jumpStepRadius: CLLocationDistance = 100
+    private static let jumpHoldGapSeconds: TimeInterval = 600
+    // El último punto enviado puede ser de hace horas (quieta en casa no llegan lecturas): el filtro SIGUE valiendo hasta un día.
+    private static let jumpCheckWindowSeconds: TimeInterval = 86_400
+    private static let jumpPersistSeconds: TimeInterval = 1_800
+    private static let minMovingSpeed: CLLocationSpeed = 0.5
+    private static let jumpMinAwayStep: CLLocationDistance = 15
+    private static let jumpSpeedReadings = 2
+    private static let jumpAwayReadings = 3
 
     private var manager: CLLocationManager?
     private var lastUploadAt: Date = .distantPast
@@ -66,7 +78,13 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
             }
         }
     }
-    private var pendingJump: CLLocation?
+    private struct HeldJump {
+        var first: CLLocation
+        var last: CLLocation
+        var speedReadings: Int
+        var awayReadings: Int
+    }
+    private var heldJump: HeldJump?
     private var idleTimer: Timer?
     private let defaults = UserDefaults.standard
 
@@ -190,22 +208,48 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
         if now.timeIntervalSince(lastUploadAt) < PepaNativeLocation.minUploadGap { return }
         if location.horizontalAccuracy < 0 || location.horizontalAccuracy > PepaNativeLocation.maxAccuracy { return }
         if now.timeIntervalSince(location.timestamp) > PepaNativeLocation.maxReadingAgeSeconds { return }
-        if let last = lastSentLocation,
-           location.timestamp.timeIntervalSince(last.timestamp) < PepaNativeLocation.jumpWindowSeconds,
-           location.distance(from: last) > PepaNativeLocation.jumpMeters {
-            let confirmed = pendingJump.map {
-                location.timestamp.timeIntervalSince($0.timestamp) < PepaNativeLocation.jumpConfirmSeconds
-                    && location.distance(from: $0) <= PepaNativeLocation.jumpConfirmMeters
-            } ?? false
-            if !confirmed {
-                pendingJump = location
-                return
-            }
-        }
-        pendingJump = nil
-        lastSentLocation = location
+        if !acceptAfterJumpCheck(location) { return }
         lastUploadAt = now
         upload(location)
+    }
+
+    private func markAccepted(_ location: CLLocation) -> Bool {
+        heldJump = nil
+        lastSentLocation = location
+        return true
+    }
+
+    // true = enviar esta lectura; false = retenida (posible posición falsa). Misma regla que Android y que src/domain/gpsJump.ts.
+    private func acceptAfterJumpCheck(_ location: CLLocation) -> Bool {
+        guard let last = lastSentLocation else { return markAccepted(location) }
+        let sinceLast = location.timestamp.timeIntervalSince(last.timestamp)
+        if sinceLast < 0 || sinceLast > PepaNativeLocation.jumpCheckWindowSeconds { return markAccepted(location) }
+        let fromLast = location.distance(from: last)
+        if fromLast <= PepaNativeLocation.jumpMeters { return markAccepted(location) }
+
+        // Lectura lejana.
+        guard let held = heldJump,
+              location.timestamp.timeIntervalSince(held.last.timestamp) >= 0,
+              location.timestamp.timeIntervalSince(held.last.timestamp) <= PepaNativeLocation.jumpHoldGapSeconds,
+              location.distance(from: held.last) <= PepaNativeLocation.jumpStepRadius else {
+            heldJump = HeldJump(first: location, last: location, speedReadings: 0, awayReadings: 0)
+            return false
+        }
+        let previousFar = last.distance(from: held.last)
+        let moving = location.speed >= PepaNativeLocation.minMovingSpeed
+        let next = HeldJump(
+            first: held.first,
+            last: location,
+            speedReadings: moving ? held.speedReadings + 1 : 0,
+            awayReadings: fromLast - previousFar >= PepaNativeLocation.jumpMinAwayStep ? held.awayReadings + 1 : 0
+        )
+        heldJump = next
+        if next.speedReadings >= PepaNativeLocation.jumpSpeedReadings
+            || next.awayReadings >= PepaNativeLocation.jumpAwayReadings
+            || location.timestamp.timeIntervalSince(next.first.timestamp) >= PepaNativeLocation.jumpPersistSeconds {
+            return markAccepted(location)
+        }
+        return false
     }
 
     public func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {

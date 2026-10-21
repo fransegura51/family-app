@@ -29,6 +29,8 @@ function setup() {
       storage: { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) },
     },
     global: { fetch: fakeFetch },
+    // Node 20 (el que usa la comprobación automática de GitHub) no trae WebSocket de serie y el cliente de Supabase lo pide al crearse: se le da uno de mentira (nunca se conecta).
+    realtime: { transport: class FakeWebSocket {} as never },
   })
   return { client, store, calls }
 }

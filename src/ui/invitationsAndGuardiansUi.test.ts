@@ -18,10 +18,11 @@ describe('Familia: «Dar acceso a PEPA» a la vista', () => {
     expect(invitationsData).toContain("supabase.rpc('create_member_invitation'")
   })
   it('NO se quita la opción de siempre del menú ⋯ hasta comprobar que la nueva funciona (la antigua sigue igual y solo para administradoras)', () => {
-    expect(family).toContain('{!m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}')
+    expect(family).toContain('{isAdmin && !m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}')
     expect(family).toContain('🔑 Generar código de acceso')
     expect(family).toContain("generateMemberInviteCode(memberId)")
-    expect(family).toContain('{isAdmin && menuOpenId === m.id && (')
+    // 0304: el menú ⋯ también lo ve quien puede editar su ficha o la de sus hijos/as; el código de acceso y «Borrar» siguen siendo solo de administración.
+    expect(family).toContain('{(isAdmin || canEditMemberCard(m, profile, me, links)) && menuOpenId === m.id && (')
   })
   it('al crear una ficha se ofrece «¿Quieres darle acceso ahora?» (no a bebés) y se aclara que crear la ficha no crea ninguna cuenta', () => {
     expect(family).toContain("if (memberType !== 'baby') {")

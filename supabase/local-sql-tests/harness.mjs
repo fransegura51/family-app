@@ -1,4 +1,4 @@
-// Banco de pruebas local (PGlite = PostgreSQL en memoria): esquema mínimo + las migraciones REALES 0299-0302 del proyecto.
+// Banco de pruebas local (PGlite = PostgreSQL en memoria): esquema mínimo + las migraciones REALES 0299-0302 y 0304 del proyecto.
 import { PGlite } from '@electric-sql/pglite'
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import fs from 'node:fs'
@@ -33,7 +33,8 @@ export async function setup(opts = {}) {
       role text not null check (role in ('admin','adult','guest','child')), display_name text not null, allowed_sections text[], is_app_owner boolean not null default false, created_at timestamptz not null default now());
     create table family_members (id uuid primary key default gen_random_uuid(), family_id uuid not null references families(id) on delete cascade, name text not null,
       member_type text not null check (member_type in ('admin','adult','child','baby','guest')), linked_profile_id uuid references profiles(id) on delete set null,
-      birth_date date, allowed_sections text[], invite_code text unique, invite_code_expires_at timestamptz);
+      birth_date date, allowed_sections text[], invite_code text unique, invite_code_expires_at timestamptz,
+      color text not null default '#4C6EF5', sex text check (sex in ('female','male')), photo_path text);
     create table family_invites (code text primary key, created_by uuid not null, created_at timestamptz not null default now(), expires_at timestamptz not null default now() + interval '30 days',
       note text, used_by_family uuid references families(id) on delete set null, used_at timestamptz);
     create table profile_locks (profile_id uuid primary key references profiles(id) on delete cascade, pin_hash text, failed_attempts int not null default 0, locked_until timestamptz, updated_at timestamptz not null default now());
@@ -75,6 +76,8 @@ export async function setup(opts = {}) {
     for (const f of ['0299_account_security.sql', '0300_family_member_guardians.sql', '0301_invitation_hardening.sql', '0302_signup_gate_invitation_first.sql']) {
       await db.exec(read('supabase/migrations/' + f))
     }
+    // 0304 aún no está aplicada en producción: vive en pending-migrations hasta que se autorice.
+    await db.exec(read('supabase/pending-migrations/0304_member_self_and_guardian_edit.sql'))
     await db.exec(`revoke all on function public.join_family_with_code(text, text, date) from public, anon; grant execute on function public.join_family_with_code(text, text, date) to authenticated;`)
   }
   return db

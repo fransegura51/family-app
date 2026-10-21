@@ -48,7 +48,7 @@ export function invitationErrorMessage(err: unknown): string | null {
   if (/Código no válido o caducado|Código de acceso incorrecto/.test(raw)) return 'La invitación no es válida o ha caducado. Pídele una nueva a quien te invitó.'
   if (/NOT_AUTHORIZED/.test(raw)) return 'No tienes permiso para dar acceso a esta persona.'
   if (/MEMBER_NOT_INVITABLE/.test(raw)) return 'Un bebé no tiene cuenta propia.'
-  if (/BIRTH_DATE_REQUIRED_ON_PROFILE/.test(raw)) return 'Falta la fecha de nacimiento en la ficha. Una persona administradora tiene que ponerla (botón ⋯ de la ficha → Editar); después vuelve a intentarlo.'
+  if (/BIRTH_DATE_REQUIRED_ON_PROFILE/.test(raw)) return 'Falta la fecha de nacimiento en la ficha. Ponla en la ficha (botón ⋯ → Editar) y vuelve a intentarlo.'
   if (/ADULT_REQUIRED/.test(raw)) return 'Esta cuenta es de una persona adulta y la fecha indica que es menor de edad.'
   return null
 }

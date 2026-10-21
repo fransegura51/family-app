@@ -515,6 +515,85 @@ console.log('\n0302 · Primero la invitación, después la cuenta')
   })
 }
 
+// ---------------------------------------------------------------------------------------------------------- 0304
+console.log('\n0304 · cada persona adulta edita su ficha y la de sus hijos/as')
+{
+  const fam = await mkFamily(db, 'E')
+  const admin = await addAccount(db, fam, 'admin', 'Adm')
+  const mom = await addAccount(db, fam, 'adult', 'Mama')
+  const other = await addAccount(db, fam, 'adult', 'Otra')
+  const guest = await addAccount(db, fam, 'guest', 'Invitada')
+  const kidAcc = await addAccount(db, fam, 'child', 'NinaCuenta', 'child', { birth: '2015-05-05' })
+  const kid = await addFicha(db, fam, 'Hijo', 'child', { birth: null })
+  const teen = await addFicha(db, fam, 'Mayor', 'child', { birth: '2005-01-01' })
+  await as(db, mom.id, () => db.query('select public.declare_guardianship($1,$2,true,$3)', [kid, 'parent', 'v1']), { amrAgoSeconds: FRESH })
+  const famB = await mkFamily(db, 'B')
+  const outsider = await addAccount(db, famB, 'admin', 'Fuera')
+  const U = (who, member, name = 'Nombre', color = '#112233', birth = '2018-03-04', sex = null) =>
+    as(db, who, () => db.query('select public.update_member_card($1,$2,$3,$4,$5)', [member, name, color, birth, sex]))
+  const row = async (id) => (await db.query('select name, color, birth_date::text bd, sex, photo_path, member_type, allowed_sections from family_members where id=$1', [id])).rows[0]
+
+  await t('una madre/padre vinculado edita la ficha de su hijo/a (nombre, color, fecha y sexo) y NO cambia el tipo ni las secciones', async () => {
+    await U(mom.id, kid, 'Hijo Nuevo', '#aabbcc', '2018-03-04', 'male')
+    const r = await row(kid)
+    assert.deepEqual([r.name, r.color, r.bd, r.sex, r.member_type, r.allowed_sections], ['Hijo Nuevo', '#aabbcc', '2018-03-04', 'male', 'child', null])
+  })
+  await t('la fecha nueva de un menor debe seguir siendo de menor de 18 años (nadie lo hace mayor desde una ficha)', async () => {
+    has(await err(() => U(mom.id, kid, 'Hijo', '#aabbcc', '2001-01-01')), 'CHILD_MUST_BE_MINOR')
+    assert.equal((await row(kid)).bd, '2018-03-04')
+  })
+  await t('sin vínculo no se edita al hijo/a de otra persona; ni una ficha ya mayor de edad', async () => {
+    has(await err(() => U(other.id, kid)), 'NOT_AUTHORIZED')
+    has(await err(() => U(other.id, teen)), 'NOT_AUTHORIZED')
+    has(await err(() => U(mom.id, teen)), 'NOT_AUTHORIZED')
+  })
+  await t('una persona adulta edita SU ficha; la fecha propia no puede quedar vacía; no cambia su tipo', async () => {
+    await U(other.id, other.member, 'Otra Persona', '#010203', '1990-02-02', 'female')
+    const r = await row(other.member)
+    assert.deepEqual([r.name, r.bd, r.sex, r.member_type], ['Otra Persona', '1990-02-02', 'female', 'adult'])
+    has(await err(() => U(other.id, other.member, 'Otra Persona', '#010203', null)), 'BIRTH_DATE_REQUIRED')
+  })
+  await t('no se edita la ficha de otra persona adulta (ni la de la administradora)', async () => {
+    has(await err(() => U(other.id, mom.member)), 'NOT_AUTHORIZED')
+    has(await err(() => U(mom.id, admin.member)), 'NOT_AUTHORIZED')
+  })
+  await t('invitados y niños con cuenta no editan nada, ni lo suyo', async () => {
+    has(await err(() => U(guest.id, guest.member)), 'NOT_AUTHORIZED')
+    has(await err(() => U(kidAcc.id, kidAcc.member)), 'NOT_AUTHORIZED')
+    has(await err(() => U(kidAcc.id, kid)), 'NOT_AUTHORIZED')
+  })
+  await t('la administradora sigue pudiendo con cualquier ficha de su familia, y no con las de otra familia', async () => {
+    await U(admin.id, mom.member, 'Mama', '#000000', null)
+    assert.equal((await row(mom.member)).bd, null)
+    has(await err(() => U(admin.id, outsider.member)), 'NOT_AUTHORIZED')
+    has(await err(() => U(outsider.id, kid)), 'NOT_AUTHORIZED')
+  })
+  await t('datos inválidos se rechazan (nombre vacío, color raro, sexo raro, fecha futura o anterior a 1900)', async () => {
+    has(await err(() => U(mom.id, kid, '   ')), 'INVALID_NAME')
+    has(await err(() => U(mom.id, kid, 'x'.repeat(61))), 'INVALID_NAME')
+    has(await err(() => U(mom.id, kid, 'Hijo', 'rojo')), 'INVALID_COLOR')
+    has(await err(() => U(mom.id, kid, 'Hijo', '#112233', '2018-03-04', 'otro')), 'INVALID_SEX')
+    has(await err(() => U(mom.id, kid, 'Hijo', '#112233', '2999-01-01')), 'INVALID_BIRTH_DATE')
+    has(await err(() => U(mom.id, kid, 'Hijo', '#112233', '1800-01-01')), 'INVALID_BIRTH_DATE')
+  })
+  await t('foto: la ficha propia y la del hijo/a vinculado sí; la de otra persona no; la ruta debe ser de la propia familia', async () => {
+    const P = (who, member, path) => as(db, who, () => db.query('select public.set_member_photo($1,$2)', [member, path]))
+    await P(mom.id, kid, `${fam}/a.jpg`)
+    await P(other.id, other.member, `${fam}/b.jpg`)
+    assert.equal((await row(kid)).photo_path, `${fam}/a.jpg`)
+    has(await err(() => P(other.id, kid, `${fam}/c.jpg`)), 'NOT_AUTHORIZED')
+    has(await err(() => P(guest.id, guest.member, `${fam}/d.jpg`)), 'NOT_AUTHORIZED')
+    has(await err(() => P(mom.id, kid, `${famB}/e.jpg`)), 'INVALID_PHOTO_PATH')
+    has(await err(() => P(mom.id, kid, `${fam}/../x.jpg`)), 'INVALID_PHOTO_PATH')
+    has(await err(() => P(mom.id, kid, null)), 'INVALID_PHOTO_PATH')
+    await P(admin.id, mom.member, `${fam}/f.jpg`)
+  })
+  await t('sin sesión no se puede nada', async () => {
+    assert.ok(await asAnon(db, () => err(() => db.query('select public.update_member_card($1,$2,$3,$4,$5)', [kid, 'x', '#112233', null, null]))))
+    assert.ok(await asAnon(db, () => err(() => db.query('select public.set_member_photo($1,$2)', [kid, `${fam}/z.jpg`]))))
+  })
+}
+
 // ---------------------------------------------------------------------------------------------------------- Puerta global
 console.log('\nPuerta por invitación (resumen): sin invitación válida no hay perfil')
 {

@@ -10,13 +10,14 @@ import {
   reorderFamilyMembers,
   updateAccountsMode,
   updateFamilyMember,
+  updateMemberCard,
   uploadMemberPhoto,
   type AccountsMode,
 } from '@/data/family'
 import { getMyAccount, listFamilyAccountEmails, type FamilyAccountEmail } from '@/data/account'
 import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
 import { listGuardianships, revokeOwnGuardianship } from '@/data/invitations'
-import { canDeclareGuardianship, canGiveAccess, GUARDIAN_RELATIONSHIP_LABELS, guardianNamesOf, myMember, ownGuardianLink, type GuardianLink } from '@/domain/guardianship'
+import { canDeclareGuardianship, canEditMemberCard, canGiveAccess, GUARDIAN_RELATIONSHIP_LABELS, guardianNamesOf, myMember, ownGuardianLink, type GuardianLink } from '@/domain/guardianship'
 import { AccessInvitePanel } from '@/ui/AccessInvitePanel'
 import { GuardianshipPanel } from '@/ui/GuardianshipPanel'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
@@ -249,6 +250,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             <EditMemberForm
               key={m.id}
               member={m}
+              limited={!isAdmin}
+              isOwn={m.id === me?.id}
               onDone={() => {
                 setEditingId(null)
                 reload()
@@ -330,7 +333,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                     </button>
                   ))}
               </div>
-              {isAdmin && (
+              {(isAdmin || canEditMemberCard(m, profile, me, links)) && (
                 <button
                   type="button"
                   className="member-row-more"
@@ -341,7 +344,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   ⋯
                 </button>
               )}
-              {isAdmin && menuOpenId === m.id && (
+              {(isAdmin || canEditMemberCard(m, profile, me, links)) && menuOpenId === m.id && (
                 <div className="member-row-actions">
                   <PhotoUploadButton memberId={m.id} onUploaded={reload} />
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
@@ -352,8 +355,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                       Paco entrando siempre como Jennifer). El código enlaza
                       la cuenta nueva a ESTE perfil ya existente, en vez de
                       crear una familia aparte. */}
-                  {!m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}
-                  {m.linkedProfileId !== profile.id && <ConfirmButton label="🗑 Borrar" onConfirm={() => handleDelete(m.id)} />}
+                  {isAdmin && !m.linkedProfileId && <InviteCodeButton memberId={m.id} memberName={m.name} />}
+                  {isAdmin && m.linkedProfileId !== profile.id && <ConfirmButton label="🗑 Borrar" onConfirm={() => handleDelete(m.id)} />}
                 </div>
               )}
               {/* Alergias e intolerancias (datos de salud): ficha privada, opcional y plegada. Plegada no consulta nada al servidor. */}
@@ -460,12 +463,18 @@ function InviteCodeButton({ memberId, memberName }: { memberId: string; memberNa
   )
 }
 
+// «limited»: quien edita NO es administradora (su propia ficha o la de su hijo/a, 0304): no se toca el tipo ni las secciones permitidas.
+// «isOwn»: es su propia ficha; ahí la fecha de nacimiento es obligatoria.
 function EditMemberForm({
   member,
+  limited = false,
+  isOwn = false,
   onDone,
   onCancel,
 }: {
   member: FamilyMember
+  limited?: boolean
+  isOwn?: boolean
   onDone: () => void
   onCancel: () => void
 }) {
@@ -483,14 +492,23 @@ function EditMemberForm({
     setSaving(true)
     setError(null)
     try {
-      await updateFamilyMember(member.id, {
-        name,
-        memberType,
-        color,
-        birthDate: birthDate || null,
-        sex: sex || null,
-        allowedSections: canRestrictSections(memberType) ? allowedSections : null,
-      })
+      if (limited) {
+        if (isOwn && !birthDate) {
+          setError('Indica tu fecha de nacimiento.')
+          setSaving(false)
+          return
+        }
+        await updateMemberCard(member.id, { name, color, birthDate: birthDate || null, sex: sex || null })
+      } else {
+        await updateFamilyMember(member.id, {
+          name,
+          memberType,
+          color,
+          birthDate: birthDate || null,
+          sex: sex || null,
+          allowedSections: canRestrictSections(memberType) ? allowedSections : null,
+        })
+      }
       onDone()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -505,22 +523,24 @@ function EditMemberForm({
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
-      <label>
-        Tipo
-        <select value={memberType} onChange={(e) => setMemberType(e.target.value as MemberType)}>
-          {MEMBER_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!limited && (
+        <label>
+          Tipo
+          <select value={memberType} onChange={(e) => setMemberType(e.target.value as MemberType)}>
+            {MEMBER_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Color
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
       </label>
       <label>
-        Fecha de nacimiento (opcional)
+        {isOwn && limited ? 'Fecha de nacimiento' : 'Fecha de nacimiento (opcional)'}
         <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin fecha de nacimiento" />
       </label>
       <label>
@@ -531,7 +551,7 @@ function EditMemberForm({
           <option value="male">Hombre / niño</option>
         </select>
       </label>
-      {canRestrictSections(memberType) && (
+      {!limited && canRestrictSections(memberType) && (
         <label>
           Secciones a las que puede entrar
           <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />

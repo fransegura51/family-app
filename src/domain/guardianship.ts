@@ -72,6 +72,17 @@ export function canGiveAccess(child: FamilyMember, profile: Pick<Profile, 'role'
   return profile.role === 'adult' && child.memberType === 'child' && isMinorMember(child, now) && amGuardianOf(child, me, links)
 }
 
+/**
+ * Editar la ficha (0304): la administradora, cualquiera; una persona adulta, la suya y la de sus hijos/as menores (vínculo «Es mi hijo/a»). Invitados y niños con cuenta, ninguna.
+ * Sin cambiar el tipo de ficha ni las secciones permitidas, que siguen siendo de la administración. El servidor lo vuelve a comprobar.
+ */
+export function canEditMemberCard(m: FamilyMember, profile: Pick<Profile, 'role'>, me: FamilyMember | null, links: GuardianLink[], now: Date = new Date()): boolean {
+  if (profile.role === 'admin') return true
+  if (profile.role !== 'adult') return false
+  if (me !== null && m.id === me.id) return true
+  return isMinorMember(m, now) && amGuardianOf(m, me, links)
+}
+
 /** Nombres de las personas vinculadas a una ficha, para enseñarlos en ella. */
 export function guardianNamesOf(child: FamilyMember, members: FamilyMember[], links: GuardianLink[]): { name: string; relationship: GuardianRelationship }[] {
   return links

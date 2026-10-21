@@ -96,6 +96,21 @@ export async function updateFamilyMember(
   if (error) throw error
 }
 
+// Editar la ficha SIN poder cambiar el tipo ni las secciones permitidas (0304): la usan las personas adultas con su propia ficha y la de sus hijos/as menores.
+export async function updateMemberCard(
+  id: string,
+  input: { name: string; color: string; birthDate: string | null; sex: MemberSex | null },
+): Promise<void> {
+  const { error } = await supabase.rpc('update_member_card', {
+    p_member: id,
+    p_name: input.name,
+    p_color: input.color,
+    p_birth_date: input.birthDate,
+    p_sex: input.sex,
+  })
+  if (error) throw error
+}
+
 // Edición rápida solo de la fecha, para el botón "Editar" de la
 // pestaña Cumpleaños — sin pasar por el formulario completo de Familia.
 export async function updateMemberWeightGoal(id: string, goalKg: number | null): Promise<void> {
@@ -160,7 +175,8 @@ export async function uploadMemberPhoto(memberId: string, file: File): Promise<v
   const { error: uploadError } = await supabase.storage.from('member-photos').upload(path, compressed)
   if (uploadError) throw uploadError
 
-  const { error } = await supabase.from('family_members').update({ photo_path: path }).eq('id', memberId)
+  // Por función del servidor (0304): así también pueden cambiar la foto la propia persona adulta y la madre/padre vinculado, no solo la administración.
+  const { error } = await supabase.rpc('set_member_photo', { p_member: memberId, p_photo_path: path })
   if (error) throw error
 }
 

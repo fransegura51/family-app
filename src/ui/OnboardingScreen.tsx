@@ -3,6 +3,7 @@ import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.
 import { getSignupInviteCode } from '@/data/account'
 import { createFamily, joinFamilyWithCode } from '@/data/family'
 import { checkInvitation } from '@/data/invitations'
+import { accountStillExists, signOutThisDevice } from '@/data/session'
 import { errorMessage } from '@/domain/errorMessage'
 import { invitationErrorMessage, type InvitationKind } from '@/domain/invitations'
 import { forgetPendingInvitation, recallPendingInvitation } from '@/domain/pendingInvitation'
@@ -14,6 +15,22 @@ interface ResolvedInvitation {
   code: string
   kind: InvitationKind
   needsBirthDate: boolean
+}
+
+// Salida siempre a la vista: quien llega aquí con una cuenta que no es la suya (o que ya no existe) tiene que poder entrar con otra. Cierra solo ESTE dispositivo.
+function LeaveButton() {
+  return (
+    <button
+      type="button"
+      className="link-button"
+      onClick={() => {
+        forgetPendingInvitation()
+        void signOutThisDevice()
+      }}
+    >
+      Salir y entrar con otra cuenta
+    </button>
+  )
 }
 
 // Logotipo oficial (con eslogan) arriba de las tres vistas, igual que la pantalla de entrada.
@@ -57,6 +74,22 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
     }
   }, [])
 
+  // Si la cuenta de esta sesión ya no existe en el servidor (se borró), se cierra la sesión sola y se vuelve a la pantalla de entrada.
+  useEffect(() => {
+    let active = true
+    accountStillExists()
+      .then((exists) => {
+        if (active && !exists) {
+          forgetPendingInvitation()
+          void signOutThisDevice()
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
   async function finished() {
     forgetPendingInvitation()
     await onCreated()
@@ -87,6 +120,7 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
           una familia nueva" y pégalo ahí — el botón de abajo es solo para unirte a una familia que ya
           está usando la app.
         </p>
+        <LeaveButton />
       </div>
     )
   }
@@ -179,6 +213,7 @@ function CreateFamilyForm({ onDone, onBack, fixedCode }: { onDone: () => Promise
           </button>
         </div>
       </form>
+      <LeaveButton />
     </div>
   )
 }
@@ -239,6 +274,7 @@ function JoinFamilyForm({ onDone, onBack, fixedCode, needsBirthDate }: { onDone:
           </button>
         </div>
       </form>
+      <LeaveButton />
     </div>
   )
 }

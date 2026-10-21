@@ -10,6 +10,7 @@ import familySrc from '@/data/family.ts?raw'
 
 vi.mock('@/data/family', () => ({ createFamily: vi.fn(), joinFamilyWithCode: vi.fn() }))
 vi.mock('@/data/account', () => ({ getSignupInviteCode: vi.fn(async () => null) }))
+vi.mock('@/data/session', () => ({ accountStillExists: vi.fn(async () => true), signOutThisDevice: vi.fn(async () => {}) }))
 vi.mock('@/data/invitations', () => ({ checkInvitation: vi.fn(async () => ({ valid: false })) }))
 
 const NOW = new Date(2026, 9, 17, 12, 0, 0)

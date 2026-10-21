@@ -1,17 +1,64 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
+import { getSignupInviteCode } from '@/data/account'
 import { createFamily, joinFamilyWithCode } from '@/data/family'
+import { checkInvitation } from '@/data/invitations'
 import { errorMessage } from '@/domain/errorMessage'
+import { invitationErrorMessage, type InvitationKind } from '@/domain/invitations'
+import { forgetPendingInvitation, recallPendingInvitation } from '@/domain/pendingInvitation'
 import { BIRTH_DATE_HELP, MIN_BIRTH_DATE, birthDateError, signupBirthDateServerMessage, todayIso } from '@/domain/signupBirthDate'
 
 type Mode = 'choose' | 'create' | 'join'
+
+interface ResolvedInvitation {
+  code: string
+  kind: InvitationKind
+  needsBirthDate: boolean
+}
 
 // Se muestra cuando hay sesión pero todavía no hay `profiles` row: el
 // usuario acaba de registrarse y tiene que crear su familia (Fase 1) o,
 // si ya pertenece a una familia existente (p. ej. Paco, hasta ahora
 // ligado a la sesión de Jennifer), enlazar su cuenta nueva a su
 // perfil ya existente con el código que le haya dado el admin.
+//
+// PEPA es privada: la invitación se pide ANTES de crear la cuenta (LoginScreen). Si la persona ya la presentó, aquí se continúa solo con el formulario que le corresponde, con el
+// código ya puesto. Aun así el SERVIDOR la vuelve a comprobar y la gasta al terminar (create_family / join_family_with_code): lo que se recuerde aquí no da ningún permiso por sí solo.
+// Quien llegue sin invitación recordada (alta antigua, otro dispositivo sin datos) sigue viendo las dos opciones de siempre, cada una con su código.
 export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void> }) {
   const [mode, setMode] = useState<Mode>('choose')
+  const [invitation, setInvitation] = useState<ResolvedInvitation | null>(null)
+  // Solo se muestra «Cargando…» si ya hay una invitación recordada en este navegador; si no, la elección de siempre aparece al instante.
+  const [resolving, setResolving] = useState(() => recallPendingInvitation() !== null)
+
+  useEffect(() => {
+    let active = true
+    async function resolve() {
+      try {
+        const remembered = recallPendingInvitation()
+        const code = remembered?.code ?? (await getSignupInviteCode())
+        if (!code) return
+        const check = await checkInvitation(code)
+        if (!active || !check.valid || !check.kind) return
+        setInvitation({ code, kind: check.kind, needsBirthDate: check.needsBirthDate !== false })
+        setMode(check.kind === 'family' ? 'create' : 'join')
+      } catch {
+        // Si no se puede comprobar ahora, se ven las dos opciones de siempre.
+      } finally {
+        if (active) setResolving(false)
+      }
+    }
+    void resolve()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  async function finished() {
+    forgetPendingInvitation()
+    await onCreated()
+  }
+
+  if (resolving) return <div className="screen screen-centered">Cargando…</div>
 
   if (mode === 'choose') {
     return (
@@ -39,14 +86,15 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
     )
   }
 
+  const fixed = invitation && invitation.kind === (mode === 'create' ? 'family' : 'member') ? invitation : null
   if (mode === 'join') {
-    return <JoinFamilyForm onDone={onCreated} onBack={() => setMode('choose')} />
+    return <JoinFamilyForm onDone={finished} onBack={() => setMode('choose')} fixedCode={fixed?.code} needsBirthDate={fixed ? fixed.needsBirthDate : true} />
   }
 
-  return <CreateFamilyForm onDone={onCreated} onBack={() => setMode('choose')} />
+  return <CreateFamilyForm onDone={finished} onBack={() => setMode('choose')} fixedCode={fixed?.code} />
 }
 
-function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBack: () => void }) {
+function CreateFamilyForm({ onDone, onBack, fixedCode }: { onDone: () => Promise<void>; onBack: () => void; fixedCode?: string }) {
   const [familyName, setFamilyName] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [accessCode, setAccessCode] = useState('')
@@ -64,10 +112,10 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
     setLoading(true)
     setError(null)
     try {
-      await createFamily(familyName, displayName, accessCode, birthDate)
+      await createFamily(familyName, displayName, fixedCode ?? accessCode, birthDate)
       await onDone()
     } catch (err) {
-      setError(signupBirthDateServerMessage(err) ?? errorMessage(err, 'Error al crear la familia'))
+      setError(signupBirthDateServerMessage(err) ?? invitationErrorMessage(err) ?? errorMessage(err, 'Error al crear la familia'))
     } finally {
       setLoading(false)
     }
@@ -99,16 +147,22 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
           />
         </label>
         <BirthDateField value={birthDate} onChange={setBirthDate} />
-        <label>
-          Código de acceso
-          <input
-            type="text"
-            placeholder="Pídeselo a quien te haya invitado a usar la app"
-            value={accessCode}
-            onChange={(e) => setAccessCode(e.target.value)}
-            required
-          />
-        </label>
+        {fixedCode ? (
+          <p className="muted" style={{ margin: 0 }}>
+            ✓ Invitación válida presentada.
+          </p>
+        ) : (
+          <label>
+            Código de acceso
+            <input
+              type="text"
+              placeholder="Pídeselo a quien te haya invitado a usar la app"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              required
+            />
+          </label>
+        )}
         {error && <p className="error">{error}</p>}
         <div className="form-actions">
           <button type="submit" disabled={loading}>
@@ -123,7 +177,7 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
   )
 }
 
-function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBack: () => void }) {
+function JoinFamilyForm({ onDone, onBack, fixedCode, needsBirthDate }: { onDone: () => Promise<void>; onBack: () => void; fixedCode?: string; needsBirthDate: boolean }) {
   const [code, setCode] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [birthDate, setBirthDate] = useState('')
@@ -132,7 +186,8 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    const dateProblem = birthDateError(birthDate)
+    // Cuando la ficha ya trae la fecha de nacimiento (la puso quien invita) no se pide: manda la de la ficha, nunca la que se escriba aquí.
+    const dateProblem = needsBirthDate ? birthDateError(birthDate) : null
     if (dateProblem) {
       setError(dateProblem)
       return
@@ -140,10 +195,10 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
     setLoading(true)
     setError(null)
     try {
-      await joinFamilyWithCode(code, displayName, birthDate)
+      await joinFamilyWithCode(fixedCode ?? code, displayName, needsBirthDate ? birthDate : null)
       await onDone()
     } catch (err) {
-      setError(signupBirthDateServerMessage(err) ?? errorMessage(err, 'Código no válido o caducado'))
+      setError(signupBirthDateServerMessage(err) ?? invitationErrorMessage(err) ?? errorMessage(err, 'Código no válido o caducado'))
     } finally {
       setLoading(false)
     }
@@ -152,23 +207,21 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
   return (
     <div className="screen screen-centered">
       <h1>Únete a tu familia</h1>
-      <p className="muted">Pide el código a quien administra la app (Familia → tu nombre → "Generar código de acceso").</p>
+      <p className="muted">
+        {fixedCode ? 'Tu invitación es válida. Solo faltan tus datos.' : 'Pide el código a quien administra la familia (en Familia, «Dar acceso a PEPA» en tu ficha).'}
+      </p>
       <form onSubmit={handleSubmit} className="card">
-        <label>
-          Código de invitación
-          <input
-            type="text"
-            value={code}
-            onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="ABCD1234"
-            required
-          />
-        </label>
+        {!fixedCode && (
+          <label>
+            Código de invitación
+            <input type="text" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD1234" required />
+          </label>
+        )}
         <label>
           Tu nombre
           <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} required />
         </label>
-        <BirthDateField value={birthDate} onChange={setBirthDate} />
+        {needsBirthDate && <BirthDateField value={birthDate} onChange={setBirthDate} />}
         {error && <p className="error">{error}</p>}
         <div className="form-actions">
           <button type="submit" disabled={loading}>

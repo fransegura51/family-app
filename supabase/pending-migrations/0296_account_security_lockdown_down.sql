@@ -1,4 +1,4 @@
--- Deshacer el endurecimiento 0293: devuelve a las cuentas autenticadas el permiso de las dos funciones y restaura set_own_pin tal como lo dejó 0084.
+-- Deshacer el endurecimiento 0296: devuelve a las cuentas autenticadas el permiso de las dos funciones y restaura set_own_pin tal como lo dejó 0084.
 grant execute on function public.admin_reset_profile_pin(uuid) to authenticated;
 grant execute on function public.clear_own_pin() to authenticated;
 

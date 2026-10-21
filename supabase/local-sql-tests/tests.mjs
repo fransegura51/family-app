@@ -1,0 +1,502 @@
+import assert from 'node:assert/strict'
+import { setup, addUser, mkFamily, addAccount, addFicha, as, asAnon, err, uid } from './harness.mjs'
+
+let passed = 0
+const failed = []
+async function t(name, fn) {
+  try {
+    await fn()
+    passed++
+    console.log('  ✓', name)
+  } catch (e) {
+    failed.push(name)
+    console.log('  ✗', name, '\n     ', String(e.message).split('\n').slice(0, 4).join('\n      '))
+  }
+}
+const has = (msg, text) => assert.ok(msg && msg.includes(text), `se esperaba «${text}» y fue: ${msg}`)
+const FRESH = 5 // identificación de hace 5 segundos
+const OLD = 3600 * 5
+
+const db = await setup()
+
+// ---------------------------------------------------------------------------------------------------------- 0292
+console.log('\n0292 · PIN y correos')
+{
+  const fam = await mkFamily(db)
+  const a = await addAccount(db, fam, 'admin', 'Ana')
+  const b = await addAccount(db, fam, 'adult', 'Beto')
+  const famC = await mkFamily(db, 'C')
+  const c = await addAccount(db, famC, 'admin', 'Cris')
+
+  await t('cambiar PIN: PIN actual mal → wrong_pin y cuenta el intento; bueno → ok', async () => {
+    await as(db, a.id, () => db.query(`select public.set_own_pin('1234')`))
+    const r = await as(db, a.id, () => db.query(`select public.change_own_pin('0000','5678') r`))
+    assert.equal(r.rows[0].r, 'wrong_pin')
+    const n = await db.query('select failed_attempts from profile_locks where profile_id=$1', [a.id])
+    assert.equal(n.rows[0].failed_attempts, 1)
+    const ok = await as(db, a.id, () => db.query(`select public.change_own_pin('1234','5678') r`))
+    assert.equal(ok.rows[0].r, 'ok')
+    const v = await as(db, a.id, () => db.query(`select public.verify_own_pin('5678') v`))
+    assert.equal(v.rows[0].v, true)
+  })
+  await t('tras 5 fallos se bloquea (PIN_LOCKED) y el contador NO se pierde', async () => {
+    for (let i = 0; i < 5; i++) await as(db, a.id, () => db.query(`select public.change_own_pin('0000','1111')`))
+    const e = await as(db, a.id, () => err(() => db.query(`select public.change_own_pin('5678','1111')`)))
+    has(e, 'PIN_LOCKED')
+    await db.query(`update profile_locks set failed_attempts=0, locked_until=null where profile_id=$1`, [a.id])
+  })
+  await t('quitar PIN con el PIN: mal → wrong_pin; bueno → ok y borra huellas', async () => {
+    await db.query(`insert into profile_webauthn_credentials (profile_id, credential_id, public_key) values ($1,'c1','pk')`, [a.id])
+    assert.equal((await as(db, a.id, () => db.query(`select public.clear_own_pin_with_pin('0000') r`))).rows[0].r, 'wrong_pin')
+    assert.equal((await as(db, a.id, () => db.query(`select public.clear_own_pin_with_pin('5678') r`))).rows[0].r, 'ok')
+    assert.equal((await db.query('select count(*)::int n from profile_locks where profile_id=$1', [a.id])).rows[0].n, 0)
+    assert.equal((await db.query('select count(*)::int n from profile_webauthn_credentials where profile_id=$1', [a.id])).rows[0].n, 0)
+  })
+  await t('recuperar el PIN: sesión de hace horas → RECENT_AUTH_REQUIRED; reciente → quita PIN y huellas', async () => {
+    await as(db, a.id, () => db.query(`select public.set_own_pin('2468')`))
+    await db.query(`insert into profile_webauthn_credentials (profile_id, credential_id, public_key) values ($1,'c2','pk')`, [a.id])
+    const e = await as(db, a.id, () => err(() => db.query('select public.reset_own_pin_after_recent_auth()')), { amrAgoSeconds: OLD })
+    has(e, 'RECENT_AUTH_REQUIRED')
+    assert.equal((await db.query('select count(*)::int n from profile_locks where profile_id=$1', [a.id])).rows[0].n, 1)
+    await as(db, a.id, () => db.query('select public.reset_own_pin_after_recent_auth()'), { amrAgoSeconds: FRESH })
+    assert.equal((await db.query('select count(*)::int n from profile_locks where profile_id=$1', [a.id])).rows[0].n, 0)
+    assert.equal((await db.query('select count(*)::int n from profile_webauthn_credentials where profile_id=$1', [a.id])).rows[0].n, 0)
+  })
+  await t('correos de las fichas: admin ve los de su familia; adulta solo el suyo; nadie ve los de otra familia', async () => {
+    assert.equal((await as(db, a.id, () => db.query('select * from public.list_family_account_emails()'))).rows.length, 2)
+    assert.equal((await as(db, b.id, () => db.query('select * from public.list_family_account_emails()'))).rows.length, 1)
+    const rc = await as(db, c.id, () => db.query('select email from public.list_family_account_emails()'))
+    assert.equal(rc.rows.length, 1)
+    assert.ok(!rc.rows.some((r) => r.email === a.email || r.email === b.email))
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- 0293
+console.log('\n0293 · Vínculo parental («Es mi hijo/a»)')
+{
+  const fam = await mkFamily(db, 'G')
+  const mom = await addAccount(db, fam, 'admin', 'Mama')
+  const dad = await addAccount(db, fam, 'adult', 'Papa')
+  const guest = await addAccount(db, fam, 'guest', 'Invitado', 'guest')
+  const kidAcc = await addAccount(db, fam, 'child', 'NinoConCuenta', 'child', { birth: '2015-05-05' })
+  const kid = await addFicha(db, fam, 'Eric', 'child', { birth: '2016-03-03' })
+  const baby = await addFicha(db, fam, 'Fer', 'baby', { birth: '2025-01-01' })
+  const adultFicha = await addFicha(db, fam, 'Abuela', 'adult', { birth: '1950-01-01' })
+  const adultAsChild = await addFicha(db, fam, 'Mayor', 'child', { birth: '2000-01-01' }) // «niño» ya mayor de 18
+  const otherFam = await mkFamily(db, 'Otra')
+  const otherKid = await addFicha(db, otherFam, 'Ajeno', 'child', { birth: '2016-01-01' })
+  const D = (child, accepted = true, v = 'v1', rel = 'parent') => db.query('select public.declare_guardianship($1,$2,$3,$4) id', [child, rel, accepted, v])
+
+  await t('declarar con identificación reciente y declaración: crea el vínculo y su registro', async () => {
+    const r = await as(db, mom.id, () => D(kid), { amrAgoSeconds: FRESH })
+    assert.ok(r.rows[0].id)
+    const g = await db.query('select status, relationship, declaration_version, declared_by from family_member_guardians where id=$1', [r.rows[0].id])
+    assert.equal(g.rows[0].status, 'active'); assert.equal(g.rows[0].declared_by, mom.id)
+    assert.equal((await db.query(`select count(*)::int n from family_guardian_events where event='declared'`)).rows[0].n, 1)
+  })
+  await t('sin declaración aceptada → DECLARATION_REQUIRED; con sesión antigua → RECENT_AUTH_REQUIRED', async () => {
+    has(await as(db, dad.id, () => err(() => D(kid, false)), { amrAgoSeconds: FRESH }), 'DECLARATION_REQUIRED')
+    has(await as(db, dad.id, () => err(() => D(kid, true, '')), { amrAgoSeconds: FRESH }), 'DECLARATION_REQUIRED')
+    has(await as(db, dad.id, () => err(() => D(kid)), { amrAgoSeconds: OLD }), 'RECENT_AUTH_REQUIRED')
+  })
+  await t('SIN límite de tutores: un segundo vínculo sobre el mismo menor es válido (y un tercero también)', async () => {
+    await as(db, dad.id, () => D(kid), { amrAgoSeconds: FRESH })
+    const extra = await addAccount(db, fam, 'adult', 'Tutor')
+    await as(db, extra.id, () => D(kid, true, 'v1', 'legal_guardian'), { amrAgoSeconds: FRESH })
+    assert.equal((await db.query(`select count(*)::int n from family_member_guardians where child_member_id=$1 and status='active'`, [kid])).rows[0].n, 3)
+  })
+  await t('no se duplica el mismo vínculo', async () => {
+    has(await as(db, mom.id, () => err(() => D(kid)), { amrAgoSeconds: FRESH }), 'ALREADY_LINKED')
+  })
+  await t('NUNCA sobre una persona adulta: ficha adulta, ficha «niño» ya mayor de 18, uno mismo, otra familia', async () => {
+    has(await as(db, mom.id, () => err(() => D(adultFicha)), { amrAgoSeconds: FRESH }), 'CHILD_MUST_BE_MINOR')
+    has(await as(db, mom.id, () => err(() => D(adultAsChild)), { amrAgoSeconds: FRESH }), 'CHILD_MUST_BE_MINOR')
+    has(await as(db, mom.id, () => err(() => D(mom.member)), { amrAgoSeconds: FRESH }), 'CANNOT_DECLARE_SELF')
+    has(await as(db, mom.id, () => err(() => D(dad.member)), { amrAgoSeconds: FRESH }), 'CHILD_MUST_BE_MINOR')
+    has(await as(db, mom.id, () => err(() => D(otherKid)), { amrAgoSeconds: FRESH }), 'CHILD_NOT_FOUND')
+  })
+  await t('un invitado o un niño con cuenta no pueden declarar; un bebé sí es menor', async () => {
+    has(await as(db, guest.id, () => err(() => D(kid)), { amrAgoSeconds: FRESH }), 'NOT_AUTHORIZED')
+    has(await as(db, kidAcc.id, () => err(() => D(kid)), { amrAgoSeconds: FRESH }), 'NOT_AUTHORIZED')
+    assert.ok((await as(db, mom.id, () => D(baby), { amrAgoSeconds: FRESH })).rows[0].id)
+  })
+  await t('no se puede escribir a mano en la tabla (ni insertar, ni borrar, ni cambiar)', async () => {
+    assert.ok(await as(db, mom.id, () => err(() => db.query(`insert into family_member_guardians (family_id, child_member_id, guardian_member_id, relationship, declaration_version) values ($1,$2,$3,'parent','x')`, [fam, adultFicha, mom.member]))))
+    assert.ok(await as(db, mom.id, () => err(() => db.query(`update family_member_guardians set status='revoked', revoked_at=now()`))))
+    assert.ok(await as(db, mom.id, () => err(() => db.query(`delete from family_member_guardians`))))
+  })
+  await t('RLS: las adultas de la familia ven los vínculos; un niño con cuenta y otra familia no', async () => {
+    assert.ok((await as(db, dad.id, () => db.query('select * from family_member_guardians'))).rows.length >= 3)
+    assert.equal((await as(db, kidAcc.id, () => db.query('select * from family_member_guardians'))).rows.length, 0)
+    const stranger = await addAccount(db, otherFam, 'admin', 'Ajena')
+    assert.equal((await as(db, stranger.id, () => db.query('select * from family_member_guardians'))).rows.length, 0)
+  })
+  await t('revocar el propio vínculo NO está habilitado para la app (sin permiso de ejecución) pero la función existe y registra', async () => {
+    const link = (await db.query(`select id from family_member_guardians where guardian_member_id=$1 and child_member_id=$2`, [dad.member, kid])).rows[0].id
+    assert.ok(await as(db, dad.id, () => err(() => db.query('select public.revoke_own_guardianship($1)', [link]))), 'authenticated no debería poder ejecutarla')
+    await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [dad.id]) // el propietario de la función sí (prueba interna)
+    await db.query('select public.revoke_own_guardianship($1,$2)', [link, 'prueba'])
+    const r = await db.query('select status, revoked_by from family_member_guardians where id=$1', [link])
+    assert.equal(r.rows[0].status, 'revoked'); assert.equal(r.rows[0].revoked_by, dad.id)
+    // historial conservado: se puede volver a declarar y el vínculo antiguo sigue como registro
+    await as(db, dad.id, () => D(kid), { amrAgoSeconds: FRESH })
+    assert.equal((await db.query(`select count(*)::int n from family_member_guardians where guardian_member_id=$1 and child_member_id=$2`, [dad.member, kid])).rows[0].n, 2)
+    await db.query(`select set_config('request.jwt.claim.sub', '', false)`)
+  })
+  await t('ayudante de edad: a los 18 años dejan los poderes (sin borrar el vínculo)', async () => {
+    const teen = await addFicha(db, fam, 'Casi', 'child', { birth: '2010-06-01' })
+    await as(db, mom.id, () => D(teen), { amrAgoSeconds: FRESH })
+    const f = () => as(db, mom.id, () => db.query('select private.is_active_guardian_of($1) v', [teen]))
+    // is_active_guardian_of es privada: se prueba como propietario con la identidad puesta
+    await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [mom.id])
+    assert.equal((await db.query('select private.is_active_guardian_of($1) v', [teen])).rows[0].v, true)
+    await db.query('update family_members set birth_date = current_date - interval \'18 years\' where id=$1', [teen])
+    assert.equal((await db.query('select private.is_active_guardian_of($1) v', [teen])).rows[0].v, false)
+    assert.equal((await db.query(`select count(*)::int n from family_member_guardians where child_member_id=$1 and status='active'`, [teen])).rows[0].n, 1)
+    await db.query(`select set_config('request.jwt.claim.sub', '', false)`)
+    void f
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- 0294
+console.log('\n0294 · Invitaciones: dar acceso, rol de la ficha, bloqueos y reserva')
+{
+  const fam = await mkFamily(db, 'H')
+  const mom = await addAccount(db, fam, 'admin', 'Mama2')
+  const dad = await addAccount(db, fam, 'adult', 'Papa2')
+  const other = await addAccount(db, fam, 'adult', 'Tio')
+  const kid = await addFicha(db, fam, 'Eric2', 'child', { birth: '2016-03-03', sections: ['compras', 'calendario'] })
+  const kidNoDate = await addFicha(db, fam, 'SinFecha', 'child')
+  const guestF = await addFicha(db, fam, 'Amiga', 'guest', { sections: ['calendario'] })
+  const adultF = await addFicha(db, fam, 'Abuelo2', 'adult', { birth: '1950-01-01' })
+  const babyF = await addFicha(db, fam, 'Bebe', 'baby', { birth: '2025-01-01' })
+  const inv = (m, regen = false) => db.query('select * from public.create_member_invitation($1,$2)', [m, regen])
+  await as(db, mom.id, () => db.query('select public.declare_guardianship($1,$2,true,$3)', [kid, 'parent', 'v1']), { amrAgoSeconds: FRESH })
+  await as(db, dad.id, () => db.query('select public.declare_guardianship($1,$2,true,$3)', [kid, 'parent', 'v1']), { amrAgoSeconds: FRESH })
+
+  await t('administradora: genera el código de cualquier ficha sin cuenta (salvo bebé); 10 caracteres; 24 h', async () => {
+    const r = await as(db, mom.id, () => inv(adultF))
+    assert.equal(r.rows[0].o_code.length, 10); assert.equal(r.rows[0].o_reused, false)
+    assert.ok(new Date(r.rows[0].o_expires_at) > new Date(Date.now() + 23 * 3600e3))
+    has(await as(db, mom.id, () => err(() => inv(babyF))), 'MEMBER_NOT_INVITABLE')
+  })
+  await t('NO duplica: pedir otra vez devuelve el mismo código vigente (reutilizado) con su caducidad; regenerar sí cambia', async () => {
+    const a = (await as(db, mom.id, () => inv(kid))).rows[0]
+    const b = (await as(db, mom.id, () => inv(kid))).rows[0]
+    assert.equal(a.o_code, b.o_code); assert.equal(b.o_reused, true)
+    const c = (await as(db, mom.id, () => inv(kid, true))).rows[0]
+    assert.notEqual(c.o_code, a.o_code); assert.equal(c.o_reused, false)
+    assert.equal((await db.query('select count(*)::int n from family_members where invite_code=$1', [a.o_code])).rows[0].n, 0)
+  })
+  await t('madre/padre vinculado (no administrador) puede invitar a SU hijo menor', async () => {
+    const r = await as(db, dad.id, () => inv(kid))
+    assert.ok(r.rows[0].o_code)
+  })
+  await t('…pero NO a un adulto, ni a un invitado, ni a un niño ajeno, ni sin ser madre/padre vinculado', async () => {
+    has(await as(db, dad.id, () => err(() => inv(adultF))), 'NOT_AUTHORIZED')
+    has(await as(db, dad.id, () => err(() => inv(guestF))), 'NOT_AUTHORIZED')
+    has(await as(db, other.id, () => err(() => inv(kid))), 'NOT_AUTHORIZED')
+    const otherKid = await addFicha(db, fam, 'HijoDeOtro', 'child', { birth: '2014-01-01' })
+    has(await as(db, dad.id, () => err(() => inv(otherKid))), 'NOT_AUTHORIZED')
+  })
+  await t('una ficha con cuenta no se invita; un niño sin fecha en la ficha exige ponerla antes', async () => {
+    has(await as(db, mom.id, () => err(() => inv(dad.member))), 'ya tiene una cuenta')
+    has(await as(db, mom.id, () => err(() => inv(kidNoDate))), 'BIRTH_DATE_REQUIRED_ON_PROFILE')
+  })
+  await t('a los 18 años el padre vinculado deja de poder invitar (la administradora sí)', async () => {
+    const teen = await addFicha(db, fam, 'Mayorcito', 'child', { birth: '2010-06-01' })
+    await as(db, dad.id, () => db.query('select public.declare_guardianship($1,$2,true,$3)', [teen, 'parent', 'v1']), { amrAgoSeconds: FRESH })
+    assert.ok((await as(db, dad.id, () => inv(teen))).rows[0].o_code)
+    await db.query(`update family_members set birth_date = current_date - interval '18 years', invite_code=null, invite_code_expires_at=null where id=$1`, [teen])
+    has(await as(db, dad.id, () => err(() => inv(teen))), 'NOT_AUTHORIZED')
+    assert.ok((await as(db, mom.id, () => inv(teen))).rows[0].o_code)
+  })
+
+  // --- unirse: el rol y las secciones salen de la FICHA
+  const newAcc = async (email) => ({ id: await addUser(db, email), email })
+  await t('el menor que se une queda como role child con las secciones de su ficha (arregla el fallo 0217)', async () => {
+    const code = (await as(db, mom.id, () => inv(kid, true))).rows[0].o_code
+    const u = await newAcc('eric@example.invalid')
+    await as(db, u.id, () => db.query('select public.join_family_with_code($1,$2,$3)', [code, 'Eric', '2000-01-01']), { email: u.email })
+    const p = (await db.query('select role, allowed_sections, family_id from profiles where id=$1', [u.id])).rows[0]
+    assert.equal(p.role, 'child'); assert.deepEqual(p.allowed_sections, ['compras', 'calendario']); assert.equal(p.family_id, fam)
+    // la fecha de la ficha manda: la escrita (2000) se ignora
+    assert.equal(String((await db.query('select birth_date::text d from family_members where id=$1', [kid])).rows[0].d), '2016-03-03')
+  })
+  await t('el invitado queda como role guest con sus secciones; la adulta como adult', async () => {
+    const g = (await as(db, mom.id, () => inv(guestF))).rows[0].o_code
+    const ug = await newAcc('amiga@example.invalid')
+    await as(db, ug.id, () => db.query('select public.join_family_with_code($1,$2,$3)', [g, 'Amiga', '1990-01-01']), { email: ug.email })
+    const pg = (await db.query('select role, allowed_sections from profiles where id=$1', [ug.id])).rows[0]
+    assert.equal(pg.role, 'guest'); assert.deepEqual(pg.allowed_sections, ['calendario'])
+    const a = (await as(db, mom.id, () => inv(adultF))).rows[0].o_code
+    const ua = await newAcc('abuelo@example.invalid')
+    await as(db, ua.id, () => db.query('select public.join_family_with_code($1,$2,$3)', [a, 'Abuelo', '1950-01-01']), { email: ua.email })
+    assert.equal((await db.query('select role from profiles where id=$1', [ua.id])).rows[0].role, 'adult')
+  })
+  await t('un menor NO consigue permisos de adulto con una fecha falsa: la ficha de adulto con fecha de menor se rechaza', async () => {
+    const f = await addFicha(db, fam, 'AdultoSinFecha', 'adult')
+    const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
+    const u = await newAcc('falso@example.invalid')
+    has(await as(db, u.id, () => err(() => db.query('select public.join_family_with_code($1,$2,$3)', [c, 'X', new Date(Date.now() - 12 * 365 * 864e5).toISOString().slice(0, 10)])), { email: u.email }), 'ADULT_REQUIRED')
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [u.id])).rows[0].n, 0)
+    assert.ok(!(await db.query('select linked_profile_id from family_members where id=$1', [f])).rows[0].linked_profile_id)
+  })
+  await t('sin fecha en ninguna parte → BIRTH_DATE_REQUIRED; fecha futura → BIRTH_DATE_INVALID', async () => {
+    const f = await addFicha(db, fam, 'Otro', 'adult')
+    const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
+    const u = await newAcc('sinfecha@example.invalid')
+    has(await as(db, u.id, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [c, 'X'])), { email: u.email }), 'BIRTH_DATE_REQUIRED')
+    has(await as(db, u.id, () => err(() => db.query(`select public.join_family_with_code($1,$2,'2999-01-01')`, [c, 'X'])), { email: u.email }), 'BIRTH_DATE_INVALID')
+  })
+  await t('código usado, inventado o caducado → «Código no válido o caducado»; no se reutiliza', async () => {
+    const f = await addFicha(db, fam, 'Uno', 'adult', { birth: '1980-01-01' })
+    const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
+    const u1 = await newAcc('u1@example.invalid'); const u2 = await newAcc('u2@example.invalid')
+    await as(db, u1.id, () => db.query('select public.join_family_with_code($1,$2,null)', [c, 'U1']), { email: u1.email })
+    has(await as(db, u2.id, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [c, 'U2'])), { email: u2.email }), 'Código no válido o caducado')
+    has(await as(db, u2.id, () => err(() => db.query(`select public.join_family_with_code('ZZZZZZZZZZ','U2',null)`)), { email: u2.email }), 'Código no válido o caducado')
+    const f2 = await addFicha(db, fam, 'Dos', 'adult', { birth: '1980-01-01' })
+    const c2 = (await as(db, mom.id, () => inv(f2))).rows[0].o_code
+    await db.query(`update family_members set invite_code_expires_at = now() - interval '1 minute' where id=$1`, [f2])
+    has(await as(db, u2.id, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [c2, 'U2'])), { email: u2.email }), 'Código no válido o caducado')
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [u2.id])).rows[0].n, 0)
+  })
+  await t('un bebé no tiene cuenta aunque tenga un código antiguo', async () => {
+    await db.query(`update family_members set invite_code='BABYCODE1', invite_code_expires_at=now()+interval '1 day' where id=$1`, [babyF])
+    const u = await newAcc('bebe@example.invalid')
+    has(await as(db, u.id, () => err(() => db.query(`select public.join_family_with_code('BABYCODE1','X','2020-01-01')`)), { email: u.email }), 'Código no válido o caducado')
+  })
+  await t('reserva por correo: si el código está reservado para otro correo, no vale; para el mismo, sí', async () => {
+    const f = await addFicha(db, fam, 'Reserva', 'adult', { birth: '1980-01-01' })
+    const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
+    await db.query(`update family_members set invite_reserved_email='dueno@example.invalid', invite_reserved_until=now()+interval '1 hour' where id=$1`, [f])
+    const intruso = await newAcc('intruso@example.invalid')
+    has(await as(db, intruso.id, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [c, 'X'])), { email: intruso.email }), 'Código no válido o caducado')
+    const dueno = await newAcc('dueno@example.invalid')
+    await as(db, dueno.id, () => db.query('select public.join_family_with_code($1,$2,null)', [c, 'D']), { email: dueno.email })
+    assert.equal((await db.query('select role from profiles where id=$1', [dueno.id])).rows[0].role, 'adult')
+    assert.equal((await db.query('select invite_reserved_email e from family_members where id=$1', [f])).rows[0].e, null)
+  })
+  await t('reserva caducada (más de 2 h) deja de bloquear', async () => {
+    const f = await addFicha(db, fam, 'ReservaVieja', 'adult', { birth: '1980-01-01' })
+    const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
+    await db.query(`update family_members set invite_reserved_email='otro@example.invalid', invite_reserved_until=now()-interval '1 minute' where id=$1`, [f])
+    const u = await newAcc('tarde@example.invalid')
+    await as(db, u.id, () => db.query('select public.join_family_with_code($1,$2,null)', [c, 'T']), { email: u.email })
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [u.id])).rows[0].n, 1)
+  })
+
+  // --- crear familia
+  const owner = await addAccount(db, await mkFamily(db, 'Dueña'), 'admin', 'Duena', 'admin', { owner: true })
+  const CF = (code, birth = '1990-01-01') => db.query('select public.create_family($1,$2,$3,$4)', ['Fam', 'Yo', code, birth])
+  const gen = async () => (await as(db, owner.id, () => db.query(`select public.generate_family_invite('prueba') c`))).rows[0].c
+  await t('crear familia: sin código, con código equivocado, caducado o usado → «Código de acceso incorrecto»', async () => {
+    const u = await newAcc('f0@example.invalid')
+    for (const bad of ['', 'WRONGCODE', 'x']) has(await as(db, u.id, () => err(() => CF(bad)), { email: u.email }), 'Código de acceso incorrecto')
+    await db.query(`insert into family_invites (code, created_by, expires_at) values ('EXPIRADO1', $1, now()-interval '1 day')`, [owner.id])
+    await db.query(`insert into family_invites (code, created_by, used_at) values ('USADO0001', $1, now())`, [owner.id])
+    for (const bad of ['EXPIRADO1', 'USADO0001']) has(await as(db, u.id, () => err(() => CF(bad)), { email: u.email }), 'Código de acceso incorrecto')
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [u.id])).rows[0].n, 0)
+  })
+  await t('crear familia con invitación válida: sí, una sola vez; la gasta al terminar', async () => {
+    const c = await gen()
+    const u1 = await newAcc('f1@example.invalid'); const u2 = await newAcc('f2@example.invalid')
+    await as(db, u1.id, () => CF(c), { email: u1.email })
+    assert.equal((await db.query('select role from profiles where id=$1', [u1.id])).rows[0].role, 'admin')
+    const used = (await db.query('select used_at, used_by_family, reserved_email from family_invites where code=$1', [c])).rows[0]
+    assert.ok(used.used_at && used.used_by_family)
+    has(await as(db, u2.id, () => err(() => CF(c)), { email: u2.email }), 'Código de acceso incorrecto')
+  })
+  await t('crear familia: quien la crea debe ser mayor de edad; fecha ausente/futura sigue siendo error', async () => {
+    const c = await gen()
+    const u = await newAcc('f3@example.invalid')
+    const young = new Date(Date.now() - 15 * 365 * 864e5).toISOString().slice(0, 10)
+    has(await as(db, u.id, () => err(() => CF(c, young)), { email: u.email }), 'ADULT_REQUIRED')
+    has(await as(db, u.id, () => err(() => db.query(`select public.create_family('F','Y',$1,null)`, [c])), { email: u.email }), 'BIRTH_DATE_REQUIRED')
+    has(await as(db, u.id, () => err(() => CF(c, '2999-01-01')), { email: u.email }), 'BIRTH_DATE_INVALID')
+    assert.equal((await db.query('select used_at from family_invites where code=$1', [c])).rows[0].used_at, null) // sigue sin gastar
+  })
+  await t('invitación de familia reservada para otro correo → rechazada; para el mismo → válida', async () => {
+    const c = await gen()
+    await db.query(`update family_invites set reserved_email='titular@example.invalid', reserved_until=now()+interval '1 hour' where code=$1`, [c])
+    const x = await newAcc('intruso2@example.invalid')
+    has(await as(db, x.id, () => err(() => CF(c)), { email: x.email }), 'Código de acceso incorrecto')
+    const ok = await newAcc('titular@example.invalid')
+    await as(db, ok.id, () => CF(c), { email: ok.email })
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [ok.id])).rows[0].n, 1)
+  })
+  await t('código maestro (Vault): sigue funcionando como compatibilidad', async () => {
+    await db.query(`insert into vault.secrets (name, secret) values ('family_signup_code','MAESTRO-X')`)
+    const u = await newAcc('maestro@example.invalid')
+    await as(db, u.id, () => CF('MAESTRO-X'), { email: u.email })
+    assert.equal((await db.query('select role from profiles where id=$1', [u.id])).rows[0].role, 'admin')
+    await db.query(`delete from vault.secrets`)
+  })
+  await t('quién genera invitaciones de familia nueva: solo la administradora DE PEPA; las de familia solo las fichas de SU familia', async () => {
+    has(await as(db, mom.id, () => err(() => db.query(`select public.generate_family_invite('x')`))), 'Solo la dueña de la app')
+    has(await as(db, dad.id, () => err(() => db.query(`select public.generate_member_invite_code($1)`, [kid]))), 'Solo el administrador')
+    const ajena = await addFicha(db, await mkFamily(db, 'Z'), 'ZZ', 'adult')
+    has(await as(db, mom.id, () => err(() => db.query(`select public.generate_member_invite_code($1)`, [ajena]))), 'Miembro no encontrado')
+    has(await as(db, mom.id, () => err(() => inv(ajena))), 'Miembro no encontrado')
+  })
+}
+
+console.log('\n0294 · Blindaje de las columnas de invitación')
+{
+  const fam = await mkFamily(db, 'B')
+  const adm = await addAccount(db, fam, 'admin', 'AdminB')
+  const adu = await addAccount(db, fam, 'adult', 'AdultaB')
+  const f = await addFicha(db, fam, 'FichaB', 'adult', { birth: '1980-01-01' })
+  await t('la app (aunque sea administradora) NO puede escribir a mano el código, su caducidad ni el enlace con la cuenta', async () => {
+    for (const q of [
+      `update family_members set invite_code='HECHOAMANO1' where id='${f}'`,
+      `update family_members set invite_code_expires_at=now()+interval '100 years' where id='${f}'`,
+      `update family_members set linked_profile_id='${adu.id}' where id='${f}'`,
+      `update family_members set invite_reserved_email='x@x.es' where id='${f}'`,
+      `insert into family_members (family_id, name, member_type, invite_code) values ('${fam}','Trampa','adult','TRAMPA0001')`,
+      `insert into family_members (family_id, name, member_type, linked_profile_id) values ('${fam}','Trampa2','adult','${adu.id}')`,
+    ]) has(await as(db, adm.id, () => err(() => db.query(q))), 'solo los cambia el servidor')
+    assert.equal((await db.query('select invite_code, linked_profile_id from family_members where id=$1', [f])).rows[0].invite_code, null)
+  })
+  await t('lo normal sigue funcionando: crear y editar fichas, y que las funciones del servidor escriban el código', async () => {
+    await as(db, adm.id, () => db.query(`insert into family_members (family_id, name, member_type, birth_date) values ($1,'Normal','child','2016-01-01')`, [fam]))
+    await as(db, adm.id, () => db.query(`update family_members set name='Editada' where id=$1`, [f]))
+    const r = await as(db, adm.id, () => db.query('select * from public.create_member_invitation($1,false)', [f]))
+    assert.ok(r.rows[0].o_code)
+    assert.equal((await db.query('select invite_code from family_members where id=$1', [f])).rows[0].invite_code, r.rows[0].o_code)
+  })
+  await t('una ficha con cuenta de adulta no cuenta como menor aunque se marque «niño» con fecha reciente', async () => {
+    const trap = await addAccount(db, fam, 'adult', 'Trampa3', 'child', { birth: '2018-01-01' })
+    has(await as(db, adu.id, () => err(() => db.query(`select public.declare_guardianship($1,'parent',true,'v1')`, [trap.member])), { amrAgoSeconds: FRESH }), 'CHILD_MUST_BE_MINOR')
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- 0295
+console.log('\n0295 · Primero la invitación, después la cuenta')
+{
+  const fam = await mkFamily(db, 'P')
+  const mom = await addAccount(db, fam, 'admin', 'Mama3')
+  const owner = await addAccount(db, await mkFamily(db, 'Dueña2'), 'admin', 'Duena2', 'admin', { owner: true })
+  const f = await addFicha(db, fam, 'Peque', 'child', { birth: '2016-03-03' })
+  const memberCode = (await as(db, mom.id, () => db.query('select * from public.create_member_invitation($1,false)', [f]))).rows[0].o_code
+  const famCode = (await as(db, owner.id, () => db.query(`select public.generate_family_invite('x') c`))).rows[0].c
+  const CK = (c, ip = '1.2.3.4') => asAnon(db, () => db.query('select public.check_invitation($1) r', [c]), { 'x-forwarded-for': ip + ', 10.0.0.1' })
+  const HOOK = (email, code, extra = {}) => db.query('select public.hook_before_user_created($1::jsonb) r', [JSON.stringify({ metadata: { ip_address: '9.9.9.9' }, user: { email, app_metadata: { provider: 'email' }, user_metadata: code === undefined ? {} : { invite_code: code }, is_anonymous: false, ...extra } })])
+
+  await t('check_invitation: pública (anon), devuelve solo validez, tipo y caducidad — nada privado', async () => {
+    const m = (await CK(memberCode)).rows[0].r
+    assert.equal(m.valid, true); assert.equal(m.kind, 'member'); assert.ok(m.expires_at)
+    assert.deepEqual(Object.keys(m).sort(), ['expires_at', 'kind', 'needs_birth_date', 'valid'])
+    assert.equal(m.needs_birth_date, false) // la ficha del niño ya trae su fecha: la pantalla no la pide (y la fecha no se envía)
+    const fc = (await CK(famCode)).rows[0].r
+    assert.equal(fc.kind, 'family'); assert.equal(fc.needs_birth_date, true)
+    assert.equal((await CK('ZZZZZZZZZZ')).rows[0].r.valid, false)
+    assert.deepEqual(Object.keys((await CK('ZZZZZZZZZZ')).rows[0].r), ['valid'])
+    assert.equal((await CK('')).rows[0].r.valid, false)
+  })
+  await t('check_invitation no gasta ni reserva el código', async () => {
+    await CK(memberCode); await CK(famCode)
+    assert.equal((await db.query('select invite_reserved_email e from family_members where id=$1', [f])).rows[0].e, null)
+    assert.equal((await db.query('select used_at, reserved_email from family_invites where code=$1', [famCode])).rows[0].used_at, null)
+  })
+  await t('check_invitation: caducado, usado y de ficha con cuenta → no válido', async () => {
+    await db.query(`insert into family_invites (code, created_by, expires_at) values ('CADUCADO01', $1, now()-interval '1 day')`, [owner.id])
+    await db.query(`insert into family_invites (code, created_by, used_at) values ('USADO00002', $1, now())`, [owner.id])
+    assert.equal((await CK('CADUCADO01')).rows[0].r.valid, false)
+    assert.equal((await CK('USADO00002')).rows[0].r.valid, false)
+  })
+  await t('check_invitation: límite de intentos por IP (30 por hora) → throttled; otra IP no se ve afectada', async () => {
+    let last
+    for (let i = 0; i < 32; i++) last = (await CK('NOEXISTE' + i, '7.7.7.7')).rows[0].r
+    assert.equal(last.valid, false); assert.equal(last.throttled, true)
+    assert.equal((await CK(memberCode, '8.8.8.8')).rows[0].r.valid, true)
+    assert.equal((await CK(memberCode, '7.7.7.7')).rows[0].r.valid, false) // incluso un código bueno se bloquea tras el límite
+  })
+  await t('el gancho rechaza el alta SIN código, con código inventado, caducado, usado, anónimo o con proveedor externo', async () => {
+    for (const [e, c, x] of [['a@x.es', undefined], ['a@x.es', ''], ['a@x.es', 'ZZZZZZZZZZ'], ['a@x.es', 'CADUCADO01'], ['a@x.es', 'USADO00002'], ['a@x.es', famCode, { is_anonymous: true }], ['a@x.es', famCode, { app_metadata: { provider: 'google' } }]]) {
+      const r = (await HOOK(e, c, x ?? {})).rows[0].r
+      assert.ok(r.error && r.error.http_code === 400, JSON.stringify(r))
+      assert.ok(/^INVITATION_(REQUIRED|INVALID)/.test(r.error.message), r.error.message)
+    }
+    assert.equal((await db.query('select count(*)::int n from auth.users where email=$1', ['a@x.es'])).rows[0].n, 0)
+  })
+  await t('el gancho acepta una invitación válida y la RESERVA para ese correo (sin gastarla)', async () => {
+    const r = (await HOOK('Nuevo@Example.Invalid', famCode)).rows[0].r
+    assert.deepEqual(r, {})
+    const row = (await db.query('select reserved_email, reserved_until, used_at from family_invites where code=$1', [famCode])).rows[0]
+    assert.equal(row.reserved_email, 'nuevo@example.invalid'); assert.ok(new Date(row.reserved_until) > new Date()); assert.equal(row.used_at, null)
+  })
+  await t('otra persona con el mismo código mientras está reservado → INVITATION_IN_USE; el mismo correo puede volver a intentarlo', async () => {
+    const r = (await HOOK('otra@example.invalid', famCode)).rows[0].r
+    assert.ok(r.error.message.startsWith('INVITATION_IN_USE'))
+    assert.deepEqual((await HOOK('nuevo@example.invalid', famCode)).rows[0].r, {})
+  })
+  await t('invitación familiar: el gancho la reserva; al terminar, solo ese correo puede usarla; el código sigue sin gastarse hasta entonces', async () => {
+    assert.deepEqual((await HOOK('peque@example.invalid', memberCode)).rows[0].r, {})
+    const intruso = await addUser(db, 'intruso3@example.invalid')
+    has(await as(db, intruso, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [memberCode, 'X'])), { email: 'intruso3@example.invalid' }), 'Código no válido o caducado')
+    const peque = await addUser(db, 'peque@example.invalid')
+    await as(db, peque, () => db.query('select public.join_family_with_code($1,$2,null)', [memberCode, 'Peque']), { email: 'peque@example.invalid' })
+    const p = (await db.query('select role from profiles where id=$1', [peque])).rows[0]
+    assert.equal(p.role, 'child')
+    // ya gastado: el gancho lo rechaza
+    assert.ok((await HOOK('otro@example.invalid', memberCode)).rows[0].r.error)
+  })
+  await t('el gancho lee el código también si llega como raw_user_meta_data (la documentación no aclara el nombre); sin ninguno, rechaza', async () => {
+    const c2 = (await as(db, owner.id, () => db.query(`select public.generate_family_invite('y') c`))).rows[0].c
+    const r = (await db.query('select public.hook_before_user_created($1::jsonb) r', [JSON.stringify({ user: { email: 'raw@example.invalid', app_metadata: { provider: 'email' }, raw_user_meta_data: { invite_code: c2 } } })])).rows[0].r
+    assert.deepEqual(r, {})
+    const sin = (await db.query('select public.hook_before_user_created($1::jsonb) r', [JSON.stringify({ user: { email: 'raw2@example.invalid', app_metadata: { provider: 'email' } } })])).rows[0].r
+    assert.ok(sin.error && sin.error.message.startsWith('INVITATION_REQUIRED'))
+  })
+  await t('el gancho acepta el código maestro (compatibilidad) sin reservar', async () => {
+    await db.query(`insert into vault.secrets (name, secret) values ('family_signup_code','MAESTRO-Y')`)
+    assert.deepEqual((await HOOK('m@example.invalid', 'MAESTRO-Y')).rows[0].r, {})
+    assert.ok((await HOOK('m@example.invalid', 'maestro-y')).rows[0].r.error) // distingue mayúsculas, como create_family
+    await db.query(`delete from vault.secrets`)
+  })
+  await t('el gancho no es ejecutable por la app (solo por Supabase Auth); check_invitation sí por anon', async () => {
+    const p = await db.query(`select has_function_privilege('authenticated','public.hook_before_user_created(jsonb)','execute') a, has_function_privilege('anon','public.hook_before_user_created(jsonb)','execute') b, has_function_privilege('supabase_auth_admin','public.hook_before_user_created(jsonb)','execute') c, has_function_privilege('anon','public.check_invitation(text)','execute') d, has_function_privilege('anon','public.create_member_invitation(uuid,boolean)','execute') e, has_function_privilege('anon','public.create_family(text,text,text,date)','execute') f`)
+    assert.deepEqual(p.rows[0], { a: false, b: false, c: true, d: true, e: false, f: false }, JSON.stringify(p.rows[0]))
+  })
+  await t('limpieza de logins huérfanos: borra los de más de 48 h sin familia y NUNCA a quien tiene familia', async () => {
+    const viejo = await addUser(db, 'huerfano@example.invalid')
+    await db.query(`update auth.users set created_at = now() - interval '3 days' where id=$1`, [viejo])
+    await addUser(db, 'reciente@example.invalid')
+    const conFamilia = await addAccount(db, fam, 'adult', 'Antigua')
+    await db.query(`update auth.users set created_at = now() - interval '9 days' where id=$1`, [conFamilia.id])
+    const n = (await db.query('select private.purge_orphan_logins() n')).rows[0].n
+    assert.equal(n, 1)
+    assert.equal((await db.query(`select count(*)::int n from auth.users where email='huerfano@example.invalid'`)).rows[0].n, 0)
+    assert.equal((await db.query(`select count(*)::int n from auth.users where email='reciente@example.invalid'`)).rows[0].n, 1)
+    assert.equal((await db.query('select count(*)::int n from auth.users where id=$1', [conFamilia.id])).rows[0].n, 1)
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- Puerta global
+console.log('\nPuerta por invitación (resumen): sin invitación válida no hay perfil')
+{
+  await t('un login sin invitación no puede crear familia, unirse, ni insertar perfiles a mano; las funciones nuevas tampoco le dan nada', async () => {
+    const u = await addUser(db, 'sininvitacion@example.invalid')
+    const before = (await db.query('select (select count(*) from profiles)::int p, (select count(*) from families)::int f')).rows[0]
+    has(await as(db, u, () => err(() => db.query(`select public.create_family('F','Y','',' 1990-01-01')`)), { email: 'sininvitacion@example.invalid' }), 'Código de acceso incorrecto')
+    has(await as(db, u, () => err(() => db.query(`select public.join_family_with_code('NOEXISTE','Y','1990-01-01')`)), { email: 'sininvitacion@example.invalid' }), 'Código no válido o caducado')
+    assert.ok(await as(db, u, () => err(() => db.query(`insert into profiles (id, family_id, role, display_name) select $1, id, 'admin', 'x' from families limit 1`, [u]))))
+    assert.ok(await as(db, u, () => err(() => db.query(`insert into families (name) values ('x')`))))
+    assert.equal((await as(db, u, () => db.query('select * from public.list_family_account_emails()'))).rows.length, 0)
+    assert.equal((await as(db, u, () => db.query(`select public.change_own_pin('0000','1234') r`))).rows[0].r, 'no_pin')
+    await as(db, u, () => db.query('select public.reset_own_pin_after_recent_auth()'), { amrAgoSeconds: FRESH })
+    has(await as(db, u, () => err(() => db.query(`select * from public.create_member_invitation($1,false)`, [uid()]))), 'NOT_AUTHORIZED')
+    has(await as(db, u, () => err(() => db.query(`select public.declare_guardianship($1,'parent',true,'v1')`, [uid()])), { amrAgoSeconds: FRESH }), 'NOT_AUTHORIZED')
+    const after = (await db.query('select (select count(*) from profiles)::int p, (select count(*) from families)::int f')).rows[0]
+    assert.deepEqual(after, before)
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [u])).rows[0].n, 0)
+  })
+}
+
+console.log(`\n${passed} pruebas correctas, ${failed.length} falladas`)
+if (failed.length) {
+  console.log('FALLADAS:', failed)
+  process.exit(1)
+}

@@ -9,6 +9,7 @@
 --   4) Un login no puede insertar en profiles a mano (permiso retirado) ni crear familias directamente.
 --   5) Administradoras de PEPA (is_app_owner) y de FAMILIA son distintas: solo las de PEPA generan invitaciones de familia nueva; las de familia solo códigos de las fichas de SU familia.
 --   6) Las funciones nuevas de cuentas y seguridad (0292) no crean perfiles ni dan acceso a quien no tiene invitación.
+--   7) (Con la 0295 aplicada) check_invitation no da por válido un código inventado y el gancho de alta rechaza un alta sin invitación o con una inventada.
 do $test$
 declare
   nb uuid[] := array(select gen_random_uuid() from generate_series(1, 6));  -- 6 logins SIN invitación (sin perfil)
@@ -178,6 +179,20 @@ begin
   execute 'reset role';
   select count(*) into n from profiles where id = nb[6];
   if n <> 0 then raise exception 'FALLO 6c: una función de cuentas y seguridad creó un perfil'; end if;
+
+  -- ---- 7) (solo si ya está aplicada la 0295) primero la invitación: la comprobación pública y el gancho de alta
+  if to_regprocedure('public.check_invitation(text)') is not null then
+    execute 'set local role anon';
+    if (public.check_invitation('ZZZZZZZZZZ') ->> 'valid') <> 'false' then raise exception 'FALLO 7a: check_invitation dio por válido un código inventado'; end if;
+    if (public.check_invitation('') ->> 'valid') <> 'false' then raise exception 'FALLO 7b: check_invitation dio por válido un código vacío'; end if;
+    execute 'reset role';
+    if (public.hook_before_user_created('{"user":{"email":"sin-codigo@example.invalid","app_metadata":{"provider":"email"},"user_metadata":{}}}'::jsonb) -> 'error' ->> 'message') not like 'INVITATION_REQUIRED%' then
+      raise exception 'FALLO 7c: el gancho de alta dejó pasar un alta sin invitación';
+    end if;
+    if (public.hook_before_user_created('{"user":{"email":"inventado@example.invalid","app_metadata":{"provider":"email"},"user_metadata":{"invite_code":"ZZZZZZZZZZ"}}}'::jsonb) -> 'error' ->> 'message') not like 'INVITATION_INVALID%' then
+      raise exception 'FALLO 7d: el gancho de alta dejó pasar un alta con una invitación inventada';
+    end if;
+  end if;
 
   raise exception 'PRUEBA_PUERTA_OK: sin invitación válida no se crea familia ni se entra en una; solo las administradoras de PEPA generan invitaciones nuevas (se revierte todo a propósito)';
 end

@@ -1,4 +1,4 @@
-// Cuentas y seguridad (PEPA-CUENTAS): la migración 0292 (solo funciones nuevas), el endurecimiento pendiente 0293 y las plantillas de correo.
+// Cuentas y seguridad (PEPA-CUENTAS): la migración 0292 (solo funciones nuevas), el endurecimiento pendiente 0296 y las plantillas de correo.
 // Son pruebas sobre el texto del SQL y de las plantillas; la prueba EN VIVO del SQL está en supabase/pending-migrations/0292_live_test.sql y se ejecuta
 // después de aplicar 0292 (no se ha ejecutado todavía).
 import fs from 'node:fs'
@@ -10,8 +10,8 @@ const root = path.resolve(__dirname, '../..')
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8')
 const sql = read('supabase/migrations/0292_account_security.sql')
 const down = read('supabase/rollbacks/0292_account_security_down.sql')
-const lockdown = read('supabase/pending-migrations/0293_account_security_lockdown.sql')
-const lockdownDown = read('supabase/pending-migrations/0293_account_security_lockdown_down.sql')
+const lockdown = read('supabase/pending-migrations/0296_account_security_lockdown.sql')
+const lockdownDown = read('supabase/pending-migrations/0296_account_security_lockdown_down.sql')
 const liveTest = read('supabase/pending-migrations/0292_live_test.sql')
 
 describe('migración 0292: aditiva (solo funciones nuevas, nada destructivo)', () => {
@@ -97,10 +97,10 @@ describe('migración 0292: aditiva (solo funciones nuevas, nada destructivo)', (
   })
 })
 
-describe('endurecimiento 0293: pendiente a propósito (no está en supabase/migrations)', () => {
+describe('endurecimiento 0296: pendiente a propósito (no está en supabase/migrations)', () => {
   it('no se aplica solo: vive en supabase/pending-migrations, con su motivo y su rollback', () => {
     const migrations = fs.readdirSync(path.join(root, 'supabase/migrations'))
-    expect(migrations.some((f) => f.startsWith('0293'))).toBe(false)
+    expect(migrations.some((f) => f.startsWith('0296'))).toBe(false)
     expect(lockdown).toContain('PENDIENTE DE APLICAR')
     expect(lockdown).toContain('docs/CUENTAS_SEGURIDAD_PLAN.md')
   })

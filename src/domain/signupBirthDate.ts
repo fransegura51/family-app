@@ -27,6 +27,8 @@ export function birthDateError(value: string, now: Date = new Date()): string | 
 // Frase para los errores del servidor (el texto empieza por el código).
 export function signupBirthDateServerMessage(error: unknown): string | null {
   const raw = typeof error === 'object' && error !== null ? String((error as { message?: unknown }).message ?? '') : String(error ?? '')
+  if (/BIRTH_DATE_REQUIRED_ON_PROFILE/.test(raw)) return 'La ficha de esta persona no tiene fecha de nacimiento. Pide a quien te invitó que la ponga en tu ficha y vuelve a intentarlo.'
+  if (/ADULT_REQUIRED/.test(raw)) return 'Una cuenta de persona adulta requiere ser mayor de edad. Revisa la fecha de nacimiento.'
   if (/BIRTH_DATE_REQUIRED/.test(raw)) return 'Falta tu fecha de nacimiento. Si ves este mensaje con la fecha puesta, actualiza la app y vuelve a intentarlo.'
   if (/BIRTH_DATE_INVALID/.test(raw)) return 'La fecha de nacimiento no es válida.'
   return null

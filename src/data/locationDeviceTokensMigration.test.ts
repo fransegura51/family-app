@@ -164,7 +164,7 @@ describe('la app entrega y retira la llave en el momento justo', () => {
     expect(sharing).toContain('void disableNativeUpload()')
   })
   it('al cerrar sesión se anula la llave antes de salir', () => {
-    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)[\s\S]*?await supabase\.auth\.signOut\(\{ scope: 'local' \}\)/)
   })
 })
 

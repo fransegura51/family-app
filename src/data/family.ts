@@ -14,7 +14,7 @@ export async function createFamily(familyName: string, displayName: string, acce
     p_family_name: familyName,
     p_display_name: displayName,
     p_access_code: accessCode,
-    p_birth_date: birthDate,
+    p_birth_date: birthDate || null,
   })
   if (error) throw error
   return data as string
@@ -34,7 +34,7 @@ export async function generateMemberInviteCode(memberId: string): Promise<string
 // sin `profiles` row todavía — enlaza esa cuenta nueva al miembro cuyo
 // código coincide, en vez de pasar por create_family().
 // La fecha de nacimiento es OBLIGATORIA (0286): si la ficha ya la traía (la puso quien administra) se respeta esa; si no, se guarda esta.
-export async function joinFamilyWithCode(code: string, displayName: string, birthDate: string): Promise<string> {
+export async function joinFamilyWithCode(code: string, displayName: string, birthDate: string | null): Promise<string> {
   const { data, error } = await supabase.rpc('join_family_with_code', {
     p_code: code,
     p_display_name: displayName,
@@ -51,7 +51,7 @@ export async function addFamilyMember(input: {
   birthDate: string | null
   sex?: MemberSex | null
   allowedSections?: string[] | null
-}): Promise<void> {
+}): Promise<string> {
   // family_id no se pasa desde el cliente: la política RLS de INSERT ya
   // exige family_id = current_family_id(), así que lo fijamos igual aquí
   // para que el insert cumpla el check, pero el aislamiento real lo da RLS.
@@ -65,7 +65,7 @@ export async function addFamilyMember(input: {
     .single()
   if (profileError) throw profileError
 
-  const { error } = await supabase.from('family_members').insert({
+  const { data: inserted, error } = await supabase.from('family_members').insert({
     family_id: profileRow.family_id,
     name: input.name,
     member_type: input.memberType,
@@ -73,8 +73,9 @@ export async function addFamilyMember(input: {
     birth_date: input.birthDate,
     sex: input.sex ?? null,
     allowed_sections: input.allowedSections ?? null,
-  })
+  }).select('id').single()
   if (error) throw error
+  return inserted.id as string
 }
 
 export async function updateFamilyMember(

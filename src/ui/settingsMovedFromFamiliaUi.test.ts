@@ -39,7 +39,7 @@ describe('Configuración tiene lo que salió de Familia, en temas que se abren y
   it('tema «Mi cuenta»: cerrar sesión (anulando antes la llave de ubicación) y borrar mi cuenta, con el rol real de quien mira', () => {
     expect(settings).toContain('title="Mi cuenta"')
     expect(settings).toContain('<SignOutCard displayName={profile.displayName} />')
-    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)[\s\S]*?await supabase\.auth\.signOut\(\{ scope: 'local' \}\)/)
     expect(settings).toContain("<DeleteAccountCard isAdmin={profile.role === 'admin'} />")
   })
 

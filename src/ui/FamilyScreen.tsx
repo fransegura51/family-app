@@ -15,6 +15,10 @@ import {
 } from '@/data/family'
 import { getMyAccount, listFamilyAccountEmails, type FamilyAccountEmail } from '@/data/account'
 import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
+import { listGuardianships } from '@/data/invitations'
+import { canDeclareGuardianship, canGiveAccess, GUARDIAN_RELATIONSHIP_LABELS, guardianNamesOf, myMember, type GuardianLink } from '@/domain/guardianship'
+import { AccessInvitePanel } from '@/ui/AccessInvitePanel'
+import { GuardianshipPanel } from '@/ui/GuardianshipPanel'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
@@ -118,6 +122,16 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   }
   useEffect(loadEmails, [isAdmin, profile.id])
 
+  // Vínculos «madre/padre/tutor» de los menores (solo los ven personas adultas y administradoras; lo decide la base de datos). Solo se piden si hay alguna ficha de niño o bebé.
+  const [links, setLinks] = useState<GuardianLink[]>([])
+  const [guardianFor, setGuardianFor] = useState<string | null>(null)
+  const canSeeLinks = profile.role === 'admin' || profile.role === 'adult'
+  function loadLinks() {
+    listGuardianships()
+      .then(setLinks)
+      .catch(() => {})
+  }
+
   // Orden arrastrable con el dedo — petición real: "los miembros de la
   // familia los cojo y los puedo arrastrar y poner primero Jennifer,
   // luego Paco, luego Eric, luego Fernando, como yo quiera". Se piensa
@@ -134,11 +148,14 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
     listFamilyMembers()
       .then((m) => {
         if (!dragRef.current) setOrder(m)
+        if (canSeeLinks && m.some((x) => x.memberType === 'child' || x.memberType === 'baby')) loadLinks()
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }
 
+  // Se carga una vez al abrir; el rol de la persona no cambia mientras la pantalla está abierta.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reload, [])
 
   function handleDragStart(e: ReactPointerEvent, id: string, el: HTMLElement) {
@@ -185,6 +202,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   }
 
   if (loading) return <div className="screen">Cargando familia…</div>
+
+  const me = myMember(order, profile)
 
   return (
     <div className="screen">
@@ -265,6 +284,34 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   </span>
                 )}
                 {m.linkedProfileId === profile.id && <ChangeEmailPanel compact onChanged={loadEmails} />}
+                {/* Ficha SIN cuenta: se dice claro y se ofrece «Dar acceso a PEPA» a la vista (antes solo estaba en el menú ⋯). Los bebés no tienen cuenta. */}
+                {!m.linkedProfileId && m.memberType !== 'baby' && (
+                  <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                    Sin acceso a PEPA
+                  </span>
+                )}
+                {canGiveAccess(m, profile, me, links) && <AccessInvitePanel member={m} inviterName={profile.displayName} />}
+                {/* Madres/padres/tutores declarados de un menor (cada vínculo es una declaración individual; sin límite de personas). */}
+                {guardianNamesOf(m, order, links).length > 0 && (
+                  <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                    👪 {guardianNamesOf(m, order, links).map((g) => `${g.name} (${GUARDIAN_RELATIONSHIP_LABELS[g.relationship].toLowerCase()})`).join(', ')}
+                  </span>
+                )}
+                {canDeclareGuardianship(m, profile, me, links) &&
+                  (guardianFor === m.id ? (
+                    <GuardianshipPanel
+                      child={m}
+                      onCancel={() => setGuardianFor(null)}
+                      onDone={() => {
+                        setGuardianFor(null)
+                        loadLinks()
+                      }}
+                    />
+                  ) : (
+                    <button type="button" className="link-button" onClick={() => setGuardianFor(m.id)}>
+                      👪 Es mi hijo/a
+                    </button>
+                  ))}
               </div>
               {isAdmin && (
                 <button
@@ -304,6 +351,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         (addingMember ? (
           <>
             <AddMemberForm
+              inviterName={profile.displayName}
               onAdded={() => {
                 setAddingMember(false)
                 reload()
@@ -543,7 +591,7 @@ function isFinancialAdult(memberType: MemberType): boolean {
   return memberType === 'admin' || memberType === 'adult'
 }
 
-export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => void; existingMembers: FamilyMember[] }) {
+export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdded: () => void; existingMembers: FamilyMember[]; inviterName?: string }) {
   const [name, setName] = useState('')
   const [memberType, setMemberType] = useState<MemberType>('child')
   const [color, setColor] = useState('#4C6EF5')
@@ -559,13 +607,16 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
   // tiene sentido la primera vez que la familia pasa de 1 a 2 adultos
   // (admin cuenta como adulto) — añadir un 3º, 4º adulto no repregunta.
   const [showModePrompt, setShowModePrompt] = useState(false)
+  // Tras crear la ficha se ofrece darle acceso a PEPA al momento (no a bebés). `proceed` es lo que se hacía antes (pregunta de cuentas / recargar la lista).
+  const [offer, setOffer] = useState<{ member: Pick<FamilyMember, 'id' | 'name'>; proceed: () => void } | null>(null)
+  const [offerAccepted, setOfferAccepted] = useState(false)
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError(null)
     try {
-      await addFamilyMember({
+      const newId = await addFamilyMember({
         name,
         memberType,
         color,
@@ -573,6 +624,7 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
         sex: sex || null,
         allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
+      const createdName = name
       setName('')
       setBirthDate('')
       setAllowedSections([])
@@ -585,13 +637,61 @@ export function AddMemberForm({ onAdded, existingMembers }: { onAdded: () => voi
       // llegara a pintarse. Con la ventana abierta, onAdded() se retrasa
       // hasta que se cierra (ver AccountsModePromptModal más abajo); sin
       // ventana, se llama aquí mismo como siempre.
-      if (isFinancialAdult(memberType) && existingAdults === 1) setShowModePrompt(true)
-      else onAdded()
+      const proceed = () => {
+        if (isFinancialAdult(memberType) && existingAdults === 1) setShowModePrompt(true)
+        else onAdded()
+      }
+      // «¿Quieres darle acceso ahora?»: crear la ficha NO crea ninguna cuenta; el acceso es otra cosa (una invitación de un solo uso). No se ofrece a bebés.
+      if (memberType !== 'baby') {
+        setOffer({ member: { id: newId, name: createdName }, proceed })
+        setOfferAccepted(false)
+      } else {
+        proceed()
+      }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir el miembro'))
     } finally {
       setSaving(false)
     }
+  }
+
+  function finishOffer() {
+    if (!offer) return
+    const next = offer.proceed
+    setOffer(null)
+    next()
+  }
+
+  if (offer) {
+    return (
+      <div className="card member-form">
+        {showModePrompt && (
+          <AccountsModePromptModal
+            onClose={() => {
+              setShowModePrompt(false)
+              onAdded()
+            }}
+          />
+        )}
+        <h2>Ficha creada: {offer.member.name}</h2>
+        <p>¿Quieres darle acceso a PEPA ahora?</p>
+        <p className="muted" style={{ fontSize: 13 }}>
+          Crear la ficha no crea ninguna cuenta. PEPA es privada: para tener cuenta hace falta una invitación de un solo uso (24 horas) que puedes copiar o compartir.
+        </p>
+        {!offerAccepted ? (
+          <div className="form-actions">
+            <button type="button" onClick={() => setOfferAccepted(true)}>
+              Sí, dar acceso
+            </button>
+            <button type="button" className="link-button" onClick={finishOffer}>
+              Ahora no
+            </button>
+          </div>
+        ) : (
+          <AccessInvitePanel member={offer.member} inviterName={inviterName} autoStart onClose={finishOffer} />
+        )}
+      </div>
+    )
   }
 
   return (

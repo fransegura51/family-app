@@ -17,3 +17,12 @@
 - Logotipo: `assets/pepa-logo-email.jpg` es una **copia reducida** (560 px, 55 KB) del logotipo oficial con eslogan (`src/assets/brand/variants/pepa-family-app-logo-slogan.png`); el archivo maestro no se ha tocado. Hay que publicarla en `https://pepafamilyapp.es/email/pepa-logo-email.jpg` (copia lista en `pepa-web/public/email/`) **antes** de activar las plantillas, o el logotipo no se verá.
 - Ajustes de Supabase que deben ir con ellas: «Email OTP expiration» = 3600 s (las plantillas dicen «una hora»), «Email OTP length» = 6.
 - Antes de pegar, **copiar a un archivo el texto actual de cada plantilla**: el panel no guarda historial y es la forma de volver atrás.
+
+## Plantillas de invitación (NO son de Supabase Auth; hoy no se envía ningún correo)
+| Archivo | Quién la envía | Para qué | Asunto |
+|---|---|---|---|
+| `invitation_new_family.html` | una administradora **de PEPA** | autoriza **crear el espacio de una familia nueva** | Te han invitado a crear tu familia en PEPA |
+| `invitation_member.html` | una administradora de la familia o una madre/padre vinculado (solo para su hijo menor) | autoriza **crear una cuenta y unirse a una ficha** | Te han invitado a unirte a tu familia en PEPA |
+
+Un solo correo con logotipo oficial, remitente «PEPA · Tu familia organizada», código, caducidad, pasos, enlace de registro y ayuda. Marcadores propios (no de Supabase): `{{invite_code}}`, `{{expires_text}}`, `{{register_url}}`, `{{inviter_name}}`, `{{recipient_name}}`; `renderInvitation()` los rellena **escapando** los valores. Los enviará una función de servidor cuando el correo oficial (`no-reply@pepafamilyapp.es`, respuestas a `info@pepafamilyapp.es`) esté configurado; **no se activa ningún envío mientras tanto**. El texto para copiar, compartir o mandar por WhatsApp sale de `src/domain/invitations.ts` (`buildInvitationMessage`).
+

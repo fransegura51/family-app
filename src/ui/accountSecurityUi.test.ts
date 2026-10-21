@@ -105,7 +105,7 @@ describe('Seguridad: dos apartados (Correo y contraseña, Bloqueo personal); Cer
   it('«Cerrar sesión» NO se ha movido ni duplicado (decisión 20/10/2026): sigue en Configuración → Mi cuenta, como en producción, y Seguridad no tiene nada de sesiones', () => {
     expect(settings).toContain('<SignOutCard displayName={profile.displayName} />')
     expect(settings).toMatch(/title="Mi cuenta"[\s\S]*?<SignOutCard displayName=\{profile\.displayName\} \/>\s*<DeleteAccountCard/)
-    expect(settings).toMatch(/await disableNativeUpload\(\)\s*await supabase\.auth\.signOut\(\)/)
+    expect(settings).toMatch(/await disableNativeUpload\(\)[\s\S]*?await supabase\.auth\.signOut\(\{ scope: 'local' \}\)/)
     expect((settings.match(/Cerrar sesión/g) ?? []).length).toBeGreaterThanOrEqual(1)
     const securityCode = security.replace(/^\s*\/\/.*$/gm, '')
     expect(securityCode).not.toContain('signOut')

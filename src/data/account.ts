@@ -25,6 +25,16 @@ export async function getMyAccount(): Promise<MyAccount> {
 }
 
 /**
+ * La invitación con la que esta cuenta se dio de alta (viaja en los datos del usuario como invite_code). Solo SIRVE PARA RELLENAR la pantalla de alta si la persona confirmó el correo en
+ * otro dispositivo: es un dato que escribe el navegador, no da ningún permiso y el servidor vuelve a comprobar la invitación al terminar.
+ */
+export async function getSignupInviteCode(): Promise<string | null> {
+  const { data } = await supabase.auth.getUser()
+  const v = (data.user?.user_metadata as { invite_code?: unknown } | undefined)?.invite_code
+  return typeof v === 'string' && v.length >= 6 && v.length <= 40 ? v : null
+}
+
+/**
  * Comprueba la contraseña ACTUAL volviendo a entrar con ella. Sirve de «identificación reciente»: la sesión nueva queda marcada como abierta ahora con
  * contraseña (es lo que mira reset_own_pin_after_recent_auth) y es la verificación que se pide antes de cambiar el correo o la contraseña.
  */

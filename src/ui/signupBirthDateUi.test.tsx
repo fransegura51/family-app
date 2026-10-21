@@ -9,6 +9,8 @@ import onboardingSrc from '@/ui/OnboardingScreen.tsx?raw'
 import familySrc from '@/data/family.ts?raw'
 
 vi.mock('@/data/family', () => ({ createFamily: vi.fn(), joinFamilyWithCode: vi.fn() }))
+vi.mock('@/data/account', () => ({ getSignupInviteCode: vi.fn(async () => null) }))
+vi.mock('@/data/invitations', () => ({ checkInvitation: vi.fn(async () => ({ valid: false })) }))
 
 const NOW = new Date(2026, 9, 17, 12, 0, 0)
 
@@ -38,8 +40,9 @@ describe('formularios de alta', () => {
     expect((onboardingSrc.match(/<BirthDateField/g) ?? []).length).toBe(2)
     expect(onboardingSrc).toContain('type="date"')
     expect(onboardingSrc).toContain('required')
-    expect(onboardingSrc).toContain('createFamily(familyName, displayName, accessCode, birthDate)')
-    expect(onboardingSrc).toContain('joinFamilyWithCode(code, displayName, birthDate)')
+    // La invitación ya presentada antes de crear la cuenta (fixedCode) manda sobre el campo; sin ella, se escribe aquí como siempre.
+    expect(onboardingSrc).toContain('createFamily(familyName, displayName, fixedCode ?? accessCode, birthDate)')
+    expect(onboardingSrc).toContain('joinFamilyWithCode(fixedCode ?? code, displayName, needsBirthDate ? birthDate : null)')
     // Sin fecha válida no se llama al servidor.
     expect(onboardingSrc.indexOf('birthDateError(birthDate)')).toBeLessThan(onboardingSrc.indexOf('await createFamily('))
     expect(onboardingSrc.lastIndexOf('birthDateError(birthDate)')).toBeLessThan(onboardingSrc.indexOf('await joinFamilyWithCode('))

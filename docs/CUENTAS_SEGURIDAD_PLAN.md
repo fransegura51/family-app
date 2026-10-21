@@ -5,51 +5,71 @@ Cada dato está marcado como **[Código]** (leído en el código), **[Docs]** (d
 
 ## 1. Qué hay hecho en la rama y qué no
 
+**Leyenda:** ✅ implementado y probado en local · 📐 diseñado, no implementado · ⏳ pendiente de configuración externa · 🔒 pendiente de tu autorización para producción.
+
 | Pieza | Estado |
 |---|---|
-| Plantillas de correo (5) + logotipo ligero + vista previa | Hechas, **sin activar** (`supabase/email-templates/`, generadas por `scripts/build-email-templates.mjs`) |
-| Códigos de 6 cifras: confirmar correo al registrarse, contraseña olvidada | Hecho en la app. Funciona con las plantillas actuales (enlace) y con las nuevas (código) |
-| Correo en las fichas de Familia + «Cambiar correo» en la ficha propia y en Seguridad | Hecho |
-| Cambiar contraseña (con la actual o con código al correo) + pantalla de nueva contraseña con el logo de PEPA | Hecho |
-| PIN: cambiar y desactivar pidiendo el PIN; «He olvidado mi PIN» (contraseña o código al correo); relock al volver de segundo plano | Hecho en la app. **Necesita la migración 0292** |
-| Botón «Reiniciar PIN» de Familia | **Quitado de la app.** La función de la base de datos sigue hasta aplicar 0293 |
-| Pantalla Seguridad en dos apartados (Correo y contraseña, Bloqueo personal). **«Cerrar sesión» no se ha movido ni duplicado: sigue en Configuración → Mi cuenta, como en producción** (decisión 20/10/2026) | Hecha |
-| Migración `0292_account_security.sql` (solo funciones nuevas) | Escrita y probada como texto. **Sin aplicar.** Prueba en vivo preparada: `supabase/pending-migrations/0292_live_test.sql` |
-| Endurecimiento `0293` (retirar reinicio por administradora, «quitar PIN» sin comprobar, `set_own_pin` sin sobrescribir) | Escrito en `supabase/pending-migrations/`. **No debe aplicarse hasta validar la recuperación del PIN** |
-| SMTP de OVH / Supabase / DNS | **Nada tocado.** Ver §3 |
-| Cambio de correo de cuentas de menores por su tutor | **Sin implementar a propósito** (§6) |
-| Biometría con el dominio oficial | **Sin migrar a propósito** (§7) |
+| Auditoría de roles y permisos en producción (solo lectura) | ✅ `docs/AUDITORIA_ROLES_Y_PERMISOS_2026-10-21.md`: el fallo existe en el código, **0 cuentas afectadas** |
+| Corrección del rol y las secciones de la ficha al unirse con código | ✅ en la rama (`0294`) · 🔒 aplicar |
+| **Primero la invitación, después la cuenta** (pantalla de entrada + comprobación en el servidor + gancho de Supabase Auth) | ✅ pantallas y SQL probados en local · 🔒 aplicar `0295` y **activar el gancho** (⏳ comprobar en pruebas qué datos manda Supabase) |
+| Reserva del código por correo, bloqueo de uso simultáneo, sin cuentas huérfanas | ✅ (`0294`/`0295`) · 🔒 aplicar · la limpieza de logins huérfanos no se programa sola |
+| «Dar acceso a PEPA» a la vista, invitación al crear una ficha, sin duplicar, caducidad, copiar/compartir/WhatsApp | ✅ (`0294` + pantallas) · 🔒 aplicar y desplegar |
+| Madre/padre vinculado puede invitar a su hijo menor (comprobado en el servidor) | ✅ (`0293`+`0294`) · 🔒 |
+| Vínculo parental «Es mi hijo/a» (Fase A): declaración, identificación reciente, sin límite de tutores, historial, cese a los 18 | ✅ (`0293` + pantallas) · 🔒 aplicar |
+| Retirar el propio vínculo y vínculos disputados | 📐 función creada **sin permiso de ejecución**; procedimiento propuesto para tu revisión |
+| Gestionar el correo de los menores (Fase B) | 📐 solo diseño técnico (`docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md` §6) |
+| Plantillas de invitación (familia nueva / miembro de una familia) | ✅ plantilla y vista previa · ⏳ no se envía nada hasta tener el correo oficial |
+| Plantillas de correo de acceso (5) + logotipo ligero | ✅ · ⏳ sin activar |
+| Cerrar sesión solo en este dispositivo (en Configuración → Mi cuenta, donde estaba) | ✅ probado con la librería real de Supabase · 🔒 desplegar |
+| Códigos de 6 cifras: confirmar correo y contraseña olvidada | ✅ funciona con las plantillas actuales (enlace) y con las nuevas (código) |
+| Correo en las fichas de Familia + «Cambiar correo» en la ficha propia y en Seguridad | ✅ (`0292`) · 🔒 |
+| Cambiar contraseña + pantalla de nueva contraseña con el logo de PEPA | ✅ |
+| PIN: cambiar/desactivar pidiendo el PIN, «He olvidado mi PIN», se pide tras 1 minuto en segundo plano solo con PIN activado | ✅ (`0292`) · 🔒 |
+| Botón «Reiniciar PIN» de Familia | ✅ quitado de la app · la función de la base de datos sigue hasta aplicar `0296` |
+| Endurecimiento `0296` (retirar reinicio por administradora, «quitar PIN» sin comprobar) | ✅ escrito en `supabase/pending-migrations/` · 🔒 **no aplicar hasta validar la recuperación del PIN en vivo** |
+| SMTP de OVH, buzón `no-reply@`, DNS, SMTP en Supabase | ⏳ **nada tocado** (§3) |
+| Biometría con el dominio oficial | 📐 sin migrar a propósito (§7) |
+
+### Migraciones (en este orden; ninguna está aplicada)
+| Nº | Qué | Dependencia |
+|---|---|---|
+| 0292 | PIN con comprobación, recuperación con identificación reciente, correos de las fichas | — |
+| 0293 | Vínculo parental («Es mi hijo/a») | 0292 |
+| 0294 | Dar acceso a PEPA, rol/secciones de la ficha, bloqueo y reserva, blindaje de columnas | 0292, 0293 |
+| 0295 | Primero la invitación: `check_invitation`, gancho de alta, limpieza de huérfanos | 0294 |
+| 0296 (pendiente) | Retirar reinicio por administradora y «quitar PIN» sin comprobar | recuperación del PIN probada en vivo |
 
 ## 1 bis. REQUISITO CRÍTICO: PEPA sigue cerrada, solo se entra con invitación (20/10/2026)
 
-**Nada de esto se ha modificado.** Cómo funciona hoy **[Código]** y qué comprueba cada prueba:
+**La regla no cambia; el cambio autorizado es el orden: primero la invitación, después la cuenta.** Hoy en producción **[comprobado en solo lectura]**: crear el *login* (correo y contraseña) está abierto en Supabase Auth, y la invitación se pide **después**, al crear la familia o unirse. Un login sin familia no sirve de nada (no tiene perfil), y hoy **no existe ninguno** (9 logins, 9 perfiles). Lo nuevo cierra esa puerta también al principio.
 
-| Qué | Cómo |
+| Qué | Cómo queda |
 |---|---|
-| Crear el *login* (correo + contraseña) | Está abierto a nivel de Supabase Auth (`auth.signUp`): cualquiera puede crear un login, pero **un login sin familia no tiene perfil y no puede usar nada** (la app lo lleva a la pantalla de alta, que pide el código) |
-| Crear una familia nueva | Solo `create_family(...)` en el servidor: exige el código maestro (Vault) **o** una invitación de **un solo uso**, vigente (caduca a los 30 días) y sin usar. Si no, «Código de acceso incorrecto» |
-| Quién genera esas invitaciones | Solo las **administradoras de PEPA** (`profiles.is_app_owner`; hoy dos cuentas) con `generate_family_invite` |
-| Unirse a una familia existente | Solo `join_family_with_code(...)`: código de **un solo uso** (24 h) de una ficha concreta sin cuenta |
-| Quién genera esos códigos | La **administradora de ESA familia** (`profiles.role = 'admin'` de su familia) con `generate_member_invite_code`; nunca de otra familia |
-| Insertar a mano en `profiles` | Imposible desde la app: a `anon` y `authenticated` se les retiró el permiso (migración 0276) |
+| Crear el *login* | **Solo con una invitación válida**: la pantalla pide la invitación primero (`check_invitation`, que no la gasta) y el **gancho «Before User Created» de Supabase Auth** vuelve a comprobarla en el servidor y **rechaza cualquier alta directa** (un `signUp` llamado a mano) sin invitación válida. Recuperar contraseña, cambiar correo y entrar **no** pasan por ese gancho (solo se ejecuta al crear un usuario) |
+| Crear una familia nueva | `create_family`: código maestro **o** invitación de un solo uso, caducable, solo generada por administradoras de PEPA. Vuelve a comprobarla al terminar y la gasta (bloqueo de fila: dos personas no pueden usarla a la vez). Quien crea la familia debe ser mayor de edad |
+| Unirse a una familia | `join_family_with_code`: código de una ficha sin cuenta, un solo uso, 24 h, bloqueado al leerlo; rol y secciones **de la ficha**; la fecha de la ficha manda sobre la escrita |
+| Reserva | Al validar el alta, el gancho **reserva la invitación para ese correo durante 2 horas** (no la gasta): otra persona no puede usar el mismo código y no quedan cuentas a medias. La gasta `create_family` / `join_family_with_code` al terminar |
+| Cuentas huérfanas | Si alguien crea el login y no termina, `private.purge_orphan_logins` borra los logins sin familia con más de 48 horas (**no se programa sola**; hace falta tu autorización para programarla) |
+| Lo que se revela | `check_invitation` solo dice si vale, de qué tipo es, cuándo caduca y si pedir la fecha; **nunca datos de ninguna familia**. Con límite de 30 comprobaciones por hora y por IP |
 
-**Administradoras de PEPA ≠ administradoras de familia** y lo nuevo no las mezcla: ninguna función nueva usa `is_app_owner`; la administradora de familia solo ve los correos de **su** familia; el panel de uso de PEPA sigue siendo solo para `is_app_owner`.
+**Dos tipos de invitación, que no se mezclan:** *familia nueva* (la genera solo una administradora de PEPA, `family_invites`) y *familiar* (vincula una cuenta a una ficha; la genera la administradora de esa familia o una madre/padre vinculado, solo para su hijo menor). El **código de 6 cifras del correo** es otra cosa: confirma un correo, no da familia y no sustituye a ninguno de los dos.
 
-**Los flujos nuevos no abren ninguna vía de alta:**
-- El único `signUp` de toda la app sigue siendo el de siempre (pantalla de entrada). No hay `createUser`, `inviteUserByEmail`, `generateLink`, acceso anónimo, ni inicio con Google/Apple.
-- Los códigos de acceso por correo se piden con `signInWithOtp(... shouldCreateUser: false)`: **no pueden crear cuentas**. Recuperar contraseña (`resetPasswordForEmail`), cambiar correo (`updateUser`) y recuperar PIN solo actúan sobre cuentas que ya existen.
-- **El código de 6 cifras del correo y el código de invitación son procesos independientes:** el primero confirma un login; solo el segundo (pantalla de alta, después de entrar) da familia. Ninguna pantalla nueva pide, acepta ni sustituye uno por el otro.
-- Las plantillas de correo no llevan enlaces de alta.
+**Administradoras de PEPA ≠ administradoras de familia ≠ madres/padres vinculados ≠ personas adultas**: ninguna función de cuentas usa `is_app_owner`; la administradora de familia ve los correos de **su** familia y no puede retirar el vínculo de otra persona; el padre vinculado solo invita a su hijo menor.
 
-**Pruebas:**
-- **Hecho:** `src/data/invitationGateUnchanged.test.ts` (18 pruebas) falla si alguna migración redefine o cambia la puerta, si algo inserta perfiles por otra vía, si aparece otro `signUp` o `signInWithOtp` sin `shouldCreateUser: false`, si una pantalla nueva llama a crear familia/unirse, o si 0292 toca invitaciones o `is_app_owner`. Se comprobó que **salta de verdad** añadiendo a propósito un `signUp` extra: falló, y se quitó.
-- **Preparado, sin ejecutar (necesita tu autorización de escritura en la base de datos):** `supabase/pending-migrations/invitation_gate_live_test.sql`. Con datos de mentira dentro de una transacción que se revierte, demuestra: login sin invitación → no crea familia (sin código, `WRONGCODE`, caducado, usado); con invitación válida sí y solo una vez; no se puede unir con código inventado/caducado; no se puede insertar perfiles a mano; solo las de PEPA generan invitaciones de familia nueva; las funciones de 0292 no crean perfiles. Debe terminar con `PRUEBA_PUERTA_OK`.
-- **Regla de despliegue:** esa prueba en vivo se ejecuta **antes** de desplegar cualquier cambio de autenticación y **otra vez después**. Si no termina en `PRUEBA_PUERTA_OK`, no se despliega (o se revierte).
-- Prueba manual complementaria con una dirección tuya de usar y tirar: crear un login nuevo sin invitación, confirmar el correo con el código y comprobar que la app se queda en «Crear una familia / Unirme con un código» sin dejar pasar.
+**El código maestro del Vault sigue aceptándose** (compatibilidad). Es una puerta permanente: **decisión tuya** si se rota o se retira cuando esto esté desplegado.
 
-**Dos cosas que ya eran así y conviene que sepas (no se han cambiado):**
-1. Como crear el login está abierto, **cualquiera puede hacer que Supabase mande un correo de confirmación a cualquier dirección** (con el SMTP actual y con el nuevo). Con SMTP propio, eso gasta cuota de envío y puede dañar la reputación del dominio si alguien abusa. Supabase limita los envíos (60 s por cuenta, tope por hora ajustable). Si algún día molesta, la solución es **pedir la invitación ANTES de crear el login** (validarla en un gancho de Supabase o en una función de servidor); es un cambio de comportamiento y **no forma parte de esta implementación**.
-2. Si en Supabase estuviera desactivado «Allow new users to sign up», nadie podría ni crear un login (hoy se podría); **[No verificado]** (no puedo ver ese ajuste). No se activa ni desactiva nada.
+### Altas directas en Supabase Auth: cómo se impiden (investigado)
+- **Mecanismo:** el gancho «Before User Created» **[Docs]** existe en los planes Free y Pro, puede ser una función de Postgres (límite de 2 s), recibe el correo, el proveedor y los datos del usuario, y rechaza con un error 4xx. Se activa en el panel (Authentication → Hooks); **no lo activa ninguna migración**.
+- **No bloquea** recuperar contraseña, cambiar correo ni a los usuarios existentes: solo se ejecuta cuando se va a **crear** un usuario.
+- **Lo que no he podido verificar [No verificado]:** si los datos que manda `signUp` (`options.data.invite_code`) llegan al gancho como `user.user_metadata` o `user.raw_user_meta_data` (la documentación no lo aclara). La función acepta los dos y, si no llega ninguno, **rechaza el alta (falla cerrado)**. Por eso la activación se hace con una comprobación inmediata y es **reversible en segundos** (desactivar el gancho). Lo ideal es probarlo antes en un entorno de pruebas.
+- Una limitación honesta: los intentos que el gancho rechaza no se pueden contar por IP desde dentro (la transacción se deshace); ahí actúan los límites propios de Supabase (30 altas cada 5 minutos por IP). El contador por IP de 30 por hora sí actúa en `check_invitation`.
+
+### Pruebas de la puerta
+- ✅ **51 pruebas con datos en un PostgreSQL local** (`supabase/local-sql-tests`, migraciones reales): sin invitación no hay perfil ni familia; con una válida sí y solo una vez; reservas; el gancho rechaza alta anónima, con proveedor externo, sin código, inventado, caducado o usada, y acepta la válida reservándola; el niño queda como `child`; el padre vinculado solo invita a su hijo menor; ningún adulto puede ser «el hijo» de un vínculo.
+- ✅ **40 pruebas sobre el texto del SQL y de la app** (`src/data/invitationGate.test.ts`): solo un `signUp` en toda la app y solo en la pantalla de entrada, tras `checkInvitation`; `signInWithOtp` siempre con `shouldCreateUser: false`; nadie más crea familia o une; plantillas sin enlaces de alta; ninguna función nueva usa `is_app_owner`. Se comprobó que **salta de verdad** añadiendo un `signUp` extra.
+- ✅ Los dos scripts de «prueba en vivo» (`0292_live_test.sql`, `invitation_gate_live_test.sql`) **se ejecutaron contra el PostgreSQL local** y terminan en `PRUEBA_…_OK`: así sabemos que los propios scripts funcionan.
+- 🔒 **Contra producción (con datos de mentira que se revierten solos): sin ejecutar** — necesita tu autorización de escritura. Regla: se ejecuta **antes** de aplicar nada y **otra vez después** de cada paso; si no termina en `PRUEBA_PUERTA_OK`, se detiene o se revierte.
+- 🔒 **Prueba manual en vivo** con una dirección tuya de usar y tirar, tras activar el gancho: intentar crear un login **sin** invitación (con la pantalla y llamando a Supabase directamente) y comprobar que se rechaza; después con una invitación válida y comprobar que funciona.
 
 El registro público se estudiará solo cuando se decida poner PEPA a la venta.
 
@@ -90,42 +110,44 @@ Lo que se sabe del dominio (consulta DNS de solo lectura): DNS y correo en OVH (
 
 **Recomendación:** probar primero OVH (coste extra 0 si tu plan incluye otra cuenta), **sin tocar Supabase**: enviar correos de prueba al servidor de OVH con el buzón nuevo desde un script a direcciones de Gmail, Outlook, iCloud y Yahoo y a mail-tester.com. Si llegan a la bandeja de entrada y firman con DKIM, se configura en Supabase. Si algo falla (spam en Outlook/Hotmail, límites), el plan B es **Resend** (3.000 correos al mes gratis, 100 al día; 20 $/mes con 50.000 **[Docs]**) y, a gran escala, Amazon SES (0,10 $ por mil). No se contrata nada sin tu autorización.
 
-## 4. Dependencias externas: lo que necesita tu intervención
+## 4. Dependencias externas y autorizaciones: lo que necesita tu intervención
 
 | # | Acción | Quién | Coste | Cuándo |
 |---|---|---|---|---|
 | 1 | Decirme qué servicio de correo tienes en OVH (MX Plan / Email Pro / Exchange) y cuántas cuentas incluye | Tú, en el panel de OVH | 0 | Antes de nada |
 | 2 | Crear el buzón `no-reply@pepafamilyapp.es` con contraseña, y la redirección a `info@pepafamilyapp.es` | Tú, en OVH | 0 si tu plan lo incluye | Tras (1) |
 | 3 | Comprobar que DKIM está activo para el dominio (panel de OVH) | Tú | 0 | Tras (1) |
-| 4 | Darme permiso para probar el envío con un script (sin tocar Supabase) y para leer el resultado en las bandejas de pruebas | Tú | 0 | Tras (2) y (3) |
-| 5 | Publicar el logotipo ligero en la web (`pepa-web/public/email/pepa-logo-email.jpg`, ya creado, **sin subir**) | Tú autorizas el despliegue de la web | 0 | Antes de activar las plantillas |
-| 6 | En Supabase (Authentication): SMTP propio (host, puerto, usuario, contraseña, remitente), plantillas y asuntos, «Email OTP expiration» = 3600, «Email OTP length» = 6, límites de envío (Rate limits → emails por hora) | Tú o yo con tu permiso, **cuando lo autorices** | 0 | Tras la prueba (4) |
-| 6 bis | **Autorizar escribir en la base de datos para ejecutar las pruebas en vivo** (`invitation_gate_live_test.sql` y `0292_live_test.sql`: datos de mentira que se revierten solos). La puerta por invitación se prueba **antes y después** de cualquier despliegue de autenticación | Tú | 0 | Antes de (7) y después de (8) |
-| 7 | Aplicar la migración 0292 en producción | Con tu autorización | 0 | Antes de desplegar la web |
+| 4 | Permiso para probar el envío con un script **fuera de Supabase** y leer el resultado en bandejas de pruebas | Tú | 0 | Tras (2) y (3) |
+| 5 | Publicar el logotipo ligero en la web (`pepa-web/public/email/pepa-logo-email.jpg`, ya creado, **sin subir**) | Tú autorizas el despliegue de la web | 0 | Antes de activar plantillas |
+| 6 | **Autorizar escritura en la base de datos para ejecutar las pruebas en vivo** (se revierten solas) | Tú | 0 | Antes de aplicar nada |
+| 7 | Aplicar las migraciones `0292` → `0295` (cada una con su rollback) | Con tu autorización | 0 | Ver §5 |
 | 8 | Desplegar la web de la rama | Con tu autorización | 0 | Tras (7) |
-| 9 | Aplicar `supabase/pending-migrations/0293…` | Con tu autorización, **solo tras validar la recuperación del PIN con una sesión real** | 0 | Cierre |
+| 9 | **Activar el gancho «Before User Created»** en Supabase (Authentication → Hooks) y, a la vez, SMTP propio y plantillas | Con tu autorización | 0 | Ver §5 |
+| 10 | Programar la limpieza de logins huérfanos | Con tu autorización | 0 | Opcional, tras (9) |
+| 11 | Aplicar `0296` (retirar reinicio por administradora) | Con tu autorización, **solo tras probar la recuperación del PIN en vivo** | 0 | Cierre |
+| 12 | Decisiones: revocación de vínculos (§4 del estudio), rotar o retirar el código maestro | Tú | 0 | Antes del cierre |
 
-Coste de Supabase: las llamadas nuevas son **una** por apertura de Familia solo para quien es administradora (los correos de la familia). Para el resto no hay llamada nueva (su correo sale de la sesión). El bloqueo hace una consulta cuando se activa o se quita el PIN. No hay nada recurrente.
+Coste de Supabase: las llamadas nuevas son **una** al abrir Familia solo para administradoras (los correos), **una** para adultas y administradoras si hay fichas de menores (los vínculos), y una consulta al activar o quitar el PIN. `check_invitation` se llama una vez por invitación. No hay nada recurrente.
 
 ## 5. Orden de despliegue y reversión
 
-0. **Prueba de la puerta por invitación (antes de cualquier cambio de autenticación)**: `invitation_gate_live_test.sql` debe terminar en `PRUEBA_PUERTA_OK` (fija cómo está hoy). Se repite **después** de cada paso 3 y 4. Si falla en cualquier momento: se detiene el despliegue y se revierte.
-1. **Prueba de OVH fuera de Supabase** (ver §3). Reversión: nada que revertir.
-2. **Aplicar 0292** (solo añade funciones). Ejecutar `0292_live_test.sql` (se revierte sola; debe acabar con `PRUEBA_0292_OK`). Reversión: `supabase/rollbacks/0292_account_security_down.sql`.
-3. **Desplegar la web de la rama.** Funciona con las plantillas actuales (enlace) y con las nuevas (código), y la app antigua en un móvil que aún no se haya actualizado sigue funcionando con la base de datos nueva (0292 no quita nada). Reversión: volver al despliegue anterior.
-4. **Activar SMTP propio y pegar las plantillas** (antes: copiar el texto actual de cada plantilla a un archivo, porque el panel no guarda historial). Reversión: pegar las plantillas antiguas y, si hiciera falta, volver al SMTP anterior. Mientras no haya SMTP propio los correos solo llegan a miembros del equipo.
-5. **Pruebas reales** (§8) con la cuenta de Jennifer y una cuenta de prueba nueva.
-6. **Cierre: aplicar 0293.** Hasta entonces el reinicio por administradora sigue existiendo en la base de datos aunque la app ya no lo ofrezca. Reversión: `0293_…_down.sql`.
+**Regla:** ninguna persona se queda sin acceso; no se activa el gancho hasta que las pantallas nuevas estén desplegadas; la prueba de la puerta se repite tras cada paso.
 
-Regla: **ninguna persona se queda sin acceso**: no se desactiva el reinicio por administradora hasta que la recuperación por la propia persona está probada en vivo; el enlace antiguo sigue funcionando mientras haya correos antiguos sin caducar; no se cambia ninguna sesión abierta.
+0. **Prueba de la puerta contra producción** (`invitation_gate_live_test.sql`): fija cómo está hoy. Debe acabar en `PRUEBA_PUERTA_OK`.
+1. **Prueba de OVH fuera de Supabase** (§3). Reversión: nada.
+2. **Aplicar `0292` y `0293`** (solo añaden). Repetir pruebas en vivo (`0292_live_test.sql` y la de la puerta). Rollbacks: `0293_…_down.sql`, `0292_…_down.sql`.
+3. **Aplicar `0294`** (corrige el rol/secciones, blinda columnas, reserva): **cambia `create_family` y `join_family_with_code`** (misma firma y mensajes). Repetir la prueba de la puerta. Rollback: `0294_…_down.sql` (devuelve las funciones de producción exactas).
+4. **Aplicar `0295`** (comprobación pública y función del gancho; **no activa nada**). Repetir la prueba de la puerta (incluye la comprobación del gancho). Rollback: `0295_…_down.sql`.
+5. **Desplegar la web de la rama.** Funciona con la base ya preparada; la entrada pide la invitación primero. *(Si se desplegara antes de aplicar 0295, «Tengo una invitación» fallaría: por eso este orden.)* Reversión: volver al despliegue anterior.
+6. **Activar el gancho** (y, con el correo ya probado, SMTP propio y plantillas). Comprobar **en el momento**: alta sin invitación → rechazada; alta con invitación válida → funciona. **Reversión inmediata: desactivar el gancho.**
+7. **Pruebas reales** (§8) con la cuenta de Jennifer y cuentas de prueba (sin usar credenciales reales de nadie).
+8. **Cierre:** programar la limpieza de huérfanos (opcional); decidir el código maestro; aplicar `0296` solo tras probar la recuperación del PIN.
 
 ## 6. Menores y tutores [Código]
 
 - Los miembros sin cuenta (bebés, niños sin acceso) **no tienen correo ni se les pide**: son filas de `family_members` sin `linked_profile_id`.
-- Un niño con cuenta propia es un perfil con `role = 'child'` (migración 0097) enlazado a su ficha. **No existe ninguna relación «tutor de» entre cuentas.** Lo único parecido es la declaración «soy madre/padre/tutor legal» al activar permisos de Comunidad para 15–17 años (`community_minor_permission_log`, migración 0277), que no sirve para esto.
-- Por eso **no se ha implementado** que un padre o tutor cambie el correo de un hijo: hoy cualquier cambio sobre la cuenta de otra persona exigiría una función privilegiada (clave de servicio) sin ninguna relación comprobable que la proteja. Reglas ya aplicadas: cada adulto cambia solo su correo; la administradora **ve** los correos pero no puede cambiarlos; «Cambiar correo» solo sale en la ficha propia.
-- **Estudio ampliado (20/10/2026, sin implementar): `docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md`** — vínculo «Es mi hijo/a», invitaciones de Familia y un hallazgo sobre el rol de las cuentas de niños/invitados creadas con código.
-- Diseño propuesto para una fase posterior (necesita tu aprobación): tabla `account_guardians (child_profile_id, guardian_profile_id, declared_at)` con declaración explícita y registro; función de servidor que (1) comprueba la relación, (2) exige identificación reciente del tutor, (3) manda el código de confirmación **a la dirección nueva** y (4) solo aplica el cambio cuando esa dirección lo confirma; sin que el tutor vea ni toque la contraseña del menor.
+- **Fase A hecha en la rama:** el vínculo «Es mi hijo/a» (declaración + identificación reciente, sin límite de tutores, historial, cese a los 18) y «Dar acceso a PEPA» para la madre/padre vinculado solo sobre la ficha de su hijo menor. Detalle, revocación propuesta y diseño de la Fase B: **`docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md`**.
+- **Fase B aplazada:** que una madre/padre cambie el correo de acceso de su hijo **no está implementado**. Cada persona adulta cambia solo el suyo; la administradora **ve** los correos pero no puede cambiarlos; «Cambiar correo» solo sale en la ficha propia.
 
 ## 7. Huella y Face ID: dependencia del dominio [Código]
 
@@ -135,35 +157,35 @@ Regla: **ninguna persona se queda sin acceso**: no se desactiva el reinicio por 
 
 ## 8. Pruebas
 
-Hecho en esta rama (ordenador, sin producción): comprobación de tipos, análisis de estilo y compilación sin avisos; 87 pruebas nuevas (piezas puras, pantallas, SQL, plantillas y la puerta por invitación) y la batería completa del proyecto (553 archivos, 10.541 pruebas, todas en verde); las plantillas se renderizaron en un navegador (móvil y escritorio).
+**Hecho (en el ordenador, sin producción):**
+- Comprobación de tipos, análisis de estilo y compilación sin avisos; batería completa del proyecto en verde.
+- **51 pruebas con datos en un PostgreSQL local** (`supabase/local-sql-tests`, ejecuta las migraciones reales): PIN y correos, vínculo parental, invitaciones, rol y secciones de la ficha, reservas, crear familia, comprobación de invitación, gancho de alta, limpieza de huérfanos y que sin invitación no hay perfil.
+- Pruebas de las pantallas y del texto del SQL: puerta por invitación (`src/data/invitationGate.test.ts`), piezas puras (`src/domain/invitations.test.ts`, `accountSecurity.test.ts`), pantallas de Familia (`src/ui/invitationsAndGuardiansUi.test.ts`), entrada con invitación pintada de verdad (`src/ui/loginInvitationFirstRender.test.tsx`), cerrar sesión local con la librería real de Supabase (`src/data/signOutLocalScope.test.ts`).
+- Las plantillas se renderizaron en un navegador (móvil y escritorio).
 
-**No hecho (necesita producción o dispositivos):**
+**No hecho (necesita producción, correo oficial o dispositivos):**
 
 | # | Prueba | Estado |
 |---|---|---|
-| 1 | Registro de usuario nuevo | Sin probar (necesita SMTP y plantillas) |
-| 2 | Confirmación de correo con código | Sin probar |
-| 3 | Cambio de correo (uno y dos códigos según el ajuste «seguro») | Sin probar |
-| 4 | Recuperación de contraseña con código | Sin probar |
-| 5 | Cambio de contraseña | Sin probar |
-| 6 | PIN activado y desactivado | Sin probar con base de datos real |
-| 7 | Cambio y recuperación del PIN (incluye comprobar que el token trae la marca `amr` con hora al entrar con contraseña y con código) | **Sin probar: es la comprobación clave antes del cierre 0293** |
-| 8 | Huella y Face ID tras recuperar el PIN | Sin probar |
-| 9 | Permisos de administradora, adulta y niña/o | SQL preparado (`0292_live_test.sql`); sin ejecutar |
-| 10 | Usuarios sin cuenta propia | Revisado en el código |
-| 11 | Varios dispositivos (cerrar solo aquí / en los demás) | Sin probar |
-| 12 | Cierre de sesión (también la ubicación de la app nativa) | Sin probar |
-| 13 | Aislamiento de datos entre familias | SQL preparado; sin ejecutar |
-| 14 | iPhone, Android y escritorio (incluida la vuelta de segundo plano) | Sin probar |
-| 15 | Entrega en Gmail, Outlook, iCloud y otros | Sin probar |
+| 1 | Registro con invitación (pantalla → gancho → correo → alta) | 🔒 necesita aplicar `0295`, activar el gancho y SMTP |
+| 2 | Alta **sin** invitación llamando a Supabase directamente (debe rechazarse) | 🔒 tras activar el gancho; **prueba obligatoria antes de dar nada por cerrado** |
+| 3 | Qué datos manda Supabase al gancho (`user_metadata` o `raw_user_meta_data`) | ⏳ se comprueba en pruebas o al activarlo (reversible) |
+| 4 | Confirmación de correo con código; cambio de correo (uno o dos códigos según el ajuste «seguro»); recuperación y cambio de contraseña | ⏳ necesitan el correo oficial |
+| 5 | PIN: activar, cambiar, recuperar; comprobar que el token trae la marca `amr` con hora al entrar con contraseña y con código | 🔒 **clave antes del cierre `0296`** |
+| 6 | Huella y Face ID tras recuperar el PIN | 🔒 |
+| 7 | Vínculo «Es mi hijo/a» y «Dar acceso a PEPA» en la app real, con las fichas abiertas y cerradas | 🔒 |
+| 8 | Aislamiento de datos entre familias con datos reales | 🔒 SQL en vivo preparado; local ya probado |
+| 9 | Dos conexiones a la vez usando el mismo código (el bloqueo `for update`) | ⏳ en local hay una sola conexión; se comprueba al probar en producción con datos de mentira |
+| 10 | Cerrar sesión solo en este dispositivo (iPhone, Android y escritorio) | 🔒 desplegar |
+| 11 | Entrega de correos en Gmail, Outlook, iCloud y otros | ⏳ necesita el correo oficial |
 
 ## 9. Decisiones
 
-**Aprobadas (20/10/2026):**
-1. PIN: se vuelve a pedir tras **un minuto** en segundo plano, **solo cuando el PIN está activado** (ya es así; sin PIN no cambia nada).
-2. «Cerrar sesión» se queda en **Configuración → Mi cuenta**, tal como está en producción: no se traslada a Seguridad ni se duplica.
+**Aprobadas (20/10/2026):** PIN tras 1 minuto en segundo plano solo con PIN activado · «Cerrar sesión» en Configuración → Mi cuenta, **solo en el dispositivo actual** · auditar ahora y aprobar la corrección después · vínculo parental por fases (Fase A ya; correo de menores, después) · declaración + identificación reciente, sin confirmación de otra persona adulta · **sin límite de tutores** por menor · padres y tutores vinculados pueden invitar a sus hijos menores · **primero invitación, después cuenta**.
 
 **Pendientes de ti:**
-1. Qué servicio de OVH tienes y si se prueba antes de decidir entre OVH y Resend (§3, §4).
-2. «Cerrar sesión» de producción llama a `signOut()` sin alcance, y Supabase lo trata como **global: cierra la sesión de TODOS tus dispositivos**, aunque la tarjeta dice «en este móvil». Se ha dejado exactamente como en producción. ¿Se cambia a «solo este dispositivo» (una línea) y se añade, dentro de esa misma tarjeta, «cerrar las demás»?
-3. Vínculo padres–hijos e invitaciones familiares: ver `docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md` (estudio, sin implementar).
+1. **Autorizar** la aplicación de las migraciones, las pruebas en vivo con escritura y la activación del gancho (§4 y §5).
+2. **Código maestro** del Vault: ¿se rota o se retira cuando esto esté desplegado?
+3. **Revocación de vínculos:** ¿apruebas el mecanismo propuesto (retirar el propio vínculo; revisión por una administradora de PEPA para los disputados)? Hasta entonces nadie puede retirar un vínculo.
+4. OVH: qué servicio tienes y si se prueba antes de decidir entre OVH y Resend (§3).
+5. Qué hacer con la opción antigua «Generar código de acceso» del menú ⋯ cuando compruebes que «Dar acceso a PEPA» va bien.

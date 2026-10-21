@@ -1667,7 +1667,9 @@ function SignOutCard({ displayName }: { displayName: string }) {
         onClick={async () => {
           // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
           await disableNativeUpload()
-          await supabase.auth.signOut()
+          // Decisión 20/10/2026: cierra SOLO este dispositivo (scope 'local'). Antes, signOut() sin alcance es «global» en Supabase y cerraba la sesión de TODOS los móviles y
+          // ordenadores de la misma cuenta, aunque la tarjeta dijera «en este móvil».
+          await supabase.auth.signOut({ scope: 'local' })
         }}
       >
         Cerrar sesión ({displayName})

@@ -152,12 +152,155 @@ export function previewHtml(html) {
   return html.replaceAll('{{ .Token }}', '482913').replaceAll('{{ .NewEmail }}', 'nuevo.correo@ejemplo.com')
 }
 
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// INVITACIONES A PEPA (no son plantillas de Supabase Auth): las enviará una función de servidor cuando el correo oficial esté configurado. HOY NO SE ENVÍA NINGÚN CORREO: solo existen la
+// plantilla y la vista previa. Marcadores propios (no los de Supabase): {{invite_code}}, {{expires_text}}, {{register_url}}, {{inviter_name}}, {{recipient_name}}.
+// Son DOS tipos y no se mezclan:
+//   · invitation_new_family — la envía una administradora de PEPA: autoriza crear un espacio familiar nuevo.
+//   · invitation_member     — la envía una administradora de la familia o una madre/padre vinculado: autoriza crear una cuenta y unirse a una ficha.
+// Un solo correo con el código y las instrucciones. El código de 6 cifras del correo de confirmación es OTRA cosa y se explica como tal.
+function invitationLayout({ title, preheader, heading, intro, steps, closing }) {
+  const items = steps.map((t, i) => `<tr><td valign="top" style="padding:4px 10px 4px 0;font-size:16px;line-height:24px;font-weight:700;color:${BRAND_PINK};">${i + 1}.</td><td style="padding:4px 0;font-size:16px;line-height:24px;color:${TEXT};">${t}</td></tr>`).join('\n                ')
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f6fa;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f6fa;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background-color:#ffffff;border-radius:16px;">
+          <tr>
+            <td align="center" style="padding:28px 24px 8px 24px;">
+              <img src="${LOGO_URL}" width="280" alt="PEPA · Tu familia organizada" style="display:block;width:280px;max-width:100%;height:auto;border:0;">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 4px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <h1 style="margin:12px 0 14px 0;font-size:24px;line-height:30px;color:${BRAND_PINK};">${heading}</h1>
+              <p style="margin:0 0 14px 0;font-size:16px;line-height:24px;color:${TEXT};">${intro}</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:6px 28px 6px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <p style="margin:0 0 8px 0;font-size:14px;line-height:20px;color:${MUTED};">Tu código de invitación</p>
+              <div style="display:inline-block;padding:14px 22px;background-color:#fff0f5;border:2px solid #f6b8cb;border-radius:12px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:28px;line-height:36px;font-weight:700;letter-spacing:4px;color:${TEXT};">{{invite_code}}</div>
+              <p style="margin:10px 0 0 0;font-size:13px;line-height:19px;color:${MUTED};">Válido hasta {{expires_text}} · solo se puede usar una vez.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px 4px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <p style="margin:0 0 8px 0;font-size:16px;line-height:24px;font-weight:700;color:${TEXT};">Para crear tu cuenta:</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                ${items}
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:18px 28px 6px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <a href="{{register_url}}" style="display:inline-block;padding:14px 26px;background-color:${BRAND_PINK};border-radius:12px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">Crear mi cuenta en PEPA</a>
+              <p style="margin:10px 0 0 0;font-size:12px;line-height:18px;color:${MUTED};">Si el botón no funciona, copia esta dirección en tu navegador:<br><span style="word-break:break-all;">{{register_url}}</span></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px 8px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${MUTED};">${closing}</p>
+              <p style="margin:0 0 4px 0;font-size:14px;line-height:21px;color:${MUTED};"><strong style="color:${TEXT};">Tu seguridad:</strong> la invitación es personal. No la compartas con nadie ni la publiques.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 28px 26px 28px;border-top:1px solid #eceef3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <p style="margin:0;font-size:12px;line-height:18px;color:${MUTED};text-align:center;">PEPA · Tu familia organizada<br>
+              Este es un mensaje automático. Si necesitas ayuda, escríbenos a <a href="mailto:${SUPPORT_EMAIL}" style="color:${MUTED};">${SUPPORT_EMAIL}</a>.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`
+}
+
+const CONFIRM_STEP = 'Te llegará un correo con un <strong>código de 6 cifras</strong>: escríbelo para confirmar tu correo. Es un código distinto del de invitación.'
+
+export const INVITATION_TEMPLATES = {
+  invitation_new_family: {
+    subject: 'Te han invitado a crear tu familia en PEPA',
+    html: invitationLayout({
+      title: 'Te han invitado a crear tu familia en PEPA',
+      preheader: 'Tu invitación y los pasos para crear tu espacio familiar en PEPA.',
+      heading: 'Te damos la bienvenida a PEPA',
+      intro: 'PEPA es una aplicación privada y has recibido autorización para <strong>crear el espacio de tu familia</strong>. Con el código de abajo podrás registrarte.',
+      steps: [
+        'Pulsa el botón «Crear mi cuenta en PEPA» (el código se rellena solo). Si no, abre PEPA y pulsa «Tengo una invitación».',
+        'Escribe el código de invitación si te lo pide.',
+        'Escribe tu correo y elige una contraseña.',
+        CONFIRM_STEP,
+        'Pon el nombre de tu familia y tus datos. ¡Ya estarás dentro!',
+      ],
+      closing: 'Si no esperabas esta invitación, puedes ignorar este mensaje: no se crea ninguna cuenta si no la usas.',
+    }),
+  },
+  invitation_member: {
+    subject: 'Te han invitado a unirte a tu familia en PEPA',
+    html: invitationLayout({
+      title: 'Te han invitado a unirte a tu familia en PEPA',
+      preheader: 'Tu invitación y los pasos para crear tu cuenta y unirte a tu familia en PEPA.',
+      heading: 'Te esperan en PEPA',
+      intro: '{{inviter_name}} te invita a <strong>unirte a tu familia en PEPA</strong>{{recipient_name}}. Con el código de abajo podrás crear tu cuenta y quedar dentro de tu familia.',
+      steps: [
+        'Pulsa el botón «Crear mi cuenta en PEPA» (el código se rellena solo). Si no, abre PEPA y pulsa «Tengo una invitación».',
+        'Escribe el código de invitación si te lo pide.',
+        'Escribe tu correo y elige una contraseña.',
+        CONFIRM_STEP,
+        'Completa tus datos. ¡Ya estarás en tu familia!',
+      ],
+      closing: 'Si no esperabas esta invitación, puedes ignorar este mensaje: no se crea ninguna cuenta si no la usas.',
+    }),
+  },
+}
+
+const escapeHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+
+/** Rellena una invitación: todos los valores se escapan (un nombre con «<» no puede inyectar HTML). `recipient_name` entra como « (nombre)» si existe. */
+export function renderInvitation(html, vars) {
+  const v = {
+    invite_code: escapeHtml(vars.invite_code ?? ''),
+    expires_text: escapeHtml(vars.expires_text ?? ''),
+    register_url: escapeHtml(vars.register_url ?? ''),
+    inviter_name: escapeHtml(vars.inviter_name || 'Alguien de tu familia'),
+    recipient_name: vars.recipient_name ? ` (${escapeHtml(vars.recipient_name)})` : '',
+  }
+  return html.replace(/\{\{(invite_code|expires_text|register_url|inviter_name|recipient_name)\}\}/g, (_, k) => v[k])
+}
+
+export const INVITATION_SAMPLE = {
+  invite_code: 'K7M2QX9PTD',
+  expires_text: 'mañana a las 14:30',
+  register_url: 'https://fransegura51.github.io/family-app/?invitacion=K7M2QX9PTD',
+  inviter_name: 'Jennifer',
+  recipient_name: 'Eric',
+}
+
 export function writeAll(root) {
   const dir = join(root, 'supabase', 'email-templates')
   mkdirSync(join(dir, 'preview'), { recursive: true })
   for (const [name, t] of Object.entries(TEMPLATES)) {
     writeFileSync(join(dir, `${name}.html`), t.html)
     writeFileSync(join(dir, 'preview', `${name}.html`), previewHtml(t.html).replaceAll(LOGO_URL, '../assets/pepa-logo-email.jpg'))
+  }
+  for (const [name, t] of Object.entries(INVITATION_TEMPLATES)) {
+    writeFileSync(join(dir, `${name}.html`), t.html)
+    writeFileSync(join(dir, 'preview', `${name}.html`), renderInvitation(t.html, INVITATION_SAMPLE).replaceAll(LOGO_URL, '../assets/pepa-logo-email.jpg'))
   }
 }
 

@@ -1,9 +1,13 @@
 import { FormEvent, useState } from 'react'
+import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { createFamily, joinFamilyWithCode } from '@/data/family'
 import { errorMessage } from '@/domain/errorMessage'
 import { BIRTH_DATE_HELP, MIN_BIRTH_DATE, birthDateError, signupBirthDateServerMessage, todayIso } from '@/domain/signupBirthDate'
 
 type Mode = 'choose' | 'create' | 'join'
+
+// Logotipo oficial (con eslogan) arriba de las tres vistas, igual que la pantalla de entrada.
+const logo = <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 320, height: 'auto', marginBottom: 8 }} />
 
 // Se muestra cuando hay sesión pero todavía no hay `profiles` row: el
 // usuario acaba de registrarse y tiene que crear su familia (Fase 1) o,
@@ -16,6 +20,7 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
   if (mode === 'choose') {
     return (
       <div className="screen screen-centered">
+        {logo}
         <h1>Bienvenido/a</h1>
         <p className="muted">¿Es la primera vez que se usa esta app en tu familia, o ya hay una familia creada?</p>
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -75,6 +80,7 @@ function CreateFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onB
 
   return (
     <div className="screen screen-centered">
+      {logo}
       <h1>Crea tu familia</h1>
       <p className="muted">Eres el primer adulto administrador.</p>
       <form onSubmit={handleSubmit} className="card">
@@ -151,6 +157,7 @@ function JoinFamilyForm({ onDone, onBack }: { onDone: () => Promise<void>; onBac
 
   return (
     <div className="screen screen-centered">
+      {logo}
       <h1>Únete a tu familia</h1>
       <p className="muted">Pide el código a quien administra la app (Familia → tu nombre → "Generar código de acceso").</p>
       <form onSubmit={handleSubmit} className="card">

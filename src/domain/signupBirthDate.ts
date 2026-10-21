@@ -2,7 +2,7 @@
 // Fecha válida: formato AAAA-MM-DD, existente, no futura y no anterior a 1900.
 export const MIN_BIRTH_DATE = '1900-01-01'
 
-export const BIRTH_DATE_HELP = 'Es obligatoria. La usamos para saber tu edad (por ejemplo, Comunidad PEPA es solo para personas de 18 años o más). No se enseña a nadie.'
+export const BIRTH_DATE_HELP = 'Es obligatoria. La usamos para saber tu edad (por ejemplo, Comunidad PEPA es solo para personas de 18 años o más). Solo la ve tu familia dentro de PEPA, en tu ficha.'
 
 export function todayIso(now: Date = new Date()): string {
   const y = now.getFullYear()

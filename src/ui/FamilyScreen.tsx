@@ -23,6 +23,7 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { effectiveMemberType } from '@/domain/growth'
+import { birthDateLine } from '@/domain/memberBirthLabel'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { canSeeDietarySection, FamilyDietarySection } from '@/ui/FamilyDietarySection'
@@ -276,6 +277,11 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                 <span className="member-role-pill">
                   {memberTypeLabel(effectiveMemberType(m.memberType, m.birthDate, babyUntilMonths, new Date().toISOString().slice(0, 10)))}
                 </span>
+                {birthDateLine(m.birthDate, new Date().toISOString().slice(0, 10)) && (
+                  <span className="muted" style={{ display: 'block', fontSize: 12 }}>
+                    {birthDateLine(m.birthDate, new Date().toISOString().slice(0, 10))}
+                  </span>
+                )}
                 {m.linkedProfileId && emails[m.linkedProfileId]?.email && (
                   <span className="muted" style={{ display: 'block', fontSize: 12, overflowWrap: 'anywhere' }}>
                     ✉️ {emails[m.linkedProfileId].email}

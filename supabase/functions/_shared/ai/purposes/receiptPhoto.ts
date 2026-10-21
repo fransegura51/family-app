@@ -55,6 +55,10 @@ export const RECEIPT_PHOTO_PROMPT =
   '"unitPrice": numero, "lineTotal": numero}]}\n' +
   'Incluye en items TODAS las líneas de producto que veas, una por cada producto comprado ' +
   '(no líneas de total, subtotal, IVA, cambio o forma de pago). ' +
+  'DESCUENTOS: si el ticket imprime una línea de descuento, promoción, cupón u oferta (p. ej. "DTO", "DESCUENTO", "PROMO", ' +
+  '"CUPÓN", "OFERTA", "-0,50"), inclúyela TAMBIÉN como un item aparte con name="Descuento <producto o texto impreso>", quantity=1, ' +
+  'unit="ud" y unitPrice y lineTotal NEGATIVOS (el importe impreso con signo menos, p. ej. -0.50). No restes tú el descuento ' +
+  'del producto al que se aplica: ese producto conserva su propio precio impreso. ' +
   'IMPORTANTE — nunca calcules ni multipliques ni dividas tú los números: cada campo es SIEMPRE un ' +
   'número que aparece IMPRESO tal cual en esa línea del ticket, nunca algo que tengas que derivar. ' +
   '"lineTotal" es siempre el importe en euros realmente cobrado por esa línea (normalmente el último ' +

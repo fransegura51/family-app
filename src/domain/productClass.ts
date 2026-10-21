@@ -85,6 +85,7 @@ const RULE_KEY_TO_FOOD_TYPE_KEY: Record<string, string | null> = {
   snacks: 'food.snacks_dulces',
   panaderia: 'food.panaderia_bolleria',
   lacteos: 'food.lacteos_huevos',
+  huevos: 'food.huevos',
   pescado: 'food.pescado_marisco',
   carne: 'food.carne',
   fruta: 'food.fruta',

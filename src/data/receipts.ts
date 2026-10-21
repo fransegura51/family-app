@@ -27,7 +27,7 @@ export async function listReceipts(): Promise<Receipt[]> {
   const data = await fetchAllRows((from, to) =>
     supabase
       .from('receipts')
-      .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes, category, purchased_by_member_id')
+      .select('id, family_id, storage_path, store, receipt_date, total_amount, expense_id, notes, category, purchased_by_member_id, discount_total')
       .order('receipt_date', { ascending: false })
       .order('id')
       .range(from, to),
@@ -43,6 +43,7 @@ export async function listReceipts(): Promise<Receipt[]> {
     notes: r.notes,
     category: r.category,
     purchasedByMemberId: r.purchased_by_member_id,
+    discountTotal: r.discount_total != null ? Number(r.discount_total) : 0,
   }))
 }
 
@@ -58,6 +59,8 @@ export async function uploadReceipt(input: {
   // null = categoría todavía desconocida (pendiente de clasificar): el ticket es igualmente válido. Nunca se sustituye por una inventada.
   category: string | null
   purchasedByMemberId: string | null
+  // Suma (€, positiva) de las líneas de descuento del ticket; 0 si no hay.
+  discountTotal?: number
 }): Promise<string> {
   const familyId = await currentFamilyId()
   const file = await compressImageFile(input.file)
@@ -139,6 +142,7 @@ export async function uploadReceipt(input: {
       expense_id: expenseId,
       category: input.category,
       purchased_by_member_id: input.purchasedByMemberId,
+      discount_total: input.discountTotal ?? 0,
     })
     .select('id')
     .single()

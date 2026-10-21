@@ -144,21 +144,21 @@ describe('Fase 6A: TODOS los caminos que crean products / product_prices filtran
   it('al leer un ticket, las líneas no-producto ni llegan a la revisión (y se avisa), conservando el total y la foto', () => {
     const src = APP['/src/ui/FinanceScreen.tsx']
     expect(src).toContain('partitionTicketLines(readStore, parsed.items)')
-    expect(src).toContain('setSkippedLines([...skipped.map')
+    expect(src).toContain('setSkippedLines(skipped.map')
     expect(src).toContain("if (parsed.total != null) setTotalAmount(String(parsed.total))") // el total del ticket sigue viniendo entero
   })
 
   it('webhook de Mercadona: filtra antes de crear producto o precio, con la copia idéntica de la capa, y avisa cuántas omitió', () => {
     expect(MERCADONA).toContain('import { partitionTicketLines } from "./ticketLines.ts"')
     const at = (s: string) => MERCADONA.indexOf(s)
-    expect(at('partitionTicketLines("Mercadona", items)')).toBeGreaterThan(-1)
-    expect(at('partitionTicketLines("Mercadona", items)')).toBeLessThan(at('for (const item of productItems)'))
+    expect(at('partitionTicketLines("Mercadona", purchaseItems)')).toBeGreaterThan(-1)
+    expect(at('partitionTicketLines("Mercadona", purchaseItems)')).toBeLessThan(at('for (const item of productItems)'))
     expect(at('for (const item of productItems)')).toBeLessThan(at('.from("products")'))
     expect(MERCADONA).not.toMatch(/for \(const item of items\)/)
     expect(MERCADONA).toContain('itemsSaved: productItems.length, itemsSkippedNonProduct: skippedItems.length')
     // el ticket, el gasto y el total se guardan siempre íntegros (antes del filtro)
-    expect(at('.from("receipts")')).toBeLessThan(at('partitionTicketLines("Mercadona", items)'))
-    expect(at('amount: total')).toBeLessThan(at('partitionTicketLines("Mercadona", items)'))
+    expect(at('.from("receipts")')).toBeLessThan(at('partitionTicketLines("Mercadona", purchaseItems)'))
+    expect(at('amount: total')).toBeLessThan(at('partitionTicketLines("Mercadona", purchaseItems)'))
   })
 
   it('webhook de Amazon: fuera del alcance de esta fase (Amazon no tiene reglas); lo cubre el refuerzo de la base de datos', () => {

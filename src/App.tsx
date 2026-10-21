@@ -30,6 +30,7 @@ import { ReminderWatcher } from '@/ui/ReminderWatcher'
 import { NativeDeepLinks } from '@/ui/NativeDeepLinks'
 import { NotificationOpenMarker } from '@/ui/NotificationOpenMarker'
 import { UsageTracker } from '@/ui/UsageTracker'
+import { PrefsSync } from '@/ui/PrefsSync'
 import { PushSubscriptionKeeper } from '@/ui/PushSubscriptionKeeper'
 import { LocationSharingWatcher } from '@/ui/LocationSharingWatcher'
 import { AppLockGate } from '@/ui/AppLockGate'
@@ -142,6 +143,7 @@ function AuthedApp() {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <ReminderWatcher profile={profile} />
         <UsageTracker />
+        <PrefsSync userId={session.user.id} />
         <NativeDeepLinks />
         {/* INC-06: abrir un aviso desde la notificación del móvil (?aviso=<id>) lo marca como leído; abrir Novedades marca los avisos agrupados. */}
         <NotificationOpenMarker />

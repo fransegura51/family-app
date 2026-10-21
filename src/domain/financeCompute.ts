@@ -190,7 +190,7 @@ const CLASS_SYNONYMS: Record<string, string> = {
   golosinas: 'Snacks y dulces',
   pan: 'Panadería y bollería',
   bolleria: 'Panadería y bollería',
-  huevos: 'Lácteos y huevos',
+  huevos: 'Huevos',
   marisco: 'Pescado y marisco',
   verduras: 'Verdura y hortalizas',
   hortalizas: 'Verdura y hortalizas',

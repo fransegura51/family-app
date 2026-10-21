@@ -41,6 +41,13 @@ export async function adminResetProfilePin(profileId: string): Promise<void> {
   if (error) throw error
 }
 
+// ¿Tiene PIN esa persona? (solo sí/no; el admin nunca ve el PIN). Sirve para no ofrecer «Reiniciar» cuando no hay nada que reiniciar.
+export async function profileHasPin(profileId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('profile_has_pin', { p_profile_id: profileId })
+  if (error) throw error
+  return data as boolean
+}
+
 // Huella dactilar / Face ID — capa opcional POR ENCIMA del PIN (ver
 // supabase/functions/profile-webauthn). La verificación criptográfica
 // real vive en el servidor; aquí solo se hace de puente entre el

@@ -13,7 +13,7 @@ import {
   uploadMemberPhoto,
   type AccountsMode,
 } from '@/data/family'
-import { adminResetProfilePin } from '@/data/appLock'
+import { adminResetProfilePin, profileHasPin } from '@/data/appLock'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
@@ -258,7 +258,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
                     ✏️ Editar
                   </button>
-                  {m.linkedProfileId && <ResetPinButton profileId={m.linkedProfileId} />}
+                  {m.linkedProfileId && <ResetPinButton profileId={m.linkedProfileId} isSelf={m.linkedProfileId === profile.id} />}
                   {/* Solo tiene sentido para quien todavía no tiene su
                       propia cuenta — ligado hoy a la sesión de otro (p. ej.
                       Paco entrando siempre como Jennifer). El código enlaza
@@ -332,14 +332,26 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
 // otra persona cuando se le olvida: la próxima vez que abra el
 // bloqueo tendrá que crear uno nuevo (ver 0083_profile_app_lock.sql).
 // Solo tiene sentido para quien tiene su propia cuenta (linkedProfileId).
-function ResetPinButton({ profileId }: { profileId: string }) {
+function ResetPinButton({ profileId, isSelf }: { profileId: string; isSelf: boolean }) {
   const [done, setDone] = useState(false)
+  const [hasPin, setHasPin] = useState<boolean | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    profileHasPin(profileId)
+      .then((v) => !cancelled && setHasPin(v))
+      .catch(() => !cancelled && setHasPin(null))
+    return () => {
+      cancelled = true
+    }
+  }, [profileId])
 
   async function handleReset() {
     setError(null)
     try {
       await adminResetProfilePin(profileId)
+      setHasPin(false)
       setDone(true)
       setTimeout(() => setDone(false), 2500)
     } catch (err) {
@@ -348,6 +360,16 @@ function ResetPinButton({ profileId }: { profileId: string }) {
   }
 
   if (done) return <span className="muted">✓ PIN reiniciado</span>
+  // Sin PIN no hay nada que reiniciar: para uno mismo la acción útil es CREARLO (Menú → Configuración); para otra persona, nada.
+  if (hasPin === false) {
+    return isSelf ? (
+      <Link to="/menu-organizar" className="link-button">
+        🔒 Crear PIN
+      </Link>
+    ) : (
+      <span className="muted">Sin PIN</span>
+    )
+  }
   return (
     <>
       <ConfirmButton label="🔓 Reiniciar PIN" confirmLabel="Reiniciar" onConfirm={handleReset} />

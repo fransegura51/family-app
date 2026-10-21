@@ -25,7 +25,8 @@ export const FOOD_TYPES: FoodType[] = [
   { key: 'congelados', label: 'Congelados y helados', icon: '🧊' },
   { key: 'snacks', label: 'Snacks y dulces', icon: '🍬' },
   { key: 'panaderia', label: 'Panadería y bollería', icon: '🍞' },
-  { key: 'lacteos', label: 'Lácteos y huevos', icon: '🥛' },
+  { key: 'lacteos', label: 'Lácteos', icon: '🥛' },
+  { key: 'huevos', label: 'Huevos', icon: '🥚' },
   // Pescado antes que Carne: "filete" o "brocheta" solos no dicen de
   // qué es, pero "merluza"/"gamba"/"atún" sí — si se miraran en el
   // orden contrario, "FILETE MERLUZA" caería en Carne por "filete".
@@ -116,9 +117,10 @@ const KEYWORDS_BY_TYPE: Record<string, string[]> = {
     'artesanitos', 'bollo',
   ],
   lacteos: [
-    'leche', 'queso', 'yogur', 'yogomix', 'huevo', 'nata', 'mantequilla',
+    'leche', 'queso', 'yogur', 'yogomix', 'nata', 'mantequilla',
     'mozzarella', 'batido', 'requeson', 'flan', 'natilla', 'cuajada',
   ],
+  huevos: ['huevo'],
   carne: [
     'pollo', 'cerdo', 'ternera', 'vacuno', 'carne', 'lomo', 'solomillo',
     'chuleta', 'chorizo', 'salchicha', 'salami', 'fuet', 'longaniza',
@@ -129,7 +131,11 @@ const KEYWORDS_BY_TYPE: Record<string, string[]> = {
   pescado: [
     'pescado', 'merluza', 'salmon', 'atun', 'gamba', 'langostino', 'calamar',
     'pulpo', 'marisco', 'bacalao', 'sardina', 'boqueron', 'mejillon',
-    'trucha', 'lubina', 'dorada', 'sepia', 'surimi',
+    'trucha', 'lubina', 'dorada', 'sepia', 'surimi', 'pescadilla', 'abadejo',
+    'anchoa', 'caballa', 'bonito', 'rodaballo', 'lenguado',
+    'chipiron', 'almeja', 'berberecho', 'ostra', 'langosta', 'cigala',
+    'tilapia', 'panga', 'emperador',
+    'gulas', 'angula', 'jibia', 'mejillones',
   ],
   fruta: [
     'manzana', 'platano', 'banana', 'naranja', 'limon', 'pera', 'uva',

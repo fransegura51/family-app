@@ -6,6 +6,7 @@ import { APP_LOCK_CHANGED_EVENT } from '@/domain/appLockPolicy'
 import { isCompleteOtp } from '@/domain/otpCode'
 import { errorMessage } from '@/domain/errorMessage'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { PasswordField } from '@/ui/PasswordField'
 
 // «He olvidado mi PIN». La persona se identifica con SU cuenta (contraseña, o código de seis cifras al correo) y el servidor quita el PIN y borra las huellas
 // / Face ID anteriores SOLO si esa identificación es de los últimos 5 minutos (reset_own_pin_after_recent_auth): una sesión que llevaba abierta días no vale
@@ -132,10 +133,7 @@ export function PinRecoveryPanel({ onFinished, onCancel }: { onFinished: () => v
       {step === 'password' && (
         <form onSubmit={handlePassword}>
           <strong>Escribe tu contraseña</strong>
-          <label>
-            Contraseña de tu cuenta
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required autoFocus />
-          </label>
+          <PasswordField label="Contraseña de tu cuenta" value={password} onChange={setPassword} autoComplete="current-password" autoFocus />
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={busy || !password}>
             {busy ? 'Comprobando…' : 'Quitar el PIN antiguo'}
@@ -174,11 +172,11 @@ export function PinRecoveryPanel({ onFinished, onCancel }: { onFinished: () => v
           </p>
           <label>
             Nuevo PIN (4-6 dígitos)
-            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} autoFocus />
+            <PasswordField numeric value={pin} onChange={setPin} required={false} autoFocus ariaLabel="Nuevo PIN (4-6 dígitos)" />
           </label>
           <label>
             Repite el PIN
-            <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} />
+            <PasswordField numeric value={pinConfirm} onChange={setPinConfirm} required={false} ariaLabel="Repite el PIN" />
           </label>
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={busy || pin.length < 4}>

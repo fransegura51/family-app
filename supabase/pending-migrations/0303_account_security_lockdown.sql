@@ -1,4 +1,4 @@
--- PENDIENTE DE APLICAR (no está en supabase/migrations a propósito). Endurecimiento que SOLO puede hacerse cuando 0292 y la versión nueva de la app
+-- PENDIENTE DE APLICAR (no está en supabase/migrations a propósito). Endurecimiento que SOLO puede hacerse cuando 0299 y la versión nueva de la app
 -- ya están publicadas y se ha comprobado de verdad que «Recuperar mi PIN» funciona con una sesión real (ver docs/CUENTAS_SEGURIDAD_PLAN.md, paso «Cierre»).
 -- Si se aplicara antes, una persona que olvidara su PIN se quedaría sin salida (hoy su salida es que un administrador se lo reinicie).
 --

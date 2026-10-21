@@ -3,6 +3,8 @@ import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.
 import { recoveryFlow } from '@/auth/recoveryFlow'
 import { setNewPassword } from '@/data/account'
 import { authErrorMessage } from '@/domain/authErrors'
+import { PASSWORD_MISMATCH_MESSAGE, passwordsMatch } from '@/domain/passwordForm'
+import { NewPasswordFields } from '@/ui/PasswordField'
 
 // Se llega aquí desde "¿Olvidaste tu contraseña?" (LoginScreen) o desde «No recuerdo mi contraseña» de Configuración → Seguridad, de DOS maneras:
 //  · con el código de seis cifras del correo (la nueva, la que usan los correos nuevos): al confirmarlo, la app avisa con recoveryFlow que se está
@@ -26,8 +28,8 @@ export function ResetPasswordScreen() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (password !== confirm) {
-      setError('Las dos contraseñas no coinciden.')
+    if (!passwordsMatch(password, confirm)) {
+      setError(PASSWORD_MISMATCH_MESSAGE)
       return
     }
     setLoading(true)
@@ -61,14 +63,7 @@ export function ResetPasswordScreen() {
       {logo}
       <form onSubmit={handleSubmit} className="card">
         <p className="muted">Elige tu nueva contraseña.</p>
-        <label>
-          Contraseña nueva
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required autoComplete="new-password" />
-        </label>
-        <label>
-          Repítela
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={6} required autoComplete="new-password" />
-        </label>
+        <NewPasswordFields password={password} confirm={confirm} onPasswordChange={setPassword} onConfirmChange={setConfirm} passwordLabel="Contraseña nueva" autoFocus />
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={loading}>
           {loading ? 'Guardando…' : 'Guardar contraseña'}

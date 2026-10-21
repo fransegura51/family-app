@@ -26,7 +26,7 @@ Procedimiento (decisión 3; **no** exige confirmación de otra persona adulta):
 
 Qué comprueba el servidor (`declare_guardianship`, probado con datos): rol adulta/administradora con cuenta; identificación reciente; declaración aceptada; la ficha es de la **misma familia** y de un **niño o bebé menor de 18**; no eres tú; no está ya vinculado. **Imposible sobre una persona adulta:** una ficha «niño» ya mayor de 18, una ficha de adulta o una ficha con cuenta de rol adulta no cuentan como menores. Nadie puede declarar a **otra** persona como madre/padre (el tutor es siempre quien llama).
 
-## 3. Modelo de datos (0293)
+## 3. Modelo de datos (0300)
 Se reutilizan `family_members` y `profiles`. Solo hay **una tabla nueva** de vínculos y una de historial:
 - `family_member_guardians`: hijo (ficha), madre/padre/tutor (ficha), tipo (`parent` o `legal_guardian`), estado (`active`/`revoked`), quién declaró, cuándo, versión de la declaración, y los datos de una eventual retirada. **Sin límite de tutores por menor** (familias reconstituidas, tutelas…): cada vínculo es una fila independiente. Un mismo vínculo vigente no se repite (índice único), el historial de retirados se conserva.
 - `family_guardian_events`: registro de «declarado» y «retirado», que se conserva aunque cambie el vínculo.
@@ -34,15 +34,12 @@ Se reutilizan `family_members` y `profiles`. Solo hay **una tabla nueva** de ví
 - Seguridad de filas: leen los vínculos las personas adultas y administradoras de la familia; **nadie escribe desde la app** (solo funciones del servidor).
 - **Los poderes derivados se comprueban al actuar**, nunca se guardan como «permiso»: a los **18 años** dejan de valer solos (se calcula con la fecha de la ficha en cada acción) **sin borrar el historial**.
 
-## 4. Revocación: mecanismo propuesto, **NO habilitado** (para tu revisión)
-Condiciones que pediste y cómo se cumplen:
-| Condición | Diseño |
-|---|---|
-| El titular puede retirar su **propio** vínculo | Existe `revoke_own_guardianship` (marca el vínculo como retirado con fecha, quién y motivo, y lo registra), pero **está creada sin permiso de ejecución**: la app no puede llamarla ni tiene botón. Para habilitarla hace falta (1) tu aprobación de este mecanismo, (2) una línea de permiso y (3) el botón «Retirar mi vínculo» con confirmación e identificación reciente |
-| Una administradora de familia **no** puede eliminar arbitrariamente el vínculo de otra persona | No existe ninguna función para ello y la tabla no admite escritura de la app. Además, desde la migración 0294 tampoco puede reasignar a mano a qué cuenta pertenece una ficha |
-| Procedimiento controlado para vínculos **incorrectos o disputados** | **Propuesta (no implementada):** (1) cualquier persona adulta de la familia, o la propia persona vinculada, abre una **solicitud de revisión** con motivo; (2) se avisa al titular y tiene **7 días** para retirar su vínculo o mantenerlo; (3) mientras dura la revisión, **los poderes derivados de ese vínculo (dar acceso al menor) quedan suspendidos**; (4) si hay desacuerdo o el titular no responde, **decide una administradora de PEPA** (`is_app_owner`) viendo el historial; (5) todo queda en `family_guardian_events`. Necesita tu aprobación y una tabla de solicitudes más |
-| Registrar los cambios relevantes | Hecho: declaración y retirada quedan en `family_guardian_events` (quién, cuándo, tipo, versión de la declaración) |
-| Al cumplir 18 años | Hecho: los poderes cesan solos; el vínculo y su historial se conservan |
+## 4. Revocación (simplificada, 21/10/2026)
+- **Cada persona retira solo su propio vínculo.** En su ficha, debajo de los nombres de las madres/padres/tutores, aparece **«Dejar de figurar como madre/padre/tutor»** con una confirmación («Solo quitas tu propio vínculo… Podrás volver a indicarlo cuando quieras»). Lo ejecuta `revoke_own_guardianship`, que **solo actúa sobre el vínculo cuya persona titular es quien llama**. Probado con datos: otra tutora, la administradora de la familia y una persona de otra familia reciben `LINK_NOT_FOUND`; el vínculo de la otra persona sigue vigente; no se puede retirar dos veces; el historial se conserva (`family_guardian_events`) y se puede volver a declarar.
+- **Ninguna administradora puede retirar el vínculo de otra persona.** No existe función para ello y la tabla no admite escritura desde la app (tampoco puede reasignar a mano a qué cuenta pertenece una ficha desde la migración 0301).
+- **Conflictos excepcionales (vínculo incorrecto o disputado): procedimiento sin trámites en el uso diario.** No hay solicitudes, plazos ni pantallas nuevas. Si alguien denuncia un vínculo incorrecto, lo revisa **una administradora de PEPA** con el historial (`family_guardian_events`: quién, cuándo, qué versión de la declaración) y, si procede, lo retira con una instrucción del servidor registrada por escrito. Si algún día hay muchos casos, se diseña entonces una solicitud de revisión.
+- **Al cumplir 18 años** los poderes cesan solos; el vínculo y su historial se conservan.
+- **Sin límite de tutores:** cada vínculo es individual; retirar uno no afecta a los demás.
 
 ## 5. Invitaciones familiares: «Dar acceso a PEPA» (hecho)
 - **Visible:** las fichas sin cuenta ponen «Sin acceso a PEPA» y un botón **«🔑 Dar acceso a PEPA»** a la vista (antes solo estaba en el menú ⋯, solo para administradoras). **La opción del menú ⋯ se mantiene** hasta comprobar que la nueva funciona.

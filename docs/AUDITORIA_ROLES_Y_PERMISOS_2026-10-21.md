@@ -36,13 +36,13 @@ Un niño o invitado creado como «adulta» habría podido: ver **Economía** y t
 2. **Ninguna cuenta huérfana**: hay 9 logins y 9 perfiles. Nadie ha creado un login sin invitación hasta hoy.
 3. **Invitaciones de familia nueva**: 2 usadas (08/10 y 12/10), ninguna vigente.
 4. **Sin bloqueo de uso simultáneo** en las dos funciones de alta (dos personas podrían, en teoría, gastar el mismo código a la vez).
-5. **Cualquier administradora de familia podía escribir a mano, en la tabla de fichas, el código de invitación, su caducidad y el enlace con una cuenta** (permiso de columnas abierto): se saltaba las 24 horas y podía mover quién es madre/padre vinculado. La app nunca lo hace (comprobado en el código). Corregido en la propuesta (disparador en 0294).
+5. **Cualquier administradora de familia podía escribir a mano, en la tabla de fichas, el código de invitación, su caducidad y el enlace con una cuenta** (permiso de columnas abierto): se saltaba las 24 horas y podía mover quién es madre/padre vinculado. La app nunca lo hace (comprobado en el código). Corregido en la propuesta (disparador en 0301).
 6. **Fichas de niño sin fecha de nacimiento: 2** (de 6). Con la propuesta, un niño no puede unirse mientras su ficha no tenga fecha (la pone quien invita, no el menor). **Fichas de administradora o adulta sin fecha: 5** (siguen siendo «adultas» a efectos de Comunidad, como hasta ahora).
 7. Solo los administradores de familia pueden crear, editar y borrar fichas (reglas de seguridad de filas): comprobado.
 8. Hay 3 disparadores en las fichas (comprobar que la cuenta enlazada es de la misma familia, recalcular exclusión de IA y registro de actividad). El permiso de insertar o borrar perfiles está retirado a la app (0276).
 
 ## 5. Propuesta de corrección (preparada en la rama, **sin aplicar**)
-Está en `supabase/migrations/0294_invitation_hardening.sql` (con su rollback). Necesita tu autorización antes de aplicarse.
+Está en `supabase/migrations/0301_invitation_hardening.sql` (con su rollback). Necesita tu autorización antes de aplicarse.
 
 | Pieza | Qué hace |
 |---|---|
@@ -65,6 +65,6 @@ group by 1,2,3;
 
 **Pruebas de seguridad hechas (en un PostgreSQL local con las migraciones reales, 51 pruebas):** el menor queda como `child` con las secciones de su ficha; el invitado como `guest`; la adulta como `adult`; la fecha de la ficha manda sobre la escrita; una cuenta de adulta no se crea con fecha de menor; un bebé no tiene cuenta; un login sin invitación no crea nada. Además 40 pruebas sobre el texto del SQL y de la app (`src/data/invitationGate.test.ts`).
 
-**Reversión:** `supabase/rollbacks/0294_invitation_hardening_down.sql` devuelve `create_family` y `join_family_with_code` a las definiciones exactas de producción (0286) y quita lo añadido. Aplicarla antes de que nadie haya usado las funciones nuevas no pierde datos.
+**Reversión:** `supabase/rollbacks/0301_invitation_hardening_down.sql` devuelve `create_family` y `join_family_with_code` a las definiciones exactas de producción (0286) y quita lo añadido. Aplicarla antes de que nadie haya usado las funciones nuevas no pierde datos.
 
 **Consulta de solo lectura para repetir esta auditoría cuando quieras** (sin datos personales): ver las consultas de arriba y las de recuento de `supabase/local-sql-tests/README.md`.

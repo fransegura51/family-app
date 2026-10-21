@@ -3,6 +3,7 @@ import { confirmCurrentPassword, getMyAccount, requestIdentityCode, verifyIdenti
 import { authErrorMessage } from '@/domain/authErrors'
 import { isCompleteOtp } from '@/domain/otpCode'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { PasswordField } from '@/ui/PasswordField'
 
 // «Confirma que eres tú»: antes de una acción delicada (p. ej. declarar que eres madre/padre de alguien) se vuelve a pedir la contraseña o un código al correo. Es el mismo sistema de
 // autenticación de siempre (Supabase Auth): al entrar de nuevo la sesión queda marcada como abierta AHORA, y es eso lo que comprueba el servidor (menos de 5 minutos).
@@ -57,10 +58,7 @@ export function ReauthStep({ onVerified, actionLabel, onCancel }: { onVerified: 
       <strong>Confirma que eres tú</strong>
       {method === 'password' && (
         <form onSubmit={(e) => run(() => confirmCurrentPassword(password), e)}>
-          <label>
-            Tu contraseña
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required autoFocus />
-          </label>
+          <PasswordField label="Tu contraseña" value={password} onChange={setPassword} autoComplete="current-password" autoFocus />
           {error && <p className="error">{error}</p>}
           <button type="submit" disabled={busy || !password}>
             {busy ? 'Comprobando…' : actionLabel}

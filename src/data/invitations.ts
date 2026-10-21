@@ -2,7 +2,7 @@ import { supabase } from '@/data/supabaseClient'
 import { parseInvitationCheck, type InvitationCheck } from '@/domain/invitations'
 import type { GuardianLink, GuardianRelationship } from '@/domain/guardianship'
 
-// Invitaciones y vínculos familiares (migraciones 0293–0295). Todo lo importante se decide en el SERVIDOR; aquí solo se llama a sus funciones.
+// Invitaciones y vínculos familiares (migraciones 0300–0302). Todo lo importante se decide en el SERVIDOR; aquí solo se llama a sus funciones.
 // Ninguna de estas llamadas crea cuentas: la cuenta nueva solo se crea con una invitación válida (gancho de Supabase Auth) y se vincula con create_family / join_family_with_code.
 
 /**
@@ -48,6 +48,12 @@ export async function listGuardianships(): Promise<GuardianLink[]> {
     relationship: r.relationship as GuardianRelationship,
     declaredAt: r.declared_at as string,
   }))
+}
+
+/** Retira el PROPIO vínculo (solo su titular; el servidor lo comprueba). El historial se conserva. */
+export async function revokeOwnGuardianship(linkId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('revoke_own_guardianship', { p_link_id: linkId, p_reason: reason ?? null })
+  if (error) throw error
 }
 
 /**

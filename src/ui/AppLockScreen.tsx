@@ -1,6 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react'
+import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { authenticateWithPasskey, listWebauthnCredentials, verifyOwnPin } from '@/data/appLock'
 import { errorMessage } from '@/domain/errorMessage'
+import { PasswordField } from '@/ui/PasswordField'
 import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
 
 // Pantalla de bloqueo — solo se muestra si esta persona activó un PIN
@@ -70,6 +72,8 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
   return (
     <div className="screen screen-centered">
       <div className="card app-lock-card">
+        {/* Logotipo oficial (con eslogan), igual que la pantalla de entrada. */}
+        <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 240, height: 'auto', marginBottom: 4 }} />
         <h1 style={{ marginTop: 0 }}>🔒 App bloqueada</h1>
         {recovering ? (
           <PinRecoveryPanel onFinished={onUnlock} onCancel={() => setRecovering(false)} />
@@ -77,17 +81,7 @@ export function AppLockScreen({ onUnlock }: { onUnlock: () => void }) {
           <>
             <p className="muted">Introduce tu PIN para continuar.</p>
             <form onSubmit={handleSubmit}>
-              <input
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                autoFocus
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                className="app-lock-input"
-                aria-label="PIN"
-              />
+              <PasswordField numeric ariaLabel="PIN" value={pin} onChange={setPin} required={false} autoFocus inputClassName="app-lock-input" />
               {error && <p className="error">{error}</p>}
               <button type="submit" disabled={checking || pin.length < 4} style={{ width: '100%', marginTop: 8 }}>
                 {checking ? 'Comprobando…' : 'Desbloquear'}

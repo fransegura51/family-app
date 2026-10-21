@@ -1,4 +1,4 @@
--- Deshacer 0293: quita el vínculo parental (tabla, historial y funciones). Si ya hay vínculos declarados se pierden; copiar antes si hiciera falta:
+-- Deshacer 0300: quita el vínculo parental (tabla, historial y funciones). Si ya hay vínculos declarados se pierden; copiar antes si hiciera falta:
 --   create table pg_temp.copia_vinculos as select * from public.family_member_guardians;
 drop function if exists public.revoke_own_guardianship(uuid, text);
 drop function if exists public.declare_guardianship(uuid, text, boolean, text);

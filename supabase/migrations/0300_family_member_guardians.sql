@@ -1,4 +1,4 @@
--- 0293 · Vínculo parental («Es mi hijo/a») — FASE A. Tabla NUEVA y funciones nuevas; no cambia nada existente. SIN APLICAR en producción (necesita autorización).
+-- 0300 · Vínculo parental («Es mi hijo/a») — FASE A. Tabla NUEVA y funciones nuevas; no cambia nada existente. SIN APLICAR en producción (necesita autorización).
 --
 -- Qué registra: que una persona adulta o administradora, con cuenta, declara ser madre/padre/tutor de la FICHA de un menor. Es una DECLARACIÓN: no es una verificación
 -- documental de la filiación ni de la tutela, y la app no debe presentarla como tal.
@@ -8,12 +8,12 @@
 --  · SIN límite de tutores por menor: cada vínculo se declara y se registra por separado (familias reconstituidas, tutelas…).
 --  · Solo se declara UNO MISMO como madre/padre/tutor (nadie puede declarar a otra persona), y solo sobre fichas de niño/bebé que sean menores de 18 años. Imposible sobre
 --    otra persona adulta: por eso este vínculo nunca da permisos sobre cuentas de adultos.
---  · Exige una identificación RECIENTE (contraseña o código del correo, menos de 5 minutos: private.has_recent_strong_auth, de 0292) y la declaración expresa.
+--  · Exige una identificación RECIENTE (contraseña o código del correo, menos de 5 minutos: private.has_recent_strong_auth, de 0299) y la declaración expresa.
 --  · Nada se escribe desde el cliente: solo funciones SECURITY DEFINER. La lectura sigue la regla de la familia.
---  · Los poderes derivados (p. ej. invitar a su hijo menor, 0294) se comprueban SIEMPRE al actuar: dejan de valer solos cuando el menor cumple 18 años, sin borrar el historial.
+--  · Los poderes derivados (p. ej. invitar a su hijo menor, 0301) se comprueban SIEMPRE al actuar: dejan de valer solos cuando el menor cumple 18 años, sin borrar el historial.
 --  · Revocación: la función de retirar el PROPIO vínculo se crea pero NO se habilita (sin permiso de ejecución) hasta que se revise el mecanismo. Los vínculos incorrectos o
 --    disputados se diseñan aparte (ver docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md): ninguna administradora de familia puede borrar el vínculo de otra persona.
--- Deshacer: supabase/rollbacks/0293_family_member_guardians_down.sql. Requiere 0292 (identificación reciente).
+-- Deshacer: supabase/rollbacks/0300_family_member_guardians_down.sql. Requiere 0299 (identificación reciente).
 
 create table public.family_member_guardians (
   id uuid primary key default gen_random_uuid(),
@@ -199,4 +199,7 @@ $function$;
 
 revoke all on function public.declare_guardianship(uuid, text, boolean, text) from public, anon;
 grant execute on function public.declare_guardianship(uuid, text, boolean, text) to authenticated;
-revoke all on function public.revoke_own_guardianship(uuid, text) from public, anon, authenticated;
+-- Retirar el PROPIO vínculo: la función solo actúa sobre vínculos cuya persona titular es quien llama (guardian_member_id enlazado a su cuenta). Nadie puede retirar el de otra persona,
+-- tampoco una administradora de la familia. Queda registrado en family_guardian_events. Habilitada tras probarla con datos (supabase/local-sql-tests).
+revoke all on function public.revoke_own_guardianship(uuid, text) from public, anon;
+grant execute on function public.revoke_own_guardianship(uuid, text) to authenticated;

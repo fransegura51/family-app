@@ -4,6 +4,7 @@ import { isPlausibleEmail, normalizeEmail, sameEmail } from '@/domain/accountEma
 import { authErrorMessage } from '@/domain/authErrors'
 import { isCompleteOtp } from '@/domain/otpCode'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { PasswordField } from '@/ui/PasswordField'
 
 // «Cambiar correo»: lo usa Configuración → Seguridad → Mi cuenta y la ficha PROPIA de Familia (misma lógica, un solo sitio). Solo cada persona cambia SU correo:
 // no hay forma de cambiar el de otra (la administradora no puede por serlo). Todo lo hace Supabase Auth:
@@ -128,10 +129,7 @@ export function ChangeEmailPanel({ onChanged, compact = false }: { onChanged?: (
             Correo nuevo
             <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" required autoFocus />
           </label>
-          <label>
-            Tu contraseña actual (para comprobar que eres tú)
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
-          </label>
+          <PasswordField label="Tu contraseña actual (para comprobar que eres tú)" value={password} onChange={setPassword} autoComplete="current-password" />
           {error && <p className="error">{error}</p>}
           <div className="inline-fields">
             <button type="submit" disabled={busy || !newEmail || !password}>

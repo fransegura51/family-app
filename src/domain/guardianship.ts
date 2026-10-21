@@ -1,7 +1,7 @@
 import type { FamilyMember, Profile } from '@/domain/types'
 
 // Vínculo parental («Es mi hijo/a») — FASE A. Es una DECLARACIÓN de la propia persona adulta, no una verificación documental de la filiación ni de la tutela, y la app
-// no debe presentarla como tal. El servidor (0293) lo comprueba todo; estas funciones solo deciden qué se enseña. Ocultar un botón NUNCA es la seguridad.
+// no debe presentarla como tal. El servidor (0300) lo comprueba todo; estas funciones solo deciden qué se enseña. Ocultar un botón NUNCA es la seguridad.
 export const GUARDIANSHIP_DECLARATION_VERSION = '2026-10-v1'
 
 export type GuardianRelationship = 'parent' | 'legal_guardian'
@@ -45,6 +45,12 @@ export function myMember(members: FamilyMember[], profile: Pick<Profile, 'id'>):
 
 export function amGuardianOf(child: FamilyMember, me: FamilyMember | null, links: GuardianLink[]): boolean {
   return me !== null && links.some((l) => l.childMemberId === child.id && l.guardianMemberId === me.id)
+}
+
+/** El vínculo vigente de esta persona sobre ese menor (para ofrecerle «dejar de figurar»), o null. */
+export function ownGuardianLink(child: FamilyMember, me: FamilyMember | null, links: GuardianLink[]): GuardianLink | null {
+  if (me === null) return null
+  return links.find((l) => l.childMemberId === child.id && l.guardianMemberId === me.id) ?? null
 }
 
 /** «Es mi hijo/a»: personas adultas o administradoras con cuenta, sobre fichas de menores que no son la suya y de las que aún no son tutoras. */

@@ -1,4 +1,4 @@
-// Banco de pruebas local (PGlite = PostgreSQL en memoria): esquema mínimo + las migraciones REALES 0292-0295 del proyecto.
+// Banco de pruebas local (PGlite = PostgreSQL en memoria): esquema mínimo + las migraciones REALES 0299-0302 del proyecto.
 import { PGlite } from '@electric-sql/pglite'
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto'
 import fs from 'node:fs'
@@ -72,7 +72,7 @@ export async function setup(opts = {}) {
     revoke all on function public.generate_member_invite_code(uuid) from public, anon; grant execute on function public.generate_member_invite_code(uuid) to authenticated;
   `)
   if (!opts.onlyBase) {
-    for (const f of ['0292_account_security.sql', '0293_family_member_guardians.sql', '0294_invitation_hardening.sql', '0295_signup_gate_invitation_first.sql']) {
+    for (const f of ['0299_account_security.sql', '0300_family_member_guardians.sql', '0301_invitation_hardening.sql', '0302_signup_gate_invitation_first.sql']) {
       await db.exec(read('supabase/migrations/' + f))
     }
     await db.exec(`revoke all on function public.join_family_with_code(text, text, date) from public, anon; grant execute on function public.join_family_with_code(text, text, date) to authenticated;`)

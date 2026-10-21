@@ -1,10 +1,31 @@
--- Deshacer 0294: vuelve a las definiciones de create_family y join_family_with_code de la migración 0286 (las que hay hoy en producción) y quita lo añadido.
+-- Deshacer 0301: vuelve a las definiciones de create_family y join_family_with_code de la migración 0286 (las que hay hoy en producción) y quita lo añadido.
 -- Si ya se han creado invitaciones con create_member_invitation, siguen valiendo (son códigos de ficha normales).
 drop trigger if exists family_members_protect_invitation_columns on public.family_members;
 drop function if exists private.family_members_protect_invitation_columns();
 drop function if exists public.create_member_invitation(uuid, boolean);
 drop function if exists private.new_invitation_code(int);
 drop function if exists private.invitation_reserved_for_other(text, text, timestamptz);
+
+-- Las invitaciones de «familia nueva» vuelven a la definición de 0093 (caducan por defecto a los 30 días).
+create or replace function public.generate_family_invite(p_note text default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code text;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and is_app_owner) then
+    raise exception 'Solo la dueña de la app puede generar códigos';
+  end if;
+  v_code := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 8));
+  insert into family_invites (code, created_by, note) values (v_code, auth.uid(), p_note);
+  return v_code;
+end;
+$$;
+revoke all on function public.generate_family_invite(text) from public, anon;
+grant execute on function public.generate_family_invite(text) to authenticated;
 
 create or replace function public.create_family(p_family_name text, p_display_name text, p_access_code text, p_birth_date date default null)
  returns uuid

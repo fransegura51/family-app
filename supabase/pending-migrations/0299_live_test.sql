@@ -1,6 +1,6 @@
--- PRUEBA EN VIVO de la migración 0292 (NO ejecutada todavía: hace falta aplicar 0292 primero y tener permiso de escritura en la base de datos).
+-- PRUEBA EN VIVO de la migración 0299 (NO ejecutada todavía: hace falta aplicar 0299 primero y tener permiso de escritura en la base de datos).
 -- Se ejecuta de una vez (SQL editor o execute_sql). Crea datos de mentira DENTRO de una transacción y termina con un error a propósito
--- («PRUEBA_0292_OK…»), de modo que no queda NADA guardado. Si sale cualquier otro error, esa comprobación ha fallado: el mensaje dice cuál.
+-- («PRUEBA_0299_OK…»), de modo que no queda NADA guardado. Si sale cualquier otro error, esa comprobación ha fallado: el mensaje dice cuál.
 -- Qué demuestra:
 --   1) change_own_pin: con el PIN actual mal NO cambia y SÍ cuenta el intento; con el bueno cambia; tras 5 fallos se bloquea.
 --   2) clear_own_pin_with_pin: igual, y al quitar el PIN se borran las huellas.
@@ -130,6 +130,6 @@ begin
   end;
   execute 'reset role';
 
-  raise exception 'PRUEBA_0292_OK: todas las comprobaciones han pasado (se revierte todo a propósito)';
+  raise exception 'PRUEBA_0299_OK: todas las comprobaciones han pasado (se revierte todo a propósito)';
 end
 $test$;

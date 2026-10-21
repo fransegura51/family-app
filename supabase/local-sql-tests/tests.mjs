@@ -19,8 +19,8 @@ const OLD = 3600 * 5
 
 const db = await setup()
 
-// ---------------------------------------------------------------------------------------------------------- 0292
-console.log('\n0292 · PIN y correos')
+// ---------------------------------------------------------------------------------------------------------- 0299
+console.log('\n0299 · PIN y correos')
 {
   const fam = await mkFamily(db)
   const a = await addAccount(db, fam, 'admin', 'Ana')
@@ -71,8 +71,8 @@ console.log('\n0292 · PIN y correos')
   })
 }
 
-// ---------------------------------------------------------------------------------------------------------- 0293
-console.log('\n0293 · Vínculo parental («Es mi hijo/a»)')
+// ---------------------------------------------------------------------------------------------------------- 0300
+console.log('\n0300 · Vínculo parental («Es mi hijo/a»)')
 {
   const fam = await mkFamily(db, 'G')
   const mom = await addAccount(db, fam, 'admin', 'Mama')
@@ -131,13 +131,23 @@ console.log('\n0293 · Vínculo parental («Es mi hijo/a»)')
     const stranger = await addAccount(db, otherFam, 'admin', 'Ajena')
     assert.equal((await as(db, stranger.id, () => db.query('select * from family_member_guardians'))).rows.length, 0)
   })
-  await t('revocar el propio vínculo NO está habilitado para la app (sin permiso de ejecución) pero la función existe y registra', async () => {
+  await t('retirar el PROPIO vínculo: solo su titular; ni otra tutora, ni la administradora, ni nadie ajeno pueden retirar el de otra persona', async () => {
     const link = (await db.query(`select id from family_member_guardians where guardian_member_id=$1 and child_member_id=$2`, [dad.member, kid])).rows[0].id
-    assert.ok(await as(db, dad.id, () => err(() => db.query('select public.revoke_own_guardianship($1)', [link]))), 'authenticated no debería poder ejecutarla')
-    await db.query(`select set_config('request.jwt.claim.sub', $1, false)`, [dad.id]) // el propietario de la función sí (prueba interna)
-    await db.query('select public.revoke_own_guardianship($1,$2)', [link, 'prueba'])
+    const momLink = (await db.query(`select id from family_member_guardians where guardian_member_id=$1 and child_member_id=$2`, [mom.member, kid])).rows[0].id
+    // La app (usuaria autenticada) SÍ puede llamar a la función, pero solo actúa sobre el vínculo propio.
+    assert.equal((await db.query(`select has_function_privilege('authenticated','public.revoke_own_guardianship(uuid,text)','execute') a, has_function_privilege('anon','public.revoke_own_guardianship(uuid,text)','execute') b`)).rows[0].b, false)
+    has(await as(db, mom.id, () => err(() => db.query('select public.revoke_own_guardianship($1)', [link]))), 'LINK_NOT_FOUND')           // otra tutora (administradora de la familia)
+    const stranger = await addAccount(db, otherFam, 'admin', 'Ajena2')
+    has(await as(db, stranger.id, () => err(() => db.query('select public.revoke_own_guardianship($1)', [link]))), 'LINK_NOT_FOUND')     // otra familia
+    assert.equal((await db.query('select status from family_member_guardians where id=$1', [link])).rows[0].status, 'active')
+    await as(db, dad.id, () => db.query('select public.revoke_own_guardianship($1,$2)', [link, 'prueba']))
     const r = await db.query('select status, revoked_by from family_member_guardians where id=$1', [link])
     assert.equal(r.rows[0].status, 'revoked'); assert.equal(r.rows[0].revoked_by, dad.id)
+    // El vínculo de la otra persona sigue vigente (sin límite de tutores y cada vínculo es individual).
+    assert.equal((await db.query('select status from family_member_guardians where id=$1', [momLink])).rows[0].status, 'active')
+    // Ya retirado: no se puede retirar otra vez.
+    has(await as(db, dad.id, () => err(() => db.query('select public.revoke_own_guardianship($1)', [link]))), 'LINK_NOT_FOUND')
+    assert.equal((await db.query(`select count(*)::int n from family_guardian_events where link_id=$1 and event='revoked'`, [link])).rows[0].n, 1)
     // historial conservado: se puede volver a declarar y el vínculo antiguo sigue como registro
     await as(db, dad.id, () => D(kid), { amrAgoSeconds: FRESH })
     assert.equal((await db.query(`select count(*)::int n from family_member_guardians where guardian_member_id=$1 and child_member_id=$2`, [dad.member, kid])).rows[0].n, 2)
@@ -158,8 +168,8 @@ console.log('\n0293 · Vínculo parental («Es mi hijo/a»)')
   })
 }
 
-// ---------------------------------------------------------------------------------------------------------- 0294
-console.log('\n0294 · Invitaciones: dar acceso, rol de la ficha, bloqueos y reserva')
+// ---------------------------------------------------------------------------------------------------------- 0301
+console.log('\n0301 · Invitaciones: dar acceso, rol de la ficha, bloqueos y reserva')
 {
   const fam = await mkFamily(db, 'H')
   const mom = await addAccount(db, fam, 'admin', 'Mama2')
@@ -278,7 +288,7 @@ console.log('\n0294 · Invitaciones: dar acceso, rol de la ficha, bloqueos y res
     assert.equal((await db.query('select role from profiles where id=$1', [dueno.id])).rows[0].role, 'adult')
     assert.equal((await db.query('select invite_reserved_email e from family_members where id=$1', [f])).rows[0].e, null)
   })
-  await t('reserva caducada (más de 2 h) deja de bloquear', async () => {
+  await t('reserva ya vencida (la invitación caducó) deja de bloquear', async () => {
     const f = await addFicha(db, fam, 'ReservaVieja', 'adult', { birth: '1980-01-01' })
     const c = (await as(db, mom.id, () => inv(f))).rows[0].o_code
     await db.query(`update family_members set invite_reserved_email='otro@example.invalid', invite_reserved_until=now()-interval '1 minute' where id=$1`, [f])
@@ -342,7 +352,7 @@ console.log('\n0294 · Invitaciones: dar acceso, rol de la ficha, bloqueos y res
   })
 }
 
-console.log('\n0294 · Blindaje de las columnas de invitación')
+console.log('\n0301 · Blindaje de las columnas de invitación')
 {
   const fam = await mkFamily(db, 'B')
   const adm = await addAccount(db, fam, 'admin', 'AdminB')
@@ -372,8 +382,8 @@ console.log('\n0294 · Blindaje de las columnas de invitación')
   })
 }
 
-// ---------------------------------------------------------------------------------------------------------- 0295
-console.log('\n0295 · Primero la invitación, después la cuenta')
+// ---------------------------------------------------------------------------------------------------------- 0302
+console.log('\n0302 · Primero la invitación, después la cuenta')
 {
   const fam = await mkFamily(db, 'P')
   const mom = await addAccount(db, fam, 'admin', 'Mama3')
@@ -427,10 +437,39 @@ console.log('\n0295 · Primero la invitación, después la cuenta')
     const row = (await db.query('select reserved_email, reserved_until, used_at from family_invites where code=$1', [famCode])).rows[0]
     assert.equal(row.reserved_email, 'nuevo@example.invalid'); assert.ok(new Date(row.reserved_until) > new Date()); assert.equal(row.used_at, null)
   })
-  await t('otra persona con el mismo código mientras está reservado → INVITATION_IN_USE; el mismo correo puede volver a intentarlo', async () => {
-    const r = (await HOOK('otra@example.invalid', famCode)).rows[0].r
+  await t('caducidad por tipo: familia nueva 7 días (168 h), miembro 24 h; la reserva dura EXACTAMENTE lo que la invitación, sin plazo propio', async () => {
+    const row = (await db.query('select reserved_until, expires_at, created_at from family_invites where code=$1', [famCode])).rows[0]
+    assert.equal(new Date(row.reserved_until).getTime(), new Date(row.expires_at).getTime())
+    const horas = (new Date(row.expires_at) - new Date(row.created_at)) / 3600000
+    assert.ok(horas > 167.9 && horas < 168.1, 'dura ' + horas + ' h')
+    // Miembro: se reserva y la reserva coincide con la caducidad de la ficha.
+    assert.deepEqual((await HOOK('caduca24@example.invalid', memberCode)).rows[0].r, {})
+    const mrow = (await db.query('select invite_code_expires_at, invite_reserved_until from family_members where invite_code=$1', [memberCode])).rows[0]
+    assert.equal(new Date(mrow.invite_reserved_until).getTime(), new Date(mrow.invite_code_expires_at).getTime())
+    const mh = (new Date(mrow.invite_code_expires_at) - new Date()) / 3600000
+    assert.ok(mh > 23 && mh < 24.1, 'ficha dura ' + mh + ' h')
+  })
+  await t('correo reservado SIN confirmar (error al escribirlo): otra dirección puede retomar la invitación', async () => {
+    // «nuevo@» está reservado pero nunca existió como login confirmado → no retiene la invitación.
+    assert.deepEqual((await HOOK('otra@example.invalid', famCode)).rows[0].r, {})
+    assert.equal((await db.query('select reserved_email e from family_invites where code=$1', [famCode])).rows[0].e, 'otra@example.invalid')
+  })
+  await t('correo reservado y CONFIRMADO: nadie más puede usar la invitación; su dueña puede volver a intentarlo hasta que caduque', async () => {
+    await db.query(`insert into auth.users (id, email, email_confirmed_at) values ($1, 'otra@example.invalid', now())`, [uid()])
+    const r = (await HOOK('tercera@example.invalid', famCode)).rows[0].r
     assert.ok(r.error.message.startsWith('INVITATION_IN_USE'))
-    assert.deepEqual((await HOOK('nuevo@example.invalid', famCode)).rows[0].r, {})
+    assert.deepEqual((await HOOK('otra@example.invalid', famCode)).rows[0].r, {})
+  })
+  await t('quien perdió la reserva por un correo mal escrito no puede completar el alta con la dirección antigua', async () => {
+    const fr = await addFicha(db, fam, 'Retoma', 'adult', { birth: '1980-01-01' })
+    const dest = (await as(db, mom.id, () => db.query('select * from public.create_member_invitation($1,false)', [fr]))).rows[0].o_code
+    assert.deepEqual((await HOOK('erratas@example.invalid', dest)).rows[0].r, {})
+    assert.deepEqual((await HOOK('correcta@example.invalid', dest)).rows[0].r, {})
+    const viejo = await addUser(db, 'erratas@example.invalid')
+    has(await as(db, viejo, () => err(() => db.query('select public.join_family_with_code($1,$2,null)', [dest, 'X'])), { email: 'erratas@example.invalid' }), 'Código no válido o caducado')
+    const bueno = await addUser(db, 'correcta@example.invalid')
+    await as(db, bueno, () => db.query('select public.join_family_with_code($1,$2,null)', [dest, 'B']), { email: 'correcta@example.invalid' })
+    assert.equal((await db.query('select count(*)::int n from profiles where id=$1', [bueno])).rows[0].n, 1)
   })
   await t('invitación familiar: el gancho la reserva; al terminar, solo ese correo puede usarla; el código sigue sin gastarse hasta entonces', async () => {
     assert.deepEqual((await HOOK('peque@example.invalid', memberCode)).rows[0].r, {})
@@ -460,9 +499,11 @@ console.log('\n0295 · Primero la invitación, después la cuenta')
     const p = await db.query(`select has_function_privilege('authenticated','public.hook_before_user_created(jsonb)','execute') a, has_function_privilege('anon','public.hook_before_user_created(jsonb)','execute') b, has_function_privilege('supabase_auth_admin','public.hook_before_user_created(jsonb)','execute') c, has_function_privilege('anon','public.check_invitation(text)','execute') d, has_function_privilege('anon','public.create_member_invitation(uuid,boolean)','execute') e, has_function_privilege('anon','public.create_family(text,text,text,date)','execute') f`)
     assert.deepEqual(p.rows[0], { a: false, b: false, c: true, d: true, e: false, f: false }, JSON.stringify(p.rows[0]))
   })
-  await t('limpieza de logins huérfanos: borra los de más de 48 h sin familia y NUNCA a quien tiene familia', async () => {
+  await t('limpieza de logins huérfanos: borra los de más de 8 días (cuando ya caducó cualquier invitación) sin familia y NUNCA a quien tiene familia ni a quien aún puede usar su invitación', async () => {
     const viejo = await addUser(db, 'huerfano@example.invalid')
-    await db.query(`update auth.users set created_at = now() - interval '3 days' where id=$1`, [viejo])
+    await db.query(`update auth.users set created_at = now() - interval '9 days' where id=$1`, [viejo])
+    const aunVale = await addUser(db, 'sieteDias@example.invalid')
+    await db.query(`update auth.users set created_at = now() - interval '6 days' where id=$1`, [aunVale])
     await addUser(db, 'reciente@example.invalid')
     const conFamilia = await addAccount(db, fam, 'adult', 'Antigua')
     await db.query(`update auth.users set created_at = now() - interval '9 days' where id=$1`, [conFamilia.id])

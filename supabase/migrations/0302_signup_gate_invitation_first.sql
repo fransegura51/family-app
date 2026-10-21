@@ -1,5 +1,5 @@
--- 0295 · Primero la invitación, después la cuenta. SIN APLICAR en producción y SIN ACTIVAR el gancho de Supabase Auth (ambas cosas necesitan autorización).
--- Requiere 0294. Deshacer: supabase/rollbacks/0295_signup_gate_invitation_first_down.sql (y desactivar el gancho en Supabase, que es instantáneo).
+-- 0302 · Primero la invitación, después la cuenta. SIN APLICAR en producción y SIN ACTIVAR el gancho de Supabase Auth (ambas cosas necesitan autorización).
+-- Requiere 0301. Deshacer: supabase/rollbacks/0302_signup_gate_invitation_first_down.sql (y desactivar el gancho en Supabase, que es instantáneo).
 --
 -- Problema: hasta ahora cualquiera podía crear un LOGIN (auth.signUp) sin invitación; la invitación solo se pedía DESPUÉS, al crear la familia o unirse. Un login sin familia no sirve
 -- de nada, pero abre la puerta a cuentas huérfanas y a correos de confirmación a cualquier dirección. Esta migración prepara el cambio de orden aprobado:
@@ -10,8 +10,10 @@
 --
 -- · check_invitation(código): pública (la usa quien aún no tiene cuenta), con límite de intentos por IP y SIN revelar nada privado: solo si vale, de qué tipo es, cuándo caduca y si
 --   la pantalla tiene que pedir la fecha de nacimiento (needs_birth_date: false cuando la ficha ya la trae; la fecha en sí nunca se envía).
--- · hook_before_user_created(event): el gancho. Acepta el alta solo si trae una invitación vigente y sin usar (o el código maestro) y la RESERVA para ese correo durante 2 horas, así dos
---   personas no pueden acabar con el mismo código ni quedarse cuentas a medias. No la gasta: la gasta create_family / join_family_with_code al terminar.
+-- · hook_before_user_created(event): el gancho. Acepta el alta solo si trae una invitación vigente y sin usar (o el código maestro) y la RESERVA para ese correo hasta que caduque la propia invitación
+--   (7 días las de familia nueva, 24 horas las de un miembro; sin plazo aparte), así dos personas no pueden acabar con el mismo código ni quedarse cuentas a medias. No la gasta: la gasta create_family / join_family_with_code al terminar.
+--   Recuperación sencilla: si la persona se equivocó al escribir el correo (la reserva está a nombre de una dirección que NUNCA llegó a confirmarse), puede volver a empezar con el correo
+--   correcto y la reserva pasa a él; si el correo reservado ya está confirmado, la invitación es de esa persona hasta que caduque o la regenere quien la generó.
 -- · purge_orphan_logins: limpia logins sin familia con más de 48 h (alta que no se completó). No se programa sola; necesita autorización.
 --
 -- Hay DOS tipos de invitación y no se mezclan: «familia nueva» (la genera solo una administradora de PEPA, family_invites) y «familiar» (vincula una cuenta a una ficha, la genera una
@@ -105,6 +107,19 @@ $function$;
 revoke all on function public.check_invitation(text) from public;
 grant execute on function public.check_invitation(text) to anon, authenticated;
 
+-- ¿La reserva vigente de OTRO correo bloquea a este? Solo si esa otra dirección ya está confirmada: una dirección que nunca se confirmó (error al escribirla) no retiene la invitación.
+create or replace function private.invitation_reservation_blocks(p_email text, p_reserved_email text, p_reserved_until timestamptz)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select private.invitation_reserved_for_other(p_email, p_reserved_email, p_reserved_until)
+     and exists (select 1 from auth.users u where lower(u.email) = p_reserved_email and u.email_confirmed_at is not null);
+$function$;
+revoke all on function private.invitation_reservation_blocks(text, text, timestamptz) from public, anon, authenticated;
+
 -- El gancho «Before User Created». Se registra en Supabase (Authentication → Hooks → Before User Created → Postgres function → public.hook_before_user_created): NO se hace aquí.
 -- Recibe el alta que se va a crear; el código de invitación viaja en los datos del usuario (signUp con options.data.invite_code).
 create or replace function public.hook_before_user_created(event jsonb)
@@ -127,6 +142,8 @@ declare
   v_res_email text;
   v_res_until timestamptz;
   v_member uuid;
+  v_inv_expires timestamptz;
+  v_member_expires timestamptz;
 begin
   -- Solo se crean cuentas por correo y contraseña, y con invitación. Nada de acceso anónimo ni de proveedores externos.
   if coalesce((v_user ->> 'is_anonymous')::boolean, false) or v_provider <> 'email' or v_email = '' then
@@ -142,25 +159,25 @@ begin
   end if;
 
   -- Invitación de familia nueva.
-  select code, reserved_email, reserved_until into v_inv_code, v_res_email, v_res_until
+  select code, reserved_email, reserved_until, expires_at into v_inv_code, v_res_email, v_res_until, v_inv_expires
   from public.family_invites where code = v_code and used_at is null and expires_at > now() for update;
   if v_inv_code is not null then
-    if private.invitation_reserved_for_other(v_email, v_res_email, v_res_until) then
+    if private.invitation_reservation_blocks(v_email, v_res_email, v_res_until) then
       return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'INVITATION_IN_USE: Esta invitación ya la está usando otra persona'));
     end if;
-    update public.family_invites set reserved_email = v_email, reserved_until = now() + interval '2 hours' where code = v_inv_code;
+    update public.family_invites set reserved_email = v_email, reserved_until = v_inv_expires where code = v_inv_code;
     return '{}'::jsonb;
   end if;
 
   -- Invitación familiar (ficha sin cuenta).
-  select id, invite_reserved_email, invite_reserved_until into v_member, v_res_email, v_res_until
+  select id, invite_reserved_email, invite_reserved_until, invite_code_expires_at into v_member, v_res_email, v_res_until, v_member_expires
   from public.family_members
   where invite_code = v_code and invite_code_expires_at > now() and linked_profile_id is null and member_type <> 'baby' for update;
   if v_member is not null then
-    if private.invitation_reserved_for_other(v_email, v_res_email, v_res_until) then
+    if private.invitation_reservation_blocks(v_email, v_res_email, v_res_until) then
       return jsonb_build_object('error', jsonb_build_object('http_code', 400, 'message', 'INVITATION_IN_USE: Esta invitación ya la está usando otra persona'));
     end if;
-    update public.family_members set invite_reserved_email = v_email, invite_reserved_until = now() + interval '2 hours' where id = v_member;
+    update public.family_members set invite_reserved_email = v_email, invite_reserved_until = v_member_expires where id = v_member;
     return '{}'::jsonb;
   end if;
 
@@ -172,8 +189,8 @@ revoke all on function public.hook_before_user_created(jsonb) from public, anon,
 grant execute on function public.hook_before_user_created(jsonb) to supabase_auth_admin;
 grant usage on schema public to supabase_auth_admin;
 
--- Logins sin familia (alta que no se completó): se borran pasadas 48 horas. Nunca toca a quien ya tiene familia. NO se programa sola.
-create or replace function private.purge_orphan_logins(p_older_than interval default interval '48 hours')
+-- Logins sin familia (alta que no se completó): se borran pasados 8 días, es decir, cuando ya ha caducado cualquier invitación (la más larga dura 7 días). Nunca toca a quien ya tiene familia. NO se programa sola.
+create or replace function private.purge_orphan_logins(p_older_than interval default interval '8 days')
 returns integer
 language plpgsql
 volatile
@@ -185,7 +202,7 @@ declare
 begin
   with gone as (
     delete from auth.users u
-    where u.created_at < now() - greatest(p_older_than, interval '24 hours')
+    where u.created_at < now() - greatest(p_older_than, interval '8 days')
       and not exists (select 1 from public.profiles p where p.id = u.id)
     returning 1
   )

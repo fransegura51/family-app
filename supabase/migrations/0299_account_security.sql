@@ -1,5 +1,5 @@
--- 0292 · Cuentas y seguridad (PEPA-CUENTAS). ADITIVA: solo FUNCIONES NUEVAS; no cambia ni quita nada de lo que ya existe (set_own_pin, clear_own_pin,
--- verify_own_pin y admin_reset_profile_pin siguen igual hasta que el endurecimiento de supabase/pending-migrations/0296 se aplique, ya validado todo).
+-- 0299 · Cuentas y seguridad (PEPA-CUENTAS). ADITIVA: solo FUNCIONES NUEVAS; no cambia ni quita nada de lo que ya existe (set_own_pin, clear_own_pin,
+-- verify_own_pin y admin_reset_profile_pin siguen igual hasta que el endurecimiento de supabase/pending-migrations/0303 se aplique, ya validado todo).
 --
 -- Qué añade:
 --  1) private.has_recent_strong_auth: «¿esta sesión se abrió HACE POCO con contraseña o con un código del correo?». Lee la marca de cómo y cuándo

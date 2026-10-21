@@ -18,6 +18,17 @@
 - Ajustes de Supabase que deben ir con ellas: «Email OTP expiration» = 3600 s (las plantillas dicen «una hora»), «Email OTP length» = 6.
 - Antes de pegar, **copiar a un archivo el texto actual de cada plantilla**: el panel no guarda historial y es la forma de volver atrás.
 
+## Plantillas de TRANSICIÓN (con botón, sin código): las que se pegan HOY
+Mientras la web desplegada de PEPA sea la actual (recupera la contraseña y confirma el correo **pulsando el enlace**), solo se pegan estas tres, en `transition/`. Mismo diseño, en español y con el logotipo; el botón lleva `{{ .ConfirmationURL }}`.
+
+| Archivo | Plantilla de Supabase | Asunto |
+|---|---|---|
+| `transition/confirmation.html` | Confirm sign up | Confirma tu correo electrónico en PEPA |
+| `transition/recovery.html` | Reset password | Recupera tu contraseña de PEPA |
+| `transition/email_change.html` | Change email address | Confirma tu nuevo correo electrónico en PEPA |
+
+**No pegar hoy** las de la tabla de arriba (solo código de seis cifras): la web actual no sabe pedir el código y quien recuperara su contraseña recibiría un correo que no puede usar. Esas se pegan **junto con el despliegue de la web nueva** de la rama de Cuentas (docs/CUENTAS_SEGURIDAD_PLAN.md §5). «Reauthentication» y «Magic link» no se tocan hoy (solo las usa la web nueva).
+
 ## Plantillas de invitación (NO son de Supabase Auth; hoy no se envía ningún correo)
 | Archivo | Quién la envía | Para qué | Asunto |
 |---|---|---|---|

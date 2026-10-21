@@ -147,9 +147,111 @@ export const TEMPLATES = {
   },
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// PLANTILLAS DE TRANSICIÓN (con botón de enlace, SIN código). Son las que se pegan HOY en Supabase, mientras la web desplegada de PEPA siga siendo la actual (la que recupera la
+// contraseña y confirma el correo pulsando el enlace del correo). Las de arriba (TEMPLATES, solo código de seis cifras) solo se pegan JUNTO CON el despliegue de la web nueva de la rama
+// de Cuentas, que es la que sabe pedir el código: si se pegaran antes, quien pidiera recuperar su contraseña recibiría un código que la web actual no sabe usar.
+// Mismo diseño, en español y con el logotipo; solo cambia el cuerpo (botón con {{ .ConfirmationURL }} en vez del código). Los antivirus de correo pueden «gastar» el enlace antes
+// que la persona; es el comportamiento de hoy y se corrige al pasar a los códigos.
+function layoutLink({ title, preheader, heading, paragraphs, buttonLabel, afterButton }) {
+  const paras = paragraphs.map((p) => `<p style="margin:0 0 14px 0;font-size:16px;line-height:24px;color:${TEXT};">${p}</p>`).join('\n              ')
+  const after = afterButton.map((p) => `<p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${MUTED};">${p}</p>`).join('\n              ')
+  return `<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f6fa;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f6fa;">
+    <tr>
+      <td align="center" style="padding:24px 12px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;background-color:#ffffff;border-radius:16px;">
+          <tr>
+            <td align="center" style="padding:28px 24px 8px 24px;">
+              <img src="${LOGO_URL}" width="280" alt="PEPA · Tu familia organizada" style="display:block;width:280px;max-width:100%;height:auto;border:0;">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 4px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <h1 style="margin:12px 0 14px 0;font-size:24px;line-height:30px;color:${BRAND_PINK};">${heading}</h1>
+              ${paras}
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:6px 28px 6px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 26px;background-color:${BRAND_PINK};border-radius:12px;color:#ffffff;font-size:16px;font-weight:700;text-decoration:none;">${buttonLabel}</a>
+              <p style="margin:10px 0 0 0;font-size:12px;line-height:18px;color:${MUTED};">Si el botón no funciona, copia esta dirección en tu navegador:<br><span style="word-break:break-all;">{{ .ConfirmationURL }}</span></p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 28px 8px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              ${after}
+              <p style="margin:0 0 4px 0;font-size:14px;line-height:21px;color:${MUTED};"><strong style="color:${TEXT};">Tu seguridad:</strong> no compartas este correo ni su enlace con nadie. PEPA nunca te pedirá tu contraseña por teléfono, WhatsApp ni correo.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:16px 28px 26px 28px;border-top:1px solid #eceef3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              <p style="margin:0;font-size:12px;line-height:18px;color:${MUTED};text-align:center;">PEPA · Tu familia organizada<br>
+              Este es un mensaje automático. Si necesitas ayuda, escríbenos a <a href="mailto:${SUPPORT_EMAIL}" style="color:${MUTED};">${SUPPORT_EMAIL}</a>.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+`
+}
+
+// Solo las TRES plantillas de flujos que la web actual ya usa con enlace. «Reauthentication» y «Magic link» solo las usa la web nueva (PIN y cambio de correo seguro): no se tocan hoy.
+export const TRANSITION_TEMPLATES = {
+  confirmation: {
+    supabaseName: 'Confirm sign up',
+    subject: 'Confirma tu correo electrónico en PEPA',
+    html: layoutLink({
+      title: 'Confirma tu correo electrónico en PEPA',
+      preheader: 'Pulsa el botón para confirmar tu correo y entrar en PEPA.',
+      heading: '¡Bienvenido a la familia!',
+      paragraphs: ['Solo falta confirmar tu correo electrónico para empezar a disfrutar de PEPA.', 'Pulsa el botón para confirmarlo:'],
+      buttonLabel: 'Confirmar mi correo',
+      afterButton: ['Si tú no has creado una cuenta en PEPA, puedes ignorar este mensaje: no se creará nada.'],
+    }),
+  },
+  recovery: {
+    supabaseName: 'Reset password',
+    subject: 'Recupera tu contraseña de PEPA',
+    html: layoutLink({
+      title: 'Recupera tu contraseña de PEPA',
+      preheader: 'Pulsa el botón para elegir una contraseña nueva en PEPA.',
+      heading: 'Recupera tu contraseña',
+      paragraphs: ['Hemos recibido una solicitud para restablecer la contraseña de tu cuenta de PEPA.', 'Pulsa el botón y podrás elegir una contraseña nueva:'],
+      buttonLabel: 'Elegir mi contraseña nueva',
+      afterButton: ['Si no has solicitado el cambio, puedes ignorar este mensaje: tu contraseña seguirá siendo la de siempre.'],
+    }),
+  },
+  email_change: {
+    supabaseName: 'Change email address',
+    subject: 'Confirma tu nuevo correo electrónico en PEPA',
+    html: layoutLink({
+      title: 'Confirma tu nuevo correo electrónico en PEPA',
+      preheader: 'Pulsa el botón para confirmar el cambio de correo en PEPA.',
+      heading: 'Confirma tu nuevo correo',
+      paragraphs: ['Se ha pedido usar <strong>{{ .NewEmail }}</strong> como correo de acceso de una cuenta de PEPA.', 'Si has sido tú, pulsa el botón para confirmar el cambio:'],
+      buttonLabel: 'Confirmar el cambio de correo',
+      afterButton: ['Si no has sido tú, no hagas nada: el correo de la cuenta no cambiará hasta que se confirme. Si crees que alguien intenta entrar en tu cuenta, cambia tu contraseña desde PEPA.'],
+    }),
+  },
+}
+
 // Datos de ejemplo solo para la vista previa en el navegador.
 export function previewHtml(html) {
-  return html.replaceAll('{{ .Token }}', '482913').replaceAll('{{ .NewEmail }}', 'nuevo.correo@ejemplo.com')
+  return html.replaceAll('{{ .Token }}', '482913').replaceAll('{{ .NewEmail }}', 'nuevo.correo@ejemplo.com').replaceAll('{{ .ConfirmationURL }}', 'https://ejemplo.supabase.co/auth/v1/verify?token=EJEMPLO&type=recovery')
 }
 
 
@@ -160,7 +262,7 @@ export function previewHtml(html) {
 //   · invitation_new_family — la envía una administradora de PEPA: autoriza crear un espacio familiar nuevo.
 //   · invitation_member     — la envía una administradora de la familia o una madre/padre vinculado: autoriza crear una cuenta y unirse a una ficha.
 // Un solo correo con el código y las instrucciones. El código de 6 cifras del correo de confirmación es OTRA cosa y se explica como tal.
-function invitationLayout({ title, preheader, heading, intro, steps, closing }) {
+function invitationLayout({ title, preheader, heading, intro, steps, closing, validity }) {
   const items = steps.map((t, i) => `<tr><td valign="top" style="padding:4px 10px 4px 0;font-size:16px;line-height:24px;font-weight:700;color:${BRAND_PINK};">${i + 1}.</td><td style="padding:4px 0;font-size:16px;line-height:24px;color:${TEXT};">${t}</td></tr>`).join('\n                ')
   return `<!doctype html>
 <html lang="es">
@@ -192,7 +294,7 @@ function invitationLayout({ title, preheader, heading, intro, steps, closing }) 
             <td align="center" style="padding:6px 28px 6px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
               <p style="margin:0 0 8px 0;font-size:14px;line-height:20px;color:${MUTED};">Tu código de invitación</p>
               <div style="display:inline-block;padding:14px 22px;background-color:#fff0f5;border:2px solid #f6b8cb;border-radius:12px;font-family:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;font-size:28px;line-height:36px;font-weight:700;letter-spacing:4px;color:${TEXT};">{{invite_code}}</div>
-              <p style="margin:10px 0 0 0;font-size:13px;line-height:19px;color:${MUTED};">Válido hasta {{expires_text}} · solo se puede usar una vez.</p>
+              <p style="margin:10px 0 0 0;font-size:13px;line-height:19px;color:${MUTED};">${validity}: válido hasta {{expires_text}} · solo se puede usar una vez. Si caduca, pide que te generen otro.</p>
             </td>
           </tr>
           <tr>
@@ -248,6 +350,7 @@ export const INVITATION_TEMPLATES = {
         'Pon el nombre de tu familia y tus datos. ¡Ya estarás dentro!',
       ],
       closing: 'Si no esperabas esta invitación, puedes ignorar este mensaje: no se crea ninguna cuenta si no la usas.',
+      validity: 'Caduca a los 7 días de generarse',
     }),
   },
   invitation_member: {
@@ -265,6 +368,7 @@ export const INVITATION_TEMPLATES = {
         'Completa tus datos. ¡Ya estarás en tu familia!',
       ],
       closing: 'Si no esperabas esta invitación, puedes ignorar este mensaje: no se crea ninguna cuenta si no la usas.',
+      validity: 'Caduca a las 24 horas de generarse',
     }),
   },
 }
@@ -285,7 +389,7 @@ export function renderInvitation(html, vars) {
 
 export const INVITATION_SAMPLE = {
   invite_code: 'K7M2QX9PTD',
-  expires_text: 'mañana a las 14:30',
+  expires_text: 'el 28/10/2026 a las 14:30',
   register_url: 'https://fransegura51.github.io/family-app/?invitacion=K7M2QX9PTD',
   inviter_name: 'Jennifer',
   recipient_name: 'Eric',
@@ -297,6 +401,11 @@ export function writeAll(root) {
   for (const [name, t] of Object.entries(TEMPLATES)) {
     writeFileSync(join(dir, `${name}.html`), t.html)
     writeFileSync(join(dir, 'preview', `${name}.html`), previewHtml(t.html).replaceAll(LOGO_URL, '../assets/pepa-logo-email.jpg'))
+  }
+  mkdirSync(join(dir, 'transition', 'preview'), { recursive: true })
+  for (const [name, t] of Object.entries(TRANSITION_TEMPLATES)) {
+    writeFileSync(join(dir, 'transition', `${name}.html`), t.html)
+    writeFileSync(join(dir, 'transition', 'preview', `${name}.html`), previewHtml(t.html).replaceAll(LOGO_URL, '../../assets/pepa-logo-email.jpg'))
   }
   for (const [name, t] of Object.entries(INVITATION_TEMPLATES)) {
     writeFileSync(join(dir, `${name}.html`), t.html)

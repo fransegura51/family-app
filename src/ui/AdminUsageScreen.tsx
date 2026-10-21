@@ -189,7 +189,7 @@ export function AdminUsageScreen() {
 
       <h2 className="section-title">🔑 Códigos de invitación para familias nuevas</h2>
       <p className="muted">
-        Cada código vale para crear UNA familia y caduca a los 30 días. Se lo das a la familia y ellos lo escriben en
+        Cada código vale para crear UNA familia y caduca a los 7 días de generarse. Se lo das a la familia y ellos lo escriben en
         "Código de acceso" al crear la suya.
       </p>
       <div className="inline-fields">

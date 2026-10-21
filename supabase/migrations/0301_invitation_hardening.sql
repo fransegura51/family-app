@@ -1,5 +1,5 @@
--- 0294 · Invitaciones: dar acceso a un menor (madre/padre vinculado), rol y secciones de la ficha, bloqueos contra el uso simultáneo y reserva por correo.
--- SIN APLICAR en producción (necesita autorización). Requiere 0292 y 0293. Deshacer: supabase/rollbacks/0294_invitation_hardening_down.sql.
+-- 0301 · Invitaciones: dar acceso a un menor (madre/padre vinculado), rol y secciones de la ficha, bloqueos contra el uso simultáneo y reserva por correo (que dura exactamente lo que la invitación: 7 días las de familia nueva, 24 horas las de un miembro).
+-- SIN APLICAR en producción (necesita autorización). Requiere 0299 y 0300. Deshacer: supabase/rollbacks/0301_invitation_hardening_down.sql.
 --
 -- REGLA FUNDAMENTAL: PEPA sigue siendo privada. La puerta por invitación se MANTIENE y se REFUERZA: mismas reglas (código vigente, de un solo uso, caducable, solo lo genera quien
 -- corresponde), más (a) bloqueo de fila para que dos personas no puedan usar el mismo código a la vez, (b) reserva del código por correo mientras se completa el registro, (c) rol y
@@ -8,7 +8,7 @@
 -- 1) Corrige el fallo detectado en la auditoría (0217/0286 dejaron de dar el rol «niño»/«invitado» y de copiar las secciones de la ficha: ver docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md).
 --    Hoy no hay ninguna cuenta afectada (comprobado en solo lectura el 21/10/2026); esto evita que la primera se cree mal.
 -- 2) create_member_invitation: «Dar acceso a PEPA». Lo puede pedir una administradora de la familia (cualquier ficha sin cuenta salvo bebés) o una madre/padre/tutor VIGENTE
---    (0293) SOLO para la ficha de un niño menor de 18 años. Reutiliza el código si sigue vigente (no duplica) y devuelve la caducidad. generate_member_invite_code NO cambia.
+--    (0300) SOLO para la ficha de un niño menor de 18 años. Reutiliza el código si sigue vigente (no duplica) y devuelve la caducidad. generate_member_invite_code NO cambia.
 -- 3) create_family y join_family_with_code conservan firma, mensajes y comprobaciones; las invitaciones de familia nueva las sigue generando SOLO la administradora de PEPA.
 --
 -- 4) BLINDAJE: hoy una administradora de familia podía escribir A MANO en family_members las columnas del código de invitación, su caducidad y el enlace con la cuenta
@@ -20,6 +20,29 @@
 alter table public.family_invites add column reserved_email text, add column reserved_until timestamptz;
 alter table public.family_members add column invite_reserved_email text, add column invite_reserved_until timestamptz,
   add column invite_created_by uuid references public.profiles(id) on delete set null, add column invite_created_at timestamptz;
+
+-- Invitación de «familia nueva» (la genera una administradora de PEPA): 7 días (168 horas). Las de un miembro de una familia siguen siendo de 24 horas. Antes duraba 30 días (valor por defecto de la tabla);
+-- las ya generadas no cambian. El código y la invitación comparten la MISMA fecha de caducidad (family_invites.expires_at): no hay otro plazo.
+create or replace function public.generate_family_invite(p_note text default null)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_code text;
+begin
+  if not exists (select 1 from profiles where id = auth.uid() and is_app_owner) then
+    raise exception 'Solo la dueña de la app puede generar códigos';
+  end if;
+  v_code := upper(substr(md5(random()::text || clock_timestamp()::text), 1, 8));
+  insert into family_invites (code, created_by, note, expires_at) values (v_code, auth.uid(), p_note, now() + interval '168 hours');
+  return v_code;
+end;
+$$;
+
+revoke all on function public.generate_family_invite(text) from public, anon;
+grant execute on function public.generate_family_invite(text) to authenticated;
 
 -- ¿Está la invitación reservada por OTRO correo (y la reserva sigue vigente)?
 create or replace function private.invitation_reserved_for_other(p_email text, p_reserved_email text, p_reserved_until timestamptz)

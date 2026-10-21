@@ -40,7 +40,7 @@ const GATE_FUNCTION_FILES = [
   '0141_catalog_link_families.sql',
   '0217_join_family_code_mismatch_hint.sql',
   '0286_signup_birth_date_required.sql',
-  '0294_invitation_hardening.sql',
+  '0301_invitation_hardening.sql',
 ]
 const INSERT_PROFILES_FILES = [
   '0002_create_family_bootstrap.sql',
@@ -55,7 +55,7 @@ const INSERT_PROFILES_FILES = [
   '0141_catalog_link_families.sql',
   '0217_join_family_code_mismatch_hint.sql',
   '0286_signup_birth_date_required.sql',
-  '0294_invitation_hardening.sql',
+  '0301_invitation_hardening.sql',
 ]
 
 describe('base de datos: solo estos archivos definen la puerta y crean perfiles (cualquier otro camino hace fallar la prueba)', () => {
@@ -63,9 +63,9 @@ describe('base de datos: solo estos archivos definen la puerta y crean perfiles 
     const files = migrations.filter((f) => /function public\.(create_family|join_family_with_code|generate_family_invite|generate_member_invite_code)\b/.test(read(`supabase/migrations/${f}`)))
     expect(files).toEqual(GATE_FUNCTION_FILES)
   })
-  it('solo esas migraciones insertan en profiles (única forma de tener perfil) y solo 0093 inserta invitaciones de familia nueva', () => {
+  it('solo esas migraciones insertan en profiles (única forma de tener perfil) y solo 0093 y 0301 (que la acorta a 7 días) insertan invitaciones de familia nueva', () => {
     expect(migrations.filter((f) => /insert into (public\.)?profiles\b/i.test(stripComments(read(`supabase/migrations/${f}`))))).toEqual(INSERT_PROFILES_FILES)
-    expect(migrations.filter((f) => /insert into (public\.)?family_invites\b/i.test(stripComments(read(`supabase/migrations/${f}`))))).toEqual(['0093_family_invites.sql'])
+    expect(migrations.filter((f) => /insert into (public\.)?family_invites\b/i.test(stripComments(read(`supabase/migrations/${f}`))))).toEqual(['0093_family_invites.sql', '0301_invitation_hardening.sql'])
   })
   it('el cliente no puede insertar en profiles ni crear familias a mano (0276) ni ejecutar las funciones de alta sin sesión', () => {
     expect(read('supabase/migrations/0276_profiles_protect_privileged_columns.sql')).toContain('revoke insert, delete, truncate on public.profiles from anon, authenticated;')
@@ -75,8 +75,8 @@ describe('base de datos: solo estos archivos definen la puerta y crean perfiles 
   })
 })
 
-describe('crear una familia nueva (0294): misma puerta, más firme', () => {
-  const sql = read('supabase/migrations/0294_invitation_hardening.sql')
+describe('crear una familia nueva (0301): misma puerta, más firme', () => {
+  const sql = read('supabase/migrations/0301_invitation_hardening.sql')
   const fn = slice(sql, 'create or replace function public.create_family(')
   it('conserva firma y mensajes; exige sesión, fecha de nacimiento válida y que quien crea la familia sea mayor de edad', () => {
     expect(fn).toContain('create or replace function public.create_family(p_family_name text, p_display_name text, p_access_code text, p_birth_date date default null)')
@@ -98,8 +98,8 @@ describe('crear una familia nueva (0294): misma puerta, más firme', () => {
   })
 })
 
-describe('unirse a una familia (0294): rol y secciones de la ficha, fecha de la ficha, bloqueo y reserva', () => {
-  const sql = read('supabase/migrations/0294_invitation_hardening.sql')
+describe('unirse a una familia (0301): rol y secciones de la ficha, fecha de la ficha, bloqueo y reserva', () => {
+  const sql = read('supabase/migrations/0301_invitation_hardening.sql')
   const fn = slice(sql, 'create or replace function public.join_family_with_code(', 'create or replace function public.create_family(')
   it('solo con el código vigente de una ficha SIN cuenta, bloqueado al leerlo, con la reserva por correo y sin bebés', () => {
     expect(fn).toContain('where invite_code = v_code')
@@ -132,8 +132,8 @@ describe('unirse a una familia (0294): rol y secciones de la ficha, fecha de la 
   })
 })
 
-describe('«Dar acceso a PEPA» (0294): quién puede, a quién y cómo', () => {
-  const sql = read('supabase/migrations/0294_invitation_hardening.sql')
+describe('«Dar acceso a PEPA» (0301): quién puede, a quién y cómo', () => {
+  const sql = read('supabase/migrations/0301_invitation_hardening.sql')
   const fn = slice(sql, 'create or replace function public.create_member_invitation(', 'create or replace function public.join_family_with_code(')
   it('la administradora de la familia (como hasta ahora) o una madre/padre VINCULADO solo para la ficha de su hijo menor; el servidor lo decide, no el botón', () => {
     expect(fn).toContain("if v_role = 'admin' then")
@@ -169,8 +169,8 @@ describe('«Dar acceso a PEPA» (0294): quién puede, a quién y cómo', () => {
   })
 })
 
-describe('primero la invitación, después la cuenta (0295 y pantalla de entrada)', () => {
-  const sql = read('supabase/migrations/0295_signup_gate_invitation_first.sql')
+describe('primero la invitación, después la cuenta (0302 y pantalla de entrada)', () => {
+  const sql = read('supabase/migrations/0302_signup_gate_invitation_first.sql')
   const login = read('src/ui/LoginScreen.tsx')
 
   it('check_invitation es pública (la usa quien aún no tiene cuenta) y limitada por IP, y solo devuelve si vale, el tipo, la caducidad y si pedir la fecha', () => {
@@ -193,7 +193,15 @@ describe('primero la invitación, después la cuenta (0295 y pantalla de entrada
     expect((fn.match(/INVITATION_(REQUIRED|INVALID|IN_USE)/g) ?? []).length).toBeGreaterThanOrEqual(4)
     expect(fn).toContain('used_at is null and expires_at > now() for update')
     expect(fn).toContain("invite_code_expires_at > now() and linked_profile_id is null and member_type <> 'baby' for update")
-    expect(fn).toContain("reserved_until = now() + interval '2 hours'")
+    // La reserva dura EXACTAMENTE lo que la invitación (7 días las de familia nueva, 24 h las de un miembro), sin plazo propio; un correo reservado que nunca se confirmó no la retiene.
+    expect(fn).not.toMatch(/interval '\d+ (hours|days)'/)
+    expect(fn).not.toContain('now() +')
+    // La limpieza de logins huérfanos espera a que haya caducado cualquier invitación (la más larga dura 7 días).
+    expect(slice(sql, 'create or replace function private.purge_orphan_logins(')).toContain("interval '8 days'")
+    expect(fn).toContain('reserved_until = v_inv_expires')
+    expect(fn).toContain('invite_reserved_until = v_member_expires')
+    expect(fn).toContain('private.invitation_reservation_blocks(v_email, v_res_email, v_res_until)')
+    expect(sql).toContain('u.email_confirmed_at is not null')
     // El gancho NO gasta la invitación: la gasta create_family / join_family_with_code al terminar.
     expect(fn).not.toMatch(/used_at\s*=\s*now\(\)/)
     // Termina rechazando por defecto.
@@ -300,13 +308,22 @@ describe('los flujos de acceso no son un camino de alta sin invitación', () => 
 })
 
 describe('administradoras de PEPA, de familia, madres/padres y personas adultas: permisos distintos', () => {
-  it('ninguna migración nueva de cuentas usa is_app_owner (solo las administradoras de PEPA generan invitaciones de familia nueva, y ya lo hace 0093)', () => {
-    for (const f of ['0292_account_security.sql', '0293_family_member_guardians.sql', '0294_invitation_hardening.sql', '0295_signup_gate_invitation_first.sql']) {
-      expect(stripComments(read(`supabase/migrations/${f}`)), f).not.toContain('is_app_owner')
+  it('is_app_owner (administradora de PEPA) solo aparece en generate_family_invite, que 0301 deja igual salvo la caducidad (7 días); nada más en cuentas lo usa', () => {
+    for (const f of ['0299_account_security.sql', '0300_family_member_guardians.sql', '0301_invitation_hardening.sql', '0302_signup_gate_invitation_first.sql']) {
+      let text = stripComments(read(`supabase/migrations/${f}`))
+      if (f === '0301_invitation_hardening.sql') {
+        const g = text.indexOf('create or replace function public.generate_family_invite(')
+        const end = text.indexOf('grant execute on function public.generate_family_invite', g)
+        expect(g).toBeGreaterThan(-1)
+        // Familia nueva: 7 días (168 h), y el código comparte la misma fecha (expires_at); las de un miembro de una familia siguen en 24 h.
+        expect(text.slice(g, end)).toContain("now() + interval '168 hours'")
+        text = text.slice(0, g) + text.slice(end)
+      }
+      expect(text, f).not.toContain('is_app_owner')
     }
   })
   it('el vínculo parental solo se declara sobre uno mismo, sobre menores y con identificación reciente; una persona adulta nunca puede ser «el hijo»', () => {
-    const sql = read('supabase/migrations/0293_family_member_guardians.sql')
+    const sql = read('supabase/migrations/0300_family_member_guardians.sql')
     const fn = slice(sql, 'create or replace function public.declare_guardianship(', 'create or replace function public.revoke_own_guardianship(')
     expect(fn).toContain("v_role not in ('admin', 'adult')")
     expect(fn).toContain('private.has_recent_strong_auth(300)')
@@ -318,23 +335,26 @@ describe('administradoras de PEPA, de familia, madres/padres y personas adultas:
     expect(sql).toContain("and not exists (select 1 from profiles p where p.id = m.linked_profile_id and p.role in ('admin', 'adult'))")
   })
   it('no hay límite fijo de tutores por menor; se evitan duplicados y se conserva el historial', () => {
-    const sql = read('supabase/migrations/0293_family_member_guardians.sql')
+    const sql = read('supabase/migrations/0300_family_member_guardians.sql')
     expect(sql).toContain('create unique index family_member_guardians_active_unique on public.family_member_guardians (child_member_id, guardian_member_id) where status = \'active\'')
     expect(stripComments(sql)).not.toMatch(/count\(\*\)\s*[<>]=?\s*\d/)
     expect(sql).toContain("status text not null default 'active' check (status in ('active', 'revoked'))")
     expect(sql).toContain('create table public.family_guardian_events')
   })
-  it('nada se escribe desde la app en las tablas del vínculo; revocar el propio vínculo está creado pero NO habilitado hasta revisar el mecanismo', () => {
-    const sql = read('supabase/migrations/0293_family_member_guardians.sql')
+  it('nada se escribe desde la app en las tablas del vínculo; solo se puede retirar el PROPIO vínculo (función probada con datos)', () => {
+    const sql = read('supabase/migrations/0300_family_member_guardians.sql')
     expect(sql).toContain('revoke all on public.family_member_guardians from anon, authenticated;')
     expect(sql).toContain('grant select on public.family_member_guardians to authenticated;')
     expect(sql).toContain('revoke all on public.family_guardian_events from anon, authenticated;')
-    expect(sql).toContain('revoke all on function public.revoke_own_guardianship(uuid, text) from public, anon, authenticated;')
-    expect(sql).not.toMatch(/grant execute on function public\.revoke_own_guardianship/)
-    expect(read('src/data/invitations.ts')).not.toContain('revoke_own_guardianship')
+    expect(sql).toContain('revoke all on function public.revoke_own_guardianship(uuid, text) from public, anon;')
+    expect(sql).toContain('grant execute on function public.revoke_own_guardianship(uuid, text) to authenticated;')
+    // Solo toca vínculos cuya persona titular es quien llama; ninguna función permite retirar el de otra persona.
+    const rev = slice(sql, 'create or replace function public.revoke_own_guardianship(', 'revoke all on function public.declare_guardianship')
+    expect(rev).toContain('gm.linked_profile_id = v_user')
+    expect(read('src/data/invitations.ts')).toContain("supabase.rpc('revoke_own_guardianship'")
   })
   it('Fase B aplazada: no hay ninguna función privilegiada para cambiar el correo de otra cuenta', () => {
-    for (const f of ['0292_account_security.sql', '0293_family_member_guardians.sql', '0294_invitation_hardening.sql', '0295_signup_gate_invitation_first.sql']) {
+    for (const f of ['0299_account_security.sql', '0300_family_member_guardians.sql', '0301_invitation_hardening.sql', '0302_signup_gate_invitation_first.sql']) {
       expect(stripComments(read(`supabase/migrations/${f}`)), f).not.toMatch(/update\s+auth\.users|updateUserById|email_change\s*=/i)
     }
     expect(read('src/data/account.ts')).not.toContain('admin.updateUserById')
@@ -361,6 +381,13 @@ describe('plantillas de invitación (preparadas, sin enviar nada)', () => {
       expect(t.html, name).not.toMatch(/<script/i)
       expect(t.html, name).not.toMatch(/https?:\/\/(?!pepafamilyapp\.es)[a-z0-9.-]+\//i)
     }
+  })
+  it('la caducidad del correo depende del tipo: familia nueva 7 días, miembro 24 horas (mismas que la invitación)', () => {
+    expect(INVITATION_TEMPLATES.invitation_new_family.html).toContain('Caduca a los 7 días de generarse')
+    expect(INVITATION_TEMPLATES.invitation_new_family.html).not.toContain('24 horas')
+    expect(INVITATION_TEMPLATES.invitation_member.html).toContain('Caduca a las 24 horas de generarse')
+    expect(INVITATION_TEMPLATES.invitation_member.html).not.toContain('7 días')
+    expect(read('src/ui/AdminUsageScreen.tsx')).toContain('caduca a los 7 días de generarse')
   })
   it('al rellenarlas se escapa todo (un nombre con HTML no puede inyectar nada) y salen el código, la caducidad y el enlace', () => {
     const out = renderInvitation(INVITATION_TEMPLATES.invitation_member.html, { ...INVITATION_SAMPLE, inviter_name: '<img src=x onerror=1>', recipient_name: 'A&B"' })

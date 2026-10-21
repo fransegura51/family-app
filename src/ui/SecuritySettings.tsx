@@ -23,6 +23,8 @@ import { errorMessage } from '@/domain/errorMessage'
 import { isCompleteOtp } from '@/domain/otpCode'
 import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { PASSWORD_MISMATCH_MESSAGE, passwordsMatch } from '@/domain/passwordForm'
+import { NewPasswordFields, PasswordField } from '@/ui/PasswordField'
 import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
 
 // Configuración → Seguridad, en dos apartados que se entienden sin saber de informática:
@@ -105,8 +107,8 @@ function ChangePasswordPanel({ email, onClose }: { email: string | null; onClose
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (next !== confirm) {
-      setError('Las dos contraseñas nuevas no coinciden.')
+    if (!passwordsMatch(next, confirm)) {
+      setError(PASSWORD_MISMATCH_MESSAGE)
       return
     }
     setBusy(true)
@@ -190,18 +192,8 @@ function ChangePasswordPanel({ email, onClose }: { email: string | null; onClose
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
-      <label>
-        Contraseña actual
-        <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" required />
-      </label>
-      <label>
-        Contraseña nueva
-        <input type="password" value={next} onChange={(e) => setNext(e.target.value)} minLength={6} autoComplete="new-password" required />
-      </label>
-      <label>
-        Repite la contraseña nueva
-        <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} minLength={6} autoComplete="new-password" required />
-      </label>
+      <PasswordField label="Contraseña actual" value={current} onChange={setCurrent} autoComplete="current-password" />
+      <NewPasswordFields password={next} confirm={confirm} onPasswordChange={setNext} onConfirmChange={setConfirm} passwordLabel="Contraseña nueva" confirmLabel="Repetir contraseña nueva" />
       {error && <p className="error">{error}</p>}
       <div className="inline-fields">
         <button type="submit" disabled={busy || !current || !next}>
@@ -381,30 +373,13 @@ function PersonalLockCard() {
 
   const pinFields = (label: string) => (
     <>
-      <label>
-        {label}
-        <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
-      </label>
-      <label>
-        Repite el PIN
-        <input type="password" inputMode="numeric" pattern="[0-9]*" maxLength={6} value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value.replace(/\D/g, ''))} />
-      </label>
+      <PasswordField numeric label={label} value={pin} onChange={setPin} required={false} />
+      <PasswordField numeric label="Repite el PIN" value={pinConfirm} onChange={setPinConfirm} required={false} />
     </>
   )
 
   const currentPinField = (label: string) => (
-    <label>
-      {label}
-      <input
-        type="password"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        maxLength={6}
-        value={currentPin}
-        onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ''))}
-        autoFocus
-      />
-    </label>
+    <PasswordField numeric label={label} value={currentPin} onChange={setCurrentPin} required={false} autoFocus />
   )
 
   return (

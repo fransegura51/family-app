@@ -4,7 +4,7 @@ import { setup, read } from './harness.mjs'
 
 let bad = 0
 for (const [file, ok] of [
-  ['supabase/pending-migrations/0292_live_test.sql', 'PRUEBA_0292_OK'],
+  ['supabase/pending-migrations/0299_live_test.sql', 'PRUEBA_0299_OK'],
   ['supabase/pending-migrations/invitation_gate_live_test.sql', 'PRUEBA_PUERTA_OK'],
 ]) {
   const db = await setup()

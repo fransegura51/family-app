@@ -102,10 +102,16 @@ describe('«Es mi hijo/a»: declaración honesta, identificación reciente y reg
   })
 })
 
-describe('lo que NO se ha habilitado todavía (aplazado o pendiente de revisar)', () => {
-  it('la revocación de vínculos no está en la app: ni botón ni llamada (diseño en revisión)', () => {
-    for (const [name, text] of [['FamilyScreen', family], ['GuardianshipPanel', guardian], ['AccessInvitePanel', access], ['data/invitations', invitationsData]] as const) {
-      expect(text, name).not.toMatch(/revoke_own_guardianship|revokeGuardianship|Retirar (mi )?vínculo/i)
+describe('retirar el propio vínculo y lo que NO se ha habilitado todavía', () => {
+  it('cada persona puede retirar SOLO su propio vínculo (botón con confirmación en su línea); nadie retira el de otra', () => {
+    expect(family).toContain('ownGuardianLink(m, me, links)')
+    expect(family).toContain('revokeOwnGuardianship(')
+    expect(family).toContain('Dejar de figurar como')
+    // El botón solo sale cuando existe un vínculo propio; no hay ninguna llamada con el vínculo de otra persona.
+    expect(family).not.toMatch(/revokeOwnGuardianship\((?!ownLink\.id)/)
+    expect(invitationsData).toContain("supabase.rpc('revoke_own_guardianship'")
+    for (const [name, text] of [['GuardianshipPanel', guardian], ['AccessInvitePanel', access]] as const) {
+      expect(text, name).not.toMatch(/revoke_own_guardianship|revokeOwnGuardianship/)
     }
   })
   it('Fase B aplazada: ninguna pantalla cambia el correo de otra cuenta; «Cambiar correo» sigue solo en la ficha propia', () => {

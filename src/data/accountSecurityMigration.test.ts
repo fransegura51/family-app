@@ -1,6 +1,6 @@
-// Cuentas y seguridad (PEPA-CUENTAS): la migración 0292 (solo funciones nuevas), el endurecimiento pendiente 0296 y las plantillas de correo.
-// Son pruebas sobre el texto del SQL y de las plantillas; la prueba EN VIVO del SQL está en supabase/pending-migrations/0292_live_test.sql y se ejecuta
-// después de aplicar 0292 (no se ha ejecutado todavía).
+// Cuentas y seguridad (PEPA-CUENTAS): la migración 0299 (solo funciones nuevas), el endurecimiento pendiente 0303 y las plantillas de correo.
+// Son pruebas sobre el texto del SQL y de las plantillas; la prueba EN VIVO del SQL está en supabase/pending-migrations/0299_live_test.sql y se ejecuta
+// después de aplicar 0299 (no se ha ejecutado todavía).
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -8,13 +8,13 @@ import { LOGO_URL, TEMPLATES } from '../../scripts/build-email-templates.mjs'
 
 const root = path.resolve(__dirname, '../..')
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8')
-const sql = read('supabase/migrations/0292_account_security.sql')
-const down = read('supabase/rollbacks/0292_account_security_down.sql')
-const lockdown = read('supabase/pending-migrations/0296_account_security_lockdown.sql')
-const lockdownDown = read('supabase/pending-migrations/0296_account_security_lockdown_down.sql')
-const liveTest = read('supabase/pending-migrations/0292_live_test.sql')
+const sql = read('supabase/migrations/0299_account_security.sql')
+const down = read('supabase/rollbacks/0299_account_security_down.sql')
+const lockdown = read('supabase/pending-migrations/0303_account_security_lockdown.sql')
+const lockdownDown = read('supabase/pending-migrations/0303_account_security_lockdown_down.sql')
+const liveTest = read('supabase/pending-migrations/0299_live_test.sql')
 
-describe('migración 0292: aditiva (solo funciones nuevas, nada destructivo)', () => {
+describe('migración 0299: aditiva (solo funciones nuevas, nada destructivo)', () => {
   it('no borra ni cambia nada existente: ni drop, ni alter, ni delete/update de tablas, ni cambia funciones que ya existen', () => {
     const code = sql.replace(/^--.*$/gm, '')
     expect(code).not.toMatch(/\bdrop\b/i)
@@ -97,10 +97,10 @@ describe('migración 0292: aditiva (solo funciones nuevas, nada destructivo)', (
   })
 })
 
-describe('endurecimiento 0296: pendiente a propósito (no está en supabase/migrations)', () => {
+describe('endurecimiento 0303: pendiente a propósito (no está en supabase/migrations)', () => {
   it('no se aplica solo: vive en supabase/pending-migrations, con su motivo y su rollback', () => {
     const migrations = fs.readdirSync(path.join(root, 'supabase/migrations'))
-    expect(migrations.some((f) => f.startsWith('0296'))).toBe(false)
+    expect(migrations.some((f) => f.startsWith('0303'))).toBe(false)
     expect(lockdown).toContain('PENDIENTE DE APLICAR')
     expect(lockdown).toContain('docs/CUENTAS_SEGURIDAD_PLAN.md')
   })
@@ -116,9 +116,9 @@ describe('endurecimiento 0296: pendiente a propósito (no está en supabase/migr
   })
 })
 
-describe('prueba en vivo de 0292 (preparada, sin ejecutar)', () => {
+describe('prueba en vivo de 0299 (preparada, sin ejecutar)', () => {
   it('se revierte siempre (termina con un error a propósito) y cubre PIN, recuperación, correos y aislamiento entre familias', () => {
-    expect(liveTest).toContain("raise exception 'PRUEBA_0292_OK")
+    expect(liveTest).toContain("raise exception 'PRUEBA_0299_OK")
     for (const part of ['change_own_pin', 'clear_own_pin_with_pin', 'reset_own_pin_after_recent_auth', 'list_family_account_emails', 'PIN_LOCKED', 'RECENT_AUTH_REQUIRED']) {
       expect(liveTest).toContain(part)
     }

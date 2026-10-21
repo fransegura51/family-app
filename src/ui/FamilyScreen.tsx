@@ -15,8 +15,8 @@ import {
 } from '@/data/family'
 import { getMyAccount, listFamilyAccountEmails, type FamilyAccountEmail } from '@/data/account'
 import { ChangeEmailPanel } from '@/ui/ChangeEmailPanel'
-import { listGuardianships } from '@/data/invitations'
-import { canDeclareGuardianship, canGiveAccess, GUARDIAN_RELATIONSHIP_LABELS, guardianNamesOf, myMember, type GuardianLink } from '@/domain/guardianship'
+import { listGuardianships, revokeOwnGuardianship } from '@/data/invitations'
+import { canDeclareGuardianship, canGiveAccess, GUARDIAN_RELATIONSHIP_LABELS, guardianNamesOf, myMember, ownGuardianLink, type GuardianLink } from '@/domain/guardianship'
 import { AccessInvitePanel } from '@/ui/AccessInvitePanel'
 import { GuardianshipPanel } from '@/ui/GuardianshipPanel'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
@@ -297,6 +297,17 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                     👪 {guardianNamesOf(m, order, links).map((g) => `${g.name} (${GUARDIAN_RELATIONSHIP_LABELS[g.relationship].toLowerCase()})`).join(', ')}
                   </span>
                 )}
+                {(() => {
+                  const ownLink = ownGuardianLink(m, me, links)
+                  return ownLink ? (
+                    <ConfirmButton
+                      label={`Dejar de figurar como ${GUARDIAN_RELATIONSHIP_LABELS[ownLink.relationship].toLowerCase()}`}
+                      confirmLabel="Sí, dejar de figurar"
+                      confirmMessage={`Solo quitas tu propio vínculo con ${m.name}: dejarás de poder gestionar sus cosas como madre, padre o tutor. Podrás volver a indicarlo cuando quieras.`}
+                      onConfirm={() => revokeOwnGuardianship(ownLink.id).then(loadLinks).catch((err) => setError(errorMessage(err, 'No se pudo retirar el vínculo')))}
+                    />
+                  ) : null
+                })()}
                 {canDeclareGuardianship(m, profile, me, links) &&
                   (guardianFor === m.id ? (
                     <GuardianshipPanel

@@ -8,8 +8,8 @@
 --   3) Sin invitación de una ficha tampoco se puede entrar en una familia con join_family_with_code (código inventado o caducado); con el bueno, solo una vez.
 --   4) Un login no puede insertar en profiles a mano (permiso retirado) ni crear familias directamente.
 --   5) Administradoras de PEPA (is_app_owner) y de FAMILIA son distintas: solo las de PEPA generan invitaciones de familia nueva; las de familia solo códigos de las fichas de SU familia.
---   6) Las funciones nuevas de cuentas y seguridad (0292) no crean perfiles ni dan acceso a quien no tiene invitación.
---   7) (Con la 0295 aplicada) check_invitation no da por válido un código inventado y el gancho de alta rechaza un alta sin invitación o con una inventada.
+--   6) Las funciones nuevas de cuentas y seguridad (0299) no crean perfiles ni dan acceso a quien no tiene invitación.
+--   7) (Con la 0302 aplicada) check_invitation no da por válido un código inventado y el gancho de alta rechaza un alta sin invitación o con una inventada.
 do $test$
 declare
   nb uuid[] := array(select gen_random_uuid() from generate_series(1, 6));  -- 6 logins SIN invitación (sin perfil)
@@ -169,7 +169,7 @@ begin
   if r is null or length(r) <> 8 then raise exception 'FALLO 5e: la administradora de PEPA debía poder generar una invitación'; end if;
   execute 'reset role';
 
-  -- ---- 6) lo nuevo (0292) no crea perfiles ni da acceso a quien no tiene invitación
+  -- ---- 6) lo nuevo (0299) no crea perfiles ni da acceso a quien no tiene invitación
   perform set_config('request.jwt.claims', json_build_object('sub', nb[6]::text, 'role', 'authenticated', 'amr', fresh_amr::json)::text, true);
   execute 'set local role authenticated';
   select count(*) into n from public.list_family_account_emails();
@@ -180,7 +180,7 @@ begin
   select count(*) into n from profiles where id = nb[6];
   if n <> 0 then raise exception 'FALLO 6c: una función de cuentas y seguridad creó un perfil'; end if;
 
-  -- ---- 7) (solo si ya está aplicada la 0295) primero la invitación: la comprobación pública y el gancho de alta
+  -- ---- 7) (solo si ya está aplicada la 0302) primero la invitación: la comprobación pública y el gancho de alta
   if to_regprocedure('public.check_invitation(text)') is not null then
     execute 'set local role anon';
     if (public.check_invitation('ZZZZZZZZZZ') ->> 'valid') <> 'false' then raise exception 'FALLO 7a: check_invitation dio por válido un código inventado'; end if;

@@ -8094,3 +8094,79 @@ details[open] > summary > .review-chevron {
   display: block;
   margin: auto;
 }
+
+/* Campo de contraseña con ojo (ui/PasswordField.tsx). El ojo va DENTRO del campo, en el extremo derecho y centrado en vertical con el texto; el campo reserva ese hueco a la derecha
+   para que el texto nunca quede debajo. La caja (.password-field) mide lo mismo que el campo, así que el ojo se centra respecto al campo y no respecto a la etiqueta de encima. */
+.password-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+/* input.password-input (0,2,1) gana a cualquier regla de formulario que fije el relleno de los campos. */
+.password-field input.password-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding-right: 52px;
+}
+
+/* Pantalla de bloqueo: el PIN va centrado; se reserva el mismo hueco a los dos lados para que siga centrado. */
+.password-field input.password-input.app-lock-input {
+  padding: 10px 52px;
+}
+
+/* El botón no hereda el aspecto de los botones grandes (relleno, fondo azul, texto blanco) y en iOS/Safari se le quita su apariencia nativa. */
+.password-field .password-eye {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.password-field .password-eye:focus-visible {
+  outline: 2px solid var(--primary);
+}
+
+/* Que el toque lo reciba siempre el botón (no el dibujo de dentro), también en Safari de iPhone. */
+.password-field .password-eye svg {
+  pointer-events: none;
+  display: block;
+}
+
+/* Botones propios del navegador dentro de los campos de contraseña: se ocultan para que no queden encima del ojo ni se vean dos
+   (Edge: el «ojo» y la «x»; Safari de ordenador: la llave/tarjeta del autocompletado). El gestor de contraseñas sigue funcionando: solo se oculta su icono. */
+.password-field input.password-input::-ms-reveal,
+.password-field input.password-input::-ms-clear {
+  display: none;
+}
+
+.password-field input.password-input::-webkit-credentials-auto-fill-button,
+.password-field input.password-input::-webkit-contacts-auto-fill-button,
+.password-field input.password-input::-webkit-strong-password-auto-fill-button {
+  visibility: hidden;
+  display: none !important;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}

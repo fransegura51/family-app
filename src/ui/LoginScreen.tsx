@@ -7,15 +7,17 @@ import { supabase } from '@/data/supabaseClient'
 import { authErrorMessage } from '@/domain/authErrors'
 import { formatInvitationExpiry, invitationErrorMessage, looksLikeInvitationCode, normalizeInvitationCode, type InvitationKind } from '@/domain/invitations'
 import { isCompleteOtp } from '@/domain/otpCode'
+import { PASSWORD_MISMATCH_MESSAGE, passwordsMatch } from '@/domain/passwordForm'
 import { invitationCodeFromSearch, rememberPendingInvitation } from '@/domain/pendingInvitation'
 import { forgetSignupOrigin, parseSignupOrigin, rememberSignupOrigin, signupMetadata } from '@/domain/signupOrigin'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
+import { NewPasswordFields, PasswordField } from '@/ui/PasswordField'
 
 // Entrar, crear cuenta (SOLO con invitación) y recuperar la contraseña.
 //
 // PEPA es privada: ALTA = primero la invitación, después la cuenta.
 //   1) «Tengo una invitación»: se escribe el código y el SERVIDOR lo valida (check_invitation, sin gastarlo).
-//   2) Solo entonces aparece el formulario de correo y contraseña; el código viaja con el alta y el gancho de Supabase Auth (0295) vuelve a comprobarlo y rechaza cualquier alta
+//   2) Solo entonces aparece el formulario de correo y contraseña; el código viaja con el alta y el gancho de Supabase Auth (0302) vuelve a comprobarlo y rechaza cualquier alta
 //      sin invitación válida aunque alguien se salte esta pantalla.
 //   3) Código de 6 cifras del correo (confirma el correo; NO es la invitación).
 //   4) Crear la familia o unirse (OnboardingScreen), donde el servidor vuelve a comprobar la invitación y la gasta.
@@ -38,6 +40,7 @@ export function LoginScreen() {
   }, [])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
   const [code, setCode] = useState('')
   const [inviteCode, setInviteCode] = useState(linkedCode ?? '')
   const [invitation, setInvitation] = useState<ValidInvitation | null>(null)
@@ -52,6 +55,7 @@ export function LoginScreen() {
     setError(null)
     setInfo(null)
     setCode('')
+    setConfirm('')
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -151,6 +155,12 @@ export function LoginScreen() {
       }
     } else {
       // Mode «signup»: solo se llega aquí con una invitación ya validada.
+      // Las dos contraseñas tienen que coincidir ANTES de enviar nada.
+      if (!passwordsMatch(password, confirm)) {
+        setError(PASSWORD_MISMATCH_MESSAGE)
+        setLoading(false)
+        return
+      }
       if (!invitation) {
         goTo('invite')
         setLoading(false)
@@ -248,12 +258,8 @@ export function LoginScreen() {
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required readOnly={askingCode} />
           </label>
         )}
-        {(mode === 'signin' || mode === 'signup') && (
-          <label>
-            Contraseña
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
-          </label>
-        )}
+        {mode === 'signin' && <PasswordField label="Contraseña" value={password} onChange={setPassword} autoComplete="current-password" minLength={6} />}
+        {mode === 'signup' && <NewPasswordFields password={password} confirm={confirm} onPasswordChange={setPassword} onConfirmChange={setConfirm} />}
         {askingCode && <OtpCodeField value={code} onChange={setCode} autoFocus />}
         {error && <p className="error">{error}</p>}
         {info && <p className="muted">{info}</p>}

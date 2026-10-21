@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react'
+import pepaLogoSlogan from '@/assets/brand/variants/pepa-family-app-logo-slogan.png'
 import { supabase } from '@/data/supabaseClient'
 
 // Se llega aquí desde el enlace del email de "¿Olvidaste tu
@@ -31,10 +32,13 @@ export function ResetPasswordScreen() {
     setDone(true)
   }
 
+  // Mismo logotipo oficial (con eslogan) que la pantalla de entrada.
+  const logo = <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 320, height: 'auto', marginBottom: 8 }} />
+
   if (done) {
     return (
       <div className="screen screen-centered">
-        <h1>Family App</h1>
+        {logo}
         <div className="card">
           <p>Contraseña actualizada. Ya puedes entrar con ella.</p>
           <button
@@ -55,7 +59,7 @@ export function ResetPasswordScreen() {
 
   return (
     <div className="screen screen-centered">
-      <h1>Family App</h1>
+      {logo}
       <form onSubmit={handleSubmit} className="card">
         <p className="muted">Elige tu nueva contraseña.</p>
         <label>

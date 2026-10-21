@@ -31,6 +31,7 @@ declare
   fams_before int;
   profs_before int;
   fresh_amr text := json_build_array(json_build_object('method', 'password', 'timestamp', extract(epoch from now())::bigint))::text;
+  j jsonb;
 begin
   -- ---- datos de mentira
   insert into auth.users (id, email)
@@ -94,7 +95,10 @@ begin
     if sqlerrm <> 'Código no válido o caducado' then raise; end if;
   end;
   execute 'reset role';
+  -- Los cambios directos de datos de prueba los hace la administradora de PEPA de la prueba: la base real tiene un registro de actividad (activity_log) que exige que quien actúa tenga perfil.
+  perform set_config('request.jwt.claims', json_build_object('sub', owner_id::text, 'role', 'authenticated')::text, true);
   update family_members set invite_code = 'MEMBEXP1', invite_code_expires_at = now() - interval '1 hour' where id = member_a;
+  perform set_config('request.jwt.claims', json_build_object('sub', nb[4]::text, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   begin
     perform public.join_family_with_code('MEMBEXP1', 'Caducado', date '1990-01-01');
@@ -105,7 +109,9 @@ begin
   execute 'reset role';
   select count(*) into n from profiles where id = nb[4];
   if n <> 0 then raise exception 'FALLO 3c: apareció un perfil sin código válido'; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', owner_id::text, 'role', 'authenticated')::text, true);
   update family_members set invite_code = 'MEMBOK01', invite_code_expires_at = now() + interval '24 hours' where id = member_a;
+  perform set_config('request.jwt.claims', json_build_object('sub', nb[4]::text, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   perform public.join_family_with_code('MEMBOK01', 'Con código', date '1990-01-01');
   execute 'reset role';
@@ -168,17 +174,21 @@ begin
   r := public.generate_family_invite('prueba dueña');        -- administradora DE PEPA: sí
   if r is null or length(r) <> 8 then raise exception 'FALLO 5e: la administradora de PEPA debía poder generar una invitación'; end if;
   execute 'reset role';
+  if not exists (select 1 from family_invites where note = 'prueba dueña' and expires_at between now() + interval '167 hours' and now() + interval '169 hours') then raise exception 'FALLO 5f: la invitación de PEPA para una familia nueva debía durar 7 días'; end if;
 
   -- ---- 6) lo nuevo (0299) no crea perfiles ni da acceso a quien no tiene invitación
-  perform set_config('request.jwt.claims', json_build_object('sub', nb[6]::text, 'role', 'authenticated', 'amr', fresh_amr::json)::text, true);
-  execute 'set local role authenticated';
-  select count(*) into n from public.list_family_account_emails();
-  if n <> 0 then raise exception 'FALLO 6a: un login sin perfil vio correos (%)', n; end if;
-  if public.change_own_pin('0000', '1234') <> 'no_pin' then raise exception 'FALLO 6b: change_own_pin debía responder no_pin a quien no tiene PIN'; end if;
-  perform public.reset_own_pin_after_recent_auth();           -- identificación reciente: no debe crear nada
-  execute 'reset role';
-  select count(*) into n from profiles where id = nb[6];
-  if n <> 0 then raise exception 'FALLO 6c: una función de cuentas y seguridad creó un perfil'; end if;
+  -- (solo si ya está aplicada la 0299; antes de aplicarla esta parte no existe y se salta)
+  if to_regprocedure('public.list_family_account_emails()') is not null then
+    perform set_config('request.jwt.claims', json_build_object('sub', nb[6]::text, 'role', 'authenticated', 'amr', fresh_amr::json)::text, true);
+    execute 'set local role authenticated';
+    select count(*) into n from public.list_family_account_emails();
+    if n <> 0 then raise exception 'FALLO 6a: un login sin perfil vio correos (%)', n; end if;
+    if public.change_own_pin('0000', '1234') <> 'no_pin' then raise exception 'FALLO 6b: change_own_pin debía responder no_pin a quien no tiene PIN'; end if;
+    perform public.reset_own_pin_after_recent_auth();           -- identificación reciente: no debe crear nada
+    execute 'reset role';
+    select count(*) into n from profiles where id = nb[6];
+    if n <> 0 then raise exception 'FALLO 6c: una función de cuentas y seguridad creó un perfil'; end if;
+  end if;
 
   -- ---- 7) (solo si ya está aplicada la 0302) primero la invitación: la comprobación pública y el gancho de alta
   if to_regprocedure('public.check_invitation(text)') is not null then
@@ -192,6 +202,15 @@ begin
     if (public.hook_before_user_created('{"user":{"email":"inventado@example.invalid","app_metadata":{"provider":"email"},"user_metadata":{"invite_code":"ZZZZZZZZZZ"}}}'::jsonb) -> 'error' ->> 'message') not like 'INVITATION_INVALID%' then
       raise exception 'FALLO 7d: el gancho de alta dejó pasar un alta con una invitación inventada';
     end if;
+    -- Con una invitación válida el gancho acepta y la reserva dura lo que la invitación; con otro correo ya confirmado, se rechaza.
+    insert into family_invites (code, created_by, note) values ('GANCHO0001', owner_id, 'prueba gancho');
+    j := public.hook_before_user_created('{"user":{"email":"nuevo-gancho@example.invalid","app_metadata":{"provider":"email"},"user_metadata":{"invite_code":"GANCHO0001"}}}'::jsonb);
+    if j <> '{}'::jsonb then raise exception 'FALLO 7e: el gancho debía aceptar una invitación válida y devolvió %', j; end if;
+    if not exists (select 1 from family_invites where code = 'GANCHO0001' and reserved_email = 'nuevo-gancho@example.invalid' and reserved_until = expires_at and used_at is null) then raise exception 'FALLO 7f: la reserva debía durar lo que la invitación y no gastarla'; end if;
+    update auth.users set email_confirmed_at = now() where id = nb[6];
+    update auth.users set email = 'nuevo-gancho@example.invalid' where id = nb[6];
+    j := public.hook_before_user_created('{"user":{"email":"otra-persona@example.invalid","app_metadata":{"provider":"email"},"user_metadata":{"invite_code":"GANCHO0001"}}}'::jsonb);
+    if (j -> 'error' ->> 'message') not like 'INVITATION_IN_USE%' then raise exception 'FALLO 7g: con el correo reservado ya confirmado, otra persona no debía poder usar la invitación (%)', j; end if;
   end if;
 
   raise exception 'PRUEBA_PUERTA_OK: sin invitación válida no se crea familia ni se entra en una; solo las administradoras de PEPA generan invitaciones nuevas (se revierte todo a propósito)';

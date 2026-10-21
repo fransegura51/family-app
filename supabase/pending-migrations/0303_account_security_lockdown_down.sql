@@ -1,6 +1,7 @@
 -- Deshacer el endurecimiento 0303: devuelve a las cuentas autenticadas el permiso de las dos funciones y restaura set_own_pin tal como lo dejó 0084.
 grant execute on function public.admin_reset_profile_pin(uuid) to authenticated;
 grant execute on function public.clear_own_pin() to authenticated;
+grant execute on function public.profile_has_pin(uuid) to authenticated;
 
 create or replace function public.set_own_pin(p_pin text)
 returns void

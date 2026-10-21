@@ -42,6 +42,7 @@ export function ResetPasswordScreen() {
     setLoading(false)
   }
 
+  // Mismo logotipo oficial (con eslogan) que la pantalla de entrada.
   const logo = <img src={pepaLogoSlogan} alt="Pepa Family App — Pepa te lo soluciona" style={{ width: '100%', maxWidth: 320, height: 'auto', marginBottom: 8 }} />
 
   if (done) {

@@ -244,6 +244,9 @@ Deno.serve(async (req) => {
     // 6) Persistencia: recibo primero (sin expense_id ni huellas todavía), luego gasto, luego líneas. Las
     // huellas se fijan al final (paso 7), nunca aquí: si algo falla a medias, este recibo queda sin huella y
     // un reintento del mismo archivo no lo confunde con "ya procesado".
+    // Líneas de descuento (importe negativo): no son una compra (product_prices exige precio >= 0), pero su suma SE REGISTRA en el ticket.
+    const discountTotal = Math.round(items.filter((it) => it.lineTotal < 0).reduce((sum, it) => sum + Math.abs(it.lineTotal), 0) * 100) / 100
+    const purchaseItems = items.filter((it) => !(it.unitPrice < 0 || it.lineTotal < 0))
     let receiptId: string | null = null
     let expenseId: string | null = null
     try {
@@ -257,6 +260,7 @@ Deno.serve(async (req) => {
           total_amount: total,
           expense_id: null,
           category: "Alimentación",
+          discount_total: discountTotal,
         })
         .select("id")
         .single()
@@ -287,7 +291,7 @@ Deno.serve(async (req) => {
       // Las líneas que no son productos (PARKING de Mercadona...) se descartan ANTES de crear producto o precio. El ticket (archivo,
       // gasto y total) se guarda íntegro. La regla es la misma que usa la app (ticketLines.ts, copia idéntica) y la base de datos la refuerza
       // con un trigger en product_prices.
-      const { products: productItems, skipped: skippedItems } = partitionTicketLines("Mercadona", items)
+      const { products: productItems, skipped: skippedItems } = partitionTicketLines("Mercadona", purchaseItems)
 
       for (const item of productItems) {
         const normalizedName = item.name.trim().toLowerCase()

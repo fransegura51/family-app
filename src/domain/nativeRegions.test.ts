@@ -94,23 +94,33 @@ describe('la app entrega los bordes al iPhone', () => {
   })
 })
 
-describe('código nativo del iPhone: saltos de GPS aislados', () => {
-  it('una posición que se aleja más de 150 m de la última enviada hace menos de 2 min espera a que la siguiente lectura la confirme', () => {
+describe('código nativo del iPhone: saltos de GPS y posiciones de red falsas', () => {
+  it('una lectura a más de 150 m de la última enviada (hasta un día después) se retiene: no se envía sin pruebas de movimiento real', () => {
     expect(swift).toContain('jumpMeters: CLLocationDistance = 150')
-    expect(swift).toContain('jumpWindowSeconds: TimeInterval = 120')
-    expect(swift).toContain('jumpConfirmMeters: CLLocationDistance = 100')
-    expect(swift).toContain('jumpConfirmSeconds: TimeInterval = 60')
-    expect(swift).toContain('location.distance(from: last) > PepaNativeLocation.jumpMeters')
-    expect(swift).toMatch(/if !confirmed \{\s*pendingJump = location\s*return\s*\}/)
+    expect(swift).toContain('jumpCheckWindowSeconds: TimeInterval = 86_400')
+    expect(swift).toContain('if fromLast <= PepaNativeLocation.jumpMeters { return markAccepted(location) }')
+    expect(swift).toContain('heldJump = HeldJump(first: location, last: location, speedReadings: 0, awayReadings: 0)')
   })
 
-  it('solo lo que se envía actualiza la última posición y el reloj de envíos; el salto descartado no cambia nada', () => {
-    expect(swift).toMatch(/pendingJump = nil\s*lastSentLocation = location\s*lastUploadAt = now\s*upload\(location\)/)
+  it('se acepta con dos lecturas seguidas con velocidad ≥ 0,5 m/s, o tres seguidas cada vez más lejos, o 30 min en el mismo sitio (la misma regla que Android y la app abierta)', () => {
+    expect(swift).toContain('minMovingSpeed: CLLocationSpeed = 0.5')
+    expect(swift).toContain('jumpSpeedReadings = 2')
+    expect(swift).toContain('jumpAwayReadings = 3')
+    expect(swift).toContain('jumpPersistSeconds: TimeInterval = 1_800')
+    expect(swift).toContain('jumpMinAwayStep: CLLocationDistance = 15')
+    expect(swift).toContain('location.speed >= PepaNativeLocation.minMovingSpeed')
+    expect(swift).toMatch(/next\.speedReadings >= PepaNativeLocation\.jumpSpeedReadings\s*\|\| next\.awayReadings >= PepaNativeLocation\.jumpAwayReadings\s*\|\| location\.timestamp\.timeIntervalSince\(next\.first\.timestamp\) >= PepaNativeLocation\.jumpPersistSeconds/)
   })
 
-  it('mantiene los filtros de siempre (precisión peor de 100 m y un envío cada 10 s) antes de mirar el salto', () => {
-    expect(swift.indexOf('maxAccuracy { return }')).toBeLessThan(swift.indexOf('jumpMeters {'))
+  it('solo lo que se envía actualiza la última posición y el reloj de envíos; una lectura retenida no cambia nada', () => {
+    expect(swift).toMatch(/private func markAccepted\(_ location: CLLocation\) -> Bool \{\s*heldJump = nil\s*lastSentLocation = location\s*return true\s*\}/)
+    expect(swift).toMatch(/if !acceptAfterJumpCheck\(location\) \{ return \}\s*lastUploadAt = now\s*upload\(location\)/)
+  })
+
+  it('mantiene los filtros de siempre (un envío cada 10 s, precisión mejor de 100 m, lectura reciente) antes de mirar el salto', () => {
     expect(swift).toContain('minUploadGap { return }')
+    expect(swift.indexOf('maxAccuracy { return }')).toBeLessThan(swift.indexOf('acceptAfterJumpCheck(location)'))
+    expect(swift.indexOf('maxReadingAgeSeconds { return }')).toBeLessThan(swift.indexOf('acceptAfterJumpCheck(location)'))
   })
 })
 

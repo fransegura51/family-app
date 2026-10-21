@@ -33,7 +33,7 @@ describe('classifyFoodType', () => {
 
   it('lácteos', () => {
     expect(key('QUESO GOUDA LONCHAS')).toBe('lacteos')
-    expect(key('24 HUEVOS FRESCOS')).toBe('lacteos')
+    expect(key('24 HUEVOS FRESCOS')).toBe('huevos')
   })
 
   it('panadería, sin confundir "panceta" con "pan"', () => {
@@ -99,5 +99,11 @@ describe('classifyFoodType', () => {
 
   it('sin coincidencia cae en Otros alimentos', () => {
     expect(key('COSA RARA XYZ')).toBe('otros')
+  })
+})
+
+describe('pescado y marisco (reportado: «en tipos de comida no sale pescado»)', () => {
+  it.each(['FILETE LUBINA', 'ALMEJAS', 'CHIPIRONES', 'BONITO DEL NORTE', 'ANCHOAS', 'CABALLA', 'PESCADILLA', 'MEJILLONES'])('%s → pescado', (name) => {
+    expect(classifyFoodType(name).key).toBe('pescado')
   })
 })

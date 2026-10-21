@@ -53,7 +53,7 @@ describe('partitionCreditLines', () => {
 describe('la pantalla de tickets no deja que un abono rompa el guardado', () => {
   it('al leer la foto aparta los abonos y los avisa como líneas omitidas', () => {
     expect(screen).toContain('partitionCreditLines(productLines)')
-    expect(screen).toContain('...credits.map((c) => c.name.trim())')
+    expect(screen).toContain('setDiscountTotal(')
   })
 
   it('al guardar ignora cualquier línea con precio negativo (también las escritas o editadas a mano)', () => {

@@ -8,6 +8,8 @@
 
 revoke execute on function public.admin_reset_profile_pin(uuid) from authenticated;
 revoke execute on function public.clear_own_pin() from authenticated;
+-- La consulta «¿tiene PIN esa persona?» (0292 de la web actual) solo servía para el botón «Reiniciar PIN» de la administradora, que desaparece: deja de ser consultable.
+revoke execute on function public.profile_has_pin(uuid) from authenticated;
 
 create or replace function public.set_own_pin(p_pin text)
 returns void

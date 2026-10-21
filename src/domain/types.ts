@@ -579,6 +579,8 @@ export interface Receipt {
   // (archivo, tienda, fecha, total y líneas no dependen de ella). Fase 6C.2A.
   category: string | null
   purchasedByMemberId: string | null
+  // Suma (€, positiva) de los descuentos impresos en el ticket; 0 si no hay.
+  discountTotal?: number
 }
 
 export interface Contact {

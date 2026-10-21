@@ -193,6 +193,7 @@ import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
 import { partitionTicketLines } from '@/domain/ticketLines'
 import { isCreditLine, partitionCreditLines } from '@/domain/ticketCreditLines'
+import { withReceiptStoreBases } from '@/domain/storeNames'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
 import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
@@ -5056,8 +5057,9 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
 export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
-  const [knownStores, setKnownStores] = useState<string[]>([])
+  const [registeredStores, setKnownStores] = useState<string[]>([])
   const [storeEntries, setStoreEntries] = useState<ShoppingStoreEntry[]>([])
+  const knownStores = useMemo(() => withReceiptStoreBases(registeredStores, receipts.map((r) => r.store)), [registeredStores, receipts])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [loading, setLoading] = useState(true)
@@ -5301,8 +5303,19 @@ function ReceiptSpendSummary({
   onCustomToChange: (d: string) => void
 }) {
   const [selectedStore, setSelectedStore] = useState('Todas')
+  const [storeOpen, setStoreOpen] = useState(false)
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
+  // Bug real reportado: al subir tickets de septiembre y octubre solo se veía el de octubre (el periodo «Mes contable» es el de arranque) y
+  // no había forma de saber si los demás se habían subido. Ahora se dice cuántos tickets quedan fuera del periodo y se ofrece verlos todos.
+  const outsideRange = receipts.filter((r) => r.receiptDate < from || r.receiptDate > to)
+  function showAllTickets() {
+    const dates = receipts.map((r) => r.receiptDate).sort()
+    const today = toDateStr(new Date())
+    onCustomFromChange(dates[0] ?? today)
+    onCustomToChange(dates.length > 0 && dates[dates.length - 1] > today ? dates[dates.length - 1] : today)
+    onPresetChange('rango')
+  }
 
   const filtered = receipts.filter((r) => {
     if (r.receiptDate < from || r.receiptDate > to) return false
@@ -5322,17 +5335,41 @@ function ReceiptSpendSummary({
         customTo={customTo}
         onCustomToChange={onCustomToChange}
       />
-      <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value)} style={{ marginBottom: 8 }}>
-        <option value="Todas">Todas las tiendas</option>
-        {storeNames.map((s) => (
-          <option key={s} value={s}>
-            {s}
-          </option>
-        ))}
-      </select>
+      {/* Mismo formato que «📅 Fecha»: botón + panel de opciones (antes la tienda era un desplegable distinto y confundía). */}
+      <div style={{ margin: '8px 0' }}>
+        <button type="button" className={'chip' + (storeOpen ? ' chip-active' : '')} onClick={() => setStoreOpen((v) => !v)}>
+          🏬 Tienda: {selectedStore === 'Todas' ? 'Todas las tiendas' : selectedStore} {storeOpen ? '▲' : '▼'}
+        </button>
+        {storeOpen && (
+          <div className="category-picker-panel" style={{ maxHeight: 'none', marginTop: 6 }}>
+            {['Todas', ...storeNames].map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={'category-picker-row' + (selectedStore === s ? ' chip-active' : '')}
+                onClick={() => {
+                  setSelectedStore(s)
+                  setStoreOpen(false)
+                }}
+              >
+                {s === 'Todas' ? 'Todas las tiendas' : s}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
       <p>
         {total.toFixed(2)} € · {filtered.length} {filtered.length === 1 ? 'ticket' : 'tickets'}
       </p>
+      {outsideRange.length > 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          ℹ️ Estás viendo los tickets del periodo elegido en «📅 Fecha» ({from} → {to}). Hay {outsideRange.length}{' '}
+          {outsideRange.length === 1 ? 'ticket más guardado' : 'tickets más guardados'} en otras fechas.{' '}
+          <button type="button" className="link-button" onClick={showAllTickets}>
+            Ver todos mis tickets
+          </button>
+        </p>
+      )}
     </div>
   )
 }
@@ -5773,6 +5810,7 @@ function ReceiptRow({
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{formatDate(receipt.receiptDate)}</span>
           {receipt.totalAmount != null && <span> · {receipt.totalAmount.toFixed(2)} €</span>}
+          {(receipt.discountTotal ?? 0) > 0 && <span> · 🏷️ −{(receipt.discountTotal ?? 0).toFixed(2)} € de descuentos</span>}
           <span> · {isPendingCategory(receipt.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : receipt.category}</span>
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
@@ -6027,6 +6065,7 @@ function ReceiptForm({
   const [lines, setLines] = useState<DraftLine[]>([])
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
+  const [discountTotal, setDiscountTotal] = useState(0)
   const uploadedReceiptId = useRef<string | null>(null)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
@@ -6107,7 +6146,9 @@ function ReceiptForm({
       // Las líneas con importe NEGATIVO (abono de portes, descuento, cupón...) tampoco son una compra: no llegan al historial de precios, que no admite
       // precios negativos (antes, con una de ellas, el ticket entero no se podía guardar). Se avisa igual que con PARKING.
       const { kept: purchaseLines, credits } = partitionCreditLines(productLines)
-      setSkippedLines([...skipped.map((s) => s.line.name.trim()), ...credits.map((c) => c.name.trim())])
+      setSkippedLines(skipped.map((s) => s.line.name.trim()))
+      // Los descuentos (líneas negativas) no van al historial de precios, pero SÍ se registran: su suma queda guardada en el ticket.
+      setDiscountTotal(Math.round(credits.reduce((sum, c) => sum + Math.abs(c.lineTotal), 0) * 100) / 100)
       setLines(purchaseLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2) })))
       setOcrStatus('done')
     } catch (err) {
@@ -6188,6 +6229,7 @@ function ReceiptForm({
     setPurchasedByMemberId('')
     setLines([])
     setSkippedLines([])
+    setDiscountTotal(0)
     setOcrStatus('idle')
     setError(null)
   }
@@ -6215,6 +6257,7 @@ function ReceiptForm({
             totalAmount: totalAmount ? Number(totalAmount) : null,
             category: category || null,
             purchasedByMemberId: purchasedByMemberId || null,
+            discountTotal,
           })
           uploadedReceiptId.current = receiptId
         }
@@ -6358,6 +6401,9 @@ function ReceiptForm({
           Se {skippedLines.length === 1 ? 'ha omitido 1 línea que no es' : 'han omitido ' + skippedLines.length + ' líneas que no son'} un producto
           ({[...new Set(skippedLines)].join(', ')}): no se guarda en Historial de precios ni cuenta en las estadísticas.
         </p>
+      )}
+      {discountTotal > 0 && (
+        <p className="muted">🏷️ Descuentos del ticket: −{discountTotal.toFixed(2)} €. Se guardan con el ticket (el total ya los lleva aplicados).</p>
       )}
       {lines.some((l) => l.name.trim() && isCreditLine(Number(l.unitPrice))) && (
         <p className="muted">
@@ -6898,7 +6944,8 @@ export function BudgetsTab({
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
-  const [knownStores, setKnownStores] = useState<string[]>([])
+  const [registeredStores, setKnownStores] = useState<string[]>([])
+  const knownStores = useMemo(() => withReceiptStoreBases(registeredStores, receipts.map((r) => r.store)), [registeredStores, receipts])
   const [storeEntries, setStoreEntries] = useState<ShoppingStoreEntry[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   // Solo para Estadística compras (group === 'alimentacion') — precio

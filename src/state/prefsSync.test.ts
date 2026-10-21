@@ -8,7 +8,7 @@ describe('isSyncedPrefKey', () => {
       expect(isSyncedPrefKey(k)).toBe(true)
   })
   it('no sincroniza lo propio del aparato ni claves ajenas', () => {
-    for (const k of ['familyapp:pepa-fab-positions', 'familyapp:social-menu-fab-position', 'otra:clave', 'sb-token'])
+    for (const k of ['familyapp:location-sharing-member-id', 'familyapp:location-visit-candidate', 'familyapp:pepa-fab-positions', 'familyapp:social-menu-fab-position', 'familyapp:calendar-onboarding-seen:1', 'pepa:shared-class', 'otra:clave', 'sb-token'])
       expect(isSyncedPrefKey(k)).toBe(false)
   })
 })

@@ -3,12 +3,19 @@ import { supabase } from '@/data/supabaseClient'
 // Preferencias de pantalla que deben seguir a la PERSONA entre dispositivos (web, Android, iPhone): orden de menús, pestañas fijadas, tema,
 // orden de Inicio... Antes vivían solo en localStorage de cada dispositivo (bug reportado: «los cambios que hice en la web no se trasladaron
 // a la versión móvil»). localStorage sigue siendo la caché local; esta capa lo copia a user_ui_prefs y lo trae al abrir sesión.
-const SYNCED_PREFIXES = ['familyapp:', 'pepa:']
-// Cosas que dependen del aparato concreto (posición de botones flotantes en ESA pantalla) o que no son una preferencia.
-const NOT_SYNCED = /(fab-position|fab-positions|recent-emoji|:last-|dismissed|shown|nag)/
+// LISTA CERRADA: solo preferencias de pantalla de la persona. Nunca estado del aparato (quién comparte ubicación en ESTE móvil, la parada de visita
+// en curso, permisos, contadores...): sincronizarlo mezclaría dispositivos. Una clave nueva solo se sincroniza si se añade aquí a propósito.
+const SYNCED_KEY_PATTERNS: RegExp[] = [
+  /^familyapp:(alimentacion|calendario|compras|economia|ubicacion)-menu-layout$/,
+  /^familyapp:(alimentacion|calendario|community|compras|economia|ubicacion)-pinned-tabs$/,
+  /^familyapp:community-menu-order$/,
+  /^familyapp:(color-theme|chart-color-theme|home-card-order|home-carousel|movement-color-mode|voice-response-mode)$/,
+  /^familyapp:tab-order:[\w-]+$/,
+  /^pepa:(auto-confirm|show-classic-buttons)$/,
+]
 
 export function isSyncedPrefKey(key: string): boolean {
-  return SYNCED_PREFIXES.some((p) => key.startsWith(p)) && !NOT_SYNCED.test(key)
+  return SYNCED_KEY_PATTERNS.some((re) => re.test(key))
 }
 
 const RELOAD_GUARD = 'familyapp:prefs-sync-reloaded' // sessionStorage; sin prefijo sincronizado a propósito (no es una preferencia)
@@ -23,9 +30,17 @@ export function startPrefsSync(userId: string): void {
 
 async function run(userId: string): Promise<void> {
   let remote: Record<string, string> = {}
+  let hadJunk = false
   try {
     const { data } = await supabase.from('user_ui_prefs').select('prefs').eq('user_id', userId).maybeSingle()
     remote = (data?.prefs as Record<string, string> | null) ?? {}
+    // Auto-reparación: lo que una versión anterior subió y ya no es sincronizable (estado del aparato) se descarta y se limpia en la nube.
+    for (const key of Object.keys(remote)) {
+      if (!isSyncedPrefKey(key)) {
+        delete remote[key]
+        hadJunk = true
+      }
+    }
   } catch {
     // Sin red o tabla no disponible: la app sigue con lo local.
   }
@@ -82,7 +97,7 @@ async function run(userId: string): Promise<void> {
     if (timer) clearTimeout(timer)
     timer = setTimeout(push, 1500)
   }
-  if (missing) schedule()
+  if (missing || hadJunk) schedule()
 
   // 3) A partir de ahora, cada cambio de una preferencia sincronizable se sube (con espera para agrupar cambios seguidos).
   try {

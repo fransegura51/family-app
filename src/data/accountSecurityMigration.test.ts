@@ -1,4 +1,4 @@
-// Cuentas y seguridad (PEPA-CUENTAS): la migración 0299 (solo funciones nuevas), el endurecimiento pendiente 0303 y las plantillas de correo.
+// Cuentas y seguridad (PEPA-CUENTAS): la migración 0299 (solo funciones nuevas), el endurecimiento 0303 (aplicado) y las plantillas de correo.
 // Son pruebas sobre el texto del SQL y de las plantillas; la prueba EN VIVO del SQL está en supabase/pending-migrations/0299_live_test.sql y se ejecuta
 // después de aplicar 0299 (no se ha ejecutado todavía).
 import fs from 'node:fs'
@@ -10,8 +10,8 @@ const root = path.resolve(__dirname, '../..')
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8')
 const sql = read('supabase/migrations/0299_account_security.sql')
 const down = read('supabase/rollbacks/0299_account_security_down.sql')
-const lockdown = read('supabase/pending-migrations/0303_account_security_lockdown.sql')
-const lockdownDown = read('supabase/pending-migrations/0303_account_security_lockdown_down.sql')
+const lockdown = read('supabase/migrations/0303_account_security_lockdown.sql')
+const lockdownDown = read('supabase/rollbacks/0303_account_security_lockdown_down.sql')
 const liveTest = read('supabase/pending-migrations/0299_live_test.sql')
 
 describe('migración 0299: aditiva (solo funciones nuevas, nada destructivo)', () => {
@@ -97,21 +97,24 @@ describe('migración 0299: aditiva (solo funciones nuevas, nada destructivo)', (
   })
 })
 
-describe('endurecimiento 0303: pendiente a propósito (no está en supabase/migrations)', () => {
-  it('no se aplica solo: vive en supabase/pending-migrations, con su motivo y su rollback', () => {
+describe('endurecimiento 0303: aplicado el 21/10/2026 tras probar la recuperación del PIN en vivo', () => {
+  it('está en supabase/migrations con su rollback en supabase/rollbacks y ya no figura como pendiente', () => {
     const migrations = fs.readdirSync(path.join(root, 'supabase/migrations'))
-    expect(migrations.some((f) => f.startsWith('0303'))).toBe(false)
-    expect(lockdown).toContain('PENDIENTE DE APLICAR')
-    expect(lockdown).toContain('docs/CUENTAS_SEGURIDAD_PLAN.md')
+    expect(migrations.some((f) => f.startsWith('0303'))).toBe(true)
+    expect(fs.existsSync(path.join(root, 'supabase/pending-migrations/0303_account_security_lockdown.sql'))).toBe(false)
+    expect(lockdown).toContain('APLICADA en producción')
+    expect(lockdown).not.toContain('PENDIENTE DE APLICAR')
   })
   it('retira a las cuentas autenticadas el reinicio por administradora y el «quitar PIN» sin comprobar, y protege set_own_pin de sobrescribir', () => {
     expect(lockdown).toContain('revoke execute on function public.admin_reset_profile_pin(uuid) from authenticated;')
     expect(lockdown).toContain('revoke execute on function public.clear_own_pin() from authenticated;')
+    expect(lockdown).toContain('revoke execute on function public.profile_has_pin(uuid) from authenticated;')
     expect(lockdown).toContain("raise exception 'PIN_ALREADY_SET'")
   })
   it('su rollback devuelve los permisos y deja set_own_pin como estaba (0084)', () => {
     expect(lockdownDown).toContain('grant execute on function public.admin_reset_profile_pin(uuid) to authenticated;')
     expect(lockdownDown).toContain('grant execute on function public.clear_own_pin() to authenticated;')
+    expect(lockdownDown).toContain('grant execute on function public.profile_has_pin(uuid) to authenticated;')
     expect(lockdownDown).not.toContain('PIN_ALREADY_SET')
   })
 })

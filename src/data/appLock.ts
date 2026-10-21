@@ -18,11 +18,6 @@ export async function setOwnPin(pin: string): Promise<void> {
   if (error) throw error
 }
 
-export async function clearOwnPin(): Promise<void> {
-  const { error } = await supabase.rpc('clear_own_pin')
-  if (error) throw error
-}
-
 // PIN_LOCKED: demasiados intentos fallidos seguidos, bloqueado unos
 // minutos — se distingue de "PIN incorrecto" para poder avisar mejor.
 export async function verifyOwnPin(pin: string): Promise<boolean> {
@@ -35,7 +30,7 @@ export async function verifyOwnPin(pin: string): Promise<boolean> {
 }
 
 // Cuentas y seguridad (0299). Cada persona gestiona SU PIN: la administradora ya no puede reiniciar el de otra (el botón «Reiniciar PIN» de Familia se
-// quitó; la función de la base de datos se retira al aplicar supabase/pending-migrations/0303, cuando se haya comprobado la recuperación).
+// quitó; la función de la base de datos se retiró con la migración 0303, ya aplicada tras comprobar la recuperación).
 //
 // Cambiar o quitar el PIN pide el actual. Un PIN actual mal NO es un error: devuelve «wrong_pin» y la base de datos ya ha contado el intento (si fuera un
 // error se revertiría el contador y se podría probar sin límite). PIN_LOCKED sí es un error: demasiados intentos seguidos.

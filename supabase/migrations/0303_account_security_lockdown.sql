@@ -1,6 +1,5 @@
--- PENDIENTE DE APLICAR (no está en supabase/migrations a propósito). Endurecimiento que SOLO puede hacerse cuando 0299 y la versión nueva de la app
--- ya están publicadas y se ha comprobado de verdad que «Recuperar mi PIN» funciona con una sesión real (ver docs/CUENTAS_SEGURIDAD_PLAN.md, paso «Cierre»).
--- Si se aplicara antes, una persona que olvidara su PIN se quedaría sin salida (hoy su salida es que un administrador se lo reinicie).
+-- 0303 · Endurecimiento de las cuentas y el PIN. APLICADA en producción el 21/10/2026, tras comprobar en vivo que «Recuperar mi PIN» funciona con una sesión real.
+-- Deshacer: supabase/rollbacks/0303_account_security_lockdown_down.sql (devuelve los permisos y deja set_own_pin como estaba).
 --
 --  · La administradora deja de poder reiniciar el PIN de otra persona.
 --  · «Quitar PIN» sin comprobar nada (clear_own_pin) deja de estar disponible: se quita con clear_own_pin_with_pin o con la recuperación.

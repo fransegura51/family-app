@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-// Reorganización "Familia / Panel de admin" — separar configuración de cada familia de las herramientas
-// técnicas que solo usamos nosotros como administradores de PEPA. Dos cambios, ambos de UBICACIÓN/ACCESO,
-// nunca de lógica: (1) "⚙️ Automatizaciones de tickets por email" (Pipedream: Amazon, Mercadona, eventos)
-// se traslada de FamilyScreen.tsx (detrás de isAdmin, el rol de admin de CADA familia — cualquier familia
-// de prueba lo veía) a AdminUsageScreen.tsx (detrás de isAppOwnerView, la MISMA señal real que ya usaba
-// AdminUsageLink para decidir si el enlace aparece: list_app_usage() devuelve filas solo para
-// profiles.is_app_owner). (2) "📊 Panel de uso de la app" se renombra "🛠️ Panel de admin" y pasa a
-// contener dos secciones: "📊 Uso de la app" (contenido de siempre) y "⚙️ Automatizaciones" (la sección
-// trasladada). Mismos webhooks, mismo token, mismos botones — nunca una reimplementación.
+// Reorganización "Familia / Panel de admin" (histórica) + Centro de Administración único (B2). Dos ideas que NO deben perderse:
+// (1) las herramientas técnicas que solo usamos nosotros como administradoras de PEPA nunca vuelven a Familia (el rol de admin de CADA familia no da acceso a ellas);
+// (2) "⚙️ Automatizaciones de tickets por email" (Pipedream: Amazon, Mercadona, eventos) conserva EXACTAMENTE los mismos webhooks, token y botones, ahora dentro del área
+//     «Sistema» del Centro de Administración, detrás de la puerta que pregunta al servidor si la cuenta es propietaria (am_i_app_owner → profiles.is_app_owner).
 const FAMILY_SRC = (import.meta.glob('/src/ui/FamilyScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/FamilyScreen.tsx']
-const ADMIN_SRC = (import.meta.glob('/src/ui/AdminUsageScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/AdminUsageScreen.tsx']
+const SYSTEM_SRC = (import.meta.glob('/src/ui/admin/AreaSistema.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/admin/AreaSistema.tsx']
+const AMAZON_SRC = (import.meta.glob('/src/ui/admin/AmazonWebhookSettings.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
+  '/src/ui/admin/AmazonWebhookSettings.tsx'
+]
 const MENU_SETTINGS_SRC = (import.meta.glob('/src/ui/MenuSettingsScreen.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)[
   '/src/ui/MenuSettingsScreen.tsx'
 ]
@@ -36,45 +34,36 @@ describe('FamilyScreen — las Automatizaciones ya no viven aquí (ni el compone
   })
 })
 
-describe('AdminUsageScreen ("🛠️ Panel de admin") — Automatizaciones trasladada tal cual, protegida por la misma señal real que el resto del panel', () => {
-  it('el título pasa a "🛠️ Panel de admin" con dos secciones visibles', () => {
-    expect(ADMIN_SRC).toContain('<h1 style={{ margin: 0 }}>🛠️ Panel de admin</h1>')
-    expect(ADMIN_SRC).toContain('📊 Uso de la app')
-    expect(ADMIN_SRC).toContain('⚙️ Automatizaciones')
-  })
-
-  it('isAppOwnerView reutiliza la MISMA señal que ya usaba AdminUsageLink (list_app_usage() con filas) — nunca un segundo sistema de permisos', () => {
-    expect(ADMIN_SRC).toContain('const isAppOwnerView = rows.length > 0')
-  })
-
-  it('la sección de Automatizaciones solo se monta con isAppOwnerView — quien llega a /admin-uso escribiéndola a mano sin ser is_app_owner no la ve (list_app_usage() le devuelve 0 filas)', () => {
-    const gate = slice(ADMIN_SRC, '{isAppOwnerView && (', '\n    </div>\n  )\n}')
-    expect(gate).toContain('<AmazonWebhookSettings />')
+describe('Centro de Administración → área Sistema: Automatizaciones trasladada tal cual', () => {
+  it('el área Sistema pinta «⚙️ Automatizaciones» con el mismo componente', () => {
+    expect(SYSTEM_SRC).toContain('⚙️ Automatizaciones')
+    expect(SYSTEM_SRC).toContain('<AmazonWebhookSettings />')
   })
 
   it('mismos webhooks, mismo token, mismos botones — ninguna reimplementación', () => {
-    const start = ADMIN_SRC.indexOf('function AmazonWebhookSettings() {')
-    expect(start).toBeGreaterThan(-1)
-    const fn = ADMIN_SRC.slice(start)
-    expect(fn).toContain("`${base}/functions/v1/amazon-order-webhook`")
-    expect(fn).toContain("`${base}/functions/v1/mercadona-ticket-webhook`")
-    expect(fn).toContain("`${base}/functions/v1/import-event-email-webhook`")
-    expect(fn).toContain('getAmazonWebhookToken')
-    expect(fn).toContain('regenerateAmazonWebhookToken')
-    expect(fn).toContain("'Copiar URL'")
-    expect(fn).toContain("label={busy ? 'Regenerando…' : 'Regenerar token'}")
+    expect(AMAZON_SRC).toContain('export function AmazonWebhookSettings() {')
+    expect(AMAZON_SRC).toContain('`${base}/functions/v1/amazon-order-webhook`')
+    expect(AMAZON_SRC).toContain('`${base}/functions/v1/mercadona-ticket-webhook`')
+    expect(AMAZON_SRC).toContain('`${base}/functions/v1/import-event-email-webhook`')
+    expect(AMAZON_SRC).toContain('getAmazonWebhookToken')
+    expect(AMAZON_SRC).toContain('regenerateAmazonWebhookToken')
+    expect(AMAZON_SRC).toContain("'Copiar URL'")
+    expect(AMAZON_SRC).toContain("label={busy ? 'Regenerando…' : 'Regenerar token'}")
   })
 })
 
-describe('MenuSettingsScreen — el enlace se renombra, la señal de acceso no cambia', () => {
-  it('el enlace ahora dice "🛠️ Panel de admin" (antes "📊 Panel de uso de la app")', () => {
-    expect(MENU_SETTINGS_SRC).toContain('🛠️ Panel de admin')
+describe('MenuSettingsScreen — el enlace lleva al Centro de Administración y solo se pinta si el servidor confirma que la cuenta es propietaria', () => {
+  it('el enlace ahora dice "🛠️ Centro de Administración" (antes "🛠️ Panel de admin")', () => {
+    expect(MENU_SETTINGS_SRC).toContain('🛠️ Centro de Administración')
+    expect(MENU_SETTINGS_SRC).not.toContain('🛠️ Panel de admin')
     expect(MENU_SETTINGS_SRC).not.toContain('📊 Panel de uso de la app')
   })
 
-  it('sigue siendo el mismo mecanismo real: solo visible si list_app_usage() devuelve filas (profiles.is_app_owner) — la ruta sigue siendo /admin-uso', () => {
+  it('la señal de acceso es am_i_app_owner preguntado al servidor (useAppOwner), no el truco de "hay filas en list_app_usage"', () => {
     const fn = slice(MENU_SETTINGS_SRC, 'function AdminUsageLink() {', '\n\n// Petición real: "darle al usuario a elegir qué clases de tonos')
-    expect(fn).toContain('setVisible(rows.length > 0)')
-    expect(fn).toContain('<Link to="/admin-uso"')
+    expect(fn).toContain('useAppOwner()')
+    expect(fn).toContain("if (owner !== 'owner') return null")
+    expect(fn).toContain('<Link to="/administracion"')
+    expect(fn).not.toContain('listAppUsage')
   })
 })

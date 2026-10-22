@@ -8204,3 +8204,8 @@ details[open] > summary > .review-chevron {
   align-items: center;
   flex-wrap: wrap;
 }
+
+.invite-friends-note {
+  margin: 6px 2px 0;
+  font-size: 13px;
+}

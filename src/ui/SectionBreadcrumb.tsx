@@ -13,7 +13,7 @@ const EXTRA_SECTIONS: NavTab[] = [
 ]
 const ALL_SECTIONS: NavTab[] = [...NAV_TABS, ...EXTRA_SECTIONS]
 
-// Actividad (/actividad) y el Panel de admin (/admin-uso) no están aquí a propósito — no son secciones
+// Actividad (/actividad) y el Centro de Administración (/administracion) no están aquí a propósito — no son secciones
 // normales del menú (sin entrada en NAV_TABS ni en el ☰), así que no llevan SectionBreadcrumb.
 export function sectionForPath(pathname: string): NavTab | null {
   const matches = ALL_SECTIONS.filter((t) => t.to !== '/' && (pathname === t.to || pathname.startsWith(`${t.to}/`)))

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { COMMUNITY_MENU_META, moveMenuKey, type CommunityMenuKey } from '@/state/communityMenu'
+import { paths } from '@/ui/community/communityNav'
 
 // Menú desplegable «☰ Menú» de Comunidad. Es el MISMO diseño y comportamiento que el de Compras/Economía/Alimentación (mismas clases .economia-menu-*): el nombre cambia de
 // pantalla y cierra el menú, «📌 Sacar» deja ese acceso a la vista en la pantalla (como botón), «✏️ Editar» permite subir/bajar y la opción actual va resaltada.
@@ -102,7 +103,7 @@ export function CommunityMenu({
             role="menuitem"
             className="link-button community-menu-admin"
             onClick={() => {
-              onGo('/comunidad/admin')
+              onGo(paths.admin)
               onClose()
             }}
           >

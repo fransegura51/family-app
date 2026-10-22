@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
+import { legacyAdminUsagePath } from '@/admin/adminAreas'
 import { useSession } from '@/auth/useSession'
 import { useRecoveryFlowActive } from '@/auth/recoveryFlow'
 import { LoginScreen } from '@/ui/LoginScreen'
@@ -48,7 +49,7 @@ const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m)
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
 const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
 const ReviewsScreen = lazy(() => import('@/ui/ReviewsScreen').then((m) => ({ default: m.ReviewsScreen })))
-const AdminUsageScreen = lazy(() => import('@/ui/AdminUsageScreen').then((m) => ({ default: m.AdminUsageScreen })))
+const AdministrationPage = lazy(() => import('@/ui/admin/AdministrationPage').then((m) => ({ default: m.AdministrationPage })))
 const CommunityRoutes = lazy(() => import('@/ui/community/CommunityRoutes').then((m) => ({ default: m.CommunityRoutes })))
 
 // Bug real reportado varias veces ("se queda la pantalla en gris/
@@ -173,7 +174,9 @@ function AuthedApp() {
             <Route path="/documentos" element={<DocumentsScreen />} />
             <Route path="/peso" element={<Navigate to="/familia" replace state={{ tab: 'Peso y medidas' }} />} />
             <Route path="/menu-organizar" element={<MenuSettingsScreen profile={profile} />} />
-            <Route path="/admin-uso" element={<AdminUsageScreen />} />
+            {/* Centro de Administración único (solo cuentas propietarias de PEPA; la puerta pregunta al servidor). La dirección antigua del «Panel de admin» redirige al área Usuarios. */}
+            <Route path="/administracion" element={<AdministrationPage />} />
+            <Route path="/admin-uso" element={<Navigate to={legacyAdminUsagePath()} replace />} />
             <Route path="/ayuda" element={<AyudaScreen />} />
             <Route path="/sugerencias" element={<SuggestionsScreen />} />
             <Route path="/resenas" element={<ReviewsScreen />} />

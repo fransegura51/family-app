@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { legacyCommunityAdminPath } from '@/admin/adminAreas'
 import { CommunityAccessGate } from '@/ui/community/CommunityAccessUi'
 import { ParticipationOnly } from '@/ui/community/CommunityAccessNotices'
 import { CommunityLayout } from '@/ui/community/CommunityLayout'
@@ -19,13 +20,20 @@ const MedalsPage = lazy(() => import('@/ui/community/MedalsPage').then((m) => ({
 const RecentPage = lazy(() => import('@/ui/community/RecentPage').then((m) => ({ default: m.RecentPage })))
 const NewsPage = lazy(() => import('@/ui/community/NewsPage').then((m) => ({ default: m.NewsPage })))
 const RulesPage = lazy(() => import('@/ui/community/RulesPage').then((m) => ({ default: m.RulesPage })))
-const AdminPage = lazy(() => import('@/ui/community/AdminPage').then((m) => ({ default: m.AdminPage })))
+
+// El Centro de Mando de Comunidad vive ahora dentro del Centro de Administración (/administracion, área «Comunidad y moderación»). La dirección antigua redirige allí
+// conservando la pestaña (?tab=…). Va FUERA de la puerta de acceso de Comunidad: la administración se decide en el Centro, no por la edad ni los permisos de Comunidad.
+function LegacyAdminRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={legacyCommunityAdminPath(search)} replace />
+}
 
 export function CommunityRoutes() {
   return (
     <CommunityProvider>
       <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <Routes>
+          <Route path="admin" element={<LegacyAdminRedirect />} />
           {/* Acceso por edad y permisos (0277): sin acceso solo se enseña «Comunidad no está disponible para tu cuenta». Con permiso solo de lectura, las
               pantallas de escritura (crear, editar, borradores, guardados, medallas propias y ajustes/alias) se sustituyen por una explicación. */}
           <Route element={<CommunityAccessGate />}>
@@ -44,7 +52,6 @@ export function CommunityRoutes() {
               <Route path="recientes" element={<RecentPage />} />
               <Route path="novedades" element={<NewsPage />} />
               <Route path="normas" element={<RulesPage />} />
-              <Route path="admin" element={<AdminPage />} />
               <Route path="*" element={<Navigate to="/comunidad" replace />} />
             </Route>
           </Route>

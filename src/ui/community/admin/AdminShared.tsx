@@ -184,25 +184,47 @@ export function NoteForm({
   )
 }
 
-// ---- Barra de pestañas (patrón WAI-ARIA: flechas, Inicio y Fin; solo la pestaña activa entra con Tab).
-export function AdminTabs({ active, onSelect, idBase }: { active: AdminTabId; onSelect: (id: AdminTabId) => void; idBase: string }) {
+// ---- Barra de pestañas (patrón WAI-ARIA: flechas, Inicio y Fin; solo la pestaña activa entra con Tab). La usan las pestañas del Centro de Mando de Comunidad y las áreas
+// del Centro de Administración: `short` es el texto corto que se usa en pantallas estrechas (si no hay, se usa la etiqueta).
+export interface TabBarItem<T extends string> {
+  id: T
+  label: string
+  icon: string
+  short?: string
+}
+
+export function TabBar<T extends string>({
+  tabs,
+  active,
+  onSelect,
+  idBase,
+  label,
+  className = 'cadm-tabs',
+}: {
+  tabs: readonly TabBarItem<T>[]
+  active: T
+  onSelect: (id: T) => void
+  idBase: string
+  label: string
+  className?: string
+}) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
-    const i = ADMIN_TABS.findIndex((t) => t.id === active)
+    const i = tabs.findIndex((t) => t.id === active)
     let next = -1
-    if (e.key === 'ArrowRight') next = (i + 1) % ADMIN_TABS.length
-    else if (e.key === 'ArrowLeft') next = (i - 1 + ADMIN_TABS.length) % ADMIN_TABS.length
+    if (e.key === 'ArrowRight') next = (i + 1) % tabs.length
+    else if (e.key === 'ArrowLeft') next = (i - 1 + tabs.length) % tabs.length
     else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = ADMIN_TABS.length - 1
+    else if (e.key === 'End') next = tabs.length - 1
     if (next < 0) return
     e.preventDefault()
-    const t = ADMIN_TABS[next]
+    const t = tabs[next]
     onSelect(t.id)
     refs.current[t.id]?.focus()
   }
   return (
-    <div className="cadm-tabs" role="tablist" aria-label="Secciones del Centro de Mando" onKeyDown={move}>
-      {ADMIN_TABS.map((t) => {
+    <div className={className} role="tablist" aria-label={label} onKeyDown={move}>
+      {tabs.map((t) => {
         const selected = t.id === active
         return (
           <button
@@ -226,4 +248,8 @@ export function AdminTabs({ active, onSelect, idBase }: { active: AdminTabId; on
       })}
     </div>
   )
+}
+
+export function AdminTabs({ active, onSelect, idBase }: { active: AdminTabId; onSelect: (id: AdminTabId) => void; idBase: string }) {
+  return <TabBar tabs={ADMIN_TABS} active={active} onSelect={onSelect} idBase={idBase} label="Secciones del Centro de Mando" />
 }

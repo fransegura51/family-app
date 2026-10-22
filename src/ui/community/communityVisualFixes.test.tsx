@@ -102,8 +102,11 @@ describe('«Invitar amigos» al final de la portada de Comunidad', () => {
     expect(body.indexOf('<InviteFriendsButton />')).toBeGreaterThan(body.indexOf('Algunos bloques no se han podido cargar'))
     expect(body.match(/<InviteFriendsButton \/>/g)).toHaveLength(1)
     const btn = readFileSync(join(process.cwd(), 'src/ui/InviteFriendsButton.tsx'), 'utf8')
+    const label = readFileSync(join(process.cwd(), 'src/domain/inviteFriends.ts'), 'utf8')
     expect(btn).toContain('disabled')
-    expect(btn).toContain('Invitar amigos (próximamente)')
+    expect(label).toContain('Invitar amigos (próximamente)')
+    // Solo lo ven las administradoras de PEPA (verificado en el servidor); para el resto no se pinta nada.
+    expect(btn).toContain("if (owner !== 'owner') return null")
   })
 })
 

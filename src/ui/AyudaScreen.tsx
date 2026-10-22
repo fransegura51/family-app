@@ -21,7 +21,7 @@ import { NAV_TABS } from '@/domain/navTabs'
 import ayudaHeaderImg from '@/assets/ayuda/ayuda-header.jpg'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 
-const SUMMARIES: Record<string, string> = {
+export const SUMMARIES: Record<string, string> = {
   '/': 'Resumen del día: próximos eventos, cumpleaños cercanos y accesos rápidos.',
   '/familia': 'Quién forma parte de la familia, sus fotos, y los usuarios invitados con acceso limitado.',
   '/calendario': 'Eventos de todos, en varias vistas (mes, semana, agenda...). Se puede enlazar con Google Calendar o con cualquier calendario por URL.',
@@ -40,19 +40,19 @@ const SUMMARIES: Record<string, string> = {
 // Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan
 // tráfico de la base de datos y la app solo guarda el enlace. El <video> no se crea hasta que se toca «Ver vídeo» (nada se descarga antes).
 const HELP_VIDEO_BASE = 'https://pepafamilyapp.es/ayuda/'
-const HELP_VIDEOS: Record<string, { src: string; poster: string; dur: string }> = {
+export const HELP_VIDEOS: Record<string, { src: string; poster: string; dur: string }> = {
   '/calendario': { src: `${HELP_VIDEO_BASE}calendario.mp4`, poster: `${HELP_VIDEO_BASE}calendario.jpg`, dur: '1 min 27 s' },
   '/compras': { src: `${HELP_VIDEO_BASE}compras.mp4`, poster: `${HELP_VIDEO_BASE}compras.jpg`, dur: '1 min 35 s' },
   '/dinero': { src: `${HELP_VIDEO_BASE}economia.mp4`, poster: `${HELP_VIDEO_BASE}economia.jpg`, dur: '1 min 55 s' },
   '/ubicacion': { src: `${HELP_VIDEO_BASE}ubicacion.mp4`, poster: `${HELP_VIDEO_BASE}ubicacion.jpg`, dur: '52 s' },
 }
 
-interface HelpItem {
+export interface HelpItem {
   title: string
   text: string
 }
 
-const HELP_DETAILS: Record<string, HelpItem[]> = {
+export const HELP_DETAILS: Record<string, HelpItem[]> = {
   '/': [
     { title: '🔔 PEPA te avisa', text: 'Si algún evento necesita atención (tareas atrasadas, un pago que vence, invitados sin responder cerca del plazo...) aparece aquí arriba, una tarjeta por evento con lo más urgente resumido — tócala para ir directamente a la sección que lo necesita. Desaparece sola en cuanto se resuelve; hoy solo Eventos avisa así, pero está pensado para que otras secciones puedan sumarse más adelante.' },
     { title: 'Portada de fotos', text: 'Va pasando las últimas fotos de la Galería como un carrusel; se detiene si la tocas.' },
@@ -310,7 +310,7 @@ const SETTINGS_ENTRY = {
     { title: 'Organizar menú', text: 'Es el primer tema de la lista, en filas compactas: sube o baja cada sección con las flechas; las 4 primeras (marcadas con 📌) se quedan fijas abajo y el resto vive dentro de "☰ Menú".' },
     { title: 'Categorías y etiquetas', text: 'En Economía → Categorías / Etiquetas, "Gestionar" abre la ventana para crear, renombrar, ordenar, recolorear o borrar. También tienes un atajo "⚙️ Gestionar categorías" al final del selector de categoría de cualquier movimiento o presupuesto, y "⚙️ Gestionar etiquetas" bajo el selector de etiqueta, sin salir de lo que estás haciendo. Ya no están en el ☰ de Economía.' },
     { title: 'Clases de productos', text: 'En Compras y cocina → Clases de productos, "Gestionar" abre las mismas "Clasificaciones de productos" que el ⚙️ del buscador de Historial de precios, el de la revisión de un ticket y el "⚙️ Gestionar clases de productos" de la pestaña Lista (Alimentos y Otros por separado). Cada clase se ve con su color pastel, siempre el mismo en todas partes (sale de su nombre, así que al renombrarla cambia).' },
-    { title: 'Panel de admin', text: 'Se cierra con la ✕ de arriba a la derecha (vuelve a Configuración). Solo visible para los dueños de la app — el enlace ni siquiera aparece para el resto, incluidos admins de otras familias. Dos bloques: "📊 Uso de la app" (quién se ha dado de alta, cuándo entró por última vez y si tiene las notificaciones activadas; los errores que haya sufrido cualquier familia, agrupados por mensaje con su traza; y los códigos de invitación de un solo uso para que una familia nueva pueda crear la suya — cada familia que se crea así arranca ya con las mismas categorías de Presupuesto e Ingresos, las mismas clases de producto y PEPA ya sabe la clase de bastantes productos de las cadenas más habituales: es conocimiento compartido y revisado, sin precios, fechas ni datos de ninguna familia — lo que cada familia clasifica a mano se queda solo en esa familia y siempre manda, nunca las etiquetas, esas son siempre personales de cada familia; aun así son solo un punto de partida, en Estadística compras y en Movimientos se avisa de que toda clasificación heredada o adivinada es una sugerencia a revisar) y "⚙️ Automatizaciones" (las direcciones y el token para que Pipedream reenvíe aquí solos los pedidos de Amazon, los tickets de Mercadona y los correos con eventos — antes estaba dentro de Familia, ahora vive aquí).' },
+    { title: 'Centro de Administración', text: 'Solo visible para los dueños de la app — el enlace «🛠️ Centro de Administración» (abajo del todo en Configuración) ni siquiera aparece para el resto, incluidos los administradores de otras familias, y quien escriba la dirección a mano ve un aviso de que la zona es solo para la administración. Reúne en un solo sitio, en seis áreas, lo que antes eran dos pantallas: «Resumen general»; «Usuarios, familias e invitaciones» (quién se ha dado de alta, cuándo entró por última vez, si tiene las notificaciones activadas y los códigos de invitación de un solo uso para que una familia nueva pueda crear la suya); «Comunidad y moderación» (el Centro de Mando de Comunidad completo); «Estado de funcionalidades» (qué hace PEPA hoy, qué falta y cómo se ha comprobado); «Ayuda y documentación»; y «Sistema» (los errores que haya sufrido cualquier familia, agrupados por mensaje con su traza, y las automatizaciones: las direcciones y el token para que Pipedream reenvíe aquí solos los pedidos de Amazon, los tickets de Mercadona y los correos con eventos). Las direcciones antiguas (Panel de admin y Centro de Mando de Comunidad) llevan automáticamente al área que les corresponde. Cada familia que se crea con un código arranca ya con las mismas categorías de Presupuesto e Ingresos, las mismas clases de producto y PEPA ya sabe la clase de bastantes productos de las cadenas más habituales: es conocimiento compartido y revisado, sin precios, fechas ni datos de ninguna familia; lo que cada familia clasifica a mano se queda solo en esa familia y siempre manda, nunca las etiquetas, esas son siempre personales de cada familia.' },
     { title: 'Privacidad y términos', text: 'La política de privacidad y los términos de uso están enlazados abajo del todo en esta pantalla de Ayuda y en la pantalla de entrada, y se pueden leer sin tener cuenta. Al ser páginas propias fuera de la app, tienen su propio botón "← Volver a la app" arriba del todo para no quedarse atascado sin barra de navegador (por ejemplo, con la app instalada en la pantalla de inicio).' },
   ] as HelpItem[],
 }

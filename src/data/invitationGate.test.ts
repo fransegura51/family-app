@@ -387,7 +387,7 @@ describe('plantillas de invitación (preparadas, sin enviar nada)', () => {
     expect(INVITATION_TEMPLATES.invitation_new_family.html).not.toContain('24 horas')
     expect(INVITATION_TEMPLATES.invitation_member.html).toContain('Caduca a las 24 horas de generarse')
     expect(INVITATION_TEMPLATES.invitation_member.html).not.toContain('7 días')
-    expect(read('src/ui/AdminUsageScreen.tsx')).toContain('caduca a los 7 días de generarse')
+    expect(read('src/ui/admin/AreaUsuarios.tsx')).toContain('caduca a los 7 días de generarse')
   })
   it('al rellenarlas se escapa todo (un nombre con HTML no puede inyectar nada) y salen el código, la caducidad y el enlace', () => {
     const out = renderInvitation(INVITATION_TEMPLATES.invitation_member.html, { ...INVITATION_SAMPLE, inviter_name: '<img src=x onerror=1>', recipient_name: 'A&B"' })

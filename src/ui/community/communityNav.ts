@@ -8,7 +8,7 @@
 //   /comunidad/borradores | /guardados | /buscar (query q=) | /recientes (Novedades: últimas publicaciones) | /novedades (comentarios sin leer) | /medallas | /normas
 //   /comunidad/u/:id                perfil público
 //   /comunidad/mi-perfil            ajustes de mi perfil público, bloqueos, temas favoritos…
-//   /comunidad/admin                Centro de Mando (solo administración)
+//   /administracion?area=comunidad  Centro de Mando (solo administración; /comunidad/admin redirige aquí)
 
 import { SECTIONS, type CommunitySection } from '@/domain/community'
 
@@ -56,7 +56,8 @@ export const paths = {
   rules: `${COMMUNITY_BASE}/normas`,
   profile: (id: string) => `${COMMUNITY_BASE}/u/${id}`,
   myProfile: `${COMMUNITY_BASE}/mi-perfil`,
-  admin: `${COMMUNITY_BASE}/admin`,
+  // El Centro de Mando de Comunidad está dentro del Centro de Administración (área «Comunidad y moderación»).
+  admin: '/administracion?area=comunidad',
 }
 
 export interface Crumb {

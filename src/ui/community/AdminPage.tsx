@@ -20,17 +20,19 @@ import '@/ui/community/communityAdmin.css'
 
 // Centro de Mando de Comunidad (solo los dos administradores de Comunidad; el servidor lo impone con NOT_ADMIN).
 // Si quien entra no es administrador, se enseña un aviso y NO se llama al servidor.
-export function AdminPage() {
+// `embedded`: dentro del área «Comunidad y moderación» del Centro de Administración (/administracion): sin migas ni título propios (los pone el Centro), pero con las mismas nueve
+// pestañas y la misma comprobación de administración.
+export function AdminPage({ embedded = false }: { embedded?: boolean }) {
   const { status, loading } = useCommunity()
   if (loading) return <AdminLoading />
-  if (!status?.isAdmin) return <NotAdmin />
-  return <AdminCenter />
+  if (!status?.isAdmin) return <NotAdmin embedded={embedded} />
+  return <AdminCenter embedded={embedded} />
 }
 
-export function NotAdmin() {
+export function NotAdmin({ embedded = false }: { embedded?: boolean }) {
   return (
     <section className="cadm" aria-labelledby="cadm-notadmin">
-      <Breadcrumbs crumbs={pageCrumbs('Administración')} />
+      {!embedded && <Breadcrumbs crumbs={pageCrumbs('Administración')} />}
       <h1 id="cadm-notadmin">{ADMIN_TEXT.notAdmin}</h1>
       <p className="muted">Si crees que deberías tener acceso, habla con la administración de Comunidad.</p>
       <Link to={paths.home} className="link-button">
@@ -42,7 +44,7 @@ export function NotAdmin() {
 
 const ID_BASE = 'cadm'
 
-export function AdminCenter() {
+export function AdminCenter({ embedded = false }: { embedded?: boolean }) {
   const [params, setParams] = useSearchParams()
   const active = parseAdminTab(params.get('tab'))
   // Cada pestaña se monta la primera vez que se abre y se conserva (oculta) después: volver a ella no repite la consulta al servidor.
@@ -59,7 +61,15 @@ export function AdminCenter() {
 
   const select = (tab: AdminTabId) => {
     setVisited((v) => (v.includes(tab) ? v : [...v, tab]))
-    setParams({ tab }, { replace: true })
+    // Se conservan los demás parámetros de la dirección (p. ej. ?area=comunidad dentro del Centro de Administración): solo cambia la pestaña.
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('tab', tab)
+        return next
+      },
+      { replace: true },
+    )
     if (tab === 'resumen' && dirty.current) {
       dirty.current = false
       overview.reload()
@@ -84,8 +94,14 @@ export function AdminCenter() {
 
   return (
     <section className="cadm" aria-labelledby="cadm-title">
-      <Breadcrumbs crumbs={pageCrumbs('Administración')} />
-      <h1 id="cadm-title">Centro de Mando de Comunidad</h1>
+      {!embedded && <Breadcrumbs crumbs={pageCrumbs('Administración')} />}
+      {embedded ? (
+        <h2 id="cadm-title" className="cadm-embedded-title">
+          Centro de Mando de Comunidad
+        </h2>
+      ) : (
+        <h1 id="cadm-title">Centro de Mando de Comunidad</h1>
+      )}
       <p className="muted cadm-intro">{ADMIN_TEXT.twoAdmins}</p>
       <AdminTabs active={active} onSelect={select} idBase={ID_BASE} />
       {ADMIN_TABS.filter((t) => t.id === active || visited.includes(t.id)).map((t) => (

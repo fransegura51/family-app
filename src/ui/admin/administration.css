@@ -1,0 +1,224 @@
+/* Centro de Administración (/administracion). Usa el diseño del Centro de Mando de Comunidad (.cadm-*) y añade solo lo que necesitan las áreas nuevas. */
+
+/* La app es de columna estrecha (.screen = 480px); el Centro de Administración usa el ancho que haya (hasta 920px) para que en ordenador y tableta quepan los filtros y las fichas. */
+.screen.admin-center {
+  max-width: 920px;
+  padding-bottom: 32px;
+}
+
+.admin-center-inner {
+  margin: 0 auto;
+}
+
+/* Seis áreas: en móvil se parten en varias filas (como las pestañas de Comunidad) y cada una ocupa su mitad. */
+.admin-area-tabs .cadm-tab {
+  flex: 1 1 calc(50% - 6px);
+  text-align: left;
+}
+
+@media (min-width: 720px) {
+  .admin-area-tabs .cadm-tab {
+    flex: 0 1 auto;
+  }
+}
+
+.admin-area {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-area .section-title {
+  margin: 14px 0 4px;
+}
+
+.admin-counts {
+  margin: 4px 0;
+  line-height: 1.7;
+}
+
+.admin-plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-plain-list > li {
+  margin: 0;
+}
+
+/* Tarjetas de las áreas (Resumen) */
+.admin-area-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 720px) {
+  .admin-area-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.admin-area-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Etiquetas de estado */
+.admin-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  border: 1px solid var(--border, #d9dee8);
+  white-space: nowrap;
+}
+
+.admin-pill-operativa,
+.admin-pill-help-completa {
+  background: #e7f6ec;
+  color: #14532d;
+  border-color: #b7e4c7;
+}
+
+.admin-pill-parcial,
+.admin-pill-help-parcial {
+  background: #fff6db;
+  color: #7a4b00;
+  border-color: #f2d98a;
+}
+
+.admin-pill-desactivada,
+.admin-pill-off,
+.admin-pill-help-pendiente {
+  background: #eef0f4;
+  color: #3b4252;
+}
+
+.admin-pill-help-inexistente {
+  background: #fde8e8;
+  color: #8a1c1c;
+  border-color: #f4b8b8;
+}
+
+/* Inventario de funcionalidades */
+.admin-filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+@media (min-width: 720px) {
+  .admin-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-filter-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.admin-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.admin-filter input,
+.admin-filter select {
+  min-height: 44px;
+  width: 100%;
+}
+
+.admin-feature-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-feature {
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-feature-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  border: 0;
+  box-shadow: none;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.admin-feature-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 220px;
+}
+
+.admin-feature-module {
+  font-size: 13px;
+}
+
+.admin-feature-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-feature-body {
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--border, #e5e8ef);
+}
+
+.admin-feature-body dt {
+  margin-top: 10px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.admin-feature-body dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-evidence {
+  display: inline-block;
+  margin: 2px 6px 2px 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: #eef0f4;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

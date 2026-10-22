@@ -4,7 +4,7 @@ import { buildAccountActivity, rankOverall, rankSections, type AccountForActivit
 import { OPEN_KEY, sectionKeyForPath, USAGE_SECTIONS } from '@/domain/usageSections'
 
 const FILES = import.meta.glob(
-  ['/src/services/usageTracker.ts', '/src/ui/UsageTracker.tsx', '/src/ui/AppActivityPanel.tsx', '/src/ui/AdminUsageScreen.tsx', '/src/App.tsx', '/src/data/appUsageActivity.ts'],
+  ['/src/services/usageTracker.ts', '/src/ui/UsageTracker.tsx', '/src/ui/AppActivityPanel.tsx', '/src/ui/admin/AreaUsuarios.tsx', '/src/ui/admin/AdministrationPage.tsx', '/src/ui/admin/AdminGate.tsx', '/src/App.tsx', '/src/data/appUsageActivity.ts'],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
@@ -32,6 +32,7 @@ describe('pantallas que se cuentan', () => {
   })
   it('lo desconocido y el panel de administración NO se cuentan', () => {
     expect(sectionKeyForPath('/admin-uso')).toBeNull()
+    expect(sectionKeyForPath('/administracion')).toBeNull()
     expect(sectionKeyForPath('/loquesea')).toBeNull()
     expect(sectionKeyForPath('/__proto__')).toBeNull()
   })
@@ -154,7 +155,9 @@ describe('panel de propietaria', () => {
     expect(panel).toContain('rankOverall(rows, Object.keys(USAGE_SECTIONS))')
     expect(panel).toContain('no la ha abierto')
   })
-  it('solo aparece para propietarias (misma señal que el resto del panel)', () => {
-    expect(FILES['/src/ui/AdminUsageScreen.tsx']).toContain('{isAppOwnerView && <AppActivityPanel accounts={rows} />}')
+  it('solo aparece para propietarias: vive en el área Usuarios del Centro de Administración, detrás de la puerta que pregunta al servidor (am_i_app_owner)', () => {
+    expect(FILES['/src/ui/admin/AreaUsuarios.tsx']).toContain('<AppActivityPanel accounts={rows} />')
+    expect(FILES['/src/ui/admin/AdministrationPage.tsx']).toContain('<AdminGate>')
+    expect(FILES['/src/ui/admin/AdminGate.tsx']).toContain("owner === 'owner'")
   })
 })

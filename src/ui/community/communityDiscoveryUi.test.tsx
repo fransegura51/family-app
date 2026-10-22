@@ -25,6 +25,8 @@ vi.mock('@/data/community', () => ({
   unblockUser: vi.fn(async () => undefined),
   createCommunityPhotoSignedUrls: vi.fn(async () => ({})),
 }))
+// «Invitar amigos» solo se pinta para administradoras de PEPA (pregunta al servidor): aquí, como si no lo fuera.
+vi.mock('@/state/useAppOwner', () => ({ useAppOwner: () => 'denied' }))
 vi.mock('@/ui/community/CommunityProvider', () => ({
   useCommunity: () => ({ status: null, me: { hasProfile: false }, loading: false, refresh: async () => undefined, requireParticipation: async () => true }),
 }))

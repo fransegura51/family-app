@@ -64,7 +64,7 @@ import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { supabase } from '@/data/supabaseClient'
 import { disableNativeUpload } from '@/services/nativeUpload'
-import { listAppUsage } from '@/data/appUsage'
+import { useAppOwner } from '@/state/useAppOwner'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { SecuritySettings } from '@/ui/SecuritySettings'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
@@ -421,28 +421,16 @@ function BankAccountsSection() {
   )
 }
 
-// Enlace al panel de admin (uso de la app — quién se ha dado de alta,
-// cuándo entró por última vez... — y, desde la reorganización
-// "Familia / Panel de admin", también las Automatizaciones de tickets
-// por email) — solo para Jennifer y Paco (profiles.is_app_owner). No
-// hay forma de saber eso en el cliente sin preguntar al servidor, así
-// que se intenta cargar el panel una vez y solo se muestra el enlace
-// si de verdad ha devuelto algo; para cualquier otra persona
-// (incluidos admins de otras familias de prueba) esto no aparece.
+// Enlace al Centro de Administración de PEPA (usuarios y familias, Comunidad y moderación, estado de funcionalidades, Ayuda y sistema) — solo para las cuentas propietarias
+// de la app (profiles.is_app_owner). Se pregunta al SERVIDOR (am_i_app_owner) y solo se muestra el enlace si lo confirma; si no se puede verificar, no aparece. Para cualquier
+// otra persona (incluidos administradores de otras familias) esto no aparece, y aunque escriban la dirección a mano la puerta del Centro les deniega la entrada.
 function AdminUsageLink() {
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    listAppUsage()
-      .then((rows) => setVisible(rows.length > 0))
-      .catch(() => {})
-  }, [])
-
-  if (!visible) return null
+  const owner = useAppOwner()
+  if (owner !== 'owner') return null
 
   return (
-    <Link to="/admin-uso" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
-      🛠️ Panel de admin
+    <Link to="/administracion" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
+      🛠️ Centro de Administración
     </Link>
   )
 }

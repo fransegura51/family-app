@@ -697,6 +697,15 @@ Encargo dictado el 2026-10-20 (auditoría + implementación por fases). Auditor�
 
 Detalle técnico y puesta en producción: [`docs/CONFIG_01_SINCRONIZACION_PREFERENCIAS.md`](CONFIG_01_SINCRONIZACION_PREFERENCIAS.md).
 
+## Centro de Administración único (ADMIN-01, fase B2, 22/10/2026)
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| ADMIN-01 | Un solo Centro de Administración en `/administracion` con seis áreas (Resumen general; Usuarios, familias e invitaciones; Comunidad y moderación; Estado de funcionalidades; Ayuda y documentación; Sistema) que unifica el «Panel de admin» (`/admin-uso`) y el Centro de Mando de Comunidad (`/comunidad/admin`), con el diseño `cadm-*` de Comunidad. Las direcciones antiguas redirigen al área correspondiente. Sin pérdida de herramientas | Implementado en la rama `feature/b2-administracion`; **sin publicar** (pendiente de autorización) | `src/ui/admin/*`, `src/admin/adminAreas.ts`, `src/ui/community/AdminPage.tsx` (`embedded`), `src/App.tsx`, `CommunityRoutes.tsx` | `administrationCenter.test.tsx`, `adminAreas.test.ts`, `adminPanelReorganizationUi.test.ts` | Ninguna migración | Autorización para publicar; prueba real con una cuenta propietaria |
+| ADMIN-02 | Acceso solo para cuentas propietarias, verificado en el servidor (`am_i_app_owner`); si no se puede verificar se deniega; no se confunde con el rol de administrador/a de familia; la puerta del Centro pregunta siempre al servidor y los botones de comodidad recuerdan el resultado 10 minutos en memoria | Implementado (rama B2) | `useAppOwner.ts`, `AdminGate.tsx`, `MenuSettingsScreen.tsx` | `administrationCenter.test.tsx` | `am_i_app_owner` (0254) | — |
+| ADMIN-03 | «Invitar amigos» no activo: botón desactivado visible solo para administradoras de PEPA con el aviso «Función en preparación…»; oculto para el resto; sin infraestructura de invitaciones entre personas ni registro abierto (el acceso por invitación no se toca) | Implementado (rama B2) | `InviteFriendsButton.tsx`, `inviteFriends.ts`, `InviteFriendsAdminCard.tsx` | `administrationCenter.test.tsx`, `communityVisualFixes.test.tsx` | — | Activación oficial (decisión futura) |
+| ADMIN-04 | Estado de funcionalidades: inventario privado (42 funciones) con módulo, estado (operativa/parcial/desactivada), qué funciona, qué falta, limitaciones, verificación y evidencia en el código; la cobertura de la Ayuda se calcula contra el texto real de la Ayuda y es independiente del estado; búsqueda y filtros | Implementado (rama B2) | `src/admin/features/*`, `AreaFuncionalidades.tsx`, `AreaAyuda.tsx` | `featureInventory.test.ts` | Ayuda (B3) | Mantener la ficha de cada función al cambiarla; definir los puntos clave de las funciones con Ayuda «pendiente de revisión» |
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

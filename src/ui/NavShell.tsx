@@ -13,6 +13,8 @@ import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
 import { onOpenManager, type ManagerKind } from '@/state/managers'
 import { loadAllEventAlerts } from '@/data/events'
 import type { Profile } from '@/domain/types'
+import { HelpProvider } from '@/help/ui/HelpProvider'
+import { HelpPanel } from '@/help/ui/HelpPanel'
 
 // Ventanas de gestión (categorías, etiquetas, clases de alimentos):
 // solo se descargan la primera vez que alguien las abre.
@@ -138,11 +140,14 @@ export function NavShell({ profile }: { profile: Profile }) {
   }
 
   return (
+    <HelpProvider profile={profile}>
     <div className="app-shell">
       <main className="app-content">
         <Outlet />
       </main>
       <VoiceCapture />
+      {/* «Pepa te acompaña»: panel de ayuda contextual (no modal, no desmonta nada de lo que haya debajo). */}
+      <HelpPanel />
       <ToastHost />
       <PrefsNotices />
       {manager && (
@@ -223,5 +228,6 @@ export function NavShell({ profile }: { profile: Profile }) {
         ))}
       </nav>
     </div>
+    </HelpProvider>
   )
 }

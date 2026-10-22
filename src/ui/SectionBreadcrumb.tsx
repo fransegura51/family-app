@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { NAV_TABS, type NavTab } from '@/domain/navTabs'
+import { HelpHint } from '@/help/ui/HelpHint'
 
 // Ayuda, Buzón de sugerencias y Configuración son secciones navegables reales (tienen su propia ruta y
 // cabecera) pero viven fuera de NAV_TABS — se añaden a mano a NavShell (botones sueltos al final del
@@ -84,6 +85,8 @@ export function SectionBreadcrumb({ subsection }: { subsection: string | Breadcr
           </span>
         )
       })}
+      {/* «?» discreto: Ayuda contextual de este módulo (abre el panel de Pepa sin cambiar de pantalla). */}
+      {section.to !== '/ayuda' && <HelpHint label={`Ayuda sobre ${section.label}`} />}
     </nav>
   )
 }

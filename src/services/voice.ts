@@ -6,7 +6,7 @@
 // "continuo" nativo del navegador, que en móvil corta a media frase.
 import { isNativeApp } from '@/services/nativeApp'
 import { listenContinuousNative } from '@/services/nativeVoice'
-import { speakNative } from '@/services/nativeSpeech'
+import { speakNative, stopNativeSpeech } from '@/services/nativeSpeech'
 
 interface SpeechRecognitionAlternativeLike {
   transcript: string
@@ -195,6 +195,20 @@ export function primeSpeech(): void {
     synth.speak(silent)
   } catch {
     // Sin síntesis o bloqueada: no pasa nada, solo no habrá voz.
+  }
+}
+
+// Corta lo que esté sonando ahora mismo (voz del navegador o voz nativa). Lo usa la Ayuda para «Detener» y para que su voz nunca se solape con la de «Hablar con PEPA».
+export function stopSpeech(): void {
+  if (isNativeApp()) {
+    stopNativeSpeech()
+    return
+  }
+  if (!isSpeechSupported()) return
+  try {
+    window.speechSynthesis.cancel()
+  } catch {
+    // Sin síntesis: no hay nada que parar.
   }
 }
 

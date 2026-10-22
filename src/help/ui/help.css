@@ -1,0 +1,469 @@
+/* Nueva Ayuda «Pepa te acompaña» (B3). Mantiene la estética PEPA (tarjetas claras, azul de la marca) y funciona en móvil, tableta y ordenador. */
+
+.help-pepa-face {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(30, 42, 90, 0.25);
+}
+
+/* ---- Botones de la Ayuda (tamaño táctil cómodo) */
+.help-btn {
+  min-height: 44px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: #fff;
+  color: var(--text, #1c1f26);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.help-btn-primary {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.help-btn-video {
+  width: 100%;
+  margin: 6px 0;
+}
+
+.help-btn:focus-visible,
+.help-chip:focus-visible,
+.help-icon-btn:focus-visible,
+.help-hint:focus-visible,
+.help-seg:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.help-icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.help-chip {
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: #fff;
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.help-seg {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: #fff;
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.help-seg-on {
+  background: #e0e7ff;
+  border-color: #4c6ef5;
+  color: #1e2a5a;
+}
+
+/* ---- «?» discreto */
+.help-hint {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  margin-left: 8px;
+  border-radius: 50%;
+  border: 1px solid #b6c2e8;
+  background: #f1f4fb;
+  color: #3b4a85;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+  position: relative;
+}
+
+/* Zona táctil de 44 px sin agrandar el icono. */
+.help-hint::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+
+/* ---- Conversación */
+.help-conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.help-log {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.help-bubble {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.help-bubble p {
+  margin: 0;
+}
+
+.help-bubble-pepa > p,
+.help-bubble-body,
+.help-bubble-pepa > div {
+  background: #f1f4fb;
+  border-radius: 14px;
+  padding: 10px 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.help-bubble-user {
+  justify-content: flex-end;
+}
+
+.help-bubble-user p {
+  background: var(--primary, #4c6ef5);
+  color: #fff;
+  border-radius: 14px;
+  padding: 8px 12px;
+  max-width: 85%;
+  overflow-wrap: anywhere;
+}
+
+.help-hedge {
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+  margin-bottom: 6px !important;
+}
+
+.help-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.help-answer-module {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}
+
+.help-answer-title {
+  margin: 0;
+  font-size: 17px;
+}
+
+.help-answer-quick {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.help-badge {
+  align-self: flex-start;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.help-badge-partial {
+  background: #fff6db;
+  color: #7a4b00;
+}
+
+.help-badge-off {
+  background: #eef0f4;
+  color: #3b4252;
+}
+
+.help-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e3e8f4;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.help-note-restricted {
+  background: #fdf2f2;
+  border-color: #f1c9c9;
+}
+
+.help-more {
+  font-size: 14px;
+}
+
+.help-more summary {
+  cursor: pointer;
+  min-height: 32px;
+  font-weight: 600;
+  color: #3b4a85;
+}
+
+.help-more ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.help-more li {
+  margin: 4px 0;
+}
+
+.help-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.help-video {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 12px;
+  background: #000;
+}
+
+.help-related-title {
+  margin: 8px 0 4px !important;
+  font-size: 13px;
+  color: var(--muted, #6b7280);
+}
+
+.help-related ul,
+.help-quick ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.help-quick h4 {
+  margin: 8px 0 6px;
+  font-size: 14px;
+}
+
+.help-feedback {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.help-ask label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.help-ask-row {
+  display: flex;
+  gap: 8px;
+}
+
+.help-ask-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+}
+
+/* ---- Panel flotante */
+.help-panel {
+  position: fixed;
+  z-index: 1250;
+  left: 8px;
+  right: 8px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  max-height: min(70vh, 620px);
+  display: flex;
+  flex-direction: column;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 18px;
+  box-shadow: 0 10px 34px rgba(30, 42, 90, 0.28);
+  overflow: hidden;
+}
+
+.help-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 12px;
+  background: #e0e7ff;
+  flex-wrap: wrap;
+}
+
+.help-panel-title {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 100px;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.help-panel-body {
+  overflow-y: auto;
+  padding: 12px;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 720px) {
+  .help-panel {
+    left: auto;
+    right: 16px;
+    bottom: 16px;
+    top: 72px;
+    width: 400px;
+    max-height: none;
+  }
+}
+
+/* ---- Selector de voz */
+.help-voice-setting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.help-voice-setting-label {
+  flex: 1 0 100%;
+  font-weight: 700;
+}
+
+.help-voice-setting-note {
+  flex: 1 0 100%;
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.help-voice-setting-compact .help-seg {
+  min-height: 36px;
+  padding: 2px 8px;
+  font-size: 13px;
+}
+
+/* ---- Pantalla de Ayuda */
+.help-screen-intro {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.help-section-title {
+  margin: 20px 0 8px;
+  font-size: 18px;
+}
+
+.help-modules {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+@media (min-width: 720px) {
+  .help-modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.help-module {
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.help-module-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.help-module-head:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: -3px;
+}
+
+.help-module-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid #eef0f4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.help-module-body[hidden] {
+  display: none;
+}
+
+.help-legacy-item {
+  padding-top: 8px;
+}
+
+.help-legacy-item p {
+  margin: 2px 0 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.help-video-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}

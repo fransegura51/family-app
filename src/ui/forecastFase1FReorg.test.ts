@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const FS = APP['/src/ui/FinanceScreen.tsx']
 const SS = APP['/src/ui/ShoppingScreen.tsx']
-const AYUDA = APP['/src/ui/AyudaScreen.tsx']
+const AYUDA = APP['/src/help/legacy/legacyHelp.ts']
 
 function body(src: string, startMarker: string, endMarker: string): string {
   const start = src.indexOf(startMarker)

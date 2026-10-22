@@ -3,7 +3,7 @@
 // data/eventMenuHub.behavior.test.ts; aquí, la ESTRUCTURA: qué vive dónde y qué nunca debe volver a pasar.
 import { describe, expect, it } from 'vitest'
 
-const FILES = import.meta.glob(['/src/ui/*.tsx', '/src/domain/*.ts', '/src/data/*.ts', '/supabase/functions/**/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const FILES = import.meta.glob(['/src/ui/*.tsx', '/src/help/legacy/legacyHelp.ts', '/src/domain/*.ts', '/src/data/*.ts', '/supabase/functions/**/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const SCREEN = FILES['/src/ui/EventosScreen.tsx']
 const MENU = FILES['/src/ui/EventMenu.tsx']
 const DINERS = FILES['/src/ui/EventMenuDiners.tsx']
@@ -11,7 +11,7 @@ const IMPORTER = FILES['/src/ui/EventMenuImporter.tsx']
 const PICKER = FILES['/src/ui/PickIngredientsModal.tsx']
 const ALIMENTACION = FILES['/src/ui/AlimentacionScreen.tsx']
 const EVENTS_DOMAIN = FILES['/src/domain/events.ts']
-const AYUDA = FILES['/src/ui/AyudaScreen.tsx']
+const AYUDA = FILES['/src/help/legacy/legacyHelp.ts']
 const INVITATIONS = FILES['/src/ui/InvitationDesigner.tsx']
 
 function slice(source: string, start: string, end: string): string {

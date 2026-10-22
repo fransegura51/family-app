@@ -6,7 +6,7 @@ import { FEATURE_INVENTORY } from '@/admin/features/featureInventory'
 import { featureHelpCoverage, type HelpSource } from '@/admin/features/featureHelp'
 import { filterFeatures, modulesOf, NO_FILTERS } from '@/admin/features/featureFilters'
 import { FEATURE_STATE_LABEL, FEATURE_VERIFICATION_LABEL, HELP_COVERAGE_LABEL, type FeatureEntry } from '@/admin/features/featureTypes'
-import { HELP_DETAILS, SUMMARIES } from '@/ui/AyudaScreen'
+import { HELP_DETAILS, SUMMARIES } from '@/help/legacy/legacyHelp'
 
 const root = process.cwd()
 const REAL_HELP: HelpSource = { summaries: SUMMARIES, details: HELP_DETAILS }

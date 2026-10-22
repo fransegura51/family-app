@@ -3,7 +3,7 @@
 // real como texto (sin jsdom), mismo estilo que el resto de candados de Economía.
 import { describe, expect, it } from 'vitest'
 
-const SRC = import.meta.glob(['/src/ui/FinanceScreen.tsx', '/src/data/finance.ts', '/src/ui/AyudaScreen.tsx'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const SRC = import.meta.glob(['/src/ui/FinanceScreen.tsx', '/src/data/finance.ts', '/src/help/legacy/legacyHelp.ts'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 // .replace: un checkout en Windows puede guardar el archivo con CRLF; los \n literales de abajo
 // deben seguir encontrándolo igual.
 const FS = SRC['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')

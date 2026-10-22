@@ -3,7 +3,7 @@
 // con datos en domain/eventDayPlan.test.ts y data/eventDayPlan.behavior.test.ts; aquí, la estructura de la UI.
 import { describe, expect, it } from 'vitest'
 
-const FILES = import.meta.glob(['/src/ui/EventDayPlan.tsx', '/src/ui/EventosScreen.tsx', '/src/ui/useDragReorder.ts', '/src/ui/InvitationDesigner.tsx', '/src/ui/AyudaScreen.tsx'], {
+const FILES = import.meta.glob(['/src/ui/EventDayPlan.tsx', '/src/ui/EventosScreen.tsx', '/src/ui/useDragReorder.ts', '/src/ui/InvitationDesigner.tsx', '/src/help/legacy/legacyHelp.ts'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -12,7 +12,7 @@ const PLAN = FILES['/src/ui/EventDayPlan.tsx']
 const SCREEN = FILES['/src/ui/EventosScreen.tsx']
 const HOOK = FILES['/src/ui/useDragReorder.ts']
 const INVITATIONS = FILES['/src/ui/InvitationDesigner.tsx']
-const HELP = FILES['/src/ui/AyudaScreen.tsx']
+const HELP = FILES['/src/help/legacy/legacyHelp.ts']
 
 function slice(source: string, start: string, end: string): string {
   const i = source.indexOf(start)

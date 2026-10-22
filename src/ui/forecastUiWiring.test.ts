@@ -12,7 +12,7 @@ const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.
 // deben seguir encontrándolo igual.
 const FS = APP['/src/ui/FinanceScreen.tsx'].replace(/\r\n/g, '\n')
 const ECONOMIA_MENU = APP['/src/state/economiaMenu.ts']
-const AYUDA = APP['/src/ui/AyudaScreen.tsx']
+const AYUDA = APP['/src/help/legacy/legacyHelp.ts']
 const FS_DOMAIN_FORECAST = APP['/src/domain/forecast.ts']
 const RECURRENCE_DETECTION = APP['/src/domain/forecastRecurrenceDetection.ts']
 

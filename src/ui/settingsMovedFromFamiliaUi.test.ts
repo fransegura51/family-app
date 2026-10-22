@@ -6,7 +6,7 @@ import family from '@/ui/FamilyScreen.tsx?raw'
 import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 import app from '@/App.tsx?raw'
 import onboarding from '@/ui/NotificationsOnboarding.tsx?raw'
-import ayuda from '@/ui/AyudaScreen.tsx?raw'
+import ayuda from '@/help/legacy/legacyHelp.ts?raw'
 
 const MOVED = ['NotificationsCard', 'PepaPreferencesCard', 'BackgroundLocationCard', 'BatteryGuideCard', 'DeleteAccountCard']
 

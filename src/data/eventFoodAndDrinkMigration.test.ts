@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const SOURCES = import.meta.glob(
-  ['/src/ui/EventosScreen.tsx', '/src/ui/EventMenu.tsx', '/src/ui/EventMenuDiners.tsx', '/src/ui/EventMenuImporter.tsx', '/src/ui/PickIngredientsModal.tsx', '/src/ui/RsvpScreen.tsx', '/src/ui/AyudaScreen.tsx', '/src/data/events.ts', '/src/data/food.ts', '/src/services/eventFoodDocument.ts', '/supabase/functions/event-rsvp/index.ts', '/supabase/functions/analyze-event-food-document/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'],
+  ['/src/ui/EventosScreen.tsx', '/src/ui/EventMenu.tsx', '/src/ui/EventMenuDiners.tsx', '/src/ui/EventMenuImporter.tsx', '/src/ui/PickIngredientsModal.tsx', '/src/ui/RsvpScreen.tsx', '/src/help/legacy/legacyHelp.ts', '/src/data/events.ts', '/src/data/food.ts', '/src/services/eventFoodDocument.ts', '/supabase/functions/event-rsvp/index.ts', '/supabase/functions/analyze-event-food-document/index.ts', '/supabase/functions/_shared/ai/purposes/eventFoodDocument.ts'],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 
@@ -250,7 +250,7 @@ describe('event-rsvp — destinatario de las opciones', () => {
 })
 
 describe('Ayuda', () => {
-  const HELP = SOURCES['/src/ui/AyudaScreen.tsx']
+  const HELP = SOURCES['/src/help/legacy/legacyHelp.ts']
   it('explica Comida y bebida, servicios del lugar, menú, importación, Recetas, Compras, elección de menú, menú infantil, necesidades y la diferencia entre aviso y garantía', () => {
     const entry = slice(HELP, "title: 'Comida y bebida'", "title: 'Preguntas a los invitados'")
     for (const text of ['¿Qué incluye el lugar contratado?', 'Guardar el menú en PEPA', 'Recetas', 'Compras', 'Elección de menú para los invitados', 'Menú infantil', 'Necesidades alimentarias', 'Un aviso NO es una garantía', 'no significa que el menú sea seguro']) {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { isCreditLine, partitionCreditLines } from '@/domain/ticketCreditLines'
 import screen from '@/ui/FinanceScreen.tsx?raw'
 import products from '@/data/products.ts?raw'
-import help from '@/ui/AyudaScreen.tsx?raw'
+import help from '@/help/legacy/legacyHelp.ts?raw'
 
 describe('isCreditLine', () => {
   it('un importe negativo (abono, descuento) es una línea de abono; cero y positivos no', () => {

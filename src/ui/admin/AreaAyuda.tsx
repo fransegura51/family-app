@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { NAV_TABS } from '@/domain/navTabs'
 import { HELP_COVERAGE_LABEL, type HelpCoverage } from '@/admin/features/featureTypes'
-import { HELP_DETAILS, HELP_VIDEOS, SUMMARIES } from '@/ui/AyudaScreen'
+import { HELP_DETAILS, HELP_VIDEOS, SUMMARIES } from '@/help/legacy/legacyHelp'
 import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 

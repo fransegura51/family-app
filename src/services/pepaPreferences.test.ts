@@ -5,7 +5,7 @@ import family from '@/ui/FamilyScreen.tsx?raw'
 import settings from '@/ui/MenuSettingsScreen.tsx?raw'
 import navShell from '@/ui/NavShell.tsx?raw'
 import socialFab from '@/ui/SocialMenuFab.tsx?raw'
-import ayuda from '@/ui/AyudaScreen.tsx?raw'
+import ayuda from '@/help/legacy/legacyHelp.ts?raw'
 
 const native = vi.hoisted(() => ({ value: false }))
 vi.mock('@/services/nativeApp', () => ({ isNativeApp: () => native.value }))

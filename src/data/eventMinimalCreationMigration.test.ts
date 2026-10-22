@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 
 const MIGRATIONS = import.meta.glob('/supabase/migrations/*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const SOURCES = import.meta.glob(['/src/ui/EventosScreen.tsx', '/src/ui/AyudaScreen.tsx', '/src/data/events.ts', '/supabase/functions/event-rsvp/index.ts'], {
+const SOURCES = import.meta.glob(['/src/ui/EventosScreen.tsx', '/src/help/legacy/legacyHelp.ts', '/src/data/events.ts', '/supabase/functions/event-rsvp/index.ts'], {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -151,7 +151,7 @@ describe('Invitaciones y RSVP — una fecha provisional nunca parece cerrada', (
 
 describe('Ayuda', () => {
   it('explica el alta mínima y dónde viven fecha, lugar, edad y servicios', () => {
-    const help = SOURCES['/src/ui/AyudaScreen.tsx']
+    const help = SOURCES['/src/help/legacy/legacyHelp.ts']
     for (const text of ['Nuevo evento', 'nombre, el tipo y qué quieres organizar', 'Provisional', 'Confirmada', 'Celebración']) expect(help, text).toContain(text)
   })
 })

@@ -6,7 +6,7 @@ import { daysSince, REVIEW_INVITE_AFTER_DAYS, REVIEW_INVITE_NEVER_ISO, REVIEW_IN
 import card from '@/ui/ReviewInviteCard.tsx?raw'
 import home from '@/ui/HomeScreen.tsx?raw'
 import reviewsScreen from '@/ui/ReviewsScreen.tsx?raw'
-import ayuda from '@/ui/AyudaScreen.tsx?raw'
+import ayuda from '@/help/legacy/legacyHelp.ts?raw'
 
 const sql = fs.readFileSync(path.resolve(__dirname, '../../supabase/migrations/0291_app_reviews_low_star_alert.sql'), 'utf8')
 const now = new Date('2026-10-18T10:00:00Z')

@@ -1,4 +1,4 @@
-// 0304 (pendiente de aplicar): cada persona adulta edita SU ficha y la de sus hijos/as menores. Pruebas sobre el texto del SQL y de la pantalla;
+// 0304 (aplicada el 22/10/2026): cada persona adulta edita SU ficha y la de sus hijos/as menores. Pruebas sobre el texto del SQL y de la pantalla;
 // el comportamiento real se prueba en supabase/local-sql-tests (PGlite) y, tras aplicarla, en vivo.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -8,8 +8,8 @@ import type { FamilyMember } from '@/domain/types'
 
 const root = path.resolve(__dirname, '../..')
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8')
-const sql = read('supabase/pending-migrations/0304_member_self_and_guardian_edit.sql')
-const down = read('supabase/pending-migrations/0304_member_self_and_guardian_edit_down.sql')
+const sql = read('supabase/migrations/0304_member_self_and_guardian_edit.sql')
+const down = read('supabase/rollbacks/0304_member_self_and_guardian_edit_down.sql')
 
 describe('0304: editar la propia ficha y la de los hijos/as (SQL)', () => {
   it('no toca la política de la tabla ni el tipo de ficha ni las secciones: solo dos funciones con permisos acotados', () => {

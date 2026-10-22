@@ -1,4 +1,4 @@
--- 0304 · Cada persona adulta edita SU ficha y la de sus hijos/as menores. SIN APLICAR en producción (necesita autorización).
+-- 0304 · Cada persona adulta edita SU ficha y la de sus hijos/as menores. APLICADA en producción el 22/10/2026 (por el editor SQL de Supabase; probada en vivo en transacción deshecha: otra familia rechazada, administradora puede, ruta de foto ajena rechazada).
 --
 -- Hasta ahora solo la administradora podía tocar fichas (política «family_members: admin update»), así que una madre/padre que no era administradora no podía poner
 -- la fecha de nacimiento de su hijo/a ni cambiar su foto, y con la ficha incompleta tampoco podía darle acceso a PEPA.
@@ -12,7 +12,7 @@
 --  · Una madre/padre/tutor VIGENTE de un menor de 18 años (vínculo «Es mi hijo/a», 0300): la ficha de ese menor. La fecha nueva debe seguir siendo de menor de 18 años:
 --    así nadie puede «hacer mayor de edad» a una ficha de menor (Comunidad PEPA calcula la edad con esta fecha).
 --  · Niños e invitados con cuenta NO editan nada con estas funciones.
--- Deshacer: supabase/pending-migrations/0304_member_self_and_guardian_edit_down.sql (al aplicar, pasa a supabase/rollbacks y la migración a supabase/migrations).
+-- Deshacer: supabase/rollbacks/0304_member_self_and_guardian_edit_down.sql.
 
 create or replace function public.update_member_card(p_member uuid, p_name text, p_color text, p_birth_date date, p_sex text)
 returns void

@@ -76,8 +76,7 @@ export async function setup(opts = {}) {
     for (const f of ['0299_account_security.sql', '0300_family_member_guardians.sql', '0301_invitation_hardening.sql', '0302_signup_gate_invitation_first.sql']) {
       await db.exec(read('supabase/migrations/' + f))
     }
-    // 0304 aún no está aplicada en producción: vive en pending-migrations hasta que se autorice.
-    await db.exec(read('supabase/pending-migrations/0304_member_self_and_guardian_edit.sql'))
+    await db.exec(read('supabase/migrations/0304_member_self_and_guardian_edit.sql'))
     await db.exec(`revoke all on function public.join_family_with_code(text, text, date) from public, anon; grant execute on function public.join_family_with_code(text, text, date) to authenticated;`)
   }
   return db

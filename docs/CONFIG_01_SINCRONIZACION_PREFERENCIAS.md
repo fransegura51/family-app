@@ -1,6 +1,8 @@
 # CONFIG-01 · Sincronización de preferencias entre dispositivos (B1)
 
-Estado (22/10/2026): **implementado y probado en la rama `feature/b1-prefs`; NO desplegado.** El interruptor de compilación `PREFS_V2_ENABLED` (`src/state/prefs/flags.ts`) está **apagado**: con él apagado la app se comporta exactamente como antes (mecanismo anterior en `src/state/prefsSyncLegacy.ts`). La migración `0305` está redactada y probada en local pero **sin aplicar** (`supabase/pending-migrations/0305_user_prefs.sql`).
+Estado (22/10/2026): **EN PRODUCCIÓN.** Migración `0305` aplicada (editor SQL de Supabase), Realtime activado para `user_prefs`, interruptor `PREFS_V2_ENABLED` encendido en `src/state/prefs/flags.ts` y web desplegada (commit `e4e22e2`). La comprobación con dispositivos reales (ordenador ↔ móvil) sigue **pendiente**.
+
+Resultados en producción (22/10/2026): tabla y funciones creadas; 10 filas copiadas desde las 10 claves de `user_ui_prefs` (4 personas), ninguna sin copiar, tabla antigua intacta; RLS activa, `anon` sin acceso, escritura directa denegada, clave ajena y valor no texto rechazados, aislamiento entre personas (prueba en vivo con todo deshecho); disparador de transición probado (cambio de una versión antigua copiado, clave no permitida ignorada); Realtime con `public.user_prefs`; 0 errores en el asesor de seguridad.
 
 ## Qué hace
 
@@ -39,16 +41,16 @@ Estados del dispositivo: permisos del sistema, cachés, contadores de uso, posic
 
 **Pendiente de comprobar en dispositivos reales** (no sustituible por simulación): ordenador ↔ móvil (iPhone y Android, PWA y app nativa), Realtime real, comportamiento con la app en segundo plano.
 
-## Puesta en producción (requiere autorización expresa de las tres operaciones juntas)
-1. Aplicar `supabase/pending-migrations/0305_user_prefs.sql` (incluye tabla, función, copia inicial desde `user_ui_prefs`, disparador temporal y **publicación Realtime**). Después mover el archivo a `supabase/migrations/` y el rollback a `supabase/rollbacks/`.
+## Puesta en producción (realizada el 22/10/2026; se conserva como guía de recuperación)
+1. Aplicar `supabase/migrations/0305_user_prefs.sql` (incluye tabla, función, copia inicial desde `user_ui_prefs`, disparador temporal y **publicación Realtime**). (Hecho: el archivo ya está en `supabase/migrations/` y el rollback en `supabase/rollbacks/`.)
 2. Ejecutar `supabase/pending-migrations/0305_live_test.sql` en el editor SQL (termina con un error a propósito que muestra el resultado y **deshace todo**) y comprobar el asesor de seguridad.
-3. Poner `PREFS_V2_ENABLED = true` en `src/state/prefs/flags.ts`, actualizar los candados de «número máximo de migración» (304 → 305), fusionar en `master` y desplegar.
+3. Poner `PREFS_V2_ENABLED = true` en `src/state/prefs/flags.ts`, actualizar los candados de «número máximo de migración» (304 → 305), fusionar en `master` y desplegar. (Hecho.)
 4. Comprobar en dos dispositivos reales (cuentas de prueba) y confirmar el reparto del menú en ambos sentidos.
 5. Pasada una semana: retirar el disparador de transición y `prefsSyncLegacy.ts`.
 
-**Deshacer:** poner `PREFS_V2_ENABLED = false` (vuelve el mecanismo anterior) y, si hace falta, `supabase/pending-migrations/0305_user_prefs_down.sql` (devuelve las preferencias nuevas a `user_ui_prefs` antes de borrar nada).
+**Deshacer:** poner `PREFS_V2_ENABLED = false` (vuelve el mecanismo anterior) y, si hace falta, `supabase/rollbacks/0305_user_prefs_down.sql` (devuelve las preferencias nuevas a `user_ui_prefs` antes de borrar nada).
 
 ## Límites conocidos
-- Si se enciende el interruptor sin haber aplicado la migración, la sincronización nueva falla en silencio (se reintenta y se registra) y las preferencias siguen guardándose en el dispositivo. No debe hacerse.
+- Con el interruptor encendido la migración debe estar aplicada (lo está). Si en algún momento faltara la tabla, la sincronización nueva falla (se reintenta y se registra) y las preferencias siguen guardándose en el dispositivo.
 - El conflicto entre dos dispositivos descarta el cambio posterior que parte de una revisión antigua (con aviso y recuperación); no hay fusión parcial dentro de una misma preferencia (p. ej. dos cambios distintos del orden del mismo menú).
 - `pepa:auto-confirm`: mientras la persona no la elija, cada tipo de dispositivo usa su valor habitual (nativa: directo; web: con tarjeta) y no se guarda; al elegirla, se sincroniza.

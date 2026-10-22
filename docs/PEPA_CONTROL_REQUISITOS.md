@@ -686,6 +686,17 @@ Encargo dictado el 2026-10-20 (auditoría + implementación por fases). Auditor�
 
 **Pendiente**: nada pasa a **Aprobado** sin confirmación expresa. Orden de pruebas reales y reversión en [`docs/CUENTAS_SEGURIDAD_PLAN.md`](CUENTAS_SEGURIDAD_PLAN.md) §5 y §8.
 
+## Sincronización de configuraciones (CONFIG-01, aprobado 22/10/2026)
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| CONFIG-01 | Las preferencias personales se sincronizan entre los dispositivos de la misma cuenta, en tiempo real, sin recarga; una fila por preferencia; último cambio confirmado según el orden del servidor; avisos y recuperación de lo sustituido; cola de pendientes; sin sobrescribir en silencio | Implementado (rama `feature/b1-prefs`, **no desplegado**, interruptor `PREFS_V2_ENABLED` apagado) | `src/state/prefs/*`, `supabase/pending-migrations/0305_user_prefs.sql` | `prefsEngine.test.ts`, `prefsNavShellSync.test.tsx`, `prefsReaders.test.tsx`, `prefsWriteGuard.test.ts`, SQL local (77) | 0305 sin aplicar; Realtime sin activar | Aplicar 0305 + Realtime + desplegar (autorización conjunta); comprobar en dispositivos reales; B1b: ajustes familiares y de tablas en vivo |
+| CONFIG-01.1 | El orden del menú (barra inferior) se sincroniza ordenador↔móvil, entre dispositivos abiertos a la vez, tras cerrar/reabrir y tras recuperar la conexión; cada persona conserva el suyo | Implementado en la rama (no desplegado) | `tabOrder.ts`, `NavShell.tsx`, motor de preferencias | `prefsNavShellSync.test.tsx` (con comprobación por mutación) | Ídem | Comprobación en dispositivos reales (iPhone, Android, ordenador) |
+| CONFIG-01.2 | Excepciones aprobadas: «Hacerlo directamente, sin tarjeta» (defecto por plataforma; lo elegido se sincroniza) y decisiones «Ahora no»/«No volver a preguntar» de la valoración (por cuenta, con el aplazamiento de 14 días) | Implementado en la rama (no desplegado) | `pepaPreferences.ts`, `ReviewInviteCard.tsx` | `prefsEngine.test.ts`, SQL local | Ídem | Comprobar en dispositivo |
+| CONFIG-01.3 | Corregir los seis textos que decían «solo en este móvil» sobre preferencias sincronizadas | Implementado en la rama | `ClassicButtonsCard`, `PepaPreferencesCard`, `HomeCarouselSettings`, `MenuSettingsScreen`, `AyudaScreen` (2) | Suite general | — | — |
+
+Detalle técnico y puesta en producción: [`docs/CONFIG_01_SINCRONIZACION_PREFERENCIAS.md`](CONFIG_01_SINCRONIZACION_PREFERENCIAS.md).
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

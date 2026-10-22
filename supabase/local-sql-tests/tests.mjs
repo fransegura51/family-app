@@ -731,6 +731,21 @@ console.log('\n0305 · preferencias por persona (una fila por preferencia)')
     assert.equal((await db2.query(`select count(*)::int n from pg_proc where proname in ('set_user_pref','user_pref_key_allowed','mirror_user_ui_prefs')`)).rows[0].n, 0)
   })
 
+  await t('el guion de prueba EN VIVO de 0305 funciona sobre la base local: todo correcto y todo deshecho', async () => {
+    const before = (await db.query('select count(*)::int n from public.user_prefs')).rows[0].n
+    const msg = await err(() => db.exec(read('supabase/pending-migrations/0305_live_test.sql')))
+    has(msg, 'RESULTADO (todo deshecho)')
+    has(msg, '2a primera vez: applied=true')
+    has(msg, '2b con revision buena: applied=true rev sube=true')
+    has(msg, '2c con revision antigua: applied=false')
+    has(msg, '3a ok clave ajena: INVALID_KEY')
+    has(msg, '3b ok valor no texto: INVALID_VALUE')
+    has(msg, '4 ok insercion directa')
+    has(msg, '5 B ve filas de A (debe ser 0): 0')
+    assert.ok(!msg.includes('FALLO'))
+    assert.equal((await db.query('select count(*)::int n from public.user_prefs')).rows[0].n, before)
+  })
+
   await t('la lista cerrada de claves del SQL coincide con la del código (registro de claves)', async () => {
     const sql = read('supabase/pending-migrations/0305_user_prefs.sql')
     const body = sql.slice(sql.indexOf('create or replace function private.user_pref_key_allowed'), sql.indexOf('revoke all on function private.user_pref_key_allowed'))

@@ -31,6 +31,13 @@ export const ADMIN_TABS: { id: AdminTabId; label: string; icon: string }[] = [
   { id: 'historial', label: 'Historial', icon: '📜' },
 ]
 
+// Las nueve pestañas se presentan agrupadas por tema dentro del Centro de Administración (sin quitar ninguna ni cambiar su contenido): facilita encontrar cada apartado.
+export const ADMIN_TAB_GROUPS: { label: string; ids: AdminTabId[] }[] = [
+  { label: 'Supervisión', ids: ['resumen', 'moderacion', 'usuarios'] },
+  { label: 'Contenido', ids: ['oficial', 'temas', 'encuestas', 'destacados'] },
+  { label: 'Ajustes y registro', ids: ['configuracion', 'historial'] },
+]
+
 // La pestaña activa viaja en la dirección (?tab=…) para que recargar la página no te devuelva al principio; un valor raro vuelve a Resumen.
 export function parseAdminTab(v: string | null | undefined): AdminTabId {
   return ADMIN_TABS.find((t) => t.id === v)?.id ?? 'resumen'

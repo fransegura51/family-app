@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { NAV_TABS } from '@/domain/navTabs'
 import { HELP_COVERAGE_LABEL, type HelpCoverage } from '@/admin/features/featureTypes'
 import { HELP_DETAILS, HELP_VIDEOS, SUMMARIES } from '@/ui/AyudaScreen'
+import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 
 // Área «Ayuda y documentación»: qué cubre hoy la Ayuda de PEPA, qué tutoriales hay y qué funciones no están (o están a medias) en la Ayuda, como base para la fase B3. Todo se calcula
@@ -31,7 +32,7 @@ export function AreaAyuda() {
         </Link>
       </p>
 
-      <h2 className="section-title">Cobertura de las funciones</h2>
+      <AdminGroup area="ayuda" id="cobertura" title="Cobertura de las funciones" summary="Cuántas funciones tienen la Ayuda completa, parcial, inexistente o pendiente" defaultOpen>
       <p className="admin-counts">
         {totals.map(({ c, n }) => (
           <span key={c}>
@@ -39,8 +40,9 @@ export function AreaAyuda() {
           </span>
         ))}
       </p>
+      </AdminGroup>
 
-      <h2 className="section-title">Secciones de la Ayuda</h2>
+      <AdminGroup area="ayuda" id="secciones" title="Secciones de la Ayuda" summary="Apartados y vídeos de cada sección" badge={sections.length}>
       <ul className="admin-plain-list">
         {sections.map((s) => (
           <li key={s.route} className="card">
@@ -52,8 +54,9 @@ export function AreaAyuda() {
       </ul>
       {withoutSection.length > 0 && <p className="muted">Secciones de la app sin entrada propia en la Ayuda: {withoutSection.map((t) => t.label).join(', ')}.</p>}
       <p className="muted">Comunidad no tiene entrada en la Ayuda (tiene sus propias Normas dentro de Comunidad).</p>
+      </AdminGroup>
 
-      <h2 className="section-title">Tutoriales existentes</h2>
+      <AdminGroup area="ayuda" id="tutoriales" title="Tutoriales existentes" summary="Vídeos explicativos publicados" badge={Object.keys(HELP_VIDEOS).length}>
       <ul className="admin-plain-list">
         {Object.entries(HELP_VIDEOS).map(([route, v]) => (
           <li key={route} className="card">
@@ -64,8 +67,9 @@ export function AreaAyuda() {
           </li>
         ))}
       </ul>
+      </AdminGroup>
 
-      <h2 className="section-title">Funciones con la Ayuda por completar ({gaps.length})</h2>
+      <AdminGroup area="ayuda" id="lagunas" title="Funciones con la Ayuda por completar" summary="Base para priorizar la documentación" badge={gaps.length}>
       <p className="muted">
         Base para la fase B3. «Pendiente de revisión» significa que todavía no se ha decidido qué debería contar la Ayuda de esa función. No se incluyen las {switchedOff} funciones desactivadas: se documentarán
         cuando se activen.
@@ -80,6 +84,7 @@ export function AreaAyuda() {
           </li>
         ))}
       </ul>
+      </AdminGroup>
     </div>
   )
 }

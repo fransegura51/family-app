@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { adminOverview } from '@/data/community'
-import { ADMIN_TABS, ADMIN_TEXT, parseAdminTab, toAdminOverview, type AdminTabId, type ModerationSection } from '@/domain/communityAdmin'
+import { ADMIN_TABS, ADMIN_TEXT, MODERATION_SECTIONS, parseAdminTab, toAdminOverview, type AdminTabId, type ModerationSection } from '@/domain/communityAdmin'
 import { useCommunity } from '@/ui/community/CommunityProvider'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { pageCrumbs, paths } from '@/ui/community/communityNav'
@@ -49,7 +49,16 @@ export function AdminCenter({ embedded = false }: { embedded?: boolean }) {
   const active = parseAdminTab(params.get('tab'))
   // Cada pestaña se monta la primera vez que se abre y se conserva (oculta) después: volver a ella no repite la consulta al servidor.
   const [visited, setVisited] = useState<AdminTabId[]>([active])
-  const [section, setSection] = useState<ModerationSection>('denuncias')
+  const secParam = params.get('seccion')
+  const [section, setSection] = useState<ModerationSection>(MODERATION_SECTIONS.find((s) => s.id === secParam)?.id ?? 'denuncias')
+  // Un enlace (o el buscador del Centro de Administración) puede pedir una sección concreta de Moderación (?seccion=…) o una pestaña: se abren aunque aún no se hubiesen visitado.
+  useEffect(() => {
+    const wanted = MODERATION_SECTIONS.find((s) => s.id === secParam)?.id
+    if (wanted) setSection(wanted)
+  }, [secParam])
+  useEffect(() => {
+    setVisited((v) => (v.includes(active) ? v : [...v, active]))
+  }, [active])
 
   // El resumen se pide una vez al entrar; solo se vuelve a pedir si, mientras tanto, se ha cambiado algo que lo afecta (denuncias, expulsiones…).
   const overviewLoader = useCallback(async () => toAdminOverview(await adminOverview()), [])
@@ -103,7 +112,7 @@ export function AdminCenter({ embedded = false }: { embedded?: boolean }) {
         <h1 id="cadm-title">Centro de Mando de Comunidad</h1>
       )}
       <p className="muted cadm-intro">{ADMIN_TEXT.twoAdmins}</p>
-      <AdminTabs active={active} onSelect={select} idBase={ID_BASE} />
+      <AdminTabs active={active} onSelect={select} idBase={ID_BASE} grouped={embedded} />
       {ADMIN_TABS.filter((t) => t.id === active || visited.includes(t.id)).map((t) => (
         <div key={t.id} role="tabpanel" id={`${ID_BASE}-panel-${t.id}`} aria-labelledby={`${ID_BASE}-tab-${t.id}`} hidden={t.id !== active} tabIndex={0} className="cadm-panel">
           <h2 className="cadm-panel-title">{t.label}</h2>

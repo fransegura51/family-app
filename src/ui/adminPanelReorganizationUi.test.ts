@@ -13,14 +13,6 @@ const MENU_SETTINGS_SRC = (import.meta.glob('/src/ui/MenuSettingsScreen.tsx', { 
   '/src/ui/MenuSettingsScreen.tsx'
 ]
 
-function slice(src: string, fromMarker: string, toMarker: string): string {
-  const start = src.indexOf(fromMarker)
-  expect(start, `no se encontró "${fromMarker}"`).toBeGreaterThan(-1)
-  const end = src.indexOf(toMarker, start + fromMarker.length)
-  expect(end, `no se encontró "${toMarker}" después de "${fromMarker}"`).toBeGreaterThan(start)
-  return src.slice(start, end)
-}
-
 describe('FamilyScreen — las Automatizaciones ya no viven aquí (ni el componente ni el desplegable)', () => {
   it('sin AmazonWebhookSettings ni el desplegable "⚙️ Automatizaciones de tickets por email"', () => {
     expect(FAMILY_SRC).not.toContain('AmazonWebhookSettings')
@@ -53,17 +45,18 @@ describe('Centro de Administración → área Sistema: Automatizaciones traslada
 })
 
 describe('MenuSettingsScreen — el enlace lleva al Centro de Administración y solo se pinta si el servidor confirma que la cuenta es propietaria', () => {
-  it('el enlace ahora dice "🛠️ Centro de Administración" (antes "🛠️ Panel de admin")', () => {
-    expect(MENU_SETTINGS_SRC).toContain('🛠️ Centro de Administración')
+  it('el acceso es la tarjeta «Centro de Administración PEPA» (antes un enlace al final: «🛠️ Panel de admin»)', () => {
+    expect(MENU_SETTINGS_SRC).toContain('<AdminCenterCard />')
     expect(MENU_SETTINGS_SRC).not.toContain('🛠️ Panel de admin')
     expect(MENU_SETTINGS_SRC).not.toContain('📊 Panel de uso de la app')
   })
 
   it('la señal de acceso es am_i_app_owner preguntado al servidor (useAppOwner), no el truco de "hay filas en list_app_usage"', () => {
-    const fn = slice(MENU_SETTINGS_SRC, 'function AdminUsageLink() {', '\n\n// Petición real: "darle al usuario a elegir qué clases de tonos')
-    expect(fn).toContain('useAppOwner()')
-    expect(fn).toContain("if (owner !== 'owner') return null")
-    expect(fn).toContain('<Link to="/administracion"')
-    expect(fn).not.toContain('listAppUsage')
+    const card = (import.meta.glob('/src/ui/admin/AdminCenterCard.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/admin/AdminCenterCard.tsx']
+    expect(card).toContain('useAppOwner()')
+    expect(card).toContain("if (owner !== 'owner') return null")
+    expect(card).toContain('<Link to="/administracion"')
+    expect(card).not.toContain('listAppUsage')
+    expect(MENU_SETTINGS_SRC).not.toContain('listAppUsage')
   })
 })

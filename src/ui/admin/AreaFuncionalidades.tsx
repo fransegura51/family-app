@@ -11,6 +11,7 @@ import {
   type FeatureVerification,
   type HelpCoverage,
 } from '@/admin/features/featureTypes'
+import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { NAV_TABS } from '@/domain/navTabs'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 
@@ -106,11 +107,28 @@ export function AreaFuncionalidades() {
       </p>
       {visible.length === 0 && <p className="cadm-empty muted">Ninguna función coincide con esa búsqueda y esos filtros.</p>}
 
-      <ul className="admin-feature-list">
-        {visible.map((e) => (
-          <FeatureCard key={e.id} entry={e} help={coverage.get(e.id)!} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)} />
-        ))}
-      </ul>
+      {/* Las funciones se agrupan por módulo en bloques plegables; con un filtro o una búsqueda activos, los módulos con resultados se enseñan abiertos. */}
+      {modulesOf(visible).map((mod) => {
+        const inMod = visible.filter((e) => e.module === mod)
+        const attention = inMod.filter((e) => e.state !== 'operativa').length
+        return (
+          <AdminGroup
+            key={mod}
+            area="funcionalidades"
+            id={`mod-${mod}`}
+            title={mod}
+            summary={`${inMod.length} ${inMod.length === 1 ? 'función' : 'funciones'}`}
+            badge={attention > 0 ? `${attention} ${attention === 1 ? 'pide atención' : 'piden atención'}` : 'todo operativo'}
+            forceOpen={Boolean(active)}
+          >
+            <ul className="admin-feature-list">
+              {inMod.map((e) => (
+                <FeatureCard key={e.id} entry={e} help={coverage.get(e.id)!} open={open === e.id} onToggle={() => setOpen(open === e.id ? null : e.id)} />
+              ))}
+            </ul>
+          </AdminGroup>
+        )
+      })}
     </div>
   )
 }

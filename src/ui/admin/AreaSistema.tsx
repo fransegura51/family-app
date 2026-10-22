@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/data/errorReports'
 import { errorMessage } from '@/domain/errorMessage'
+import { AdminGroup, groupKey, useAdminGroups } from '@/ui/admin/AdminGroups'
 import { AmazonWebhookSettings } from '@/ui/admin/AmazonWebhookSettings'
 import { formatDate } from '@/ui/admin/adminFormat'
 
@@ -9,6 +10,7 @@ import { formatDate } from '@/ui/admin/adminFormat'
 // diagnóstico temporal de la sincronización de preferencias y enlaces a las vistas administrativas de Sugerencias y Reseñas. Es el contenido del antiguo «Panel de admin»
 // (/admin-uso) trasladado SIN cambios de lógica: mismos datos, mismos botones, mismos permisos (el servidor exige is_app_owner).
 export function AreaSistema() {
+  const groups = useAdminGroups()
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que no falle" — los errores que sufre cualquier
   // familia llegan a client_errors (ver 0092) y se ven aquí, agrupados
@@ -51,7 +53,28 @@ export function AreaSistema() {
 
   return (
     <div className="admin-area">
-      {error && <p className="error">{error}</p>}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {/* Aviso crítico siempre visible: si hay errores reales sin revisar se ve aunque el bloque esté plegado. */}
+      {realErrors.length > 0 && (
+        <p className="cadm-notice cadm-notice-error" role="status">
+          🚨 Hay {realErrors.length} {realErrors.length === 1 ? 'error registrado' : 'errores registrados'} en la app.{' '}
+          <button type="button" className="link-button" onClick={() => groups.reveal(groupKey('sistema', 'errores'))}>
+            Verlos
+          </button>
+        </p>
+      )}
+      <AdminGroup
+        area="sistema"
+        id="errores"
+        title="🚨 Errores de la app"
+        summary="Fallos de pantalla de cualquier familia, agrupados por mensaje (y diagnóstico temporal de sincronización)"
+        badge={realErrors.length}
+        badgeTone={realErrors.length > 0 ? 'alert' : 'info'}
+      >
       <div className="filter-row" role="group" aria-label="Qué registros se ven">
         <button type="button" className={'chip' + (!showSyncDiag ? ' chip-active' : '')} onClick={() => setShowSyncDiag(false)}>
           Errores de la app ({realErrors.length})
@@ -60,9 +83,9 @@ export function AreaSistema() {
           Diagnóstico de sincronización — temporal ({syncDiag.length})
         </button>
       </div>
-      <h2 className="section-title">
-        🚨 Errores de la app {errorsForBlock.length > 0 && <span className="muted">({errorsForBlock.length})</span>}
-      </h2>
+      <h4 className="section-title" style={{ marginTop: 8 }}>
+        Registros {errorsForBlock.length > 0 && <span className="muted">({errorsForBlock.length})</span>}
+      </h4>
       {errorsForBlock.length === 0 ? (
         <p className="muted">Ningún error registrado. Cada fallo de pantalla que sufra cualquier familia aparecerá aquí.</p>
       ) : (
@@ -109,12 +132,13 @@ export function AreaSistema() {
           </button>
         </>
       )}
+      </AdminGroup>
 
+      <AdminGroup area="sistema" id="automatizaciones" title="⚙️ Automatizaciones" summary="Direcciones y token para que Amazon, Mercadona y el correo de eventos lleguen solos">
+        <AmazonWebhookSettings />
+      </AdminGroup>
 
-      <h2 className="section-title">⚙️ Automatizaciones</h2>
-      <AmazonWebhookSettings />
-
-      <h2 className="section-title">Otras vistas administrativas</h2>
+      <AdminGroup area="sistema" id="vistas" title="Otras vistas administrativas" summary="Sugerencias y reseñas de todas las familias" defaultOpen>
       <p className="muted">Estas pantallas ya existían y siguen siendo las mismas; desde aquí se llega a ellas.</p>
       <div className="event-list">
         <Link to="/sugerencias" className="card" style={{ textDecoration: 'none' }}>
@@ -124,6 +148,7 @@ export function AreaSistema() {
           ⭐ Reseñas y opiniones de todas las familias
         </Link>
       </div>
+      </AdminGroup>
     </div>
   )
 }

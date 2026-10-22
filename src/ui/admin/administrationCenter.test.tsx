@@ -79,7 +79,7 @@ describe('acceso: solo cuentas propietarias, verificado en el servidor', () => {
     expect(out).toContain('solo para la administración de PEPA')
     expect(out).not.toContain('role="tablist"')
     expect(out).not.toContain('Estado de funcionalidades')
-    expect(read('src/ui/admin/AdministrationPage.tsx')).toMatch(/<AdminGate>\s*<AdministrationCenter \/>\s*<\/AdminGate>/)
+    expect(read('src/ui/admin/AdministrationPage.tsx')).toMatch(/<AdminGate>\s*<AdminGroupsProvider>\s*<AdministrationCenter \/>\s*<\/AdminGroupsProvider>\s*<\/AdminGate>/)
   })
   it('el rol de administrador/a de una familia NO da acceso: la puerta no mira profile.role', () => {
     const gate = read('src/ui/admin/AdminGate.tsx') + read('src/state/useAppOwner.ts')
@@ -116,9 +116,11 @@ describe('el Centro: seis áreas accesibles', () => {
   })
   it('el Resumen enseña las seis áreas y NO pide datos al servidor al abrirse (solo con el botón)', () => {
     const out = html(createElement(AreaResumen, { onGo: () => undefined }))
-    expect(out).toContain('Cargar datos en vivo')
+    expect(out).toContain('Las seis áreas')
+    expect(out).toContain('Datos en vivo')
     expect(out).toContain('Invitar amigos')
     const src = read('src/ui/admin/AreaResumen.tsx')
+    expect(src).toContain("'Cargar datos en vivo'")
     // Las consultas están dentro de loadLive(), que solo se llama desde el botón (no hay useEffect).
     expect(src).not.toContain('useEffect')
     expect(src).toContain('onClick={() => void loadLive()}')
@@ -187,7 +189,7 @@ describe('navegación: redirecciones y enlaces contextuales', () => {
     expect(src).not.toContain('<AdminPage />')
   })
   it('los enlaces contextuales apuntan al Centro nuevo (Configuración y menú de Comunidad)', () => {
-    expect(read('src/ui/MenuSettingsScreen.tsx')).toContain('<Link to="/administracion"')
+    expect(read('src/ui/admin/AdminCenterCard.tsx')).toContain('<Link to="/administracion"')
     expect(read('src/ui/community/communityNav.ts')).toContain("admin: '/administracion?area=comunidad'")
     expect(read('src/ui/community/CommunityMenu.tsx')).toContain('onGo(paths.admin)')
   })
@@ -238,14 +240,18 @@ describe('Estado de funcionalidades y Ayuda: pantallas', () => {
     expect(out).toContain('parciales')
     expect(out).toContain('desactivadas')
     expect(out).toMatch(/Mostrando las \d+ funciones/)
-    expect(out).toContain('Ayuda: ')
-    // Estado y Ayuda son etiquetas distintas en cada ficha.
-    expect(out).toContain('admin-pill-operativa')
-    expect(out).toMatch(/admin-pill-help-(completa|parcial|inexistente|pendiente)/)
+    // Las fichas están agrupadas por módulo en bloques plegables (el detalle de estado y Ayuda se prueba abriéndolos en adminUx.test.tsx).
+    expect(out).toContain('admin-group')
+    expect(out).toContain('Comunidad')
+    expect(out).toContain('Calendario')
+    const src = read('src/ui/admin/AreaFuncionalidades.tsx')
+    expect(src).toContain('admin-pill-help-${help.coverage}')
+    expect(src).toContain('admin-pill-${e.state}')
   })
   it('Ayuda y documentación: cobertura, secciones, tutoriales y base para B3 (sin consultas al servidor)', () => {
     const out = html(createElement(AreaAyuda))
-    for (const piece of ['Cobertura de las funciones', 'Secciones de la Ayuda', 'Tutoriales existentes', 'Funciones con la Ayuda por completar', 'fase B3']) expect(out).toContain(piece)
+    for (const piece of ['Cobertura de las funciones', 'Secciones de la Ayuda', 'Tutoriales existentes', 'Funciones con la Ayuda por completar']) expect(out).toContain(piece)
+    expect(read('src/ui/admin/AreaAyuda.tsx')).toContain('fase B3')
     expect(read('src/ui/admin/AreaAyuda.tsx')).not.toMatch(/supabase|@\/data\//)
   })
 })

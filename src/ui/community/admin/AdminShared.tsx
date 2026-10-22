@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
-import { ADMIN_TABS, NOTE_MAX, validateAdminNote, type AdminTabId } from '@/domain/communityAdmin'
+import { ADMIN_TAB_GROUPS, ADMIN_TABS, NOTE_MAX, validateAdminNote, type AdminTabId } from '@/domain/communityAdmin'
 import '@/ui/community/communityAdmin.css'
 
 // Piezas comunes del Centro de Mando: barra de pestañas accesible, avisos, botón de «dos toques» y formulario de motivo.
@@ -200,6 +200,7 @@ export function TabBar<T extends string>({
   idBase,
   label,
   className = 'cadm-tabs',
+  groups,
 }: {
   tabs: readonly TabBarItem<T>[]
   active: T
@@ -207,8 +208,19 @@ export function TabBar<T extends string>({
   idBase: string
   label: string
   className?: string
+  /** Agrupa las pestañas por tema con una etiqueta por grupo (solo visual; el teclado y los roles no cambian). */
+  groups?: { label: string; ids: readonly T[] }[]
 }) {
   const refs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const entries: ({ kind: 'label'; label: string } | { kind: 'tab'; tab: TabBarItem<T> })[] = groups
+    ? groups.flatMap((g) => [
+        { kind: 'label' as const, label: g.label },
+        ...g.ids.flatMap((id) => {
+          const tab = tabs.find((t) => t.id === id)
+          return tab ? [{ kind: 'tab' as const, tab }] : []
+        }),
+      ])
+    : tabs.map((tab) => ({ kind: 'tab' as const, tab }))
   const move = (e: KeyboardEvent<HTMLDivElement>) => {
     const i = tabs.findIndex((t) => t.id === active)
     let next = -1
@@ -224,7 +236,15 @@ export function TabBar<T extends string>({
   }
   return (
     <div className={className} role="tablist" aria-label={label} onKeyDown={move}>
-      {tabs.map((t) => {
+      {entries.map((entry) => {
+        if (entry.kind === 'label') {
+          return (
+            <span key={`g-${entry.label}`} role="presentation" className="cadm-tab-group-label">
+              {entry.label}
+            </span>
+          )
+        }
+        const t = entry.tab
         const selected = t.id === active
         return (
           <button
@@ -250,6 +270,6 @@ export function TabBar<T extends string>({
   )
 }
 
-export function AdminTabs({ active, onSelect, idBase }: { active: AdminTabId; onSelect: (id: AdminTabId) => void; idBase: string }) {
-  return <TabBar tabs={ADMIN_TABS} active={active} onSelect={onSelect} idBase={idBase} label="Secciones del Centro de Mando" />
+export function AdminTabs({ active, onSelect, idBase, grouped = false }: { active: AdminTabId; onSelect: (id: AdminTabId) => void; idBase: string; grouped?: boolean }) {
+  return <TabBar tabs={ADMIN_TABS} active={active} onSelect={onSelect} idBase={idBase} label="Secciones del Centro de Mando" groups={grouped ? ADMIN_TAB_GROUPS : undefined} />
 }

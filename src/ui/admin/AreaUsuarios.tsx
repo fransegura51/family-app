@@ -4,6 +4,7 @@ import { deleteFamilyInvite, generateFamilyInvite, listFamilyInvites, type Famil
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateFromTimestamp } from '@/domain/dateFormat'
 import { AppActivityPanel } from '@/ui/AppActivityPanel'
+import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { InviteFriendsAdminCard } from '@/ui/admin/InviteFriendsAdminCard'
 import { formatDate } from '@/ui/admin/adminFormat'
 
@@ -68,9 +69,25 @@ export function AreaUsuarios() {
 
   return (
     <div className="admin-area">
-      <InviteFriendsAdminCard />
+      {/* Los avisos de error se ven siempre, aunque el bloque donde ocurrieron esté plegado. */}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
 
-      <h2 className="section-title">🔑 Códigos de invitación para familias nuevas</h2>
+      <AdminGroup area="usuarios" id="invitar-amigos" title="Invitar amigos" summary="Función en preparación (no activa)" badge="No activa">
+        <InviteFriendsAdminCard />
+      </AdminGroup>
+
+      <AdminGroup
+        area="usuarios"
+        id="codigos"
+        title="🔑 Códigos de invitación para familias nuevas"
+        summary="Generar, consultar y anular códigos de un solo uso"
+        badge={`${invites.filter((i) => !i.usedAt && new Date(i.expiresAt).getTime() >= Date.now()).length} disponibles`}
+        defaultOpen
+      >
       <p className="muted">
         Cada código vale para crear UNA familia y caduca a los 7 días de generarse. Se lo das a la familia y ellos lo escriben en
         "Código de acceso" al crear la suya.
@@ -120,15 +137,22 @@ export function AreaUsuarios() {
           })}
         </div>
       )}
+      </AdminGroup>
 
+      <AdminGroup area="usuarios" id="actividad" title="📈 Actividad de uso" summary="Cuánto usa cada cuenta la app y qué pantallas se usan más y menos">
+        <AppActivityPanel accounts={rows} />
+      </AdminGroup>
 
-      <AppActivityPanel accounts={rows} />
-
-      <h2 className="section-title">Familias y cuentas</h2>
+      <AdminGroup
+        area="usuarios"
+        id="familias"
+        title="Familias y cuentas"
+        summary="Altas, último acceso y notificaciones de cada persona con cuenta"
+        badge={`${families.size} ${families.size === 1 ? 'familia' : 'familias'} · ${rows.length} ${rows.length === 1 ? 'cuenta' : 'cuentas'}`}
+      >
       <p className="muted">
         Cada persona con cuenta propia (family_members sin cuenta propia no cuentan), en orden de alta.
       </p>
-      {error && <p className="error">{error}</p>}
       {!error && rows.length === 0 && (
         <p className="muted">No hay datos, o no tienes acceso a este panel.</p>
       )}
@@ -153,7 +177,7 @@ export function AreaUsuarios() {
           </div>
         </div>
       ))}
-
+      </AdminGroup>
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { FEATURE_INVENTORY } from '@/admin/features/featureInventory'
 import { FEATURE_STATE_LABEL, HELP_COVERAGE_LABEL, type FeatureState, type HelpCoverage } from '@/admin/features/featureTypes'
 import { listAppUsage } from '@/data/appUsage'
 import { listClientErrors } from '@/data/errorReports'
+import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { InviteFriendsAdminCard } from '@/ui/admin/InviteFriendsAdminCard'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 
@@ -57,7 +58,7 @@ export function AreaResumen({ onGo }: { onGo: (area: AdminAreaId) => void }) {
         Centro de Administración de PEPA. Solo lo ven las cuentas propietarias de la app (se comprueba en el servidor). No es lo mismo que el administrador de una familia.
       </p>
 
-      <h2 className="section-title">Las seis áreas</h2>
+      <AdminGroup area="resumen" id="areas" title="Las seis áreas" summary="Entrada rápida a cada área del Centro" defaultOpen>
       <ul className="admin-area-cards">
         {ADMIN_AREAS.filter((a) => a.id !== 'resumen').map((a) => (
           <li key={a.id}>
@@ -71,8 +72,16 @@ export function AreaResumen({ onGo }: { onGo: (area: AdminAreaId) => void }) {
           </li>
         ))}
       </ul>
+      </AdminGroup>
 
-      <h2 className="section-title">Estado de las funcionalidades</h2>
+      <AdminGroup
+        area="resumen"
+        id="funcionalidades"
+        title="Estado de las funcionalidades"
+        summary="Cuántas funciones están operativas, parciales o desactivadas, y cómo está la Ayuda"
+        badge={`${attention} piden atención`}
+        defaultOpen
+      >
       <p className="admin-counts">
         {(['operativa', 'parcial', 'desactivada'] as FeatureState[]).map((s) => (
           <span key={s}>
@@ -89,8 +98,9 @@ export function AreaResumen({ onGo }: { onGo: (area: AdminAreaId) => void }) {
           </span>
         ))}
       </p>
+      </AdminGroup>
 
-      <h2 className="section-title">Datos en vivo</h2>
+      <AdminGroup area="resumen" id="vivo" title="Datos en vivo" summary="Familias, cuentas y errores (se piden solo al pulsar el botón)" badge={live ? `${live.accounts} cuentas` : undefined}>
       {live ? (
         <ul className="admin-plain-list">
           <li className="card">👨‍👩‍👧‍👦 Familias: <strong>{live.families}</strong></li>
@@ -104,9 +114,11 @@ export function AreaResumen({ onGo }: { onGo: (area: AdminAreaId) => void }) {
       <button type="button" className="cadm-btn cadm-btn-secondary" disabled={loading} onClick={() => void loadLive()}>
         {loading ? 'Cargando…' : live ? 'Actualizar datos' : 'Cargar datos en vivo'}
       </button>
+      </AdminGroup>
 
-      <h2 className="section-title">Invitar amigos</h2>
-      <InviteFriendsAdminCard />
+      <AdminGroup area="resumen" id="invitar" title="Invitar amigos" summary="Función en preparación (no activa)" badge="No activa">
+        <InviteFriendsAdminCard />
+      </AdminGroup>
     </div>
   )
 }

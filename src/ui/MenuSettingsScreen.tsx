@@ -64,7 +64,7 @@ import { BatteryGuideCard } from '@/ui/BatteryGuideCard'
 import { DeleteAccountCard } from '@/ui/DeleteAccountCard'
 import { supabase } from '@/data/supabaseClient'
 import { disableNativeUpload } from '@/services/nativeUpload'
-import { useAppOwner } from '@/state/useAppOwner'
+import { AdminCenterCard } from '@/ui/admin/AdminCenterCard'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { SecuritySettings } from '@/ui/SecuritySettings'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
@@ -418,20 +418,6 @@ function BankAccountsSection() {
       </button>
       {open && <BankAccountsModal onClose={() => setOpen(false)} />}
     </div>
-  )
-}
-
-// Enlace al Centro de Administración de PEPA (usuarios y familias, Comunidad y moderación, estado de funcionalidades, Ayuda y sistema) — solo para las cuentas propietarias
-// de la app (profiles.is_app_owner). Se pregunta al SERVIDOR (am_i_app_owner) y solo se muestra el enlace si lo confirma; si no se puede verificar, no aparece. Para cualquier
-// otra persona (incluidos administradores de otras familias) esto no aparece, y aunque escriban la dirección a mano la puerta del Centro les deniega la entrada.
-function AdminUsageLink() {
-  const owner = useAppOwner()
-  if (owner !== 'owner') return null
-
-  return (
-    <Link to="/administracion" className="link-button" style={{ display: 'block', margin: '12px 0 16px' }}>
-      🛠️ Centro de Administración
-    </Link>
   )
 }
 
@@ -1689,6 +1675,9 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
 
       <FamilyNameSection />
 
+      {/* Acceso al Centro de Administración: solo cuentas propietarias de PEPA (verificado en el servidor). */}
+      <AdminCenterCard />
+
       <SettingsGroup color={groupColors[0]} icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
         <MenuOrderSection />
       </SettingsGroup>
@@ -1827,8 +1816,6 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         <SignOutCard displayName={profile.displayName} />
         <DeleteAccountCard isAdmin={profile.role === 'admin'} />
       </SettingsGroup>
-
-      <AdminUsageLink />
     </div>
   )
 }

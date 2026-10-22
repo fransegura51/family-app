@@ -689,7 +689,7 @@ console.log('\n0305 · preferencias por persona (una fila por preferencia)')
     // El disparador de transición ya copia al insertar; se vacía para probar la copia inicial por separado.
     await db.query('delete from public.user_prefs where user_id = $1', [d.id])
     await db.query(`insert into public.user_prefs (user_id, key, value) values ($1, $2, '"ya-nuevo"')`, [d.id, THEME])
-    const sql = read('supabase/pending-migrations/0305_user_prefs.sql')
+    const sql = read('supabase/migrations/0305_user_prefs.sql')
     const block = sql.slice(sql.indexOf('-- BACKFILL START'), sql.indexOf('-- BACKFILL END'))
     await db.exec(block)
     const rows = (await db.query('select key, value from public.user_prefs where user_id = $1 order by key', [d.id])).rows
@@ -723,7 +723,7 @@ console.log('\n0305 · preferencias por persona (una fila por preferencia)')
       const cur = (await db2.query(`select rev from public.user_prefs where key = 'familyapp:color-theme'`)).rows[0].rev
       await db2.query(`select * from public.set_user_pref('familyapp:color-theme', '"vivo"'::jsonb, $1)`, [cur])
     })
-    await db2.exec(read('supabase/pending-migrations/0305_user_prefs_down.sql'))
+    await db2.exec(read('supabase/rollbacks/0305_user_prefs_down.sql'))
     const prefs = (await db2.query('select prefs from public.user_ui_prefs where user_id = $1', [f.id])).rows[0].prefs
     assert.equal(prefs['familyapp:tab-order:bottom-nav'], 'orden-nuevo')
     assert.equal(prefs['familyapp:color-theme'], 'vivo')
@@ -747,7 +747,7 @@ console.log('\n0305 · preferencias por persona (una fila por preferencia)')
   })
 
   await t('la lista cerrada de claves del SQL coincide con la del código (registro de claves)', async () => {
-    const sql = read('supabase/pending-migrations/0305_user_prefs.sql')
+    const sql = read('supabase/migrations/0305_user_prefs.sql')
     const body = sql.slice(sql.indexOf('create or replace function private.user_pref_key_allowed'), sql.indexOf('revoke all on function private.user_pref_key_allowed'))
     const sqlPatterns = [...body.matchAll(/^\s*'(\^[^']+\$)',?\s*$/gm)].map((m) => m[1])
     const reg = read('src/state/prefs/prefsRegistry.ts')

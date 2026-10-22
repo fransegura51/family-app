@@ -1,4 +1,4 @@
--- 0305 · Preferencias por persona: UNA FILA POR PREFERENCIA (CONFIG-01 / CONFIG-01.1). SIN APLICAR en producción (necesita autorización).
+-- 0305 · Preferencias por persona: UNA FILA POR PREFERENCIA (CONFIG-01 / CONFIG-01.1). APLICADA en producción el 22/10/2026 (editor SQL de Supabase; comprobada en vivo: 10 filas copiadas de las 10 claves antiguas, permisos y RLS correctos, Realtime activado).
 --
 -- Problema que resuelve (diagnóstico de la Fase A): las preferencias de pantalla (orden del menú, tema, orden de Inicio…) viajaban en UNA sola fila JSON por
 -- persona (user_ui_prefs), se bajaban solo al abrir la app y se subían enteras, de modo que un dispositivo con datos antiguos podía borrar lo que otro cambió después,

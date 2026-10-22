@@ -1,4 +1,5 @@
 -- Prueba EN VIVO de 0305 (después de aplicarla). Todo se DESHACE al final (termina con un error a propósito que enseña el resultado): no deja ninguna fila.
+-- Nota: si la persona A ya tiene la clave del menú (por la copia inicial desde user_ui_prefs), la comprobación «2a primera vez» sale applied=false: es lo correcto (la fila existía) y la 2b usa la revisión vigente.
 -- Se ejecuta en el editor SQL de Supabase. No toca datos reales: escribe preferencias de prueba bajo la identidad de dos personas existentes y lo revierte.
 do $t$
 declare

@@ -1,6 +1,6 @@
-// Interruptor de COMPILACIÓN de la sincronización nueva (B1 / CONFIG-01). Apagado hasta que la migración 0305 esté aplicada en producción y Realtime activado:
-// apagado, la app se comporta exactamente como antes (prefsSyncLegacy.ts). Se enciende en el mismo cambio que se despliega, con autorización.
-export const PREFS_V2_ENABLED = false
+// Interruptor de COMPILACIÓN de la sincronización nueva (B1 / CONFIG-01). ENCENDIDO el 22/10/2026, con la migración 0305 aplicada en producción y Realtime activado.
+// Para volver al mecanismo anterior (sin perder preferencias): ponerlo en false y desplegar (ver docs/CONFIG_01_SINCRONIZACION_PREFERENCIAS.md).
+export const PREFS_V2_ENABLED = true
 
 let override: boolean | null = null
 

@@ -297,3 +297,68 @@ describe('errores de red y de servidor: nada se pierde en silencio', () => {
     expect(storage.getItem(NAV)).toBe('mientras-caido')
   })
 })
+
+describe('casos límite', () => {
+  it('si otro dispositivo ya guardó exactamente el mismo valor no hay conflicto ni aviso', async () => {
+    const { server, a, b } = await twoDevices()
+    a.online = false
+    b.online = false
+    a.engine.set(NAV, 'igual')
+    b.engine.set(NAV, 'igual')
+    a.online = true
+    await a.clock.advance(1000)
+    b.online = true
+    await b.clock.advance(5000)
+    expect(server.get(USER, NAV)?.value).toBe('igual')
+    expect(b.conflicts).toHaveLength(0)
+    expect(b.engine.pendingCount()).toBe(0)
+  })
+
+  it('un cambio que llega entre la descarga inicial y la suscripción no se pierde (la primera confirmación del canal vuelve a descargar)', async () => {
+    const server = new FakeServer()
+    const storage = new FakeStorage()
+    const clock = new FakeClock()
+    const { createPrefsEngine } = await import('@/state/prefs/prefsEngine')
+    let fetches = 0
+    const engine = createPrefsEngine({
+      userId: USER,
+      storage,
+      transport: {
+        fetchSince: async (after) => {
+          fetches += 1
+          return server.fetchSince(USER, after)
+        },
+        set: async (k, v, base) => server.set(USER, k, v, base),
+        subscribe: (_onRow, onStatus) => {
+          server.seed(USER, NAV, 'llegó-en-el-hueco') // cambia justo después de la descarga inicial y antes de estar suscrito
+          onStatus('up')
+          return () => {}
+        },
+      },
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+      isOnline: () => true,
+      now: clock.now,
+      onRemoteChange: () => {},
+      onConflict: () => {},
+      onProblem: () => {},
+    })
+    await engine.start()
+    await settle()
+    expect(fetches).toBeGreaterThanOrEqual(2)
+    expect(storage.getItem(NAV)).toBe('llegó-en-el-hueco')
+  })
+
+  it('los fallos repetidos de red se registran como mucho una vez cada 10 minutos (sin inundar el registro de errores)', async () => {
+    const { a } = await twoDevices()
+    a.failNextSets = { count: 1000, error: Object.assign(new Error('503'), { code: '503' }) }
+    a.engine.set(NAV, 'x')
+    await a.clock.advance(5 * 60_000)
+    const first = a.errors.length
+    expect(first).toBe(1)
+    await a.clock.advance(4 * 60_000)
+    expect(a.errors.length).toBe(1)
+    await a.clock.advance(3 * 60_000) // pasan los 10 minutos
+    expect(a.errors.length).toBe(2)
+  })
+})

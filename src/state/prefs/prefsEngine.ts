@@ -136,8 +136,17 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
   let unsubscribe: (() => void) | null = null
   let flushTimer: unknown = null
   let flushing: Promise<void> | null = null
-  let channelWasDown = false
+  let channelWasDown = true // la primera confirmación del canal vuelve a descargar lo que pudo llegar entre la descarga inicial y la suscripción
   const inflight = new Map<string, PrefValue>()
+  let lastReportAt = -Infinity
+  const REPORT_EVERY_MS = 10 * 60_000
+  // Los fallos repetidos (red caída, servidor lento) se registran como mucho una vez cada 10 minutos.
+  function reportThrottled(error: unknown, context: string) {
+    const t = deps.now()
+    if (t - lastReportAt < REPORT_EVERY_MS) return
+    lastReportAt = t
+    deps.reportError?.(error, context)
+  }
 
   function persist() {
     try {
@@ -213,7 +222,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       }
       persist()
     } catch (error) {
-      deps.reportError?.(error, 'prefs:pull')
+      if (deps.isOnline()) reportThrottled(error, 'prefs:pull')
     }
   }
 
@@ -259,7 +268,11 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
         } else {
           // El servidor ya tenía un cambio más reciente: prevalece y se avisa.
           meta.failures = 0
-          if (now) {
+          if (now && now.value === result.value) {
+            // Otro dispositivo ya había guardado exactamente lo mismo: no hay nada que sustituir.
+            delete meta.outbox[key]
+            applyServerRow({ key, value: result.value, rev: result.rev }, 'remote')
+          } else if (now) {
             const rejectedValue = now.value
             delete meta.outbox[key]
             meta.rejected[key] = rejectedValue
@@ -284,7 +297,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
           retryAfter = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(meta.failures, 6))
           persist()
           if (meta.failures >= PROBLEM_AFTER_FAILURES) {
-            deps.reportError?.(error, `prefs:set:${key}`)
+            reportThrottled(error, `prefs:set:${key}`)
             problem('No se están pudiendo guardar algunos cambios; se reintentará.')
           }
           break

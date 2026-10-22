@@ -430,3 +430,37 @@ describe('CONFIG-01.1 · fallos reales encontrados en los dispositivos', () => {
     expect(a.storage.getItem(NAV)).toBe('llegó-tarde')
   })
 })
+
+describe('CONFIG-01.1 · dos ventanas del mismo navegador comparten el almacenamiento (fallo real iPhone → ordenador)', () => {
+  it('la ventana cuya caché YA tiene el valor nuevo (lo escribió la otra ventana) igualmente avisa a sus pantallas de que hay una revisión nueva', async () => {
+    const server = new FakeServer()
+    const rev0 = server.seed(USER, NAV, 'viejo')
+    const storage = new FakeStorage()
+    storage.setItem(NAV, 'viejo')
+    storage.setItem(prefsMetaKey(USER), JSON.stringify({ lastRev: rev0, revs: { [NAV]: rev0 }, outbox: {}, rejected: {}, failures: 0 }))
+    storage.setItem(PREFS_OWNER_KEY, USER)
+    const win = makeDevice(server, USER, storage)
+    await win.engine.start()
+    await settle()
+    win.remoteChanges.length = 0
+    // Otra ventana descargó antes el valor nuevo y lo dejó en el almacenamiento compartido…
+    server.seed(USER, NAV, 'nuevo')
+    storage.setItem(NAV, 'nuevo')
+    // …y ahora esta ventana descarga la revisión nueva: su pantalla sigue con 'viejo' en memoria y DEBE enterarse.
+    await win.engine.pull()
+    expect(win.remoteChanges.flat()).toContain(NAV)
+  })
+
+  it('adoptar un cambio hecho por otra ventana lo sube; si coincide con lo que ya hay en el servidor, no sube nada', async () => {
+    const { server, a } = await twoDevices()
+    a.engine.set(NAV, 'v1')
+    await a.clock.advance(1500)
+    const before = server.setCalls.length
+    a.engine.adopt(NAV, 'v1') // ya es lo del servidor
+    await a.clock.advance(1500)
+    expect(server.setCalls.length).toBe(before)
+    a.engine.adopt(NAV, 'v2') // otra ventana eligió otro orden
+    await a.clock.advance(1500)
+    expect(server.get(USER, NAV)?.value).toBe('v2')
+  })
+})

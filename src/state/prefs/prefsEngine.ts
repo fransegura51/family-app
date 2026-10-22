@@ -131,6 +131,11 @@ export interface PrefsEngine {
   flushNow(): Promise<void>
   /** Pide al servidor lo que falta (al volver a primer plano, al recuperar la red, al reconectar el canal). */
   pull(): Promise<void>
+  /**
+   * Otra ventana de ESTE navegador (que comparte el almacenamiento) cambió una preferencia: esta ventana, que es la que habla con el servidor, la toma como un cambio
+   * de la persona y la sube. Si coincide con lo que ya se sabe del servidor, no hace nada.
+   */
+  adopt(key: string, value: PrefValue): void
   /** Vuelve a aplicar el valor que el último conflicto rechazó. */
   recoverRejected(key: string): boolean
   pendingCount(): number
@@ -166,6 +171,8 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
   let flushing: Promise<void> | null = null
   let channelWasDown = true // la primera confirmación del canal vuelve a descargar lo que pudo llegar entre la descarga inicial y la suscripción
   const inflight = new Map<string, PrefValue>()
+  // Último valor que se sabe confirmado en el servidor para cada clave (para no volver a subir lo que ya está).
+  const serverValues = new Map<string, PrefValue>()
   let lastReportAt = -Infinity
   const REPORT_EVERY_MS = 10 * 60_000
   // Los fallos repetidos (red caída, servidor lento) se registran como mucho una vez cada 10 minutos.
@@ -199,15 +206,20 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
 
   // El cursor de descarga (`lastRev`) NO se toca aquí: solo avanza con lo que devuelve una descarga (ver `pull`).
   function applyServerRow(row: PrefRow, source: 'remote' | 'own', why = 'apply') {
-    meta.revs[row.key] = Math.max(meta.revs[row.key] ?? 0, row.rev)
+    const previousRev = meta.revs[row.key] ?? 0
+    meta.revs[row.key] = Math.max(previousRev, row.rev)
+    serverValues.set(row.key, row.value)
     const current = storage.getItem(row.key)
     const changed = current !== row.value
-    deps.diag?.(why, { key: row.key, rev: row.rev, wrote: changed, before: fingerprint(current), after: fingerprint(row.value) })
+    // Una revisión NUEVA se avisa a las pantallas aunque la caché ya tuviera ese valor: otra ventana del mismo navegador comparte el almacenamiento y pudo escribirlo
+    // antes, y esta ventana tiene el menú (u otra pantalla) todavía con el valor viejo en memoria.
+    const advanced = row.rev > previousRev
+    deps.diag?.(why, { key: row.key, rev: row.rev, wrote: changed, advanced, before: fingerprint(current), after: fingerprint(row.value) })
     if (changed) {
       writeCache(row.key, row.value)
       deps.onAnyChange?.([row.key])
-      if (source === 'remote') deps.onRemoteChange([row.key])
     }
+    if ((changed || advanced) && source === 'remote') deps.onRemoteChange([row.key])
   }
 
   // Lo que llega del servidor (descarga o tiempo real). Decide si es un eco, un cambio nuevo o un conflicto con algo pendiente.
@@ -315,6 +327,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
         const now = meta.outbox[key]
         if (result.applied) {
           meta.revs[key] = Math.max(meta.revs[key] ?? 0, result.rev)
+          serverValues.set(key, sent)
           deps.diag?.('set', { key, baseRev, applied: true, rev: result.rev })
           if (now && now.value === sent) delete meta.outbox[key]
           else if (now) meta.outbox[key] = { value: now.value, baseRev: result.rev } // se cambió otra vez durante la subida
@@ -469,6 +482,13 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       delete meta.rejected[key]
       setPref(key, value)
       return true
+    },
+    adopt(key, value) {
+      if (!isSyncedPrefKey(key)) return
+      if (serverValues.has(key) && serverValues.get(key) === value) return
+      if (meta.outbox[key] && meta.outbox[key].value === value) return
+      deps.diag?.('adopt', { key, after: fingerprint(value) })
+      setPref(key, value)
     },
     pendingCount: () => Object.keys(meta.outbox).length,
     rejectedKeys: () => Object.keys(meta.rejected),

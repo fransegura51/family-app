@@ -252,6 +252,36 @@ describe('CONFIG-01.1 · el orden del menú se sincroniza entre dispositivos (se
     })
   }
 
+  it('FALLO REAL (iPhone → ordenador): otra ventana del mismo navegador ya dejó el valor nuevo en el almacenamiento compartido; esta ventana igualmente repinta su menú', async () => {
+    await boot()
+    const before = bottomLabels()
+    const reordered = [...NAV_TAB_PATHS].reverse()
+    const other = makeDevice(hoisted.server, USER, new FakeStorage())
+    await other.engine.start()
+    await settle()
+    // La otra ventana escribió el valor en el almacenamiento COMPARTIDO antes de que esta ventana descargara nada.
+    localStorage.setItem(NAV, JSON.stringify(reordered))
+    other.engine.set(NAV, JSON.stringify(reordered))
+    await act(async () => {
+      await other.clock.advance(1000)
+      await vi.advanceTimersByTimeAsync(600)
+    })
+    expect(bottomLabels().slice(1)).toEqual(reordered.slice(0, 4).map((to) => NAV_TAB_BY_PATH.get(to)?.label))
+    expect(bottomLabels()).not.toEqual(before)
+  })
+
+  it('el aviso de almacenamiento de otra ventana repinta el menú y esta ventana (la que habla con el servidor) sube el cambio', async () => {
+    await boot()
+    const reordered = [...NAV_TAB_PATHS].reverse()
+    localStorage.setItem(NAV, JSON.stringify(reordered)) // lo que haría la otra ventana
+    await act(async () => {
+      window.dispatchEvent(new StorageEvent('storage', { key: NAV, newValue: JSON.stringify(reordered), storageArea: localStorage }))
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(bottomLabels().slice(1)).toEqual(reordered.slice(0, 4).map((to) => NAV_TAB_BY_PATH.get(to)?.label))
+    expect(hoisted.server.get(USER, NAV)?.value).toBe(JSON.stringify(reordered))
+  })
+
   it('persona distinta: el orden de otra persona de la misma familia no cambia el de esta', async () => {
     await boot()
     const before = bottomLabels()

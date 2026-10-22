@@ -4,8 +4,9 @@ import { createPrefsEngine, type PrefConflict, type PrefsEngine, type PrefsSyncP
 import { createSupabasePrefsTransport } from '@/state/prefs/prefsTransport'
 import { announcePrefChange, drainQueuedPrefs, setEngineWriter, setPrefsDiagSink } from '@/state/prefs/prefsWrite'
 import { isNativeApp } from '@/services/nativeApp'
-import { RELOAD_TO_APPLY_KEYS } from '@/state/prefs/prefsRegistry'
-import { reportClientError } from '@/data/errorReports'
+import { RELOAD_TO_APPLY_KEYS, isSyncedPrefKey } from '@/state/prefs/prefsRegistry'
+import { supabase } from '@/data/supabaseClient'
+import { runAsLeader } from '@/state/prefs/prefsLeader'
 
 export type PrefsNotice =
   | { id: string; kind: 'conflict'; key: string; label: string; rejectedValue: PrefValue }
@@ -124,21 +125,40 @@ export function pendingPrefsCount(): number {
 // la app para poder revisarlo desde el panel. Sin datos personales (claves, revisiones, longitudes y huellas de los valores). Se retira al cerrar la incidencia.
 const DIAG_RING_KEY = 'pepa:prefs:diag'
 const DIAG_RING_MAX = 80
-const DIAG_REPORT_MAX = 40
+const DIAG_REPORT_MAX = 60
 let diagReported = 0
-const DIAG_REPORTED_EVENTS = new Set(['start', 'signal', 'pull', 'apply', 'heal', 'set', 'conflict', 'pull-error', 'channel', 'navshell-order'])
+const DIAG_REPORTED_EVENTS = new Set(['start', 'leader', 'signal', 'pull', 'apply', 'heal', 'adopt', 'storage', 'set', 'conflict', 'pull-error', 'channel', 'navshell-order'])
+// Identifica la ventana/pestaña (varias del mismo navegador comparten almacenamiento): clave para entender qué ocurrió en cada una.
+const CTX = Math.random().toString(36).slice(2, 6)
 
 function deviceKind(): string {
   try {
     const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true
-    return `${isNativeApp() ? 'nativa' : standalone ? 'pwa' : 'web'}|sw=${navigator.serviceWorker?.controller ? 'si' : 'no'}`
+    return `${isNativeApp() ? 'nativa' : standalone ? 'pwa' : 'web'}|sw=${navigator.serviceWorker?.controller ? 'si' : 'no'}|vis=${document.visibilityState}`
   } catch {
     return 'desconocido'
   }
 }
 
+// Registro propio (no usa el de errores de la app, que solo deja 5 avisos por sesión).
+async function reportDiag(entry: Record<string, unknown>) {
+  try {
+    const { data } = await supabase.auth.getSession()
+    const userId = data.session?.user.id
+    if (!userId) return
+    await supabase.from('client_errors').insert({
+      profile_id: userId,
+      message: `prefs-diag ${deviceKind()} ${JSON.stringify(entry)}`.slice(0, 1000),
+      url: window.location.pathname.slice(0, 200),
+      user_agent: navigator.userAgent.slice(0, 300),
+    })
+  } catch {
+    /* el diagnóstico nunca debe romper la app */
+  }
+}
+
 function diagSinkImpl(event: string, data: Record<string, unknown>) {
-  const entry = { t: new Date().toISOString().slice(11, 23), e: event, ...data }
+  const entry = { t: new Date().toISOString().slice(11, 23), c: CTX, e: event, ...data }
   try {
     const ring = JSON.parse(localStorage.getItem(DIAG_RING_KEY) ?? '[]') as unknown[]
     ring.push(entry)
@@ -146,14 +166,34 @@ function diagSinkImpl(event: string, data: Record<string, unknown>) {
   } catch {
     /* sin almacenamiento */
   }
-  const interesting = event !== 'apply' || data.wrote === true || String(data.key).endsWith(':bottom-nav')
+  const interesting = event !== 'apply' || data.wrote === true || data.advanced === true || String(data.key).endsWith(':bottom-nav')
   if (!DIAG_REPORTED_EVENTS.has(event) || !interesting || diagReported >= DIAG_REPORT_MAX) return
   diagReported += 1
-  void reportClientError(new Error(`prefs-diag ${deviceKind()} ${JSON.stringify(entry)}`))
+  void reportDiag(entry)
 }
 
 /** Arranca la sincronización para esta persona. Devuelve la función que la para. */
 export function startPrefsV2(userId: string): () => void {
+  // Todas las ventanas escuchan el almacenamiento (para repintar); solo la «líder» arranca el motor y habla con el servidor.
+  const onStorage = (e: StorageEvent) => {
+    if (e.storageArea !== localStorage || !e.key || !isSyncedPrefKey(e.key)) return
+    diagSinkImpl('storage', { key: e.key, after: e.newValue === null ? 'null' : `${e.newValue.length}`, leader: engine !== null })
+    announcePrefChange([e.key])
+    dispatchLegacyEvents([e.key])
+    engine?.adopt(e.key, e.newValue)
+  }
+  window.addEventListener('storage', onStorage)
+  const stopLeader = runAsLeader(`pepa-prefs:${userId}`, () => {
+    diagSinkImpl('leader', { got: true })
+    return startEngine(userId)
+  })
+  return () => {
+    window.removeEventListener('storage', onStorage)
+    stopLeader()
+  }
+}
+
+function startEngine(userId: string): () => void {
   if (engine) engine.stop()
   const e = createPrefsEngine({
     userId,
@@ -179,7 +219,7 @@ export function startPrefsV2(userId: string): () => void {
     },
     diag: (event, data) => diagSinkImpl(event, data),
     reportError: (error, context) => {
-      void reportClientError(error instanceof Error ? new Error(`${context}: ${error.message}`) : new Error(`${context}: ${String(error)}`))
+      diagSinkImpl('error', { context, message: error instanceof Error ? error.message.slice(0, 80) : String(error).slice(0, 80) })
     },
   })
   engine = e

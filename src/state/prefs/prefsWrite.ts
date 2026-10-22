@@ -41,7 +41,16 @@ export function setEngineWriter(writer: Writer | null): void {
 /** Aplica al motor lo que se guardó antes de que arrancara (los primeros instantes tras abrir la app). */
 export function drainQueuedPrefs(): void {
   if (!engineWriter) return
-  for (const [key, value] of queuedBeforeStart) engineWriter(key, value)
+  for (const [key, value] of queuedBeforeStart) {
+    // Solo lo que sigue siendo lo último que eligió la persona en este dispositivo (otra ventana pudo cambiarlo después).
+    let current: string | null = null
+    try {
+      current = localStorage.getItem(key)
+    } catch {
+      /* sin almacenamiento */
+    }
+    if (current === value) engineWriter(key, value)
+  }
   queuedBeforeStart.clear()
 }
 

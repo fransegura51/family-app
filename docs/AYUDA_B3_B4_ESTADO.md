@@ -18,14 +18,14 @@ Documento vivo. Última actualización: 23/10/2026. Base de diseño: «Nueva Ayu
 | Regla AYUDA-01 + pruebas «trinquete» | `CLAUDE.md`, `src/help/helpDebt.ts`, `src/help/catalog/*.test.ts` | Activo |
 | Valoraciones «¿Te ha servido?» (agregadas) | `src/help/feedback.ts` + migración 0306 | **Apagado** (`HELP_FEEDBACK_ENABLED = false`): necesita la migración 0306 |
 | Sincronización entre dispositivos de las preferencias de Ayuda y del progreso de tutoriales | `src/state/prefs/prefsRegistry.ts` + migración 0306 | **Apagado** (`HELP_PREFS_SYNC_ENABLED = false`): necesita la migración 0306 |
-| Búsqueda con IA | `src/help/ai.ts` | **Apagada** (`HELP_AI_ENABLED = false`) |
+| Búsqueda con IA (solo ELIGE entre fichas verificadas; cuentas adultas; solo si la búsqueda local no es clara) | `src/help/ai.ts`, `aiClient.ts`, `supabase/functions/help-search` | **Preparada y apagada** (`HELP_AI_ENABLED = false`): falta DESPLEGAR la función de servidor `help-search` |
 
 ## Interruptores (todos en el código; apagar = poner `false` y desplegar)
 
 - `HELP_CONTEXTUAL_ENABLED` (`src/help/flags.ts`, **encendido**): los «?» de cada módulo y formulario y el panel flotante de Pepa. Apagado, solo queda la pantalla `/ayuda`.
 - `HELP_FEEDBACK_ENABLED` (`src/help/feedback.ts`): muestra «¿Te ha servido?» y envía el sí/no agregado. Requiere 0306.
 - `HELP_PREFS_SYNC_ENABLED` (`src/state/prefs/prefsRegistry.ts`): las claves `pepa:help-*` viajan con la cuenta. Requiere 0306. Una prueba impide encenderlo sin la migración aplicada.
-- `HELP_AI_ENABLED` (`src/help/ai.ts`): reservado; no hay función de servidor ni límite de gasto aprobado.
+- `HELP_AI_ENABLED` (`src/help/ai.ts`): búsqueda con IA. Preparada de extremo a extremo y probada con simulaciones, pero la función de servidor `help-search` NO está desplegada. Para activarla: `supabase functions deploy help-search` (usa la pasarela de IA existente: cuenta adulta, interruptor global `ai_config`, tope general, proveedor/modelo de `ai_config`, registro de uso), poner el interruptor a `true` y desplegar la web. Límites de consumo comprobados: tope diario propio de **40 llamadas por familia y día** (`HELP_SEARCH_DAILY_CAP`, aplicado por la pasarela antes de llamar al proveedor; si no puede leer el contador, no llama), en el cliente **1 llamada cada 2,5 s y 20 por sesión**, caché por pregunta y la IA solo se consulta cuando la búsqueda local no es clara. Se puede apagar sin desplegar nada: `update ai_config set value = '["help-search"]' where key = 'purposes_disabled'` (mecanismo existente de la pasarela) o con el interruptor general. Coste: mismo proveedor y nivel gratuito que el resto de la IA de PEPA; el techo de uso es el tope diario de arriba.
 
 ## Privacidad
 

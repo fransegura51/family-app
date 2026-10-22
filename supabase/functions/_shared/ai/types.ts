@@ -43,6 +43,8 @@ export interface AiPurposeSpec<TInput, TOutput> {
   // Opcionales: solo los propósitos que piden JSON estructurado los usan.
   responseSchema?: unknown
   maxOutputTokens?: number
+  // Tope diario de llamadas de ESTE propósito por familia (control de coste propio, además del tope general). Opcional: si no se declara, no hay tope por propósito.
+  purposeDailyCap?: number
   readInput(body: Record<string, unknown>): { ok: true; input: TInput } | { ok: false; error: string }
   buildParts(input: TInput): AiPart[]
   // Si la respuesta no es válida puede lanzar un error: la puerta lo traduce en

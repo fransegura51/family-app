@@ -29,6 +29,12 @@ export function addPepaText(s: HelpSession, text: string): HelpSession {
   return push(s, { id: s.nextId, role: 'pepa', kind: 'text', text })
 }
 
+// Cambia un mensaje ya puesto (la «Pensando…» de la IA por su respuesta). Si la conversación ya se cerró o el mensaje ya no está, no hace nada.
+export function replaceMessage(s: HelpSession, id: number, msg: HelpMessage): HelpSession {
+  if (!s.messages.some((m) => m.id === id)) return s
+  return { ...s, messages: s.messages.map((m) => (m.id === id ? msg : m)) }
+}
+
 function push(s: HelpSession, m: HelpMessage): HelpSession {
   const messages = [...s.messages, m].slice(-MAX_MESSAGES)
   return { messages, nextId: s.nextId + 1 }

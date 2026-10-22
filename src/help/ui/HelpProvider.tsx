@@ -7,7 +7,9 @@ import { HELP_CARD_BY_ID, HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '
 import { buildHelpContext, communityStateFrom, moduleForPath } from '@/help/context'
 import { getHelpVoiceMode, HELP_VOICE_KEY, setHelpVoiceMode, type HelpVoiceMode } from '@/help/prefs'
 import { buildIndex, searchHelp, type SearchDoc, type SearchHit, type SearchResponse } from '@/help/search/searchEngine'
-import { addAnswer, addPepaText, addUserMessage, emptySession, type HelpSession } from '@/help/session'
+import { addAnswer, addPepaText, addUserMessage, emptySession, recentQueries, replaceMessage, type HelpSession } from '@/help/session'
+import { isHelpAiEnabled } from '@/help/ai'
+import { rankHelpWithAi } from '@/help/aiClient'
 import { hasTour } from '@/help/tours/registry'
 import type { HelpCard, HelpModuleId } from '@/help/types'
 import { primeHelpVoice, speakHelp, stopHelpSpeech } from '@/help/voice'
@@ -70,6 +72,9 @@ export function HelpProvider({ profile, children, onStartTour }: { profile: Pick
   const [speakingText, setSpeakingText] = useState<string | null>(null)
   const voiceRef = useRef(voiceMode)
   voiceRef.current = voiceMode
+  // Copia de la conversación para el camino asíncrono de la IA (que necesita el identificador del mensaje «Pensando…»).
+  const sessionRef = useRef(session)
+  sessionRef.current = session
 
   usePrefChange(HELP_VOICE_KEY, () => setVoiceModeState(getHelpVoiceMode()))
 
@@ -123,6 +128,34 @@ export function HelpProvider({ profile, children, onStartTour }: { profile: Pick
       if (!query) return
       primeHelpVoice() // dentro del toque que envía la pregunta (Safari/iOS)
       const res = search(query)
+      const adult = ctxRef.current.role === 'admin' || ctxRef.current.role === 'adult'
+      if (isHelpAiEnabled() && adult && res.confidence !== 'clear') {
+        // La búsqueda local no tiene un resultado claro: la IA puede ELEGIR entre fichas verificadas que esta persona puede ver. Si falla o no elige nada, se queda lo local.
+        const withQuestion = addUserMessage(sessionRef.current, query)
+        const thinking = addPepaText(withQuestion, 'Déjame pensarlo un momento…')
+        const thinkingId = thinking.messages[thinking.messages.length - 1].id
+        sessionRef.current = thinking
+        setSession(thinking)
+        const pool = HELP_CARDS.filter((c) => cardAccess(c, HELP_MODULE_BY_ID.get(c.module), ctxRef.current).status !== 'hidden').map((c) => ({ id: c.id, title: c.title }))
+        void rankHelpWithAi(query, pool, recentQueries(withQuestion)).then((ids) => {
+          const aiHits: SearchHit[] = (ids ?? []).flatMap((id, i) => {
+            const card = HELP_CARD_BY_ID.get(id)
+            return card ? [{ doc: { kind: 'card' as const, id: card.id, module: card.module, card }, score: 0.9 - i * 0.1, coverage: 1, rank: 0.9 - i * 0.1 }] : []
+          })
+          const usedAi = aiHits.length > 0
+          const hits = usedAi ? aiHits : res.hits
+          const answer = { id: thinkingId, role: 'pepa' as const, kind: 'answer' as const, query, hits, confidence: usedAi ? ('clear' as const) : res.confidence, usedAi }
+          const next = replaceMessage(sessionRef.current, thinkingId, answer)
+          sessionRef.current = next
+          setSession(next)
+          if (voiceRef.current === 'voice' && hits[0]) {
+            const a = accessOf(hits[0].doc)
+            if (a.status === 'allowed') speak(spokenTextOf(hits[0]))
+            else if (a.status === 'restricted' && a.reason) speak(a.reason)
+          }
+        })
+        return
+      }
       setSession((s) => addAnswer(addUserMessage(s, query), query, res.hits, res.confidence))
       if (voiceRef.current === 'voice' && res.hits[0]) {
         const first = res.hits[0]

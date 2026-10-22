@@ -74,6 +74,7 @@ export function HelpConversation({ focusModule, autoFocus = false }: { focusModu
                 ) : (
                   <>
                     {m.confidence === 'weak' && <p className="help-hedge">Esto es lo más parecido que he encontrado:</p>}
+                    {m.usedAi && <p className="help-hedge">He elegido esta ficha con ayuda de la IA entre las de la Ayuda de PEPA (el texto es el de la ficha).</p>}
                     <HelpAnswer hit={first} />
                     {others.length > 0 && (
                       <div className="help-related">

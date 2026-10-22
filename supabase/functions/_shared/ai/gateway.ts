@@ -80,6 +80,21 @@ export function createAiHandler<TInput, TOutput>(spec: AiPurposeSpec<TInput, TOu
         if (typeof gate.model === "string" && gate.model) model = gate.model
       }
 
+      // Tope diario propio del propósito (p. ej. la Ayuda): se cuenta con el mismo registro de uso (solo números). Si no se puede leer el contador, no se llama a la IA
+      // (más prudente que gastar sin control): el propósito que lo pide es opcional para la persona.
+      if (spec.purposeDailyCap && familyId) {
+        const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date())
+        const { data: usage, error: usageReadError } = await adminClient
+          .from("ai_usage_daily")
+          .select("calls")
+          .eq("family_id", familyId)
+          .eq("day", today)
+          .eq("purpose", spec.purpose)
+          .maybeSingle()
+        if (usageReadError) return json({ error: "ai_not_allowed", reason: "usage_unavailable" }, 403)
+        if ((usage?.calls ?? 0) >= spec.purposeDailyCap) return json({ error: "ai_not_allowed", reason: "purpose_daily_cap" }, 403)
+      }
+
       const { data: apiKey, error: keyError } = await adminClient.rpc("get_app_secret", {
         p_name: secretNameFor(providerName),
       })

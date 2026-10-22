@@ -10,7 +10,13 @@ import { FakeServer, FakeStorage, makeDevice, settle } from '@/state/prefs/prefs
 const USER = 'persona-1'
 const NAV = 'familyapp:tab-order:bottom-nav'
 
-const hoisted = vi.hoisted(() => ({ server: null as unknown as FakeServer, channelStatus: null as null | ((s: string) => void), connected: { value: true } }))
+const hoisted = vi.hoisted(() => ({
+  server: null as unknown as FakeServer,
+  channelStatus: null as null | ((s: string) => void),
+  connected: { value: true },
+  // Forma en que el tiempo real entrega el valor (en los dispositivos reales NO llegaba como texto): se prueba con varias.
+  shape: { fn: (v: string | null) => v as unknown },
+}))
 
 vi.mock('@/data/supabaseClient', () => {
   const supabase = {
@@ -44,7 +50,7 @@ vi.mock('@/data/supabaseClient', () => {
         subscribe: (status: (s: string) => void) => {
           hoisted.channelStatus = status
           status('SUBSCRIBED')
-          hoisted.server.subscribe(USER, (row) => cb?.({ new: row }), () => hoisted.connected.value)
+          hoisted.server.subscribe(USER, (row) => cb?.({ new: { ...row, value: hoisted.shape.fn(row.value) } }), () => hoisted.connected.value)
           return ch
         },
       }
@@ -94,6 +100,7 @@ describe('CONFIG-01.1 · el orden del menú se sincroniza entre dispositivos (se
     hoisted.server = new FakeServer()
     hoisted.connected.value = true
     hoisted.channelStatus = null
+    hoisted.shape.fn = (v) => v
     setPrefsV2ForTests(true)
   })
   afterEach(() => {
@@ -122,7 +129,7 @@ describe('CONFIG-01.1 · el orden del menú se sincroniza entre dispositivos (se
     other.engine.set(NAV, JSON.stringify(reordered))
     await act(async () => {
       await other.clock.advance(1000)
-      await vi.advanceTimersByTimeAsync(50)
+      await vi.advanceTimersByTimeAsync(600) // el aviso de tiempo real despierta la descarga (150 ms) y la pantalla se repinta
     })
     // El menú muestra ahora, tras «Menú», los cuatro primeros del nuevo orden.
     const expected = reordered.slice(0, 4).map((to) => NAV_TAB_BY_PATH.get(to)?.label)
@@ -143,6 +150,7 @@ describe('CONFIG-01.1 · el orden del menú se sincroniza entre dispositivos (se
       await vi.advanceTimersByTimeAsync(2000)
     })
     expect(hoisted.server.get(USER, NAV)?.value).toBe(JSON.stringify(mine))
+    await other.clock.advance(600)
     expect(other.storage.getItem(NAV)).toBe(JSON.stringify(mine))
   })
 
@@ -211,6 +219,38 @@ describe('CONFIG-01.1 · el orden del menú se sincroniza entre dispositivos (se
     })
     expect(hoisted.server.get(USER, NAV)?.value).toBe(JSON.stringify([...NAV_TAB_PATHS].reverse()))
   })
+
+  for (const [nombre, forma] of [
+    ['una lista en vez de texto', (v: string | null) => (v ? JSON.parse(v) : v)],
+    ['un texto con otra capa de comillas', (v: string | null) => JSON.stringify(v)],
+    ['sin valor', () => undefined],
+  ] as Array<[string, (v: string | null) => unknown]>) {
+    it(`el aviso de tiempo real trae el valor como ${nombre}: el menú del móvil igualmente muestra el orden nuevo, y también tras cerrar y volver a abrir`, async () => {
+      hoisted.shape.fn = forma
+      await boot()
+      const reordered = [...NAV_TAB_PATHS].reverse()
+      const other = makeDevice(hoisted.server, USER, new FakeStorage())
+      await other.engine.start()
+      await settle()
+      other.engine.set(NAV, JSON.stringify(reordered))
+      await act(async () => {
+        await other.clock.advance(1000)
+        await vi.advanceTimersByTimeAsync(600)
+      })
+      const expected = reordered.slice(0, 4).map((to) => NAV_TAB_BY_PATH.get(to)?.label)
+      expect(bottomLabels().slice(1)).toEqual(expected)
+      expect(JSON.parse(localStorage.getItem(NAV) as string)).toEqual(reordered)
+      // «Cerrar PEPA del todo y volver a abrirla»: se desmonta todo y se arranca de nuevo con lo guardado en el dispositivo.
+      stop()
+      cleanup()
+      stop = startPrefsSync(USER)
+      renderShell()
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(600)
+      })
+      expect(bottomLabels().slice(1)).toEqual(expected)
+    })
+  }
 
   it('persona distinta: el orden de otra persona de la misma familia no cambia el de esta', async () => {
     await boot()

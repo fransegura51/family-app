@@ -8,6 +8,20 @@ import type { PrefValue } from '@/state/prefs/prefsEngine'
 
 type Writer = (key: string, value: PrefValue) => void
 
+// DIAGNÓSTICO TEMPORAL (CONFIG-01.1). Sin datos personales: nombres de preferencia, revisiones, longitudes y huellas. Se retirará cuando el fallo esté cerrado.
+type DiagSink = (event: string, data: Record<string, unknown>) => void
+let diagSink: DiagSink | null = null
+export function setPrefsDiagSink(sink: DiagSink | null): void {
+  diagSink = sink
+}
+export function prefsDiag(event: string, data: Record<string, unknown> = {}): void {
+  try {
+    diagSink?.(event, data)
+  } catch {
+    /* el diagnóstico nunca debe romper la app */
+  }
+}
+
 let engineWriter: Writer | null = null
 const queuedBeforeStart = new Map<string, PrefValue>()
 

@@ -7,8 +7,10 @@ const THEME = 'familyapp:color-theme'
 const USER = 'user-a'
 
 async function twoDevices(server = new FakeServer()) {
-  const a = makeDevice(server, USER)
-  const b = makeDevice(server, USER)
+  // Los dos dispositivos comparten reloj en las pruebas: avanzar el tiempo hace trabajar a los dos (subida del uno y descarga del otro tras el aviso).
+  const clock = new FakeClock()
+  const a = makeDevice(server, USER, undefined, clock)
+  const b = makeDevice(server, USER, undefined, clock)
   await a.engine.start()
   await b.engine.start()
   await settle()
@@ -360,5 +362,71 @@ describe('casos límite', () => {
     expect(a.errors.length).toBe(1)
     await a.clock.advance(3 * 60_000) // pasan los 10 minutos
     expect(a.errors.length).toBe(2)
+  })
+})
+
+describe('CONFIG-01.1 · fallos reales encontrados en los dispositivos', () => {
+  it('el aviso de tiempo real con el valor en OTRA forma (lista, texto doble, null, sin valor) no estropea nada: el valor sale siempre de la descarga', async () => {
+    const forms: Array<(v: string | null) => unknown> = [(v) => (v ? JSON.parse(v) : v), (v) => JSON.stringify(v), () => null, () => undefined]
+    for (const form of forms) {
+      const { server, a, b } = await twoDevices()
+      server.realtimeValue = form as never
+      const order = JSON.stringify(['/', '/compras', '/calendario'])
+      a.engine.set(NAV, order)
+      await a.clock.advance(1500)
+      expect(b.storage.getItem(NAV)).toBe(order)
+      expect(b.conflicts).toHaveLength(0)
+    }
+  })
+
+  it('reabrir la app NO deja un valor equivocado en la caché aunque el cursor ya esté adelantado (auto-reparación al arrancar)', async () => {
+    const server = new FakeServer()
+    const rev = server.seed(USER, NAV, 'valor-bueno')
+    const storage = new FakeStorage()
+    storage.setItem(NAV, 'valor-roto') // lo que dejó un aviso mal interpretado
+    storage.setItem(prefsMetaKey(USER), JSON.stringify({ lastRev: rev, revs: { [NAV]: rev }, outbox: {}, rejected: {}, failures: 0 }))
+    storage.setItem(PREFS_OWNER_KEY, USER)
+    const dev = makeDevice(server, USER, storage)
+    await dev.engine.start()
+    await dev.clock.advance(1000)
+    expect(storage.getItem(NAV)).toBe('valor-bueno')
+  })
+
+  it('la auto-reparación no pisa un cambio propio pendiente', async () => {
+    const server = new FakeServer()
+    const rev = server.seed(USER, NAV, 'servidor')
+    const storage = new FakeStorage()
+    storage.setItem(NAV, 'mio-pendiente')
+    storage.setItem(prefsMetaKey(USER), JSON.stringify({ lastRev: rev, revs: { [NAV]: rev }, outbox: { [NAV]: { value: 'mio-pendiente', baseRev: rev } }, rejected: {}, failures: 0 }))
+    storage.setItem(PREFS_OWNER_KEY, USER)
+    const dev = makeDevice(server, USER, storage)
+    dev.online = false
+    await dev.engine.start()
+    await dev.clock.advance(1000)
+    expect(storage.getItem(NAV)).toBe('mio-pendiente')
+  })
+
+  it('escribir NO adelanta el cursor de descarga: lo que otros dispositivos guardaron antes y todavía no se había visto se descarga igualmente', async () => {
+    const server = new FakeServer()
+    const a = makeDevice(server, USER)
+    await a.engine.start()
+    await settle()
+    server.seed(USER, 'familyapp:color-theme', 'vivo') // otro dispositivo guardó esto y A no se enteró (sin aviso)
+    a.engine.set(NAV, 'mio') // la revisión de lo de A es MAYOR que la del tema
+    await a.clock.advance(1500)
+    expect(server.get(USER, NAV)?.value).toBe('mio')
+    await a.engine.pull()
+    expect(a.storage.getItem('familyapp:color-theme')).toBe('vivo')
+  })
+
+  it('una escritura confirmada con un número MENOR que otra ya vista (confirmación fuera de orden) tampoco se pierde', async () => {
+    const server = new FakeServer()
+    server.seedAt(USER, THEME, 'pastel', 10)
+    const a = makeDevice(server, USER)
+    await a.engine.start()
+    await settle()
+    server.seedAt(USER, NAV, 'llegó-tarde', 9) // se confirmó después, con un número anterior
+    await a.engine.pull()
+    expect(a.storage.getItem(NAV)).toBe('llegó-tarde')
   })
 })

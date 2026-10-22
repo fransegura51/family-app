@@ -2,7 +2,8 @@
 // (`prefSet`), avisa a las pantallas (`pepa:pref-changed` + los avisos propios que ya escuchaban) y ofrece los avisos de conflicto y de fallo.
 import { createPrefsEngine, type PrefConflict, type PrefsEngine, type PrefsSyncProblem, type PrefsStorage, type PrefValue } from '@/state/prefs/prefsEngine'
 import { createSupabasePrefsTransport } from '@/state/prefs/prefsTransport'
-import { announcePrefChange, drainQueuedPrefs, setEngineWriter } from '@/state/prefs/prefsWrite'
+import { announcePrefChange, drainQueuedPrefs, setEngineWriter, setPrefsDiagSink } from '@/state/prefs/prefsWrite'
+import { isNativeApp } from '@/services/nativeApp'
 import { RELOAD_TO_APPLY_KEYS } from '@/state/prefs/prefsRegistry'
 import { reportClientError } from '@/data/errorReports'
 
@@ -119,6 +120,38 @@ export function pendingPrefsCount(): number {
   return engine?.pendingCount() ?? 0
 }
 
+// DIAGNÓSTICO TEMPORAL (CONFIG-01.1): un anillo de los últimos sucesos en el propio dispositivo (`pepa:prefs:diag`) y, con tope, un registro en la tabla de errores de
+// la app para poder revisarlo desde el panel. Sin datos personales (claves, revisiones, longitudes y huellas de los valores). Se retira al cerrar la incidencia.
+const DIAG_RING_KEY = 'pepa:prefs:diag'
+const DIAG_RING_MAX = 80
+const DIAG_REPORT_MAX = 40
+let diagReported = 0
+const DIAG_REPORTED_EVENTS = new Set(['start', 'signal', 'pull', 'apply', 'heal', 'set', 'conflict', 'pull-error', 'channel', 'navshell-order'])
+
+function deviceKind(): string {
+  try {
+    const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true
+    return `${isNativeApp() ? 'nativa' : standalone ? 'pwa' : 'web'}|sw=${navigator.serviceWorker?.controller ? 'si' : 'no'}`
+  } catch {
+    return 'desconocido'
+  }
+}
+
+function diagSinkImpl(event: string, data: Record<string, unknown>) {
+  const entry = { t: new Date().toISOString().slice(11, 23), e: event, ...data }
+  try {
+    const ring = JSON.parse(localStorage.getItem(DIAG_RING_KEY) ?? '[]') as unknown[]
+    ring.push(entry)
+    localStorage.setItem(DIAG_RING_KEY, JSON.stringify(ring.slice(-DIAG_RING_MAX)))
+  } catch {
+    /* sin almacenamiento */
+  }
+  const interesting = event !== 'apply' || data.wrote === true || String(data.key).endsWith(':bottom-nav')
+  if (!DIAG_REPORTED_EVENTS.has(event) || !interesting || diagReported >= DIAG_REPORT_MAX) return
+  diagReported += 1
+  void reportClientError(new Error(`prefs-diag ${deviceKind()} ${JSON.stringify(entry)}`))
+}
+
 /** Arranca la sincronización para esta persona. Devuelve la función que la para. */
 export function startPrefsV2(userId: string): () => void {
   if (engine) engine.stop()
@@ -144,11 +177,13 @@ export function startPrefsV2(userId: string): () => void {
       if (p.failing && p.message) pushNotice({ id: 'problem', kind: 'problem', message: p.message })
       else if (!p.failing) dismissPrefsNotice('problem')
     },
+    diag: (event, data) => diagSinkImpl(event, data),
     reportError: (error, context) => {
       void reportClientError(error instanceof Error ? new Error(`${context}: ${error.message}`) : new Error(`${context}: ${String(error)}`))
     },
   })
   engine = e
+  setPrefsDiagSink(diagSinkImpl)
   setEngineWriter((key, value) => e.set(key, value))
   void e.start().then(() => drainQueuedPrefs())
 
@@ -173,6 +208,7 @@ export function startPrefsV2(userId: string): () => void {
     if (engine === e) {
       engine = null
       setEngineWriter(null)
+      setPrefsDiagSink(null)
     }
   }
 }

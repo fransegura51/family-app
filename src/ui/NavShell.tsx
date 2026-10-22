@@ -6,6 +6,7 @@ import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { ToastHost } from '@/ui/ToastHost'
 import { PrefsNotices } from '@/ui/PrefsNotices'
+import { prefsDiag } from '@/state/prefs/prefsWrite'
 import { CommunityMenuItem } from '@/ui/community/CommunityMenuItem'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
@@ -86,6 +87,7 @@ export function NavShell({ profile }: { profile: Profile }) {
   const navigate = useNavigate()
   const showClassicButtons = useShowClassicButtons()
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
+  useEffect(() => prefsDiag('navshell-order', { first4: order.slice(0, 4).join(','), at: 'mount' }), []) // eslint-disable-line react-hooks/exhaustive-deps -- diagnóstico temporal: solo al montar
   const [menuOpen, setMenuOpen] = useState(false)
   const [manager, setManager] = useState<ManagerKind | null>(null)
   const [eventsNeedingAttention, setEventsNeedingAttention] = useState(0)
@@ -110,7 +112,9 @@ export function NavShell({ profile }: { profile: Profile }) {
     function handleOrderChanged(e: Event) {
       const key = (e as CustomEvent<{ key: string }>).detail?.key
       if (key && key !== 'bottom-nav') return
-      setOrder(resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
+      const next = resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav'))
+      prefsDiag('navshell-order', { first4: next.slice(0, 4).join(',') })
+      setOrder(next)
     }
     window.addEventListener('family-app:tab-order-changed', handleOrderChanged)
     return () => window.removeEventListener('family-app:tab-order-changed', handleOrderChanged)

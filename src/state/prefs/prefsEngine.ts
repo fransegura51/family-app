@@ -29,8 +29,19 @@ export interface PrefsTransport {
   fetchSince(afterRev: number): Promise<PrefRow[]>
   /** Comparar y cambiar en el servidor: aplica solo si la fila sigue en `baseRev` (0 = no existía). */
   set(key: string, value: PrefValue, baseRev: number): Promise<SetResult>
-  /** Cambios en tiempo real de la persona. Devuelve la función para cancelar. */
-  subscribe(onRow: (row: PrefRow) => void, onStatus: (status: 'up' | 'down') => void): () => void
+  /**
+   * Tiempo real de la persona. Solo AVISA de que algo cambió (con una pista para el diagnóstico): el valor NO se toma del aviso, se descarga con `fetchSince`.
+   * (Causa de CONFIG-01.1: el valor que viajaba en el aviso no era fiable y dejaba la caché del móvil con un valor equivocado y el cursor ya adelantado.)
+   */
+  subscribe(onSignal: (hint: SignalHint) => void, onStatus: (status: 'up' | 'down') => void): () => void
+}
+
+export interface SignalHint {
+  key?: string
+  rev?: number
+  /** Forma del valor que venía en el aviso (solo diagnóstico, nunca se usa como dato): 'string' | 'array' | 'object' | 'null' | 'missing'… */
+  valueKind?: string
+  valueLength?: number
 }
 
 export interface PrefsStorage {
@@ -70,6 +81,8 @@ export interface PrefsEngineDeps {
   onConflict(conflict: PrefConflict): void
   onProblem(problem: PrefsSyncProblem): void
   reportError?(error: unknown, context: string): void
+  /** Diagnóstico temporal (sin datos personales: nombres de clave, revisiones y huellas). */
+  diag?(event: string, data: Record<string, unknown>): void
 }
 
 interface PendingChange {
@@ -89,11 +102,25 @@ export const PREFS_OWNER_KEY = 'pepa:prefs:owner'
 export const prefsMetaKey = (userId: string) => `pepa:prefs:meta:v2:${userId}`
 
 const FLUSH_DELAY_MS = 700
+const PULL_DELAY_MS = 150
+// Las revisiones salen de una secuencia: una escritura con número menor puede confirmarse DESPUÉS de otra con número mayor. Para no saltarse nunca ninguna,
+// cada descarga vuelve a pedir una ventana hacia atrás (las filas ya vistas se ignoran).
+const PULL_OVERLAP = 200
 const RETRY_BASE_MS = 1000
 const RETRY_MAX_MS = 60_000
 const PROBLEM_AFTER_FAILURES = 3
 // Errores del servidor que NO se arreglan reintentando: se descartan (con aviso) para no quedarse en un bucle.
 const FATAL_CODES = ['INVALID_KEY', 'INVALID_VALUE', 'TOO_MANY_PREFS', 'NOT_AUTHORIZED', '42501', '22023']
+
+export function fingerprint(v: PrefValue | undefined): string {
+  if (v === null || v === undefined) return String(v)
+  let h = 2166136261
+  for (let i = 0; i < v.length; i++) {
+    h ^= v.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return `${v.length}:${(h >>> 0).toString(16)}`
+}
 
 export interface PrefsEngine {
   start(): Promise<void>
@@ -135,6 +162,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
   let stopped = false
   let unsubscribe: (() => void) | null = null
   let flushTimer: unknown = null
+  let pullTimer: unknown = null
   let flushing: Promise<void> | null = null
   let channelWasDown = true // la primera confirmación del canal vuelve a descargar lo que pudo llegar entre la descarga inicial y la suscripción
   const inflight = new Map<string, PrefValue>()
@@ -169,11 +197,13 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
     deps.onProblem({ failing: meta.failures >= PROBLEM_AFTER_FAILURES, failures: meta.failures, pending: Object.keys(meta.outbox).length, message })
   }
 
-  function applyServerRow(row: PrefRow, source: 'remote' | 'own') {
+  // El cursor de descarga (`lastRev`) NO se toca aquí: solo avanza con lo que devuelve una descarga (ver `pull`).
+  function applyServerRow(row: PrefRow, source: 'remote' | 'own', why = 'apply') {
     meta.revs[row.key] = Math.max(meta.revs[row.key] ?? 0, row.rev)
-    meta.lastRev = Math.max(meta.lastRev, row.rev)
     const current = storage.getItem(row.key)
-    if (current !== row.value) {
+    const changed = current !== row.value
+    deps.diag?.(why, { key: row.key, rev: row.rev, wrote: changed, before: fingerprint(current), after: fingerprint(row.value) })
+    if (changed) {
       writeCache(row.key, row.value)
       deps.onAnyChange?.([row.key])
       if (source === 'remote') deps.onRemoteChange([row.key])
@@ -183,11 +213,16 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
   // Lo que llega del servidor (descarga o tiempo real). Decide si es un eco, un cambio nuevo o un conflicto con algo pendiente.
   function handleServerRow(row: PrefRow) {
     if (!isSyncedPrefKey(row.key)) return
-    if (row.rev <= (meta.revs[row.key] ?? 0)) return // ya visto (eco de lo nuestro o duplicado)
+    const known = meta.revs[row.key] ?? 0
+    if (row.rev < known) return // más antigua que lo ya aplicado (solapamiento de la descarga)
+    if (row.rev === known) {
+      // Ya vista. Auto-reparación: si la caché de ESTE dispositivo no coincide con lo confirmado en el servidor (y no hay un cambio propio pendiente), se corrige.
+      if (!meta.outbox[row.key] && !inflight.has(row.key) && storage.getItem(row.key) !== row.value) applyServerRow(row, 'remote', 'heal')
+      return
+    }
     const pending = meta.outbox[row.key]
     if (inflight.has(row.key) && inflight.get(row.key) === row.value) {
       // Eco de nuestra propia escritura en vuelo: la respuesta de la llamada fijará la revisión.
-      meta.lastRev = Math.max(meta.lastRev, row.rev)
       return
     }
     if (pending) {
@@ -203,6 +238,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       delete meta.outbox[row.key]
       applyServerRow(row, 'remote')
       persist()
+      deps.diag?.('conflict', { key: row.key, via: 'pull' })
       deps.onConflict({ key: row.key, rejectedValue: pending.value, appliedValue: row.value })
       return
     }
@@ -210,20 +246,38 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
     persist()
   }
 
-  async function pull(): Promise<void> {
+  async function pull(full = false): Promise<void> {
     if (stopped) return
     try {
-      let after = meta.lastRev
+      const startedAt = full ? 0 : Math.max(0, meta.lastRev - PULL_OVERLAP)
+      let after = startedAt
+      let count = 0
+      let maxRev = meta.lastRev
       for (let guard = 0; guard < 20; guard++) {
         const rows = await transport.fetchSince(after)
-        for (const row of rows) handleServerRow(row)
+        count += rows.length
+        for (const row of rows) {
+          handleServerRow(row)
+          maxRev = Math.max(maxRev, row.rev)
+        }
         if (rows.length < 1000) break
         after = Math.max(after, ...rows.map((r) => r.rev))
       }
+      meta.lastRev = maxRev
       persist()
+      deps.diag?.('pull', { after: startedAt, full, rows: count, lastRev: meta.lastRev })
     } catch (error) {
+      deps.diag?.('pull-error', { message: error instanceof Error ? error.message.slice(0, 80) : 'error', online: deps.isOnline() })
       if (deps.isOnline()) reportThrottled(error, 'prefs:pull')
     }
+  }
+
+  function schedulePull() {
+    if (stopped || pullTimer !== null) return
+    pullTimer = deps.setTimer(() => {
+      pullTimer = null
+      void pull()
+    }, PULL_DELAY_MS)
   }
 
   function scheduleFlush(ms = FLUSH_DELAY_MS) {
@@ -261,13 +315,14 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
         const now = meta.outbox[key]
         if (result.applied) {
           meta.revs[key] = Math.max(meta.revs[key] ?? 0, result.rev)
-          meta.lastRev = Math.max(meta.lastRev, result.rev)
+          deps.diag?.('set', { key, baseRev, applied: true, rev: result.rev })
           if (now && now.value === sent) delete meta.outbox[key]
           else if (now) meta.outbox[key] = { value: now.value, baseRev: result.rev } // se cambió otra vez durante la subida
           meta.failures = 0
         } else {
           // El servidor ya tenía un cambio más reciente: prevalece y se avisa.
           meta.failures = 0
+          deps.diag?.('set', { key, baseRev, applied: false, rev: result.rev })
           if (now && now.value === result.value) {
             // Otro dispositivo ya había guardado exactamente lo mismo: no hay nada que sustituir.
             delete meta.outbox[key]
@@ -277,6 +332,7 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
             delete meta.outbox[key]
             meta.rejected[key] = rejectedValue
             applyServerRow({ key, value: result.value, rev: result.rev }, 'remote')
+            deps.diag?.('conflict', { key, via: 'set' })
             deps.onConflict({ key, rejectedValue, appliedValue: result.value })
           } else {
             // Ya se había resuelto por el canal en tiempo real: solo se asegura la revisión.
@@ -364,7 +420,9 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       stopped = false
       adoptOwner()
       meta = parseMeta(storage.getItem(metaKey))
-      await pull()
+      deps.diag?.('start', { lastRev: meta.lastRev, knownKeys: Object.keys(meta.revs).length, pending: Object.keys(meta.outbox).length })
+      // Al arrancar se descarga TODO lo de la cuenta (son pocas filas) y se compara con la caché: si algo no coincide, se repara aunque el cursor diga que ya se vio.
+      await pull(true)
       // Lo local que la cuenta todavía no tiene (primera vez en este dispositivo, o una preferencia nueva tras actualizar la app) se sube; lo que la
       // cuenta ya tiene manda sobre lo local.
       for (const key of storage.keys()) {
@@ -374,8 +432,13 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       }
       persist()
       unsubscribe = transport.subscribe(
-        (row) => handleServerRow(row),
+        (hint) => {
+          // El aviso solo despierta la descarga: el valor NO se toma de él.
+          deps.diag?.('signal', { key: hint.key, rev: hint.rev, valueKind: hint.valueKind, valueLength: hint.valueLength })
+          schedulePull()
+        },
         (status) => {
+          deps.diag?.('channel', { status })
           if (status === 'down') channelWasDown = true
           else if (channelWasDown) {
             channelWasDown = false
@@ -391,6 +454,8 @@ export function createPrefsEngine(deps: PrefsEngineDeps): PrefsEngine {
       started = false
       if (flushTimer !== null) deps.clearTimer(flushTimer)
       flushTimer = null
+      if (pullTimer !== null) deps.clearTimer(pullTimer)
+      pullTimer = null
       unsubscribe?.()
       unsubscribe = null
       persist()

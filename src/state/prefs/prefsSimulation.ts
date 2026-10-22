@@ -6,6 +6,8 @@ export class FakeServer {
   private rev = 0
   private rows = new Map<string, Map<string, { value: PrefValue; rev: number }>>()
   private subs = new Set<{ userId: string; onRow: (row: PrefRow) => void; online: () => boolean }>()
+  /** Cómo viaja el valor en el AVISO de tiempo real (en producción puede no ser un texto: el motor no debe fiarse de él). */
+  realtimeValue: (value: PrefValue) => unknown = (v) => v
   setCalls: Array<{ userId: string; key: string; value: PrefValue; baseRev: number }> = []
 
   private userRows(userId: string) {
@@ -19,6 +21,12 @@ export class FakeServer {
 
   get(userId: string, key: string) {
     return this.userRows(userId).get(key)
+  }
+
+  /** Una fila que se confirma con una revisión CONCRETA (p. ej. menor que otra ya vista: confirmación fuera de orden). */
+  seedAt(userId: string, key: string, value: PrefValue, rev: number): void {
+    this.rev = Math.max(this.rev, rev)
+    this.userRows(userId).set(key, { value, rev })
   }
 
   seed(userId: string, key: string, value: PrefValue): number {
@@ -139,9 +147,16 @@ export function makeDevice(server: FakeServer, userId: string, storage: FakeStor
       }
       return server.set(userId, key, value, baseRev)
     },
-    subscribe(onRow, onStatus) {
+    subscribe(onSignal, onStatus) {
       onStatus('up')
-      return server.subscribe(userId, onRow, () => dev.online)
+      return server.subscribe(
+        userId,
+        (row) => {
+          const v = server.realtimeValue(row.value)
+          onSignal({ key: row.key, rev: row.rev, valueKind: v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v })
+        },
+        () => dev.online,
+      )
     },
   }
 

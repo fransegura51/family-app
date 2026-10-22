@@ -1,11 +1,19 @@
 import { supabase } from '@/data/supabaseClient'
-import type { PrefRow, PrefsTransport, PrefValue, SetResult } from '@/state/prefs/prefsEngine'
+import type { PrefsTransport, PrefValue, SetResult, SignalHint } from '@/state/prefs/prefsEngine'
 
 // Red real de las preferencias (tabla `user_prefs` y función `set_user_pref`, migración 0305). Una sola suscripción de tiempo real por dispositivo.
 const PAGE = 1000
 
 function asValue(v: unknown): PrefValue {
   return typeof v === 'string' ? v : null
+}
+
+// Forma del valor que viene en el aviso de tiempo real (solo para el diagnóstico; el valor NO se usa).
+function kindOf(v: unknown): string {
+  if (v === undefined) return 'missing'
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'array'
+  return typeof v
 }
 
 export function createSupabasePrefsTransport(userId: string): PrefsTransport {
@@ -22,14 +30,19 @@ export function createSupabasePrefsTransport(userId: string): PrefsTransport {
       if (!row || typeof row.applied !== 'boolean') throw new Error('Respuesta inesperada de set_user_pref')
       return { applied: row.applied, rev: Number(row.rev), value: asValue(row.value) }
     },
-    subscribe(onRow, onStatus) {
+    subscribe(onSignal, onStatus) {
       const channel = supabase
         .channel(`user-prefs:${userId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'user_prefs', filter: `user_id=eq.${userId}` }, (payload) => {
+          // Tiempo real = solo un AVISO. El valor se descarga con fetchSince (ver prefsEngine.ts): el que viaja aquí no se usa.
           const next = payload.new as { key?: string; value?: unknown; rev?: number | string } | undefined
-          if (!next || typeof next.key !== 'string' || next.rev === undefined) return
-          const row: PrefRow = { key: next.key, value: asValue(next.value), rev: Number(next.rev) }
-          onRow(row)
+          const hint: SignalHint = {
+            key: typeof next?.key === 'string' ? next.key : undefined,
+            rev: next?.rev === undefined ? undefined : Number(next.rev),
+            valueKind: kindOf(next?.value),
+            valueLength: typeof next?.value === 'string' ? next.value.length : undefined,
+          }
+          onSignal(hint)
         })
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') onStatus('up')

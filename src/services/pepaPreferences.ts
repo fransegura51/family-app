@@ -1,5 +1,6 @@
 // Preferencias de Pepa que se eligen por aparato (se guardan en el propio móvil, no en la cuenta).
 import { isNativeApp } from '@/services/nativeApp'
+import { prefSet } from '@/state/prefs/prefsWrite'
 
 const AUTO_CONFIRM_KEY = 'pepa:auto-confirm'
 
@@ -19,7 +20,7 @@ export function getAutoConfirm(): boolean {
 
 export function setAutoConfirm(value: boolean): void {
   try {
-    localStorage.setItem(AUTO_CONFIRM_KEY, value ? 'on' : 'off')
+    prefSet(AUTO_CONFIRM_KEY, value ? 'on' : 'off')
   } catch {
     // Sin localStorage no se puede recordar: se queda la opción por defecto.
   }
@@ -41,7 +42,7 @@ export function getShowClassicButtons(): boolean {
 
 export function setShowClassicButtons(value: boolean): void {
   try {
-    localStorage.setItem(CLASSIC_BUTTONS_KEY, value ? 'on' : 'off')
+    prefSet(CLASSIC_BUTTONS_KEY, value ? 'on' : 'off')
   } catch {
     // Sin localStorage no se puede recordar: se quedan visibles.
   }

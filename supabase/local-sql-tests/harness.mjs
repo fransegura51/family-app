@@ -35,6 +35,7 @@ export async function setup(opts = {}) {
       member_type text not null check (member_type in ('admin','adult','child','baby','guest')), linked_profile_id uuid references profiles(id) on delete set null,
       birth_date date, allowed_sections text[], invite_code text unique, invite_code_expires_at timestamptz,
       color text not null default '#4C6EF5', sex text check (sex in ('female','male')), photo_path text);
+    create table user_ui_prefs (user_id uuid primary key references auth.users(id) on delete cascade, prefs jsonb not null default '{}'::jsonb, updated_at timestamptz not null default now());
     create table family_invites (code text primary key, created_by uuid not null, created_at timestamptz not null default now(), expires_at timestamptz not null default now() + interval '30 days',
       note text, used_by_family uuid references families(id) on delete set null, used_at timestamptz);
     create table profile_locks (profile_id uuid primary key references profiles(id) on delete cascade, pin_hash text, failed_attempts int not null default 0, locked_until timestamptz, updated_at timestamptz not null default now());
@@ -77,6 +78,8 @@ export async function setup(opts = {}) {
       await db.exec(read('supabase/migrations/' + f))
     }
     await db.exec(read('supabase/migrations/0304_member_self_and_guardian_edit.sql'))
+    // 0305 aún no está aplicada en producción: vive en pending-migrations hasta que se autorice.
+    await db.exec(read('supabase/pending-migrations/0305_user_prefs.sql'))
     await db.exec(`revoke all on function public.join_family_with_code(text, text, date) from public, anon; grant execute on function public.join_family_with_code(text, text, date) to authenticated;`)
   }
   return db

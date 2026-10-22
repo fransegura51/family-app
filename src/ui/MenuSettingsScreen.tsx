@@ -70,6 +70,7 @@ import { SecuritySettings } from '@/ui/SecuritySettings'
 import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateTime } from '@/domain/dateFormat'
+import { flushPrefsNow } from '@/state/prefs/prefsRuntime'
 
 const PINNED_COUNT = 4
 
@@ -531,12 +532,13 @@ function ColorThemeSection() {
     <>
       <ColorThemePicker
         title="🎨 Menús y pantallas"
-        text="Los colores de Inicio, los menús ☰, tarjetas, filas, calendario, compras y cocina en este móvil. Al elegir otro estilo la app se recarga."
+        text="Los colores de Inicio, los menús ☰, tarjetas, filas, calendario, compras y cocina. Se guarda en tu cuenta y vale en todos tus dispositivos. Al elegir otro estilo la app se recarga."
         options={UI_THEME_OPTIONS}
         current={uiTheme}
         onChoose={(next) => {
           saveColorTheme(next)
-          window.location.reload()
+          // Primero se sube el cambio a la cuenta y después se recarga (si no, la recarga podía cortar la subida).
+          void flushPrefsNow().finally(() => window.location.reload())
         }}
       />
       <ColorThemePicker
@@ -546,7 +548,7 @@ function ColorThemeSection() {
         current={chartTheme}
         onChoose={(next) => {
           saveChartColorTheme(next)
-          window.location.reload()
+          void flushPrefsNow().finally(() => window.location.reload())
         }}
       />
     </>

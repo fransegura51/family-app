@@ -14,6 +14,8 @@
 // dentro del propio item en vez de en ECONOMIA_MENU_ITEM_META (esa
 // tabla solo conoce las fijas).
 
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type FixedEconomiaMenuItemKey =
   | 'Resumen'
   | 'Estadísticas'
@@ -113,7 +115,7 @@ export function loadEconomiaMenuLayout(): EconomiaMenuGroup[] {
 
 export function saveEconomiaMenuLayout(layout: EconomiaMenuGroup[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    prefSet(KEY, JSON.stringify(layout))
   } catch {
     // Sin localStorage (privado/bloqueado) — se queda en el orden por
     // defecto, no rompe nada.

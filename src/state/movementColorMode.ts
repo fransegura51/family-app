@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { prefSet } from '@/state/prefs/prefsWrite'
 
 // Ajuste "Colorear movimientos por" (petición real: extender el
 // pastel también a Movimientos) — por dispositivo, en localStorage,
@@ -20,7 +21,7 @@ export function loadMovementColorMode(): MovementColorMode {
 
 export function saveMovementColorMode(mode: MovementColorMode): void {
   try {
-    localStorage.setItem(STORAGE_KEY, mode)
+    prefSet(STORAGE_KEY, mode)
   } catch {
     // localStorage no disponible (privado/bloqueado): se pierde
     // recordar el ajuste entre visitas, no es crítico.

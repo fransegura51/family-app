@@ -29,7 +29,7 @@ export function ClassicButtonsCard() {
           </span>
         </span>
       </label>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Solo afecta a este móvil: cada persona elige el suyo. Los botones no se borran, solo se esconden.</p>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Es una preferencia personal: se guarda en tu cuenta y la ves igual en todos tus dispositivos; cada persona elige la suya. Los botones no se borran, solo se esconden.</p>
     </div>
   )
 }

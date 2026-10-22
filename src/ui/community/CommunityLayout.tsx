@@ -20,6 +20,7 @@ import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { useHideFloatingOnScroll } from '@/ui/community/useHideFloatingOnScroll'
 import { MenuFab, useMenuFabTop } from '@/ui/KitchenHeaderWithMenu'
 import '@/ui/community/community.css'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 // Marco de TODAS las páginas de Comunidad (portada, secciones, publicaciones, comentarios, perfiles, borradores y páginas internas). De arriba abajo:
 //   1. el botón «☰ Menú», FLOTANTE y fijo en la pantalla como en el resto de PEPA (a media altura de la cabecera con la página arriba; mismo desplegable: Portada, Recetas y cocina, Hogar y familia),
@@ -59,6 +60,8 @@ export function CommunityLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [order, setOrder] = useState<CommunityMenuKey[]>(() => loadCommunityMenuOrder())
   const [pinned, setPinned] = useState<CommunityMenuKey[]>(() => loadCommunityPinned())
+  usePrefChange('familyapp:community-menu-order', () => setOrder(loadCommunityMenuOrder()))
+  usePrefChange('familyapp:community-pinned-tabs', () => setPinned(loadCommunityPinned()))
   const menuRef = useRef<HTMLDivElement>(null)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   // Botón flotante: se coloca midiendo la cabecera ilustrada (misma regla que Cocina, Calendario, Economía…).

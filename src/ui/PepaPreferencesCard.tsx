@@ -30,7 +30,7 @@ export function PepaPreferencesCard() {
         </span>
       </label>
       <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
-        Solo afecta a este móvil. Lo que toca dinero (presupuestos) siempre pide confirmación, y si algo no cuadra (un aviso de duplicado o de horario, o
+        Es una preferencia personal: cuando la eliges se guarda en tu cuenta y vale en todos tus dispositivos (mientras no la elijas, cada tipo de dispositivo usa su opción habitual). Lo que toca dinero (presupuestos) siempre pide confirmación, y si algo no cuadra (un aviso de duplicado o de horario, o
         falta decidir algo) también te enseña la tarjeta.
       </p>
     </div>

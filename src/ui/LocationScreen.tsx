@@ -67,6 +67,7 @@ import { googleMapsUrl } from '@/domain/memberWhere'
 import { consumeMemberFocus, onMemberFocus } from '@/services/mapFocus'
 import { pastelPalette } from '@/domain/colors'
 import { formatTime } from '@/domain/dateFormat'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -85,6 +86,8 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
   const [menuOpen, setMenuOpen] = useState(false)
   const [pinnedItems, setPinnedItems] = useState<UbicacionMenuItemKey[]>(() => loadUbicacionPinnedItems())
   const [menuLayout, setMenuLayout] = useState<UbicacionMenuGroup[]>(() => loadUbicacionMenuLayout())
+  usePrefChange('familyapp:ubicacion-pinned-tabs', () => setPinnedItems(loadUbicacionPinnedItems()))
+  usePrefChange('familyapp:ubicacion-menu-layout', () => setMenuLayout(loadUbicacionMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
   function persistMenuLayout(next: UbicacionMenuGroup[]) {

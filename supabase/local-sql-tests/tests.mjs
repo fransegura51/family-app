@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { setup, addUser, mkFamily, addAccount, addFicha, as, asAnon, err, uid } from './harness.mjs'
+import { setup, addUser, mkFamily, addAccount, addFicha, as, asAnon, err, uid, read } from './harness.mjs'
 
 let passed = 0
 const failed = []
@@ -591,6 +591,155 @@ console.log('\n0304 · cada persona adulta edita su ficha y la de sus hijos/as')
   await t('sin sesión no se puede nada', async () => {
     assert.ok(await asAnon(db, () => err(() => db.query('select public.update_member_card($1,$2,$3,$4,$5)', [kid, 'x', '#112233', null, null]))))
     assert.ok(await asAnon(db, () => err(() => db.query('select public.set_member_photo($1,$2)', [kid, `${fam}/z.jpg`]))))
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- 0305
+console.log('\n0305 · preferencias por persona (una fila por preferencia)')
+{
+  const fam = await mkFamily(db, 'P')
+  const ana = await addAccount(db, fam, 'admin', 'AnaP')
+  const beto = await addAccount(db, fam, 'adult', 'BetoP')
+  const NAV = 'familyapp:tab-order:bottom-nav'
+  const THEME = 'familyapp:color-theme'
+  const S = (who, key, value, base) => as(db, who, async () => (await db.query('select * from public.set_user_pref($1, $2::jsonb, $3)', [key, value === null ? null : JSON.stringify(value), base])).rows[0])
+  const mine = (who) => as(db, who, async () => (await db.query('select key, value, rev::int from public.user_prefs order by key')).rows)
+
+  await t('comparar y cambiar: primera vez (base 0) se aplica; con la revisión correcta se aplica; con una antigua NO y devuelve el valor ganador', async () => {
+    const r1 = await S(ana.id, NAV, 'v1', 0)
+    assert.equal(r1.applied, true)
+    assert.ok(Number(r1.rev) > 0)
+    assert.equal(r1.value, 'v1')
+    const r2 = await S(ana.id, NAV, 'v2', Number(r1.rev))
+    assert.equal(r2.applied, true)
+    assert.ok(Number(r2.rev) > Number(r1.rev))
+    const r3 = await S(ana.id, NAV, 'v3-antiguo', Number(r1.rev)) // parte de la revisión 1, ya superada
+    assert.equal(r3.applied, false)
+    assert.equal(r3.value, 'v2')
+    assert.equal(Number(r3.rev), Number(r2.rev))
+    const r4 = await S(ana.id, NAV, 'otra-vez-primera', 0) // «no existía»: ya existe
+    assert.equal(r4.applied, false)
+    assert.equal(r4.value, 'v2')
+  })
+
+  await t('la revisión crece entre preferencias distintas (orden de servidor) y cada preferencia es independiente', async () => {
+    const a = await S(ana.id, THEME, 'vivo', 0)
+    const b = await S(ana.id, 'familyapp:home-card-order', '["a"]', 0)
+    assert.ok(Number(b.rev) > Number(a.rev))
+    const rows = await mine(ana.id)
+    assert.deepEqual(rows.map((r) => r.key), [THEME, 'familyapp:home-card-order', NAV].sort())
+    const nav = rows.find((r) => r.key === NAV)
+    assert.equal(nav.value, 'v2') // cambiar otras claves no toca esta
+  })
+
+  await t('aislamiento entre personas: nadie lee ni pisa las preferencias de otra, aunque use la misma clave', async () => {
+    assert.equal((await mine(beto.id)).length, 0)
+    const r = await S(beto.id, NAV, 'de-beto', 0)
+    assert.equal(r.applied, true)
+    assert.equal((await mine(ana.id)).find((x) => x.key === NAV).value, 'v2')
+    assert.equal((await mine(beto.id)).find((x) => x.key === NAV).value, 'de-beto')
+  })
+
+  await t('«volver al valor predeterminado» (null) se guarda como JSON null y se devuelve como tal', async () => {
+    const cur = (await mine(beto.id)).find((x) => x.key === NAV)
+    const r = await S(beto.id, NAV, null, cur.rev)
+    assert.equal(r.applied, true)
+    assert.equal(r.value, null)
+    assert.equal((await db.query(`select jsonb_typeof(value) t from public.user_prefs where user_id = $1 and key = $2`, [beto.id, NAV])).rows[0].t, 'null')
+  })
+
+  await t('claves fuera de la lista cerrada, valores que no son texto, demasiado grandes o con revisión rara se rechazan', async () => {
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref('familyapp:location-sharing-member-id', '"x"'::jsonb, 0)`))), 'INVALID_KEY')
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref('otra:clave', '"x"'::jsonb, 0)`))), 'INVALID_KEY')
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref($1, '{"a":1}'::jsonb, 0)`, [THEME]))), 'INVALID_VALUE')
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref($1, to_jsonb(repeat('x', 9000)), 0)`, ['familyapp:chart-color-theme']))), 'INVALID_VALUE')
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref($1, '"x"'::jsonb, -1)`, [THEME]))), 'INVALID_VALUE')
+    has(await as(db, ana.id, () => err(() => db.query(`select * from public.set_user_pref($1, '"x"'::jsonb, null)`, [THEME]))), 'INVALID_VALUE')
+  })
+
+  await t('sin sesión no se puede escribir ni leer; el rol anónimo no tiene ni permiso de ejecutar la función', async () => {
+    assert.ok(await asAnon(db, () => err(() => db.query(`select * from public.set_user_pref($1, '"x"'::jsonb, 0)`, [THEME]))))
+    assert.ok(await asAnon(db, () => err(() => db.query('select * from public.user_prefs'))))
+    assert.equal((await db.query(`select has_function_privilege('anon', 'public.set_user_pref(text, jsonb, bigint)', 'execute') p`)).rows[0].p, false)
+    assert.equal((await db.query(`select has_function_privilege('authenticated', 'public.set_user_pref(text, jsonb, bigint)', 'execute') p`)).rows[0].p, true)
+  })
+
+  await t('nadie escribe directamente en la tabla (ni insertar, ni actualizar, ni borrar) y la secuencia no es accesible', async () => {
+    assert.ok(await as(db, ana.id, () => err(() => db.query(`insert into public.user_prefs (user_id, key, value) values ($1, $2, '"x"')`, [ana.id, 'familyapp:color-theme-x']))))
+    assert.ok(await as(db, ana.id, () => err(() => db.query(`update public.user_prefs set value = '"hack"' where key = $1`, [NAV]))))
+    assert.ok(await as(db, ana.id, () => err(() => db.query(`delete from public.user_prefs`))))
+    assert.ok(await as(db, ana.id, () => err(() => db.query(`select nextval('public.user_prefs_rev_seq')`))))
+    assert.equal((await mine(ana.id)).find((x) => x.key === NAV).value, 'v2')
+  })
+
+  await t('límite de 200 preferencias por persona (la 201.ª clave nueva se rechaza; actualizar una existente sigue valiendo)', async () => {
+    const c = await addAccount(db, fam, 'adult', 'CarlosP')
+    for (let i = 0; i < 200; i++) {
+      await db.query(`insert into public.user_prefs (user_id, key, value) values ($1, $2, '"x"')`, [c.id, `familyapp:tab-order:k${i}`])
+    }
+    has(await as(db, c.id, () => err(() => db.query(`select * from public.set_user_pref($1, '"x"'::jsonb, 0)`, ['familyapp:tab-order:nueva']))), 'TOO_MANY_PREFS')
+    const cur = (await mine(c.id)).find((x) => x.key === 'familyapp:tab-order:k5')
+    const r = await S(c.id, 'familyapp:tab-order:k5', 'otro', cur.rev)
+    assert.equal(r.applied, true)
+  })
+
+  await t('copia inicial desde user_ui_prefs: solo claves permitidas y válidas, sin pisar lo ya existente y sin borrar la tabla antigua', async () => {
+    const d = await addAccount(db, fam, 'adult', 'DanaP')
+    await db.query(`insert into public.user_ui_prefs (user_id, prefs) values ($1, $2::jsonb)`, [d.id, JSON.stringify({ [NAV]: 'viejo', [THEME]: 'neutro', 'basura:clave': 'x', 'familyapp:location-sharing-member-id': 'ajeno' })])
+    // El disparador de transición ya copia al insertar; se vacía para probar la copia inicial por separado.
+    await db.query('delete from public.user_prefs where user_id = $1', [d.id])
+    await db.query(`insert into public.user_prefs (user_id, key, value) values ($1, $2, '"ya-nuevo"')`, [d.id, THEME])
+    const sql = read('supabase/pending-migrations/0305_user_prefs.sql')
+    const block = sql.slice(sql.indexOf('-- BACKFILL START'), sql.indexOf('-- BACKFILL END'))
+    await db.exec(block)
+    const rows = (await db.query('select key, value from public.user_prefs where user_id = $1 order by key', [d.id])).rows
+    assert.deepEqual(rows.map((r) => [r.key, r.value]), [[THEME, 'ya-nuevo'], [NAV, 'viejo']].sort((a, b) => a[0].localeCompare(b[0])))
+    assert.equal((await db.query('select count(*)::int n from public.user_ui_prefs where user_id = $1', [d.id])).rows[0].n, 1)
+  })
+
+  await t('disparador de transición: lo que sube una versión antigua se copia (solo claves que cambian y permitidas); lo que no cambia no repone valores viejos', async () => {
+    const e = await addAccount(db, fam, 'adult', 'EvaP')
+    await db.query(`insert into public.user_ui_prefs (user_id, prefs) values ($1, $2::jsonb)`, [e.id, JSON.stringify({ [NAV]: 'a1', [THEME]: 'pastel' })])
+    const first = (await db.query('select key, value, rev::int from public.user_prefs where user_id = $1 order by key', [e.id])).rows
+    assert.deepEqual(first.map((r) => [r.key, r.value]), [[THEME, 'pastel'], [NAV, 'a1']].sort((a, b) => a[0].localeCompare(b[0])))
+    // La versión nueva cambia el tema en user_prefs; después una versión antigua sube lo mismo que ya tenía + un cambio del menú.
+    const themeRow = first.find((r) => r.key === THEME)
+    const r = await S(e.id, THEME, 'vivo', themeRow.rev)
+    assert.equal(r.applied, true)
+    await db.query(`update public.user_ui_prefs set prefs = $2::jsonb where user_id = $1`, [e.id, JSON.stringify({ [NAV]: 'a2', [THEME]: 'pastel', 'basura:x': '1' })])
+    const after = (await db.query('select key, value from public.user_prefs where user_id = $1 order by key', [e.id])).rows
+    assert.equal(after.find((x) => x.key === NAV).value, 'a2') // cambió
+    assert.equal(after.find((x) => x.key === THEME).value, 'vivo') // el tema no cambió en la fila antigua: no se repone
+    assert.ok(!after.some((x) => x.key === 'basura:x'))
+  })
+
+  await t('deshacer 0305: devuelve lo nuevo a user_ui_prefs (sin perder cambios) y deja la base como antes de la migración', async () => {
+    const db2 = await setup()
+    const fam2 = await mkFamily(db2, 'R')
+    const f = await addAccount(db2, fam2, 'adult', 'FaustoR')
+    await db2.query(`insert into public.user_ui_prefs (user_id, prefs) values ($1, '{"familyapp:color-theme":"pastel"}'::jsonb)`, [f.id])
+    await as(db2, f.id, () => db2.query(`select * from public.set_user_pref('familyapp:tab-order:bottom-nav', '"orden-nuevo"'::jsonb, 0)`))
+    await as(db2, f.id, async () => {
+      const cur = (await db2.query(`select rev from public.user_prefs where key = 'familyapp:color-theme'`)).rows[0].rev
+      await db2.query(`select * from public.set_user_pref('familyapp:color-theme', '"vivo"'::jsonb, $1)`, [cur])
+    })
+    await db2.exec(read('supabase/pending-migrations/0305_user_prefs_down.sql'))
+    const prefs = (await db2.query('select prefs from public.user_ui_prefs where user_id = $1', [f.id])).rows[0].prefs
+    assert.equal(prefs['familyapp:tab-order:bottom-nav'], 'orden-nuevo')
+    assert.equal(prefs['familyapp:color-theme'], 'vivo')
+    assert.equal((await db2.query(`select to_regclass('public.user_prefs') is null as gone`)).rows[0].gone, true)
+    assert.equal((await db2.query(`select count(*)::int n from pg_proc where proname in ('set_user_pref','user_pref_key_allowed','mirror_user_ui_prefs')`)).rows[0].n, 0)
+  })
+
+  await t('la lista cerrada de claves del SQL coincide con la del código (registro de claves)', async () => {
+    const sql = read('supabase/pending-migrations/0305_user_prefs.sql')
+    const body = sql.slice(sql.indexOf('create or replace function private.user_pref_key_allowed'), sql.indexOf('revoke all on function private.user_pref_key_allowed'))
+    const sqlPatterns = [...body.matchAll(/^\s*'(\^[^']+\$)',?\s*$/gm)].map((m) => m[1])
+    const reg = read('src/state/prefs/prefsRegistry.ts')
+    const tsBlock = reg.slice(reg.indexOf('SYNCED_KEY_PATTERN_SOURCES'), reg.indexOf(']\n\nconst SYNCED_KEY_PATTERNS'))
+    const tsPatterns = [...tsBlock.matchAll(/^\s*'(\^[^']+\$)',\s*$/gm)].map((m) => m[1].replace(/\\\\/g, '\\'))
+    assert.ok(sqlPatterns.length >= 10)
+    assert.deepEqual(sqlPatterns, tsPatterns)
   })
 }
 

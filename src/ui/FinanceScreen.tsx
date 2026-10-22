@@ -275,6 +275,8 @@ import { reportClientError } from '@/data/errorReports'
 import { CLASSIFY_FAILED_MESSAGE, classifyMessage, classifyOk, pendingSignalText } from '@/domain/classifyPurchase'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { formatDate } from '@/domain/dateFormat'
+import { prefSet } from '@/state/prefs/prefsWrite'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -338,7 +340,7 @@ function loadEconomiaPinnedItems(): EconomiaMenuItemKey[] {
 
 function saveEconomiaPinnedItems(items: EconomiaMenuItemKey[]) {
   try {
-    localStorage.setItem(ECONOMIA_PINNED_KEY, JSON.stringify(items))
+    prefSet(ECONOMIA_PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage (privado/bloqueado) — se queda todo dentro del
     // desplegable, no rompe nada.
@@ -492,6 +494,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // alternativa de cambiar de pestaña sin tocar la fila de chips.
   const [economiaMenuOpen, setEconomiaMenuOpen] = useState(false)
   const [pinnedItems, setPinnedItems] = useState<EconomiaMenuItemKey[]>(() => loadEconomiaPinnedItems())
+  usePrefChange('familyapp:economia-pinned-tabs', () => setPinnedItems(loadEconomiaPinnedItems()))
   // Petición real: "¿cómo puedo crear un acceso nuevo, con su propio
   // nombre e icono, no solo una carpeta para agrupar los que ya hay?"
   // — el layout (grupos + accesos, fijos o personalizados) vive aquí
@@ -499,6 +502,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // (que necesita el icono/nombre real de un acceso personalizado)
   // lean del mismo sitio.
   const [menuLayout, setMenuLayout] = useState<EconomiaMenuGroup[]>(() => loadEconomiaMenuLayout())
+  usePrefChange('familyapp:economia-menu-layout', () => setMenuLayout(loadEconomiaMenuLayout()))
   const [pinnedPlaceholderNotice, setPinnedPlaceholderNotice] = useState(false)
   // Piso compartido — se cargan aquí arriba, una vez, para que cualquier
   // pestaña (Movimientos, Presupuesto(s), Banco...) sepa si tiene que

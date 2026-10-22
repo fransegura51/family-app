@@ -127,7 +127,7 @@ export function HomeCarouselForm() {
           </fieldset>
         )}
       </div>
-      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Solo afecta a este móvil: cada persona elige el suyo. No se borra nada, solo se esconde.</p>
+      <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>Es una preferencia personal: se guarda en tu cuenta y la ves igual en todos tus dispositivos; cada persona elige la suya. No se borra nada, solo se esconde.</p>
     </div>
   )
 }

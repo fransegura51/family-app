@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { startGoogleConnect } from '@/data/googleCalendarSync'
 import { errorMessage } from '@/domain/errorMessage'
+import { prefSet } from '@/state/prefs/prefsWrite'
 
 // Se enseña UNA vez a cada persona nueva que entra en la app (marcado
 // en este móvil, por perfil) — petición real, pensando en cuando se
@@ -25,7 +26,7 @@ function alreadySeen(profileId: string): boolean {
 
 function markSeen(profileId: string) {
   try {
-    localStorage.setItem(storageKey(profileId), '1')
+    prefSet(storageKey(profileId), '1')
   } catch {
     // Si falla (privado/incógnito) no pasa nada — se volverá a ver la
     // próxima vez, no es grave.

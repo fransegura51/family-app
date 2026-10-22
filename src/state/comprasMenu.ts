@@ -4,6 +4,8 @@
 // alimentacionMenu.ts: menos riesgo que tocar una pantalla ya en
 // producción para generalizarla.
 
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type FixedComprasMenuItemKey = 'Inicio' | 'Lista' | 'Historial' | 'Tickets' | 'Estadística compras'
 export type ComprasMenuItemKey = FixedComprasMenuItemKey | `custom:${string}`
 
@@ -66,7 +68,7 @@ export function loadComprasMenuLayout(): ComprasMenuGroup[] {
 
 export function saveComprasMenuLayout(layout: ComprasMenuGroup[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    prefSet(KEY, JSON.stringify(layout))
   } catch {
     // Sin localStorage — se queda en el orden por defecto.
   }
@@ -91,7 +93,7 @@ export function loadComprasPinnedItems(): ComprasMenuItemKey[] {
 
 export function saveComprasPinnedItems(items: ComprasMenuItemKey[]) {
   try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify(items))
+    prefSet(PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage — se queda todo dentro del desplegable.
   }

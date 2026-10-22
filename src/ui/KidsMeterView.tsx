@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { DEFAULT_KIDS_THEME_ID, KIDS_THEMES, type KidsMeter } from '@/ui/kidsThemes'
 import type { BodyMeasurement, FamilyMember } from '@/domain/types'
 import { formatDate } from '@/domain/dateFormat'
+import { prefSet } from '@/state/prefs/prefsWrite'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 // Medidor de altura para niños: una escena con temática (cohete...) cuya
 // columna lisa hace de regla. Las marcas y los números los dibuja el código
@@ -24,7 +26,7 @@ function readStored(key: string): string | null {
 }
 function writeStored(key: string, value: string): void {
   try {
-    localStorage.setItem(key, value)
+    prefSet(key, value)
   } catch {
     // Sin almacenamiento: se olvida la elección al recargar, no es grave.
   }
@@ -57,6 +59,11 @@ export function KidsMeterView({
     const stored = readStored(spriteKey(member.id))
     if (stored === 'boy' || stored === 'girl') return stored
     return member.sex === 'female' ? 'girl' : 'boy'
+  })
+  usePrefChange(themeKey(member.id), () => setThemeId(readStored(themeKey(member.id)) ?? DEFAULT_KIDS_THEME_ID))
+  usePrefChange(spriteKey(member.id), () => {
+    const stored = readStored(spriteKey(member.id))
+    if (stored === 'boy' || stored === 'girl') setSpriteKind(stored)
   })
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [celebrating, setCelebrating] = useState(false)

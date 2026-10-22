@@ -9,6 +9,8 @@
 // Los colores se calculan al cargar cada pantalla (y algunos al cargar la
 // propia app), así que cambiar de estilo recarga la app entera — es lo
 // único que garantiza que TODO se repinta con el estilo nuevo.
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type ColorTheme = 'pastel' | 'vivo' | 'neutro'
 export type ChartColorTheme = 'pastel' | 'vivo'
 
@@ -41,7 +43,7 @@ export function applyColorTheme(): void {
 
 export function saveColorTheme(theme: ColorTheme): void {
   try {
-    localStorage.setItem(UI_KEY, theme)
+    prefSet(UI_KEY, theme)
   } catch {
     // localStorage no disponible (privado/bloqueado): el cambio no se recuerda entre visitas.
   }
@@ -50,7 +52,7 @@ export function saveColorTheme(theme: ColorTheme): void {
 
 export function saveChartColorTheme(theme: ChartColorTheme): void {
   try {
-    localStorage.setItem(CHART_KEY, theme)
+    prefSet(CHART_KEY, theme)
   } catch {
     // Ídem.
   }

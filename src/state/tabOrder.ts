@@ -5,6 +5,8 @@
 // cada persona de la familia puede querer las suyas en un orden
 // distinto), generalizado con una clave por cada fila de pestañas de
 // la app en vez de repetir el mismo código en cada pantalla.
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 function storageKey(key: string): string {
   return `familyapp:tab-order:${key}`
 }
@@ -22,7 +24,7 @@ export function loadTabOrder(key: string): string[] | null {
 
 export function saveTabOrder(key: string, order: string[]): void {
   try {
-    localStorage.setItem(storageKey(key), JSON.stringify(order))
+    prefSet(storageKey(key), JSON.stringify(order))
   } catch {
     // localStorage no disponible (privado/bloqueado): se pierde
     // recordar el orden entre visitas, no es crítico.

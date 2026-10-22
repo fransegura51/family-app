@@ -7,6 +7,8 @@
 // está en producción y probada — tocarla para generalizarla es más
 // riesgo que las ~80 líneas que se repiten aquí.
 
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type FixedAlimentacionMenuItemKey = 'Inicio' | 'Menú' | 'Recetas' | 'Cocinar'
 export type AlimentacionMenuItemKey = FixedAlimentacionMenuItemKey | `custom:${string}`
 
@@ -80,7 +82,7 @@ export function loadAlimentacionMenuLayout(): AlimentacionMenuGroup[] {
 
 export function saveAlimentacionMenuLayout(layout: AlimentacionMenuGroup[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    prefSet(KEY, JSON.stringify(layout))
   } catch {
     // Sin localStorage (privado/bloqueado) — se queda en el orden por
     // defecto, no rompe nada.
@@ -106,7 +108,7 @@ export function loadAlimentacionPinnedItems(): AlimentacionMenuItemKey[] {
 
 export function saveAlimentacionPinnedItems(items: AlimentacionMenuItemKey[]) {
   try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify(items))
+    prefSet(PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage — se queda todo dentro del desplegable.
   }

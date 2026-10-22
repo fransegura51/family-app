@@ -27,6 +27,7 @@ import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
 import { formatTime } from '@/domain/dateFormat'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 interface HomeCardDef {
   id: string
@@ -101,6 +102,7 @@ function resolveOrder(saved: string[] | null): string[] {
 export function HomeScreen({ profile }: { profile: Profile }) {
   const [self, setSelf] = useState<FamilyMember | null>(null)
   const [order, setOrder] = useState<string[]>(() => resolveOrder(loadHomeCardOrder()))
+  usePrefChange('familyapp:home-card-order', () => setOrder(resolveOrder(loadHomeCardOrder())))
   const [organizing, setOrganizing] = useState(false)
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([])
   // Ventana de configuración del carrusel (se abre con su engranaje).

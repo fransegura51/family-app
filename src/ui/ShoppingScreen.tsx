@@ -90,6 +90,7 @@ import comprasHeaderImg from '@/assets/compras/compras-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { shoppingListText } from '@/domain/share'
 import { shareText } from '@/services/share'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
@@ -203,6 +204,8 @@ export function ShoppingScreen() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [pinnedItems, setPinnedItems] = useState<ComprasMenuItemKey[]>(() => loadComprasPinnedItems())
   const [menuLayout, setMenuLayout] = useState<ComprasMenuGroup[]>(() => loadComprasMenuLayout())
+  usePrefChange('familyapp:compras-pinned-tabs', () => setPinnedItems(loadComprasPinnedItems()))
+  usePrefChange('familyapp:compras-menu-layout', () => setMenuLayout(loadComprasMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
   function persistMenuLayout(next: ComprasMenuGroup[]) {

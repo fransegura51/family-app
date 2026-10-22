@@ -113,6 +113,7 @@ import { WeekdayPicker } from '@/ui/WeekdayPicker'
 import { NotifyFamilyCheckbox } from '@/ui/NotifyFamilyCheckbox'
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateFromTimestamp, formatDateTime } from '@/domain/dateFormat'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -268,6 +269,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   const [calendarMenuOpen, setCalendarMenuOpen] = useState(false)
   const [pinnedViews, setPinnedViews] = useState<CalendarioMenuItemKey[]>(() => loadCalendarioPinnedItems())
   const [calendarMenuLayout, setCalendarMenuLayout] = useState<CalendarioMenuGroup[]>(() => loadCalendarioMenuLayout())
+  usePrefChange('familyapp:calendario-pinned-tabs', () => setPinnedViews(loadCalendarioPinnedItems()))
+  usePrefChange('familyapp:calendario-menu-layout', () => setCalendarMenuLayout(loadCalendarioMenuLayout()))
   const [calendarPlaceholderNotice, setCalendarPlaceholderNotice] = useState(false)
   const today = useMemo(() => new Date(), [])
   // Encargo "tareas recurrentes" — "no realizada" se decide contra el día de HOY en la zona horaria de la

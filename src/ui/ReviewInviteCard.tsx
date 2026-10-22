@@ -1,12 +1,13 @@
 // Invitación a valorar PEPA en Inicio, tras unos días de uso (ver domain/reviewInvite.ts). Un toque en las estrellas guarda la valoración general; después se
-// ofrece, sin obligar, contar qué gusta y qué no (pantalla Reseñas y opiniones). «Ahora no» la aplaza 14 días; «No volver a preguntar» la quita para siempre en
-// este móvil. Si algo falla (por ejemplo, sin red) la tarjeta simplemente no aparece: nunca estorba.
+// ofrece, sin obligar, contar qué gusta y qué no (pantalla Reseñas y opiniones). «Ahora no» la aplaza 14 días; «No volver a preguntar» la quita para siempre
+// (ambas decisiones viajan con la cuenta a todos sus dispositivos). Si algo falla (por ejemplo, sin red) la tarjeta simplemente no aparece: nunca estorba.
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { hasMyGeneralReview, saveAppReview } from '@/data/appReviews'
 import { supabase } from '@/data/supabaseClient'
 import { REVIEW_INVITE_NEVER_ISO, shouldInviteToReview, snoozeUntil } from '@/domain/reviewInvite'
 import { StarPicker } from '@/ui/StarPicker'
+import { prefSet } from '@/state/prefs/prefsWrite'
 
 const STORAGE_KEY = 'pepa.reviewInvite.until'
 
@@ -20,7 +21,7 @@ function readDismissedUntil(): string | null {
 
 function writeDismissedUntil(iso: string): void {
   try {
-    window.localStorage.setItem(STORAGE_KEY, iso)
+    prefSet(STORAGE_KEY, iso)
   } catch {
     /* sin almacenamiento: se volverá a preguntar, nada más */
   }

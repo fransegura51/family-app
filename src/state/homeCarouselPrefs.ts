@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { prefSet } from '@/state/prefs/prefsWrite'
 
 // Configuración del carrusel de Inicio, elegida por quien mira su propio móvil (igual que el orden de las tarjetas: localStorage, no Supabase; cada persona
 // puede querer el suyo y no cuesta ninguna consulta). Todo activado y fotos al azar por defecto.
@@ -60,7 +61,7 @@ export function loadHomeCarouselPrefs(): HomeCarouselPrefs {
 
 export function saveHomeCarouselPrefs(prefs: HomeCarouselPrefs): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizeHomeCarouselPrefs(prefs)))
+    prefSet(STORAGE_KEY, JSON.stringify(sanitizeHomeCarouselPrefs(prefs)))
   } catch {
     // localStorage no disponible (privado/bloqueado): el cambio vale hasta cerrar la app, no es crítico.
   }

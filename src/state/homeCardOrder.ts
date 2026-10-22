@@ -3,6 +3,8 @@
 // quiera, que se puedan mover de sitio". Por dispositivo (localStorage,
 // no en Supabase): cada persona de la familia puede querer las suyas
 // en un orden distinto, no tiene que ser el mismo para todos.
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 const STORAGE_KEY = 'familyapp:home-card-order'
 
 export function loadHomeCardOrder(): string[] | null {
@@ -18,7 +20,7 @@ export function loadHomeCardOrder(): string[] | null {
 
 export function saveHomeCardOrder(ids: string[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+    prefSet(STORAGE_KEY, JSON.stringify(ids))
   } catch {
     // localStorage no disponible (privado/bloqueado): se pierde
     // recordar el orden entre visitas, no es crítico.

@@ -3,6 +3,8 @@
 // las pestañas me gusta mucho, aplícalo a toda la aplicación... que
 // toda la aplicación se vea en el mismo formato".
 
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type FixedUbicacionMenuItemKey = 'Inicio' | 'Ubicación' | 'Reglas'
 export type UbicacionMenuItemKey = FixedUbicacionMenuItemKey | `custom:${string}`
 
@@ -63,7 +65,7 @@ export function loadUbicacionMenuLayout(): UbicacionMenuGroup[] {
 
 export function saveUbicacionMenuLayout(layout: UbicacionMenuGroup[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    prefSet(KEY, JSON.stringify(layout))
   } catch {
     // Sin localStorage — se queda en el orden por defecto.
   }
@@ -88,7 +90,7 @@ export function loadUbicacionPinnedItems(): UbicacionMenuItemKey[] {
 
 export function saveUbicacionPinnedItems(items: UbicacionMenuItemKey[]) {
   try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify(items))
+    prefSet(PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage — se queda todo dentro del desplegable.
   }

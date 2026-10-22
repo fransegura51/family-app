@@ -62,6 +62,7 @@ import { RecipeEditorFields, RecipeTitleField } from '@/ui/recipeEditor/RecipeEd
 import { RecipeUpdateBanner } from '@/ui/community/recipes/RecipeUpdateBanner'
 import { ShareToCommunityButton } from '@/ui/community/recipes/ShareToCommunityButton'
 import { useCommunityVisible } from '@/ui/community/useCommunityVisible'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 // «Importar menú de Comunidad» (Menú semanal): se descarga solo al pulsar el botón.
 const CommunityMenuImportModal = lazy(() => import('@/ui/community/menu/CommunityMenuImportModal').then((m) => ({ default: m.CommunityMenuImportModal })))
 const RecipePublishHost = lazy(() => import('@/ui/community/recipes/RecipePublishSheet').then((m) => ({ default: m.RecipePublishHost })))
@@ -127,6 +128,8 @@ export function AlimentacionScreen() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [pinnedItems, setPinnedItems] = useState<AlimentacionMenuItemKey[]>(() => loadAlimentacionPinnedItems())
   const [menuLayout, setMenuLayout] = useState<AlimentacionMenuGroup[]>(() => loadAlimentacionMenuLayout())
+  usePrefChange('familyapp:alimentacion-pinned-tabs', () => setPinnedItems(loadAlimentacionPinnedItems()))
+  usePrefChange('familyapp:alimentacion-menu-layout', () => setMenuLayout(loadAlimentacionMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
   function persistMenuLayout(next: AlimentacionMenuGroup[]) {

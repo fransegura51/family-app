@@ -5,6 +5,7 @@ import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
 import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { ToastHost } from '@/ui/ToastHost'
+import { PrefsNotices } from '@/ui/PrefsNotices'
 import { CommunityMenuItem } from '@/ui/community/CommunityMenuItem'
 import { NAV_TAB_BY_PATH, NAV_TAB_PATHS, isActiveNavPath, navSectionId, NAV_SECTION_COLORS, type NavTab } from '@/domain/navTabs'
 import { loadTabOrder, resolveTabOrder } from '@/state/tabOrder'
@@ -139,6 +140,7 @@ export function NavShell({ profile }: { profile: Profile }) {
       </main>
       <VoiceCapture />
       <ToastHost />
+      <PrefsNotices />
       {manager && (
         <Suspense fallback={null}>
           <ManagersHost kind={manager} onClose={() => setManager(null)} />

@@ -1,6 +1,8 @@
 // Menú desplegable de Comunidad (☰ Menú): mismo patrón que comprasMenu.ts / economiaMenu.ts / alimentacionMenu.ts (orden propio, accesos «sacados» a la pantalla, edición),
 // reducido a lo que tiene sentido aquí: SOLO tres destinos (Portada, Recetas y cocina, Hogar y familia). Es por móvil (localStorage, como el resto de menús: no cuesta ninguna
 // consulta a Supabase). Administración NO es un acceso configurable: aparece aparte, discreto, solo para la administración.
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type CommunityMenuKey = 'portada' | 'recetas' | 'hogar'
 
 export const COMMUNITY_MENU_KEYS: readonly CommunityMenuKey[] = ['portada', 'recetas', 'hogar']
@@ -38,7 +40,7 @@ export function loadCommunityMenuOrder(): CommunityMenuKey[] {
 
 export function saveCommunityMenuOrder(order: CommunityMenuKey[]): void {
   try {
-    localStorage.setItem(ORDER_KEY, JSON.stringify(sanitizeCommunityMenuOrder(order)))
+    prefSet(ORDER_KEY, JSON.stringify(sanitizeCommunityMenuOrder(order)))
   } catch {
     // Sin localStorage: se queda el orden de siempre.
   }
@@ -55,7 +57,7 @@ export function loadCommunityPinned(): CommunityMenuKey[] {
 
 export function saveCommunityPinned(items: CommunityMenuKey[]): void {
   try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify(sanitizeCommunityPinned(items)))
+    prefSet(PINNED_KEY, JSON.stringify(sanitizeCommunityPinned(items)))
   } catch {
     // Sin localStorage: todo se queda dentro del desplegable.
   }

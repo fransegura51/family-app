@@ -61,6 +61,8 @@ import { forgetFoundPlace, forgetRecentRecipes, rememberFoundPlace, type RecipeR
 import { StoreQuestionSheet } from '@/ui/StoreQuestionSheet'
 import type { Recipe } from '@/domain/types'
 import { getCalendarMemberFilter } from '@/state/calendarMemberFilter'
+import { prefSet } from '@/state/prefs/prefsWrite'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 const speechEngine: SpeechEngine = { supported: isSpeechSupported, speak: speakAsync, prime: primeSpeech }
 const STORAGE_KEY = 'familyapp:voice-response-mode'
@@ -79,7 +81,7 @@ function loadResponseMode(): ResponseMode {
 
 function saveResponseMode(mode: ResponseMode) {
   try {
-    localStorage.setItem(STORAGE_KEY, mode)
+    prefSet(STORAGE_KEY, mode)
   } catch {
     // localStorage puede fallar en privado/incógnito — no es crítico, solo
     // se pierde recordar la preferencia entre sesiones.
@@ -816,6 +818,7 @@ export function VoiceCapture() {
   const [message, setMessage] = useState('')
   const [typedText, setTypedText] = useState('')
   const [mode, setMode] = useState<ResponseMode>(loadResponseMode)
+  usePrefChange('familyapp:voice-response-mode', () => setMode(loadResponseMode()))
   // El modo se consulta en el momento de contestar: las funciones que dejó escuchando un render anterior
   // no deben usar una copia vieja.
   const modeRef = useRef(mode)

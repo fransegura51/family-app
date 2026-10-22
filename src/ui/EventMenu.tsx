@@ -46,6 +46,8 @@ import { EventMenuImporter } from '@/ui/EventMenuImporter'
 import { PickIngredientsModal } from '@/ui/PickIngredientsModal'
 import { useDragReorder } from '@/ui/useDragReorder'
 import { showToast } from '@/state/toast'
+import { prefSet } from '@/state/prefs/prefsWrite'
+import { usePrefChange } from '@/state/prefs/usePrefChange'
 
 export function EventMenuSection({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
   const [data, setData] = useState<MenuHubData | null>(null)
@@ -165,6 +167,7 @@ export function MenuManager({
   const shoppingLines = useMemo(() => buildMenuShoppingPlan(data.items, data.recipes, targetDiners, mode), [data.items, data.recipes, targetDiners, mode])
   // LA SECUENCIA es la vista principal (el orden real del menú); «Por secciones» es la clasificación (ayuda de organización).
   const [view, setViewState] = useState<MenuView>(loadMenuView)
+  usePrefChange(MENU_VIEW_KEY, () => setViewState(loadMenuView()))
   const sequence = useMemo(() => menuSequence(data.items), [data.items])
   const drag = useDragReorder(
     sequence.map((i) => i.id),
@@ -179,7 +182,7 @@ export function MenuManager({
   function setView(next: MenuView) {
     setViewState(next)
     try {
-      localStorage.setItem(MENU_VIEW_KEY, next)
+      prefSet(MENU_VIEW_KEY, next)
     } catch {
       // sin almacenamiento: solo se recuerda mientras la pantalla está abierta
     }

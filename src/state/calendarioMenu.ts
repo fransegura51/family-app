@@ -7,6 +7,8 @@
 // en Economía se etiqueta "Inicio" en el desplegable sin dejar de ser
 // una pestaña real.
 
+import { prefSet } from '@/state/prefs/prefsWrite'
+
 export type FixedCalendarioMenuItemKey = 'Vista general' | 'Mes' | 'Semana' | '3 días' | 'Día' | 'Familiar' | 'Agenda' | 'Personal'
 export type CalendarioMenuItemKey = FixedCalendarioMenuItemKey | `custom:${string}`
 
@@ -93,7 +95,7 @@ export function loadCalendarioMenuLayout(): CalendarioMenuGroup[] {
 
 export function saveCalendarioMenuLayout(layout: CalendarioMenuGroup[]) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(layout))
+    prefSet(KEY, JSON.stringify(layout))
   } catch {
     // Sin localStorage — se queda en el orden por defecto.
   }
@@ -118,7 +120,7 @@ export function loadCalendarioPinnedItems(): CalendarioMenuItemKey[] {
 
 export function saveCalendarioPinnedItems(items: CalendarioMenuItemKey[]) {
   try {
-    localStorage.setItem(PINNED_KEY, JSON.stringify(items))
+    prefSet(PINNED_KEY, JSON.stringify(items))
   } catch {
     // Sin localStorage — se queda todo dentro del desplegable.
   }

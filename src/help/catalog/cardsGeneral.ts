@@ -358,6 +358,18 @@ export const CARDS_GENERAL: HelpCard[] = [
     verified: V,
   },
   {
+    id: 'cfg-accesos-nuevos',
+    module: 'configuracion',
+    title: 'Crear accesos nuevos («Nuevo acceso») en los menús',
+    synonyms: ['nuevo acceso', 'acceso personalizado', 'crear un boton en el menu', 'anadir un acceso'],
+    quick: 'En los menús ☰ de Calendario, Compras, Economía y otras secciones se pueden crear, renombrar y borrar accesos nuevos («Nuevo acceso»).',
+    state: 'parcial',
+    limits: 'Los accesos nuevos todavía no abren ninguna pantalla: al pulsarlos solo sale «Todavía no hay nada aquí».',
+    featureId: 'accesos-personalizados',
+    labels: ['Nombre del acceso'],
+    verified: V,
+  },
+  {
     id: 'cfg-sincronizacion',
     module: 'configuracion',
     title: 'Mis ajustes en varios dispositivos',

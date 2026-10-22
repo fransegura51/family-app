@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { HelpConversation } from '@/help/ui/HelpConversation'
+import { HELP_CONTEXTUAL_ENABLED } from '@/help/flags'
 import { useOptionalHelp } from '@/help/ui/helpContext'
 import { HelpVoiceSetting } from '@/help/ui/HelpVoiceSetting'
 import { PepaFace } from '@/help/ui/PepaFace'
@@ -13,7 +14,7 @@ export function HelpPanel() {
   const help = useOptionalHelp()
   const location = useLocation()
   const ref = useRef<HTMLElement | null>(null)
-  const open = Boolean(help?.panelOpen) && location.pathname !== '/ayuda'
+  const open = HELP_CONTEXTUAL_ENABLED && Boolean(help?.panelOpen) && location.pathname !== '/ayuda'
 
   useEffect(() => {
     if (!open || !help) return

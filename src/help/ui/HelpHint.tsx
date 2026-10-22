@@ -1,3 +1,4 @@
+import { HELP_CONTEXTUAL_ENABLED } from '@/help/flags'
 import type { HelpModuleId } from '@/help/types'
 import { useOptionalHelp } from '@/help/ui/helpContext'
 import '@/help/ui/help.css'
@@ -6,7 +7,7 @@ import '@/help/ui/help.css'
 // persona estuviera escribiendo), con la ficha concreta (`cardId`) o con la ayuda del módulo. Sin proveedor de Ayuda (pruebas aisladas) no pinta nada.
 export function HelpHint({ cardId, moduleId, label }: { cardId?: string; moduleId?: HelpModuleId; label?: string }) {
   const help = useOptionalHelp()
-  if (!help) return null
+  if (!help || !HELP_CONTEXTUAL_ENABLED) return null
   return (
     <button
       type="button"

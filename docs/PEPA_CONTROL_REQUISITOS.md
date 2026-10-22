@@ -708,6 +708,20 @@ Detalle técnico y puesta en producción: [`docs/CONFIG_01_SINCRONIZACION_PREFER
 | ADMIN-05 | B2-UX01: en Configuración, justo debajo de «Nombre de familia», tarjeta destacada «Centro de Administración PEPA» (icono de escudo, descripción breve, toda pulsable) solo para administradores reales de PEPA (`am_i_app_owner`); sustituye al enlace del final | Implementado (rama `feature/b2-ux`) | `AdminCenterCard.tsx`, `MenuSettingsScreen.tsx` | `adminUx.test.tsx`, `adminPanelReorganizationUi.test.ts` | — | Comprobar en dispositivos reales |
 | ADMIN-06 | B2-UX02: las áreas del Centro se organizan en bloques plegables (se montan al abrirse y se conservan, sin perder formularios; el estado sobrevive al cambiar de área), «Expandir todo/Plegar todo», buscador global de herramientas que abre el área y el bloque, y pestañas de Comunidad agrupadas por tema (las nueve y todas sus herramientas) | Implementado (rama `feature/b2-ux`) | `AdminGroups.tsx`, `AdminSearch.tsx`, `adminTools.ts`, `AdminShared.tsx` | `adminUx.test.tsx`, `administrationCenter.test.tsx` | — | Comprobar en dispositivos reales |
 
+## Ayuda «Pepa te acompaña» (B3) y AYUDA-01 (23/10/2026)
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| AYUDA-B3-01 | Pantalla de Ayuda nueva: buscador «¿Qué quieres hacer o saber?», acciones frecuentes, catálogo completo de módulos (19), biblioteca de vídeos, fichas breves ampliables y TODA la explicación histórica reutilizada (corregidos los textos desfasados) | Implementado en la rama `feature/b3-ayuda` | `src/help/*`, `src/ui/AyudaScreen.tsx` | `catalog.test.ts`, `helpUi.test.tsx` | — | Publicación; ampliar pasos de las fichas parciales |
+| AYUDA-B3-02 | Búsqueda local: sinónimos, plurales, erratas, orden por título, filtrado por permisos antes de puntuar; solo devuelve fichas verificadas | Implementado | `src/help/search/*` | `searchEngine.test.ts` | — | — |
+| AYUDA-B3-03 | «Llévame» (solo rutas reales y permitidas) y «Enséñame» (solo si el tutorial existe); función parcial/desactivada explicada como tal; restricciones explicadas sin botones | Implementado («Enséñame»: ver B4) | `HelpAnswer.tsx`, `access.ts` | `helpUi.test.tsx`, `searchEngine.test.ts` | — | — |
+| AYUDA-B3-04 | Ayuda contextual: «?» en cada módulo y en los formularios de evento, producto y miembro; panel no modal que no pierde lo escrito | Implementado | `HelpPanel.tsx`, `HelpHint.tsx`, `SectionBreadcrumb.tsx` | `helpUi.test.tsx` | — | Más «?» en formularios (progresivo) |
+| AYUDA-B3-05 | Voz de Ayuda (Hablando / Por escrito), independiente de «Hablar con PEPA»; texto siempre visible con Escuchar/Detener/Repetir; voz oficial sin tocar | Implementado (local al dispositivo) | `src/help/prefs.ts`, `voice.ts`, `HelpVoiceSetting.tsx` | `helpUi.test.tsx` | Sincronización entre dispositivos: migración 0306 | Aplicar 0306 y encender `HELP_PREFS_SYNC_ENABLED` |
+| AYUDA-B3-06 | Conversación solo en memoria; sin historial guardado | Implementado | `src/help/session.ts` | `helpUi.test.tsx` | — | — |
+| AYUDA-B3-07 | Valoraciones «¿Te ha servido?» agregadas + vista en el Centro | Preparado, **apagado** | `src/help/feedback.ts`, `0306` | `supabase/local-sql-tests` (9 pruebas de 0306) | Migración 0306 pendiente de autorización | Aplicar 0306 y encender `HELP_FEEDBACK_ENABLED` |
+| AYUDA-B3-08 | Búsqueda con IA (solo elegir entre fichas verificadas) | **Apagada** | `src/help/ai.ts` | — | Función de servidor, límite de gasto y autorización de coste | Decisión de la persona responsable |
+| AYUDA-01 | Regla permanente: al crear, cambiar, desactivar o eliminar una función se revisa su ficha, botones citados, «Llévame», «Enséñame» y cobertura; `CLAUDE.md` + pruebas «trinquete» (deuda histórica identificada, sin bloquear) | Implementado | `CLAUDE.md`, `src/help/helpDebt.ts` | `catalog.test.ts`, `ayuda01.test.ts` | — | Subir los pisos al mejorar la Ayuda |
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

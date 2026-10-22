@@ -272,6 +272,17 @@ export const CARDS_DIA_A_DIA: HelpCard[] = [
     verified: V,
   },
   {
+    id: 'coc-nevera-foto',
+    module: 'cocina',
+    title: 'Hacer una foto a la nevera para saber qué cocinar',
+    synonyms: ['foto de la nevera', 'que hay en la nevera', 'reconocer alimentos con la camara', 'fotografia de la nevera'],
+    quick: 'Fotografiar la nevera para que PEPA reconozca lo que hay todavía no está disponible en la app.',
+    state: 'desactivada',
+    limits: 'Existe la función de servidor, pero ninguna pantalla de la app la usa todavía.',
+    featureId: 'cocina-nevera-foto',
+    verified: V,
+  },
+  {
     id: 'coc-alergias',
     module: 'cocina',
     title: 'Alergias e intolerancias en las recetas',

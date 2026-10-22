@@ -121,7 +121,9 @@ export function searchHelp(index: IndexedDoc[], query: string, options: SearchOp
     const coverage = covered / tokens.length
     if (coverage < MIN_COVERAGE) continue
     const raw = total / (tokens.length * maxPerToken)
-    const rank = raw * (item.doc.kind === 'card' ? CARD_BONUS : 1) + 0.08 * (inTitle / tokens.length)
+    // Desempate: a igualdad de puntos gana la ficha cuyo título es más «justo» para la pregunta (menos palabras de título que no se han preguntado).
+    const titleSlack = Math.max(0, item.fields.title.length - inTitle)
+    const rank = raw * (item.doc.kind === 'card' ? CARD_BONUS : 1) + 0.08 * (inTitle / tokens.length) - 0.02 * titleSlack
     hits.push({ doc: item.doc, score: Math.min(1, raw * (item.doc.kind === 'card' ? CARD_BONUS : 1)), coverage, rank })
   }
   hits.sort((a, b) => b.rank - a.rank || b.coverage - a.coverage || (a.doc.kind === 'card' ? -1 : 1))

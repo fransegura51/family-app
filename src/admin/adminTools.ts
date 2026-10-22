@@ -23,7 +23,7 @@ export interface AdminTool {
 export const ADMIN_GROUP_IDS: Record<Exclude<AdminAreaId, 'funcionalidades' | 'comunidad'>, string[]> = {
   resumen: ['areas', 'funcionalidades', 'vivo', 'invitar'],
   usuarios: ['invitar-amigos', 'codigos', 'actividad', 'familias'],
-  ayuda: ['cobertura', 'secciones', 'tutoriales', 'lagunas'],
+  ayuda: ['cobertura', 'modulos', 'fichas', 'tutoriales', 'rutas', 'valoraciones', 'prioridades'],
   sistema: ['errores', 'automatizaciones', 'vistas'],
 }
 
@@ -58,9 +58,12 @@ export const ADMIN_TOOLS: AdminTool[] = [
   { id: 'func-inventario', label: 'Inventario de funcionalidades (buscar y filtrar)', area: 'funcionalidades', keywords: 'funcionalidades inventario funciones estado operativa parcial desactivada verificacion buscar filtrar modulos' },
   // Ayuda
   { id: 'ayuda-cobertura', label: 'Cobertura de la Ayuda por función', area: 'ayuda', group: 'cobertura', keywords: 'cobertura ayuda completa parcial inexistente pendiente' },
-  { id: 'ayuda-secciones', label: 'Secciones de la Ayuda', area: 'ayuda', group: 'secciones', keywords: 'secciones ayuda apartados fichas documentacion' },
-  { id: 'ayuda-tutoriales', label: 'Tutoriales y vídeos existentes', area: 'ayuda', group: 'tutoriales', keywords: 'tutoriales videos ensename guias recorridos' },
-  { id: 'ayuda-lagunas', label: 'Funciones con la Ayuda por completar', area: 'ayuda', group: 'lagunas', keywords: 'lagunas pendientes prioridades documentacion faltan completar' },
+  { id: 'ayuda-modulos', label: 'Cobertura de la Ayuda por módulo', area: 'ayuda', group: 'modulos', keywords: 'modulos secciones ayuda apartados fichas documentacion cobertura' },
+  { id: 'ayuda-fichas', label: 'Estado de las fichas de Ayuda (completas, parciales, pendientes)', area: 'ayuda', group: 'fichas', keywords: 'fichas completas parciales pendientes ayuda pasos llevame' },
+  { id: 'ayuda-tutoriales', label: 'Tutoriales «Enséñame» y vídeos (disponibles y pendientes)', area: 'ayuda', group: 'tutoriales', keywords: 'tutoriales videos ensename guias recorridos candidatos pendientes' },
+  { id: 'ayuda-rutas', label: 'Errores y rutas rotas de la Ayuda', area: 'ayuda', group: 'rutas', keywords: 'rutas rotas errores llevame enlaces destinos botones' },
+  { id: 'ayuda-valoraciones', label: 'Valoraciones «¿Te ha servido?» (agregadas)', area: 'ayuda', group: 'valoraciones', keywords: 'valoraciones te ha servido utilidad votos satisfaccion feedback' },
+  { id: 'ayuda-prioridades', label: 'Prioridades para completar la documentación', area: 'ayuda', group: 'prioridades', keywords: 'lagunas pendientes prioridades documentacion faltan completar' },
   // Sistema
   { id: 'sistema-errores', label: 'Errores de la app (ver, agrupar, borrar)', area: 'sistema', group: 'errores', keywords: 'errores fallos pantalla traza borrar incidencias' },
   { id: 'sistema-diagnostico', label: 'Diagnóstico temporal de sincronización', area: 'sistema', group: 'errores', keywords: 'diagnostico sincronizacion prefs-diag preferencias temporal' },

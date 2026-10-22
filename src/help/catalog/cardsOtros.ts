@@ -360,6 +360,18 @@ export const CARDS_OTROS: HelpCard[] = [
     verified: V,
   },
   {
+    id: 'com2-publica',
+    module: 'comunidad',
+    title: 'Leer Comunidad sin tener cuenta',
+    synonyms: ['comunidad publica', 'paginas publicas', 'leer sin registrarme', 'compartir una publicacion con alguien sin cuenta'],
+    quick: 'La lectura pública de Comunidad sin cuenta (páginas que cualquier persona con el enlace puede abrir) existe, pero está apagada por ahora.',
+    state: 'desactivada',
+    limits: 'Interruptor apagado en este momento; se activará cuando se decida.',
+    access: { community: true },
+    featureId: 'comunidad-publica',
+    verified: V,
+  },
+  {
     id: 'com2-ia',
     module: 'comunidad',
     title: 'Respuestas de Pepa en Comunidad y páginas públicas',

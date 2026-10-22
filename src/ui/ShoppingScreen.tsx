@@ -91,6 +91,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { shoppingListText } from '@/domain/share'
 import { shareText } from '@/services/share'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { HelpHint } from '@/help/ui/HelpHint'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
@@ -2252,7 +2253,12 @@ function AddShoppingItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      {!hideHeading && <h2>Añadir producto</h2>}
+      {!hideHeading && (
+        <h2 className="help-heading">
+          Añadir producto
+          <HelpHint cardId="com-anadir-producto" label="Ayuda para añadir un producto" />
+        </h2>
+      )}
       <label>
         Nombre
         <input

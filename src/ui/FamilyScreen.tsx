@@ -33,6 +33,7 @@ import { NAV_TABS, navSectionId } from '@/domain/navTabs'
 import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
+import { HelpHint } from '@/help/ui/HelpHint'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -741,7 +742,10 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
           }}
         />
       )}
-      <h2>Añadir miembro</h2>
+      <h2 className="help-heading">
+        Añadir miembro
+        <HelpHint cardId="fam-anadir-miembro" label="Ayuda para añadir un miembro" />
+      </h2>
       <label>
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />

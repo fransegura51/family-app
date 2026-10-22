@@ -85,9 +85,9 @@
 }
 
 .help-seg-on {
-  background: #e0e7ff;
+  background: #4c6ef5;
   border-color: #4c6ef5;
-  color: #1e2a5a;
+  color: #fff;
 }
 
 /* ---- «?» discreto */
@@ -466,4 +466,11 @@
   padding: 0;
   display: grid;
   gap: 8px;
+}
+
+/* Título de un formulario con su «?» de Ayuda al lado. */
+.help-heading {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }

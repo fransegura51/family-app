@@ -12,14 +12,14 @@ import {
   type HelpCoverage,
 } from '@/admin/features/featureTypes'
 import { AdminGroup } from '@/ui/admin/AdminGroups'
-import { NAV_TABS } from '@/domain/navTabs'
+import { HELP_MODULE_BY_ID } from '@/help/catalog'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 
 // Área «Estado de funcionalidades»: inventario PRIVADO (solo administración) de qué hace PEPA hoy. El estado de la función y la cobertura de la Ayuda se muestran por separado
 // a propósito: una Ayuda incompleta no significa que la función esté a medias. La cobertura de la Ayuda se calcula contra el texto real de la Ayuda.
 // Fechas como en toda la app: día/mes/año.
 const dmy = (iso: string) => iso.split('-').reverse().join('/')
-const helpSectionLabel = (route: string) => NAV_TABS.find((t) => t.to === route)?.label ?? route
+const helpSectionLabel = (id: string) => HELP_MODULE_BY_ID.get(id as never)?.label ?? id
 
 const STATE_ICON: Record<FeatureState, string> = { operativa: '🟢', parcial: '🟡', desactivada: '⚪' }
 const COVERAGE_ICON: Record<HelpCoverage, string> = { completa: '✅', parcial: '◐', inexistente: '✕', pendiente: '❔' }
@@ -178,7 +178,7 @@ function FeatureCard({ entry: e, help, open, onToggle }: { entry: FeatureEntry; 
                 <>Todavía no se ha revisado qué debería contar la Ayuda de esta función.</>
               ) : (
                 <>
-                  Sección de Ayuda: «{helpSectionLabel(e.help.route ?? '')}».
+                  Módulo de la Ayuda: «{helpSectionLabel(e.help.module ?? '')}».
                   {help.found.length > 0 && <> Cuenta: {help.found.join(', ')}.</>}
                   {help.missing.length > 0 && <> No cuenta: {help.missing.join(', ')}.</>}
                 </>

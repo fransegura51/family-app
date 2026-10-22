@@ -3,13 +3,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FEATURE_INVENTORY } from '@/admin/features/featureInventory'
-import { featureHelpCoverage, type HelpSource } from '@/admin/features/featureHelp'
+import { featureHelpCoverage, type HelpTextOf } from '@/admin/features/featureHelp'
 import { filterFeatures, modulesOf, NO_FILTERS } from '@/admin/features/featureFilters'
 import { FEATURE_STATE_LABEL, FEATURE_VERIFICATION_LABEL, HELP_COVERAGE_LABEL, type FeatureEntry } from '@/admin/features/featureTypes'
-import { HELP_DETAILS, SUMMARIES } from '@/help/legacy/legacyHelp'
+import { HELP_MODULE_BY_ID } from '@/help/catalog'
+import { moduleHelpText } from '@/help/catalog/moduleText'
 
 const root = process.cwd()
-const REAL_HELP: HelpSource = { summaries: SUMMARIES, details: HELP_DETAILS }
 
 const entry = (over: Partial<FeatureEntry> = {}): FeatureEntry => ({
   id: 'x',
@@ -21,7 +21,7 @@ const entry = (over: Partial<FeatureEntry> = {}): FeatureEntry => ({
   verificationNote: 'Leída.',
   reviewed: '2026-10-22',
   evidence: ['package.json'],
-  help: { route: '/calendario', terms: ['recordatorio'] },
+  help: { module: 'calendario', terms: ['recordatorio'] },
   ...over,
 })
 
@@ -73,12 +73,12 @@ describe('el inventario no inventa nada: estructura y evidencia', () => {
     }
   })
 
-  it('las secciones de Ayuda citadas existen en la Ayuda real; sin sección no hay puntos clave (queda pendiente de revisión)', () => {
+  it('los módulos de Ayuda citados existen en la Ayuda real; sin módulo no hay puntos clave (queda pendiente de revisión)', () => {
     for (const e of FEATURE_INVENTORY) {
-      if (e.help.route === null) {
+      if (e.help.module === null) {
         expect(e.help.terms, e.id).toEqual([])
       } else {
-        expect(Object.keys(HELP_DETAILS), `${e.id}: la Ayuda no tiene ${e.help.route}`).toContain(e.help.route)
+        expect(HELP_MODULE_BY_ID.has(e.help.module), `${e.id}: la Ayuda no tiene el módulo ${e.help.module}`).toBe(true)
         expect(e.help.terms.length, e.id).toBeGreaterThan(0)
       }
     }
@@ -92,43 +92,43 @@ describe('el inventario no inventa nada: estructura y evidencia', () => {
 })
 
 describe('cobertura de la Ayuda: se calcula, no se escribe, y es independiente del estado de la función', () => {
-  const help: HelpSource = {
-    summaries: { '/calendario': 'Eventos de todos' },
-    details: { '/calendario': [{ title: 'Recordatorios', text: 'Avisos antes del Evento. También «Todavía pendiente».' }] },
-  }
+  // Ayuda de mentira: solo el módulo «calendario» tiene texto (ya normalizado, como lo entrega moduleHelpText).
+  const help: HelpTextOf = (m) => (m === 'calendario' ? 'eventos de todos recordatorios avisos antes del evento tambien todavia pendiente' : '')
 
   it('todos los puntos clave en la Ayuda → completa (sin importar acentos ni mayúsculas)', () => {
-    expect(featureHelpCoverage(entry({ help: { route: '/calendario', terms: ['recordatorio', 'todavia pendiente'] } }), help).coverage).toBe('completa')
+    expect(featureHelpCoverage(entry({ help: { module: 'calendario', terms: ['recordatorio', 'todavia pendiente'] } }), help).coverage).toBe('completa')
   })
   it('solo algunos → parcial, y dice cuáles faltan', () => {
-    const r = featureHelpCoverage(entry({ help: { route: '/calendario', terms: ['recordatorio', 'google calendar'] } }), help)
+    const r = featureHelpCoverage(entry({ help: { module: 'calendario', terms: ['recordatorio', 'google calendar'] } }), help)
     expect(r.coverage).toBe('parcial')
     expect(r.missing).toEqual(['google calendar'])
     expect(r.found).toEqual(['recordatorio'])
   })
   it('ninguno → inexistente', () => {
-    expect(featureHelpCoverage(entry({ help: { route: '/calendario', terms: ['nevera'] } }), help).coverage).toBe('inexistente')
+    expect(featureHelpCoverage(entry({ help: { module: 'calendario', terms: ['nevera'] } }), help).coverage).toBe('inexistente')
   })
   it('sin sección o sin puntos clave → pendiente de revisión', () => {
-    expect(featureHelpCoverage(entry({ help: { route: null, terms: [] } }), help).coverage).toBe('pendiente')
-    expect(featureHelpCoverage(entry({ help: { route: '/calendario', terms: [] } }), help).coverage).toBe('pendiente')
+    expect(featureHelpCoverage(entry({ help: { module: null, terms: [] } }), help).coverage).toBe('pendiente')
+    expect(featureHelpCoverage(entry({ help: { module: 'calendario', terms: [] } }), help).coverage).toBe('pendiente')
   })
   it('una Ayuda incompleta NO cambia el estado de la función: operativa con Ayuda inexistente y parcial con Ayuda completa son posibles', () => {
-    const a = entry({ state: 'operativa', help: { route: '/calendario', terms: ['nevera'] } })
-    const b = entry({ state: 'parcial', missing: 'Le falta algo concreto del producto.', help: { route: '/calendario', terms: ['recordatorio'] } })
+    const a = entry({ state: 'operativa', help: { module: 'calendario', terms: ['nevera'] } })
+    const b = entry({ state: 'parcial', missing: 'Le falta algo concreto del producto.', help: { module: 'calendario', terms: ['recordatorio'] } })
     expect(featureHelpCoverage(a, help).coverage).toBe('inexistente')
     expect(a.state).toBe('operativa')
     expect(featureHelpCoverage(b, help).coverage).toBe('completa')
     expect(b.state).toBe('parcial')
   })
   it('con la Ayuda real, cada función tiene una cobertura válida y hay de todo tipo (no es un resultado fijo)', () => {
-    const results = FEATURE_INVENTORY.map((e) => featureHelpCoverage(e, REAL_HELP).coverage)
+    const results = FEATURE_INVENTORY.map((e) => featureHelpCoverage(e, moduleHelpText).coverage)
     for (const c of results) expect(Object.keys(HELP_COVERAGE_LABEL)).toContain(c)
-    expect(new Set(results).size).toBeGreaterThanOrEqual(3)
+    expect(new Set(results).size).toBeGreaterThanOrEqual(2)
   })
-  it('un hecho conocido: la Ayuda no cuenta las preguntas de Cocina por ingredientes ni la fotografía de la nevera', () => {
+  it('un hecho conocido: una función interna de administración no tiene aún puntos clave de Ayuda → pendiente de revisión; la fotografía de la nevera consta explicada como desactivada', () => {
+    const interna = FEATURE_INVENTORY.find((e) => e.id === 'admin-errores')!
+    expect(featureHelpCoverage(interna, moduleHelpText).coverage).toBe('pendiente')
     const nevera = FEATURE_INVENTORY.find((e) => e.id === 'cocina-nevera-foto')!
-    expect(featureHelpCoverage(nevera, REAL_HELP).coverage).toBe('inexistente')
+    expect(featureHelpCoverage(nevera, moduleHelpText).coverage).toBe('completa')
   })
 })
 

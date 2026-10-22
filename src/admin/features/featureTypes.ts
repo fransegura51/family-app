@@ -1,9 +1,11 @@
+import type { HelpModuleId } from '@/help/types'
+
 // Inventario privado de funcionalidades de PEPA (área «Estado de funcionalidades» del Centro de Administración). Solo lo ven las administradoras de PEPA.
 //
 // REGLAS (para que el inventario siga siendo fiable y mantenible):
 //  - Nada se inventa: cada función cita los archivos del repositorio que lo demuestran (`evidence`) y una prueba automática las comprueba (existen).
 //  - «Estado de la función» y «cobertura de la Ayuda» son cosas distintas: que la Ayuda esté incompleta NO significa que la función esté a medias.
-//  - La cobertura de la Ayuda NO se escribe a mano: se calcula buscando los `terms` de cada función en el texto real de la Ayuda (AyudaScreen.tsx). Si la Ayuda cambia, cambia sola.
+//  - La cobertura de la Ayuda NO se escribe a mano: se calcula buscando los `terms` de cada función en el texto real de la Ayuda de su módulo (src/help). Si la Ayuda cambia, cambia sola.
 //  - Lo que depende de producción o de un dispositivo y no se puede comprobar leyendo el código se marca «no verificable»: nunca se da por hecho.
 
 // operativa = hace lo que promete; parcial = funciona pero le falta algo concreto (se explica en `missing`); desactivada = existe pero está apagada o sin pantalla.
@@ -36,8 +38,8 @@ export interface FeatureEntry {
   evidence: string[]
   /** Pruebas automáticas (obligatorio si la verificación es «probada»). */
   tests?: string[]
-  /** Ayuda: ruta de la sección de Ayuda donde debería contarse (null = aún sin revisar) y puntos clave que deben aparecer en su texto. */
-  help: { route: string | null; terms: string[] }
+  /** Ayuda: módulo de la Ayuda donde debería contarse (null = aún sin revisar) y puntos clave que deben aparecer en su texto. */
+  help: { module: HelpModuleId | null; terms: string[] }
 }
 
 export const FEATURE_STATE_LABEL: Record<FeatureState, string> = {

@@ -751,10 +751,105 @@ console.log('\n0305 · preferencias por persona (una fila por preferencia)')
     const body = sql.slice(sql.indexOf('create or replace function private.user_pref_key_allowed'), sql.indexOf('revoke all on function private.user_pref_key_allowed'))
     const sqlPatterns = [...body.matchAll(/^\s*'(\^[^']+\$)',?\s*$/gm)].map((m) => m[1])
     const reg = read('src/state/prefs/prefsRegistry.ts')
-    const tsBlock = reg.slice(reg.indexOf('SYNCED_KEY_PATTERN_SOURCES'), reg.indexOf(']\n\nconst SYNCED_KEY_PATTERNS'))
+    const tsBlock = reg.slice(reg.indexOf('SYNCED_KEY_PATTERN_SOURCES'), reg.indexOf(']\n\n// Preferencias de la Ayuda'))
     const tsPatterns = [...tsBlock.matchAll(/^\s*'(\^[^']+\$)',\s*$/gm)].map((m) => m[1].replace(/\\\\/g, '\\'))
     assert.ok(sqlPatterns.length >= 10)
     assert.deepEqual(sqlPatterns, tsPatterns)
+  })
+}
+
+// ---------------------------------------------------------------------------------------------------------- 0306 (pendiente de aplicar)
+console.log('\n0306 · valoraciones agregadas de la Ayuda y claves de preferencias de Ayuda (migración PENDIENTE, probada en local)')
+{
+  // La función am_i_app_owner viene de 0254 (no está en el esquema mínimo del banco): se define igual que allí.
+  await db.exec(`create or replace function public.am_i_app_owner() returns boolean language sql stable security definer set search_path = '' as $$ select coalesce((select p.is_app_owner from public.profiles p where p.id = auth.uid()), false) $$;
+    revoke execute on function public.am_i_app_owner() from public, anon; grant execute on function public.am_i_app_owner() to authenticated;`)
+  const fam = await mkFamily(db, 'H')
+  const owner = await addAccount(db, fam, 'admin', 'DuenaH', 'admin', { owner: true })
+  const normal = await addAccount(db, fam, 'adult', 'NormalH')
+  const HELP_KEYS = ['pepa:help-voice-mode', 'pepa:help-welcome', 'pepa:help-hint:calendario', 'pepa:help-tour:cal-crear-evento']
+  const S = (who, key, value) => as(db, who, async () => (await db.query('select * from public.set_user_pref($1, $2::jsonb, 0)', [key, JSON.stringify(value)])).rows[0])
+
+  await t('ANTES de aplicar 0306 las claves de Ayuda se rechazan (por eso la web las deja solo locales hasta entonces)', async () => {
+    has(await as(db, normal.id, () => err(() => db.query(`select * from public.set_user_pref('pepa:help-voice-mode', '"voice"'::jsonb, 0)`))), 'INVALID_KEY')
+    has(await as(db, normal.id, () => err(() => db.query(`select * from public.record_help_feedback('cal-crear-evento', true)`))), 'record_help_feedback')
+  })
+
+  await db.exec(read('supabase/pending-migrations/0306_help_feedback_and_prefs.sql'))
+
+  await t('tras 0306: las cuatro claves de Ayuda se aceptan, las de siempre siguen, y las inventadas se rechazan', async () => {
+    for (const k of HELP_KEYS) assert.equal((await S(normal.id, k, 'x')).applied, true, k)
+    assert.equal((await S(normal.id, 'familyapp:color-theme', 'vivo')).applied, true)
+    for (const bad of ['pepa:help-voice-modex', 'pepa:help-tour:Mal Id', 'pepa:help-otra', 'familyapp:location-sharing-member-id']) {
+      has(await as(db, normal.id, () => err(() => db.query(`select * from public.set_user_pref($1, '"x"'::jsonb, 0)`, [bad]))), 'INVALID_KEY')
+    }
+  })
+
+  await t('valorar: suma sí/no por ficha y día; un identificador raro, vacío o sin sesión se rechaza; anónimo no puede ni ejecutar', async () => {
+    await as(db, normal.id, () => db.query(`select public.record_help_feedback('cal-crear-evento', true)`))
+    await as(db, owner.id, () => db.query(`select public.record_help_feedback('cal-crear-evento', true)`))
+    await as(db, normal.id, () => db.query(`select public.record_help_feedback('cal-crear-evento', false)`))
+    const row = (await db.query(`select useful, not_useful from public.help_feedback_daily where card_id = 'cal-crear-evento'`)).rows[0]
+    assert.equal(row.useful, 2)
+    assert.equal(row.not_useful, 1)
+    for (const bad of ['', 'ab', 'Tiene Mayusculas', 'x'.repeat(61), "a'; drop table x;--"]) {
+      has(await as(db, normal.id, () => err(() => db.query(`select public.record_help_feedback($1, true)`, [bad]))), 'INVALID_CARD')
+    }
+    has(await as(db, normal.id, () => err(() => db.query(`select public.record_help_feedback('cal-crear-evento', null)`))), 'INVALID_CARD')
+    assert.ok(await asAnon(db, () => err(() => db.query(`select public.record_help_feedback('cal-crear-evento', true)`))))
+  })
+
+  await t('NO se guarda quién valoró ni nada de la conversación: la tabla solo tiene día, ficha y dos contadores', async () => {
+    const cols = (await db.query(`select column_name from information_schema.columns where table_schema='public' and table_name='help_feedback_daily' order by ordinal_position`)).rows.map((r) => r.column_name)
+    assert.deepEqual(cols, ['day', 'card_id', 'useful', 'not_useful'])
+  })
+
+  await t('la tabla no se lee ni se escribe directamente: ni cuentas normales, ni propietarias, ni anónimo', async () => {
+    for (const who of [normal.id, owner.id]) {
+      assert.ok(await as(db, who, () => err(() => db.query(`select * from public.help_feedback_daily`))))
+      assert.ok(await as(db, who, () => err(() => db.query(`insert into public.help_feedback_daily (day, card_id) values (current_date, 'hack-1')`))))
+      assert.ok(await as(db, who, () => err(() => db.query(`update public.help_feedback_daily set useful = 999`))))
+      assert.ok(await as(db, who, () => err(() => db.query(`delete from public.help_feedback_daily`))))
+    }
+    assert.ok(await asAnon(db, () => err(() => db.query(`select * from public.help_feedback_daily`))))
+  })
+
+  await t('resumen: solo las cuentas propietarias de PEPA lo ven; cualquier otra recibe 0 filas (sin error); anónimo no puede ejecutarlo', async () => {
+    const ownerRows = (await as(db, owner.id, () => db.query(`select * from public.help_feedback_summary(30)`))).rows
+    assert.deepEqual(ownerRows.map((r) => [r.card_id, Number(r.useful), Number(r.not_useful)]), [['cal-crear-evento', 2, 1]])
+    assert.equal((await as(db, normal.id, () => db.query(`select * from public.help_feedback_summary(30)`))).rows.length, 0)
+    assert.ok(await asAnon(db, () => err(() => db.query(`select * from public.help_feedback_summary(30)`))))
+  })
+
+  await t('tope diario: una cuenta no puede llenar la tabla inventando fichas (300 distintas al día; la 301 se ignora sin error; las ya existentes siguen sumando)', async () => {
+    for (let i = 0; i < 305; i++) await as(db, normal.id, () => db.query(`select public.record_help_feedback($1, true)`, [`prueba-${String(i).padStart(3, '0')}`]))
+    const n = (await db.query(`select count(*)::int n from public.help_feedback_daily where day = current_date`)).rows[0].n
+    assert.equal(n, 300)
+    await as(db, normal.id, () => db.query(`select public.record_help_feedback('cal-crear-evento', true)`))
+    assert.equal((await db.query(`select useful from public.help_feedback_daily where card_id='cal-crear-evento'`)).rows[0].useful, 3)
+  })
+
+  await t('la lista cerrada de 0306 coincide con la del código (preferencias normales + las de Ayuda)', async () => {
+    const sql = read('supabase/pending-migrations/0306_help_feedback_and_prefs.sql')
+    const body = sql.slice(sql.indexOf('create or replace function private.user_pref_key_allowed'), sql.indexOf('revoke all on function private.user_pref_key_allowed'))
+    const sqlPatterns = [...body.matchAll(/^\s*'(\^[^']+\$)',?\s*$/gm)].map((m) => m[1])
+    const reg = read('src/state/prefs/prefsRegistry.ts')
+    const grab = (name, end) => {
+      const block = reg.slice(reg.indexOf(name), reg.indexOf(end, reg.indexOf(name)))
+      return [...block.matchAll(/^\s*'(\^[^']+\$)',\s*$/gm)].map((m) => m[1].replace(/\\\\/g, '\\'))
+    }
+    const ts = [...grab('SYNCED_KEY_PATTERN_SOURCES', ']\n\n// Preferencias de la Ayuda'), ...grab('HELP_PREF_PATTERN_SOURCES', ']\n\nconst SYNCED_KEY_PATTERNS')]
+    assert.ok(sqlPatterns.length >= 14)
+    assert.deepEqual(sqlPatterns, ts)
+  })
+
+  await t('deshacer 0306: quita la tabla y las funciones y devuelve la lista cerrada de 0305 (las claves de Ayuda vuelven a rechazarse)', async () => {
+    await db.exec(read('supabase/rollbacks/0306_help_feedback_and_prefs_down.sql'))
+    assert.equal((await db.query(`select to_regclass('public.help_feedback_daily') r`)).rows[0].r, null)
+    has(await as(db, normal.id, () => err(() => db.query(`select public.record_help_feedback('cal-crear-evento', true)`))), 'record_help_feedback')
+    const k = await as(db, normal.id, () => err(() => db.query(`select * from public.set_user_pref('pepa:help-voice-mode', '"voice"'::jsonb, 0)`)))
+    has(k, 'INVALID_KEY')
+    assert.equal((await S(normal.id, 'familyapp:tab-order:bottom-nav', 'x')).applied, true)
   })
 }
 

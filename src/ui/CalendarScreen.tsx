@@ -114,6 +114,7 @@ import { NotifyFamilyCheckbox } from '@/ui/NotifyFamilyCheckbox'
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateFromTimestamp, formatDateTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { HelpHint } from '@/help/ui/HelpHint'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -4296,7 +4297,12 @@ function AddEventForm({
 
   return (
     <form onSubmit={handleSubmit} className="card member-form">
-      {!hideHeading && <h2>Nuevo evento</h2>}
+      {!hideHeading && (
+        <h2 className="help-heading">
+          Nuevo evento
+          <HelpHint cardId="cal-crear-evento" label="Ayuda para crear un evento" />
+        </h2>
+      )}
       <label>
         Título
         <input

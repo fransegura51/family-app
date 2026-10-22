@@ -250,8 +250,8 @@ describe('Estado de funcionalidades y Ayuda: pantallas', () => {
   })
   it('Ayuda y documentación: cobertura, secciones, tutoriales y base para B3 (sin consultas al servidor)', () => {
     const out = html(createElement(AreaAyuda))
-    for (const piece of ['Cobertura de las funciones', 'Secciones de la Ayuda', 'Tutoriales existentes', 'Funciones con la Ayuda por completar']) expect(out).toContain(piece)
-    expect(read('src/ui/admin/AreaAyuda.tsx')).toContain('fase B3')
+    for (const piece of ['Cobertura de las funciones', 'Cobertura por módulo', 'Estado de las fichas', 'Tutoriales y vídeos', 'Errores y rutas rotas', 'Valoraciones', 'Prioridades para completar la documentación']) expect(out).toContain(piece)
+    expect(read('src/ui/admin/AreaAyuda.tsx')).toContain('computeHelpHealth')
     expect(read('src/ui/admin/AreaAyuda.tsx')).not.toMatch(/supabase|@\/data\//)
   })
 })

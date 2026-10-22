@@ -19,7 +19,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/HomeScreen.tsx', 'src/domain/homeCarousel.ts', 'src/ui/AttentionCard.tsx'],
     tests: ['src/domain/homeCarousel.test.ts', 'src/ui/carouselAndNoticesUi.test.ts'],
-    help: { route: '/', terms: ['carrusel', 'accesos rapidos', 'pepa te avisa', 'organizar'] },
+    help: { module: 'inicio', terms: ['carrusel', 'accesos rapidos', 'pepa te avisa', 'organizar'] },
   },
   {
     id: 'pepa-hablar',
@@ -33,7 +33,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/VoiceCapture.tsx', 'src/pepa/talk.ts', 'src/domain/talkRoute.ts'],
     tests: ['src/pepa/talk.test.ts', 'src/domain/talkRoute.test.ts', 'src/pepa/dialog.test.ts'],
-    help: { route: '/', terms: ['hablar con pepa', 'tarjeta', 'hablando', 'por escrito'] },
+    help: { module: 'pepa', terms: ['hablar con pepa', 'tarjeta', 'hablando', 'por escrito'] },
   },
   {
     id: 'pepa-calendario-tarea-evento',
@@ -46,7 +46,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado leyendo VoiceCapture.tsx y talkActions; sin prueba automática del caso.',
     reviewed: '2026-10-21',
     evidence: ['src/ui/VoiceCapture.tsx', 'src/pepa/actions/actions.test.ts'],
-    help: { route: '/calendario', terms: ['tarea o evento', 'apuntar por voz'] },
+    help: { module: 'pepa', terms: ['solo se crean eventos'] },
   },
   {
     id: 'navegacion-menu',
@@ -60,7 +60,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/ui/NavShell.tsx', 'src/state/tabOrder.ts', 'src/state/prefs/prefsEngine.ts'],
     tests: ['src/ui/prefsNavShellSync.test.tsx', 'src/state/prefs/prefsEngine.test.ts'],
-    help: { route: '/', terms: ['organizar'] },
+    help: { module: 'inicio', terms: ['organizar'] },
   },
   {
     id: 'config-sincronizacion',
@@ -74,7 +74,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/state/prefs/prefsEngine.ts', 'src/state/prefs/prefsLeader.ts', 'supabase/migrations/0305_user_prefs.sql', 'docs/CONFIG_01_SINCRONIZACION_PREFERENCIAS.md'],
     tests: ['src/state/prefs/prefsEngine.test.ts', 'src/state/prefs/prefsLeader.test.ts', 'src/ui/prefsNavShellSync.test.tsx'],
-    help: { route: null, terms: [] },
+    help: { module: 'configuracion', terms: ['dispositivos', 'recuperar'] },
   },
   {
     id: 'notificaciones',
@@ -88,7 +88,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'La pantalla está revisada; que el aviso llegue de verdad al móvil depende de producción y no se puede comprobar desde el código.',
     reviewed: '2026-10-21',
     evidence: ['src/ui/NotificationPanel.tsx', 'src/ui/NotificationBell.tsx', 'src/domain/notificationsCenter.ts', 'supabase/functions/send-user-push/index.ts'],
-    help: { route: '/', terms: ['notificaciones'] },
+    help: { module: 'notificaciones', terms: ['notificaciones'] },
   },
 
   // ───────────────────────── Calendario
@@ -104,7 +104,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/CalendarScreen.tsx', 'src/data/calendar.ts', 'src/domain/recurrence.ts'],
     tests: ['src/domain/recurrence.test.ts', 'src/data/calendarEditScope.behavior.test.ts', 'src/ui/calendarColorModesUi.test.ts'],
-    help: { route: '/calendario', terms: ['vistas', 'tareas', 'privado', 'categorias'] },
+    help: { module: 'calendario', terms: ['vistas', 'tareas', 'privado', 'categorias'] },
   },
   {
     id: 'calendario-recordatorios',
@@ -118,7 +118,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['supabase/functions/send-due-reminders/index.ts', 'src/ui/ReminderWatcher.tsx', 'src/domain/reminders.ts'],
     tests: ['src/domain/reminderPlan.test.ts', 'src/data/reminderSystemWiring.test.ts'],
-    help: { route: '/calendario', terms: ['recordatorio', 'aviso'] },
+    help: { module: 'calendario', terms: ['recordatorio', 'aviso'] },
   },
   {
     id: 'calendario-sincronizacion',
@@ -131,7 +131,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Las Edge Functions existen; su programación y credenciales en producción no se ven desde el código.',
     reviewed: '2026-10-21',
     evidence: ['supabase/functions/google-calendar-oauth-start/index.ts', 'supabase/functions/sync-external-calendar/index.ts', 'supabase/functions/export-calendar-ics/index.ts'],
-    help: { route: '/calendario', terms: ['google calendar', 'url'] },
+    help: { module: 'calendario', terms: ['google calendar', 'url'] },
   },
   {
     id: 'accesos-personalizados',
@@ -144,7 +144,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado en el código de cada menú (marcador sin destino).',
     reviewed: '2026-10-21',
     evidence: ['src/data/customMenu.ts', 'src/state/calendarioMenu.ts', 'src/state/comprasMenu.ts'],
-    help: { route: '/compras', terms: ['nuevo acceso'] },
+    help: { module: 'configuracion', terms: ['nuevo acceso'] },
   },
 
   // ───────────────────────── Compras y Cocina
@@ -160,7 +160,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/ShoppingScreen.tsx', 'src/data/shopping.ts', 'src/data/shoppingStores.ts'],
     tests: ['src/domain/products.test.ts', 'src/ui/shoppingListStoreOrderUi.test.ts', 'src/state/sharedClassFlag.test.ts'],
-    help: { route: '/compras', terms: ['lista de la compra', 'tienda', 'modo compra', 'compartir', 'clasificacion'] },
+    help: { module: 'compras', terms: ['lista de la compra', 'tienda', 'modo compra', 'compartir', 'clasificacion'] },
   },
   {
     id: 'compras-historial-tickets',
@@ -175,7 +175,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/FinanceScreen.tsx', 'src/data/receipts.ts', 'src/domain/ticketExpenseMatch.ts'],
     tests: ['src/domain/ticketExpenseMatch.test.ts', 'src/domain/ticketCreditLines.test.ts'],
-    help: { route: '/compras', terms: ['ticket', 'historial de precios'] },
+    help: { module: 'compras', terms: ['ticket', 'historial de precios'] },
   },
   {
     id: 'compras-viajes-inventario',
@@ -188,7 +188,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Búsqueda en src/: solo definiciones y pruebas.',
     reviewed: '2026-10-21',
     evidence: ['src/data/shopping.ts'],
-    help: { route: '/compras', terms: ['viajes de compra', 'inventario'] },
+    help: { module: 'compras', terms: ['viajes de compra', 'inventario'] },
   },
   {
     id: 'cocina-menu-recetas',
@@ -203,7 +203,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/AlimentacionScreen.tsx', 'src/domain/kitchenMenuShopping.ts', 'src/pepa/kitchen.ts'],
     tests: ['src/domain/kitchenMenuShopping.test.ts', 'src/domain/kitchenMenu.test.ts', 'src/pepa/kitchen.test.ts'],
-    help: { route: '/alimentacion', terms: ['menu semanal', 'recetas'] },
+    help: { module: 'cocina', terms: ['menu semanal', 'recetas'] },
   },
   {
     id: 'cocina-nevera-foto',
@@ -216,7 +216,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Búsqueda en src/: sin resultados.',
     reviewed: '2026-10-21',
     evidence: ['supabase/functions/analyze-fridge-photo/index.ts'],
-    help: { route: '/alimentacion', terms: ['nevera'] },
+    help: { module: 'cocina', terms: ['nevera'] },
   },
   {
     id: 'cocina-alergias',
@@ -230,7 +230,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/domain/dietaryFeature.ts', 'src/ui/FamilyDietarySection.tsx'],
     tests: ['src/ui/dietaryUiLock.test.ts', 'src/data/dietaryPrivacyLock.test.ts'],
-    help: { route: '/familia', terms: ['alergias'] },
+    help: { module: 'cocina', terms: ['alergias'] },
   },
 
   // ───────────────────────── Economía
@@ -246,7 +246,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/FinanceScreen.tsx', 'src/domain/finance.ts', 'src/domain/financeBudget.ts'],
     tests: ['src/domain/finance.test.ts', 'src/domain/financeBudget.test.ts', 'src/domain/refunds.test.ts'],
-    help: { route: '/dinero', terms: ['movimientos', 'presupuesto', 'estadisticas', 'devoluciones', 'categorias'] },
+    help: { module: 'economia', terms: ['movimientos', 'presupuesto', 'estadisticas', 'devoluciones', 'categorias'] },
   },
   {
     id: 'economia-banco',
@@ -260,7 +260,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Las funciones existen; la sincronización real y la renovación dependen del banco y de producción.',
     reviewed: '2026-10-21',
     evidence: ['supabase/functions/enable-banking-sync-transactions/index.ts', 'src/data/bank.ts'],
-    help: { route: '/dinero', terms: ['banco'] },
+    help: { module: 'economia', terms: ['banco'] },
   },
   {
     id: 'economia-prevision',
@@ -275,7 +275,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/data/forecast.ts', 'src/domain/forecast.ts', 'src/domain/forecastReconciliation.ts'],
     tests: ['src/domain/forecast.test.ts', 'src/domain/forecastReconciliation.test.ts', 'src/ui/forecastUiWiring.test.ts'],
-    help: { route: '/dinero', terms: ['prevision'] },
+    help: { module: 'economia', terms: ['prevision'] },
   },
 
   // ───────────────────────── Familia, cuentas y seguridad
@@ -291,7 +291,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/ui/FamilyScreen.tsx', 'supabase/migrations/0304_member_self_and_guardian_edit.sql'],
     tests: ['src/data/memberCardEditMigration.test.ts', 'src/ui/invitationsAndGuardiansUi.test.ts'],
-    help: { route: '/familia', terms: ['fichas', 'miembros', 'invitados', 'codigo de invitacion'] },
+    help: { module: 'familia', terms: ['fichas', 'miembros', 'invitados', 'codigo de invitacion'] },
   },
   {
     id: 'familia-peso-medidas',
@@ -305,7 +305,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/BodyScreen.tsx', 'src/domain/growth.ts', 'src/domain/bodyStats.ts'],
     tests: ['src/domain/growth.test.ts', 'src/domain/bodyStats.test.ts'],
-    help: { route: '/familia', terms: ['peso y medidas', 'percentil', 'medidor de altura'] },
+    help: { module: 'familia', terms: ['peso y medidas', 'percentil', 'medidor de altura'] },
   },
   {
     id: 'cuentas-acceso',
@@ -319,7 +319,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/domain/invitations.ts', 'supabase/migrations/0302_signup_gate_invitation_first.sql', 'supabase/migrations/0303_account_security_lockdown.sql', 'src/ui/SecuritySettings.tsx'],
     tests: ['src/data/invitationGate.test.ts', 'src/domain/accountSecurity.test.ts', 'src/ui/accountSecurityUi.test.ts'],
-    help: { route: '/familia', terms: ['pin', 'codigo de invitacion'] },
+    help: { module: 'cuentas', terms: ['pin', 'codigo de invitacion'] },
   },
   {
     id: 'familia-actividad',
@@ -332,7 +332,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado en activity.ts y ActivityScreen.tsx.',
     reviewed: '2026-10-21',
     evidence: ['src/domain/activity.ts', 'src/ui/ActivityScreen.tsx'],
-    help: { route: '/familia', terms: ['actividad reciente'] },
+    help: { module: 'familia', terms: ['actividad reciente'] },
   },
   {
     id: 'invitar-amigos',
@@ -346,7 +346,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/ui/InviteFriendsButton.tsx', 'src/domain/inviteFriends.ts'],
     tests: ['src/ui/admin/administrationCenter.test.tsx'],
-    help: { route: null, terms: [] },
+    help: { module: 'cuentas', terms: ['invitar amigos'] },
   },
 
   // ───────────────────────── Ubicación y otros módulos
@@ -363,7 +363,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/LocationScreen.tsx', 'src/domain/gpsJump.ts', 'src/domain/positionFreshness.ts'],
     tests: ['src/domain/gpsJump.test.ts', 'src/data/locationAlertConfirmationMigration.test.ts', 'src/services/locationSharing.test.ts'],
-    help: { route: '/ubicacion', terms: ['avisos', 'lugares', 'consentimiento'] },
+    help: { module: 'ubicacion', terms: ['avisos', 'lugares', 'consentimiento'] },
   },
   {
     id: 'cumpleanos',
@@ -377,7 +377,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/BirthdaysScreen.tsx', 'src/domain/birthdays.ts'],
     tests: ['src/domain/birthdays.test.ts'],
-    help: { route: '/cumpleanos', terms: ['recordatorios'] },
+    help: { module: 'cumpleanos', terms: ['recordatorios'] },
   },
   {
     id: 'contactos',
@@ -391,7 +391,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/ContactsScreen.tsx', 'src/domain/vcardParser.ts'],
     tests: ['src/domain/vcardParser.test.ts'],
-    help: { route: '/contactos', terms: ['vcf', 'agenda'] },
+    help: { module: 'contactos', terms: ['vcf', 'agenda'] },
   },
   {
     id: 'galeria',
@@ -404,7 +404,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado leyendo GalleryScreen.tsx.',
     reviewed: '2026-10-21',
     evidence: ['src/ui/GalleryScreen.tsx', 'src/data/gallery.ts'],
-    help: { route: '/galeria', terms: ['invitados', 'fotos'] },
+    help: { module: 'galeria', terms: ['invitados', 'fotos'] },
   },
   {
     id: 'documentos',
@@ -418,7 +418,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado en el código; sin prueba automática de las categorías por defecto.',
     reviewed: '2026-10-21',
     evidence: ['src/ui/DocumentsScreen.tsx', 'src/data/documentCategories.ts', 'src/data/documents.ts'],
-    help: { route: '/documentos', terms: ['vencimiento', 'carpeta', 'privacidad'] },
+    help: { module: 'documentos', terms: ['vencimiento', 'carpeta', 'privacidad'] },
   },
   {
     id: 'pequenos-grandes',
@@ -433,7 +433,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/PequenosGrandesScreen.tsx', 'src/domain/rewards.ts', 'src/data/wishlist.ts'],
     tests: ['src/domain/rewards.test.ts', 'src/domain/wishlist.test.ts', 'src/ui/rewardsScreenModeUi.test.ts'],
-    help: { route: '/puntos', terms: ['puntos', 'recompensas', 'monedero', 'lista de deseos'] },
+    help: { module: 'pequenos', terms: ['puntos', 'recompensas', 'monedero', 'lista de deseos'] },
   },
 
   // ───────────────────────── Eventos
@@ -449,7 +449,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/EventosScreen.tsx', 'src/domain/events.ts', 'supabase/functions/event-rsvp/index.ts'],
     tests: ['src/domain/events.test.ts', 'src/domain/eventBudgetTracking.test.ts', 'src/ui/eventGuestBreakdown14B.test.ts'],
-    help: { route: '/eventos', terms: ['invitados', 'presupuesto', 'plan del dia', 'proveedores', 'mesas'] },
+    help: { module: 'eventos', terms: ['invitados', 'presupuesto', 'plan del dia', 'proveedores', 'mesas'] },
   },
   {
     id: 'eventos-comida-menu',
@@ -463,7 +463,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/EventMenu.tsx', 'src/domain/eventFoodMenu.ts', 'src/data/eventMenuHub.ts'],
     tests: ['src/domain/eventMenuHub.test.ts', 'src/data/eventMenuHub.behavior.test.ts', 'src/ui/eventMenuHubUi.test.ts'],
-    help: { route: '/eventos', terms: ['menu', 'compras'] },
+    help: { module: 'eventos', terms: ['menu', 'compras'] },
   },
   {
     id: 'eventos-invitaciones-diseno',
@@ -476,7 +476,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/InvitationDesigner.tsx', 'src/domain/invitationAutoCompose.ts'],
     tests: ['src/domain/invitationAutoCompose.test.ts', 'src/ui/invitationDesignerUndo.test.ts', 'src/services/invitationExport.test.ts'],
-    help: { route: '/eventos', terms: ['invitacion'] },
+    help: { module: 'eventos', terms: ['invitacion'] },
   },
 
   // ───────────────────────── Comunidad
@@ -492,7 +492,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/domain/communityAccess.ts', 'src/ui/community/CommunityAccessUi.tsx', 'supabase/migrations/0281_community_open_access.sql'],
     tests: ['src/domain/communityAccess.test.ts', 'src/ui/community/communityAccessUi.test.tsx'],
-    help: { route: null, terms: [] },
+    help: { module: 'comunidad', terms: ['18 anos', 'alias'] },
   },
   {
     id: 'comunidad-publicar',
@@ -506,7 +506,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-21',
     evidence: ['src/ui/community/PostEditorPage.tsx', 'src/domain/communityPost.ts', 'src/domain/communityRecipeBridge.ts'],
     tests: ['src/domain/communityPost.test.ts', 'src/ui/community/communityPostUi.test.tsx', 'src/domain/communityRecipeBridge.test.ts'],
-    help: { route: null, terms: [] },
+    help: { module: 'comunidad', terms: ['publicar', 'receta'] },
   },
   {
     id: 'comunidad-ia',
@@ -520,7 +520,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'El valor en vivo del interruptor no se ve desde el código; se consulta en el área «Comunidad y moderación» → Configuración.',
     reviewed: '2026-10-21',
     evidence: ['supabase/functions/community-pepa/index.ts', 'supabase/functions/community-summarize/index.ts', 'supabase/functions/community-weekly-proposals/index.ts'],
-    help: { route: null, terms: [] },
+    help: { module: 'comunidad', terms: ['respuestas de pepa'] },
   },
   {
     id: 'comunidad-publica',
@@ -533,7 +533,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'El valor en vivo no se ve desde el código.',
     reviewed: '2026-10-21',
     evidence: ['src/domain/communityPublicPage.ts', 'supabase/migrations/0281_community_open_access.sql'],
-    help: { route: null, terms: [] },
+    help: { module: 'comunidad', terms: ['sin cuenta'] },
   },
   {
     id: 'comunidad-moderacion',
@@ -547,7 +547,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/ui/community/AdminPage.tsx', 'src/domain/communityAdmin.ts', 'src/ui/community/admin/ModerationTab.tsx'],
     tests: ['src/ui/community/communityAdminUi.test.ts', 'src/domain/communityAdmin.test.ts'],
-    help: { route: null, terms: [] },
+    help: { module: 'comunidad', terms: ['denunciar'] },
   },
 
   // ───────────────────────── Administración y sistema
@@ -563,7 +563,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/ui/admin/AdministrationPage.tsx', 'src/ui/admin/AdminGate.tsx', 'src/admin/adminAreas.ts'],
     tests: ['src/ui/admin/administrationCenter.test.tsx'],
-    help: { route: null, terms: [] },
+    help: { module: 'configuracion', terms: ['Centro de Administración'] },
   },
   {
     id: 'admin-errores',
@@ -576,7 +576,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'Comprobado en errorReports.ts y el área Sistema.',
     reviewed: '2026-10-22',
     evidence: ['src/data/errorReports.ts', 'src/ui/admin/AreaSistema.tsx'],
-    help: { route: null, terms: [] },
+    help: { module: null, terms: [] },
   },
   {
     id: 'admin-invitaciones-familia',
@@ -589,7 +589,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     reviewed: '2026-10-22',
     evidence: ['src/data/familyInvites.ts', 'src/ui/admin/AreaUsuarios.tsx'],
     tests: ['src/data/invitationGate.test.ts'],
-    help: { route: null, terms: [] },
+    help: { module: null, terms: [] },
   },
   {
     id: 'admin-automatizaciones',
@@ -602,6 +602,6 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verificationNote: 'El panel está comprobado; la entrega real de tickets depende de servicios externos.',
     reviewed: '2026-10-22',
     evidence: ['src/ui/admin/AmazonWebhookSettings.tsx', 'supabase/functions/amazon-order-webhook/index.ts', 'supabase/functions/mercadona-ticket-webhook/index.ts'],
-    help: { route: null, terms: [] },
+    help: { module: null, terms: [] },
   },
 ]

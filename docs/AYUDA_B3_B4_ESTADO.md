@@ -56,10 +56,32 @@ Documento vivo. Última actualización: 23/10/2026. Base de diseño: «Nueva Ayu
     afecta al uso se dice como «Ten en cuenta: …»; el estado interno solo lo ve la administración de PEPA cuando la memoria de 10 minutos ya sabe que lo es (la Ayuda nunca suma una consulta a Supabase por esto) y,
     completo, en el Centro de Administración → Ayuda.
   - Ficha «Cómo usar la Ayuda de PEPA» ampliada (preguntas, sugerencias, temas, Llévame, Enséñame, voz, qué hacer si no hay tutorial).
+- **Correcciones consolidadas (23/10/2026, 2.ª ronda en iPhone):**
+  - **Marcador del tutorial con el teclado**: el marco ya NO es una capa con coordenadas (que se descolocaba al mover iOS el viewport); es un estilo del propio control (`data-tour-active`, ver `tours.css`), así que viaja con él
+    pase lo que pase con el teclado, el scroll o el giro. Las medidas que quedan (dónde poner la tarjeta, cuándo desplazar) son relativas a la propia capa del tutorial. Además `textarea` pasa a 16 px solo en iOS (evita el zoom automático).
+  - **Tarjeta**: «Salir» (✕) siempre arriba; Pausar/Reiniciar/Escuchar a la vista con espacio y recogidos tras «⋯ Más» en modo compacto (nada se elimina).
+  - **Sugerencias al escribir** en el buscador (`suggestHelp`): fichas verificadas, prefijo en la última palabra, tildes/mayúsculas/erratas, máximo 4, encima del cuadro; sin IA ni servidor.
+  - **Botones flotantes**: se esconden con suavidad mientras el teclado está abierto (`data-pepa-keyboard`) y se separan si se superponen.
+  - **Actividad reciente**: diagnóstico y corrección en la sección siguiente.
 - Siempre se puede cerrar («✕»/Salir) sin bloquear la app; si el control no está (otra pantalla, sin permiso) el panel lo dice y ofrece seguir con la Ayuda.
 - Bienvenida: la marca `pepa:help-welcome = pending` la deja el alta (crear familia o unirse con código); una cuenta anterior no tiene valor y **no recibe ninguna sugerencia**. Está siempre a mano en Ayuda («Recorrido de bienvenida»).
 - Pruebas: `engine.test.ts`, `tourDefs.test.ts` (AYUDA-01: las marcas y los avisos existen en el código de las pantallas), `tourRunner.test.tsx`, `tourPilotsReal.test.tsx` (formularios reales con datos simulados), `helpNudges.test.tsx`. **No sustituyen la prueba en dispositivos reales (ordenador y móvil).**
 - Apagar solo los tutoriales sin tocar el resto de la Ayuda: quitar `tour:` de las fichas o `canStartTour` (hoy cuelgan de `HELP_CONTEXTUAL_ENABLED`).
+
+## Actividad reciente: las «49 entradas» (diagnóstico por código; la consulta a la base de datos queda pendiente)
+
+- **Qué se ve**: la pantalla pedía las últimas 50 filas de `activity_log`. «1 producto creado + 49 “Alguien modificó un evento”» = exactamente esas 50: las 49 son solo las que caben; puede haber muchas más detrás.
+- **Causa demostrada en el código**: el disparador `log_activity()` (0011) anota CADA `update` de `calendar_events`, aunque no cambie nada, con `auth.uid()` (nulo si no hay sesión de persona → «Alguien»).
+  `sync-calendar-from-google-cron` (cada hora, según su cabecera) hacía `update` de TODOS los eventos ya importados de Google en cada vuelta, con los mismos datos y con la clave de servicio → N filas idénticas por hora.
+  No hay otro escritor masivo: los formularios, los tutoriales y la edición de eventos recurrentes escriben una fila por acción (revisado en `src/data/calendar.ts` y `events.ts`); los tutoriales no escriben nada.
+- **No verificado en producción**: la herramienta de base de datos disponible en esta sesión no tiene acceso al proyecto de PEPA, así que no se han contado las filas reales. Consulta de solo lectura para comprobarlo (SQL Editor de Supabase):
+  `select date_trunc('hour', created_at) h, actor_id is null as sin_persona, count(*) n, count(distinct record_id) elementos from activity_log where table_name='calendar_events' and action='update' and created_at > now() - interval '3 days' group by 1,2 order by 1 desc;`
+  Si salen ~N filas por hora con `sin_persona = true` y `elementos` = N, es esto.
+- **Corrección (publicada, solo web)**: las líneas seguidas de lo mismo (misma persona/tabla/acción, ≤ 2 min) se juntan («Un proceso automático de PEPA modificó 49 eventos»), nunca se juntan cosas distintas; sin persona ya no dice «Alguien»;
+  se nombra el evento/producto/miembro cuando la cuenta puede leerlo (3 lecturas pequeñas al abrir la pantalla; un evento privado de otra persona no se nombra); se piden 200 filas y hay «Ver más antiguas».
+- **Corrección de la causa (preparada, NO aplicada)**: (1) `supabase/pending-migrations/0307_activity_log_skip_noop_updates.sql` (+ reversión): un `update` que no cambia nada salvo `updated_at` ya no se anota; no borra nada; probada en local.
+  (2) `sync-calendar-from-google-cron` ahora solo escribe lo que cambió (`eventDiff.ts`, probado): menos filas, menos Realtime y menos coste. Necesita DESPLEGAR la función (no desplegada).
+  Las filas ya acumuladas NO se borran (haría falta autorización expresa y una justificación; ya no estorban al estar agrupadas).
 
 ## Privacidad
 

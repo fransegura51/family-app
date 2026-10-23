@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react'
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { HELP_CARDS, HELP_MODULE_BY_ID, cardsOfModule } from '@/help/catalog'
 import type { HelpModuleId } from '@/help/types'
 import { HelpAnswer } from '@/help/ui/HelpAnswer'
@@ -78,6 +78,14 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
     if (!text.trim()) return
     help.ask(text)
     setText('')
+  }
+  // Sugerencias mientras se escribe: las fichas verificadas más relevantes (pocas). Tocar una abre directamente su respuesta y cierra el teclado para que se vea.
+  const typed = useDeferredValue(text)
+  const suggestions = useMemo(() => (typed.trim().length >= 2 ? help.suggest(typed) : []), [typed, help])
+  const pickSuggestion = (cardId: string) => {
+    help.showCard(cardId)
+    setText('')
+    inputRef.current?.blur()
   }
   const setBubbleRef = (id: number) => (el: HTMLDivElement | null) => {
     if (el) bubbles.current.set(id, el)
@@ -199,6 +207,28 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
       )}
 
       <form className="help-ask" onSubmit={submit} ref={formRef}>
+        {suggestions.length > 0 && text.trim().length >= 2 && (
+          <ul id="help-suggestions" className="help-suggestions" role="listbox" aria-label="Sugerencias de la Ayuda">
+            {suggestions.map((h) =>
+              h.doc.kind === 'card' ? (
+                <li key={h.doc.id} role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected="false"
+                    className="help-suggestion"
+                    // En el móvil, tocar aquí no debe quitar el foco al buscador antes de tiempo (el toque se resolvería sobre el hueco que deja el teclado al cerrarse).
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => pickSuggestion(h.doc.kind === 'card' ? h.doc.card.id : '')}
+                  >
+                    <span className="help-suggestion-title">{h.doc.card.title}</span>
+                    <span className="help-suggestion-module">{HELP_MODULE_BY_ID.get(h.doc.module)?.label}</span>
+                  </button>
+                </li>
+              ) : null,
+            )}
+          </ul>
+        )}
         <label htmlFor="help-q">¿Qué quieres hacer o saber?</label>
         <div className="help-ask-row">
           <input
@@ -207,6 +237,10 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
             type="search"
             enterKeyHint="search"
             autoComplete="off"
+            role="combobox"
+            aria-expanded={suggestions.length > 0 && text.trim().length >= 2}
+            aria-controls="help-suggestions"
+            aria-autocomplete="list"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onFocus={() => window.setTimeout(() => formRef.current?.scrollIntoView?.({ block: 'nearest' }), 350)}

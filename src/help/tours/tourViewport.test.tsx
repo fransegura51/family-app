@@ -51,6 +51,7 @@ function mockGeometry() {
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     if (this.tagName === 'LABEL') return box(labelTop, 70)
     if (this.tagName === 'INPUT') return box(labelTop + 28, 40)
+    if (this.dataset?.tourLayer) return box(vv.offsetTop, vv.height, 0, 390) // la capa sigue al área visible
     return box(0, 10)
   })
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
@@ -81,7 +82,8 @@ function setup() {
   )
 }
 const layer = () => document.querySelector('[data-tour-layer]') as HTMLElement
-const ring = () => document.querySelector('.tour-ring') as HTMLElement
+// El marcador es el propio control señalado (atributo data-tour-active), sin coordenadas propias.
+const ring = () => document.querySelector('[data-tour-active="true"]') as HTMLElement
 const panel = () => screen.getByRole('dialog', { name: /Tutorial:/ })
 const px = (v: string) => parseFloat(v)
 
@@ -161,8 +163,9 @@ describe('marco y tarjeta frente al teclado (motor general)', () => {
     await waitFor(() => expect(ring()).toBeTruthy())
     expect(layer().style.height).toBe('768px')
     expect(layer().dataset.keyboard).toBe('false')
-    expect(px(ring().style.top)).toBe(labelTop - 4) // rodea «Título» + el cuadro, no solo el cuadro
-    expect(px(ring().style.height)).toBe(70 + 8)
+    expect(ring().tagName).toBe('LABEL') // rodea «Título» + el cuadro, no solo el cuadro
+    expect(ring().querySelector('[data-help-id="test.title"]')).toBeTruthy()
+    expect(document.querySelectorAll('[data-tour-active]').length).toBe(1)
     expect(panel().className).not.toContain('compact')
   })
 
@@ -198,59 +201,43 @@ describe('marco y tarjeta frente al teclado (motor general)', () => {
     expect(panel().style.getPropertyValue('--tour-bottom')).toBe('')
   })
 
-  it('iOS desplaza el viewport visual (offsetTop): el marco se mide respecto a él y sigue alineado con el campo real', async () => {
+  it('el marcador viaja CON el control: aunque iOS desplace el viewport visual, siga siendo el mismo control y no hay coordenadas viejas que se queden atrás', async () => {
     setup()
     await waitFor(() => expect(ring()).toBeTruthy())
+    const before = ring()
     act(() => vv.set({ height: 420, offsetTop: 120 }))
     await waitFor(() => expect(layer().style.top).toBe('120px'))
-    // el campo real sigue en 300 (coordenadas de diseño): dentro de la capa está a 300 − 120
-    expect(px(ring().style.top)).toBe(300 - 120 - 4)
-    // y el viewport visual se vuelve a desplazar (Safari recoloca la página al enfocar)
-    act(() => vv.set({ offsetTop: 200 }, 'scroll'))
-    await waitFor(() => expect(px(ring().style.top)).toBe(300 - 200 - 4), { timeout: 300 }) // sin esperar al sondeo de 400 ms
+    expect(ring()).toBe(before)
+    act(() => vv.set({ offsetTop: 200 }))
+    expect(ring()).toBe(before)
+    act(() => vv.set({ height: 768, offsetTop: 0 }))
+    expect(ring()).toBe(before)
+    expect(document.querySelectorAll('[data-tour-active]').length).toBe(1)
   })
 
-  it('si el formulario se desplaza al abrirse el teclado, el marco lo sigue (sin esperar al sondeo)', async () => {
-    setup()
-    await waitFor(() => expect(ring()).toBeTruthy())
-    labelTop = 140 // Safari sube el formulario
-    act(() => vv.set({ height: 420 }))
-    await waitFor(() => expect(px(ring().style.top)).toBe(140 - 4), { timeout: 300 })
-  })
-
-  it('un cambio de foco recoloca el marco', async () => {
-    setup()
-    await waitFor(() => expect(ring()).toBeTruthy())
-    labelTop = 180
-    act(() => {
-      screen.getByLabelText('titulo').dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
-    })
-    await waitFor(() => expect(px(ring().style.top)).toBe(180 - 4), { timeout: 300 })
-    labelTop = 330
-    act(() => {
-      screen.getByLabelText('titulo').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
-    })
-    await waitFor(() => expect(px(ring().style.top)).toBe(330 - 4), { timeout: 300 })
-  })
-
-  it('el desplazamiento de cualquier contenedor del formulario recoloca el marco', async () => {
-    setup()
-    await waitFor(() => expect(ring()).toBeTruthy())
-    labelTop = 250
-    act(() => {
-      document.getElementById('form')!.dispatchEvent(new Event('scroll'))
-    })
-    await waitFor(() => expect(px(ring().style.top)).toBe(250 - 4), { timeout: 300 })
-  })
-
-  it('el cambio de tamaño de la ventana (girar el iPhone) también recoloca', async () => {
-    setup()
-    await waitFor(() => expect(ring()).toBeTruthy())
-    labelTop = 90
-    act(() => {
-      window.dispatchEvent(new Event('resize'))
-    })
-    await waitFor(() => expect(px(ring().style.top)).toBe(90 - 4), { timeout: 300 })
+  describe('la tarjeta se recoloca (sin esperar al sondeo) cuando cambia dónde está el control', () => {
+    // Con el teclado abierto (área de 420 px) un campo en la parte baja choca con la tarjeta de abajo y uno arriba con la de arriba.
+    const trigger: Array<[string, () => void]> = [
+      ['un cambio de foco', () => screen.getByLabelText('titulo').dispatchEvent(new FocusEvent('focusin', { bubbles: true }))],
+      ['el desplazamiento del formulario', () => document.getElementById('form')!.dispatchEvent(new Event('scroll'))],
+      ['girar o redimensionar la ventana', () => window.dispatchEvent(new Event('resize'))],
+      ['abrirse o cambiar el viewport visual', () => vv.set({ height: 421 })],
+    ]
+    for (const [name, fire] of trigger) {
+      it(name, async () => {
+        labelTop = 20
+        setup()
+        act(() => vv.set({ height: 420 }))
+        await waitFor(() => expect(panel().className).toContain('tour-panel-bottom'))
+        labelTop = 330
+        act(() => fire())
+        await waitFor(() => expect(panel().className).toContain('tour-panel-top'), { timeout: 300 })
+        labelTop = 20
+        act(() => fire())
+        await waitFor(() => expect(panel().className).toContain('tour-panel-bottom'), { timeout: 300 })
+        expect(ring().tagName).toBe('LABEL') // el marcador nunca cambió de control
+      })
+    }
   })
 
   it('si el campo queda bajo el teclado/tarjeta, se desplaza el CONTENIDO (no el formulario ni el foco) para verlo', async () => {
@@ -277,20 +264,34 @@ describe('marco y tarjeta frente al teclado (motor general)', () => {
     expect(document.activeElement).toBe(input) // ni quitó el foco (el teclado sigue abierto)
   })
 
-  it('el marco y la capa no interceptan toques (CSS) y los botones secundarios solo se ocultan en modo compacto', () => {
+  it('el marco es un estilo del propio control (no intercepta toques ni cambia su tamaño) y la capa tampoco bloquea nada', () => {
     const css = readFileSync('src/help/tours/tours.css', 'utf8')
     expect(css).toMatch(/\.tour-layer \{[^}]*pointer-events: none/s)
-    expect(css).toMatch(/\.tour-ring \{[^}]*pointer-events: none/s)
-    expect(css).toMatch(/\.tour-panel-compact \.tour-btn-extra \{\s*display: none/)
+    expect(css).toMatch(/\[data-tour-active='true'\] \{[^}]*box-shadow/s)
+    expect(css).not.toMatch(/\[data-tour-active='true'\] \{[^}]*(width|height|position|transform):/s)
     expect(css).toContain('var(--tour-bottom')
   })
 
-  it('los botones esenciales (Atrás/Siguiente/Salir) siguen disponibles con la tarjeta compacta', async () => {
+  it('el marcador se quita al salir: ningún control se queda marcado', async () => {
     setup()
+    await waitFor(() => expect(ring()).toBeTruthy())
+    fireEvent.click(within(panel()).getByRole('button', { name: /Salir del tutorial/ }))
+    await waitFor(() => expect(document.querySelectorAll('[data-tour-active]').length).toBe(0))
+  })
+
+  it('los controles esenciales (Salir, Atrás/Siguiente) están a la vista y los secundarios (Pausar, Reiniciar, Escuchar) a un toque en «⋯ Más» con la tarjeta compacta', async () => {
+    setup()
+    await waitFor(() => expect(panel().querySelector('details.tour-more')).toBeTruthy())
+    // con espacio: los secundarios están desplegados
+    expect((panel().querySelector('details.tour-more') as HTMLDetailsElement).open).toBe(true)
     act(() => vv.set({ height: 420 }))
     await waitFor(() => expect(panel().className).toContain('compact'))
-    expect(within(panel()).getByRole('button', { name: /Salir/ })).toBeTruthy()
-    // los secundarios llevan la clase que el CSS oculta
-    expect(within(panel()).getByRole('button', { name: /Pausar/ }).className).toContain('tour-btn-extra')
+    expect(within(panel()).getByRole('button', { name: /Salir del tutorial/ })).toBeTruthy()
+    const more = panel().querySelector('details.tour-more') as HTMLDetailsElement
+    expect(more.open).toBe(false)
+    expect(within(more).getByRole('button', { name: /Pausar/ })).toBeTruthy()
+    expect(within(more).getByRole('button', { name: /Reiniciar/ })).toBeTruthy()
+    expect(within(more).getByRole('button', { name: /Escuchar/ })).toBeTruthy()
+    expect(more.querySelector('summary')?.textContent).toContain('Más')
   })
 })

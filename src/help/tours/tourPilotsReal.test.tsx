@@ -56,7 +56,7 @@ describe('Familia → Añadir un miembro (formulario real)', () => {
     run('fam-anadir-miembro', '/familia', <AddMemberForm onAdded={() => undefined} existingMembers={[]} />)
     await says(/Escribe su nombre/) // el formulario ya estaba abierto: el primer paso se omite
     expect(document.querySelector('[data-help-id="family.member-name"]')).toBeTruthy()
-    await waitFor(() => expect(document.querySelector('.tour-ring')).toBeTruthy())
+    await waitFor(() => expect(document.querySelector('[data-tour-active="true"]')).toBeTruthy())
 
     typeAndLeave(screen.getByLabelText('Nombre'), 'Eric')
     await says(/Elige qué es esta persona/)
@@ -133,7 +133,7 @@ describe('Familia → Añadir un miembro (formulario real)', () => {
     await says(/El color identifica/)
     expect(document.querySelector('[data-help-id="family.member-color"]')).toBeTruthy()
     fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
-    await says(/Comunidad PEPA, que es solo para mayores de 18 años/)
+    await says(/Comunidad PEPA, que es solo para mayores de 18 años: sin fecha no se entra/)
     expect(document.querySelector('[data-help-id="family.member-birth"]')).toBeTruthy()
     fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
     await says(/curvas de crecimiento/)
@@ -283,5 +283,125 @@ describe('con el teclado abierto (visualViewport) en Compras y Familia', () => {
     expect(panel().className).toContain('tour-panel-compact')
     typeAndLeave(screen.getByLabelText('Nombre'), 'Eric')
     await says(/Elige qué es esta persona/)
+  })
+})
+
+// Fallo real en iPhone: al enfocar un campo y aparecer el teclado, el marcador saltaba a otra zona (Compras → Tienda, Familia → Nombre) y al cerrar el teclado volvía. El marcador ya no es una
+// capa con coordenadas sino un estilo del propio control: pase lo que pase con el viewport, sigue en SU control.
+describe('el marcador no se mueve del control con el teclado de iOS (Compras, Familia, Calendario)', () => {
+  const marked = () => {
+    const all = document.querySelectorAll('[data-tour-active="true"]')
+    expect(all.length).toBeLessThanOrEqual(1)
+    const el = all[0] as HTMLElement | undefined
+    return el ? (el.dataset.helpId ?? (el.querySelector('[data-help-id]') as HTMLElement | null)?.dataset.helpId ?? '') : ''
+  }
+  function keyboard() {
+    const vv = Object.assign(new EventTarget(), { offsetTop: 0, offsetLeft: 0, width: 390, height: 768, scale: 1 })
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vv })
+    return {
+      set: (p: Partial<{ offsetTop: number; height: number }>) => {
+        Object.assign(vv, p)
+        vv.dispatchEvent(new Event('resize'))
+        vv.dispatchEvent(new Event('scroll'))
+      },
+    }
+  }
+  afterEach(() => Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined }))
+
+  it('Compras · paso «Tienda»: abrir/cerrar el teclado, enfocar y desplazar NO cambia el control señalado', async () => {
+    const vv = keyboard()
+    run('com-anadir-producto', '/compras', <AddShoppingItemForm suggestions={[]} knownStores={['Mercadona']} hideHeading onAdded={() => undefined} />)
+    await says(/Escribe el producto/)
+    typeAndLeave(screen.getByLabelText('Nombre'), 'Leche')
+    await says(/pon la tienda/)
+    await waitFor(() => expect(marked()).toBe('shopping.product-store'))
+    const store = document.querySelector('[data-help-id="shopping.product-store"] input') as HTMLInputElement
+    for (const step of [
+      () => store.focus(),
+      () => vv.set({ height: 400, offsetTop: 0 }),
+      () => vv.set({ height: 400, offsetTop: 180 }), // iOS desplaza el viewport visual
+      () => store.dispatchEvent(new Event('scroll', { bubbles: true })),
+      () => vv.set({ height: 768, offsetTop: 0 }),
+      () => store.blur(),
+    ]) {
+      act(() => step())
+      expect(marked()).toBe('shopping.product-store')
+    }
+  })
+
+  it('Familia · paso «Nombre»: igual', async () => {
+    const vv = keyboard()
+    run('fam-anadir-miembro', '/familia', <AddMemberForm onAdded={() => undefined} existingMembers={[]} />)
+    await says(/Escribe su nombre/)
+    await waitFor(() => expect(marked()).toBe('family.member-name'))
+    const name = screen.getByLabelText('Nombre') as HTMLInputElement
+    for (const step of [() => name.focus(), () => vv.set({ height: 420, offsetTop: 0 }), () => vv.set({ offsetTop: 120 }), () => vv.set({ height: 768, offsetTop: 0 })]) {
+      act(() => step())
+      expect(marked()).toBe('family.member-name')
+    }
+    // y al avanzar de paso el marcador pasa al siguiente control (nunca queda el anterior)
+    typeAndLeave(name, 'Eric')
+    await says(/Elige qué es esta persona/)
+    await waitFor(() => expect(marked()).toBe('family.member-type'))
+  })
+
+  it('Calendario · paso «Título»: igual', async () => {
+    const vv = keyboard()
+    run('cal-crear-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
+    await says(/Escribe cómo se llama el evento/)
+    await waitFor(() => expect(marked()).toBe('calendar.event-title'))
+    const title = screen.getByLabelText('Título') as HTMLInputElement
+    for (const step of [() => title.focus(), () => vv.set({ height: 400, offsetTop: 90 }), () => vv.set({ height: 768, offsetTop: 0 })]) {
+      act(() => step())
+      expect(marked()).toBe('calendar.event-title')
+    }
+  })
+})
+
+// FAM-TUT-04: el guardado, su confirmación y el tratamiento de errores, probados con datos AISLADOS (la función de guardado está simulada: no se crea ningún miembro real).
+describe('Familia · guardado, error y reintento (datos simulados, nada real)', () => {
+  it('un error de red al guardar se enseña, el tutorial NO lo da por hecho y, al reintentar con éxito, termina con la confirmación', async () => {
+    data.addMember.mockRejectedValueOnce(new Error('Sin conexión'))
+    run('fam-anadir-miembro', '/familia', <AddMemberForm onAdded={() => undefined} existingMembers={[]} />)
+    await says(/Escribe su nombre/)
+    typeAndLeave(screen.getByLabelText('Nombre'), 'Prueba')
+    await says(/Elige qué es esta persona/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
+    await says(/El color identifica/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Saltar datos opcionales/ }))
+    await says(/pulsa «Añadir»/)
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
+    await screen.findByText(/Sin conexión/)
+    expect(within(panel()).queryByText(/La ficha está creada/)).toBeNull()
+    expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe('Prueba') // lo escrito no se pierde con el error
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
+    await says(/La ficha está creada/)
+    expect(data.addMember).toHaveBeenCalledTimes(2)
+    expect(data.addMember).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Prueba' }))
+  })
+
+  it('«Repetir» al final vuelve a empezar y «Cerrar» termina sin tocar datos', async () => {
+    const onClose = vi.fn()
+    const tour = getTour('fam-anadir-miembro')!
+    render(
+      <MemoryRouter initialEntries={['/familia']}>
+        <AddMemberForm onAdded={() => undefined} existingMembers={[]} />
+        <HelpDestMark id="familia.anadir-miembro" />
+        <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={onClose} onPick={() => undefined} missingAfterMs={400} />
+      </MemoryRouter>,
+    )
+    await says(/Escribe su nombre/)
+    typeAndLeave(screen.getByLabelText('Nombre'), 'Prueba')
+    await says(/Elige qué es esta persona/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
+    await says(/El color identifica/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Saltar datos opcionales/ }))
+    await says(/pulsa «Añadir»/)
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
+    await says(/La ficha está creada/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Repetir/ }))
+    await says(/Escribe su nombre|Pulsa «\+ Añadir miembro»/)
+    cleanup()
+    expect(data.addMember).toHaveBeenCalledTimes(1)
   })
 })

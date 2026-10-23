@@ -106,9 +106,11 @@ describe('resalta el control real y espera la acción REAL de la persona', () =>
     await stepText('Pulsa abrir.')
     expect(within(panel()).getByText('Paso 1 de 5')).toBeTruthy()
     expect(panel().getAttribute('aria-modal')).toBe('false')
-    await waitFor(() => expect(document.querySelector('.tour-ring')).toBeTruthy())
-    const ring = document.querySelector('.tour-ring') as HTMLElement
-    expect(ring.getAttribute('aria-hidden')).toBe('true')
+    await waitFor(() => expect(document.querySelector('[data-tour-active="true"]')).toBeTruthy())
+    // El marco va EN el propio control real (no es una capa con coordenadas): el control marcado es justo el que se señala.
+    const marked = document.querySelector('[data-tour-active="true"]') as HTMLElement
+    expect(marked.getAttribute('data-help-id')).toBe('test.open')
+    expect(document.querySelectorAll('[data-tour-active="true"]').length).toBe(1)
     // Fuera del #root de la app (portal) para no verse afectado por diálogos que lo marquen como inerte.
     expect(document.getElementById('root')!.contains(panel())).toBe(false)
   })
@@ -248,10 +250,10 @@ describe('atrás, pausa, reinicio y salida', () => {
   it('Salir cierra el tutorial, lo avisa y no deja ninguna capa en pantalla', async () => {
     const { onClose } = setup()
     await stepText('Pulsa abrir.')
-    fireEvent.click(within(panel()).getByRole('button', { name: /Salir/ }))
+    fireEvent.click(within(panel()).getByRole('button', { name: /Salir del tutorial/ }))
     expect(onClose).toHaveBeenCalledWith('exited')
     expect(document.querySelector('[data-tour-layer]')).toBeNull()
-    expect(document.querySelector('.tour-ring')).toBeNull()
+    expect(document.querySelector('[data-tour-active="true"]')).toBeNull()
     // Y la pantalla real sigue funcionando.
     fireEvent.click(screen.getByRole('button', { name: 'Abrir' }))
     expect(calls.open).toBe(1)
@@ -265,7 +267,7 @@ describe('si la pantalla cambia o el control no existe: salida comprensible, sin
     await waitFor(() => expect(within(panel()).getByText(/No encuentro este control/)).toBeTruthy())
     fireEvent.click(within(panel()).getByRole('button', { name: /Ver los pasos escritos/ }))
     expect(onPick).toHaveBeenCalledWith({ kind: 'card', id: 'ficha-prueba', label: 'Tutorial de prueba' })
-    fireEvent.click(within(panel()).getByRole('button', { name: /Salir/ }))
+    fireEvent.click(within(panel()).getByRole('button', { name: '✕ Salir' }))
     expect(onClose).toHaveBeenCalledWith('exited')
   })
 
@@ -322,7 +324,7 @@ describe('progreso y voz', () => {
     fireEvent.change(screen.getByLabelText('nombre'), { target: { value: 'Ana Privada' } })
     await stepText('Mira esto y sigue.')
     expect(JSON.stringify({ ...localStorage })).not.toContain('Privada')
-    fireEvent.click(within(panel()).getByRole('button', { name: /Salir/ }))
+    fireEvent.click(within(panel()).getByRole('button', { name: /Salir del tutorial/ }))
     expect(getTourProgress('prueba')?.status).toBe('dismissed')
     unmount()
   })
@@ -360,12 +362,16 @@ describe('progreso y voz', () => {
 describe('móvil y escritorio', () => {
   it('el panel va ARRIBA si el control está en la mitad de abajo y abajo si está arriba (para no taparlo)', async () => {
     const rectOf = (top: number) => ({ top, left: 10, width: 100, height: 40, right: 110, bottom: top + 40, x: 10, y: top, toJSON: () => ({}) }) as DOMRect
+    // La capa del tutorial ocupa la pantalla; el control se coloca respecto a ELLA (misma fuente de coordenadas).
+    let targetTop = window.innerHeight - 100
     const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-    spy.mockImplementation(() => rectOf(window.innerHeight - 100)) // abajo
+    spy.mockImplementation(function (this: HTMLElement) {
+      return this.dataset?.tourLayer ? ({ top: 0, left: 0, width: 390, height: window.innerHeight, right: 390, bottom: window.innerHeight, x: 0, y: 0, toJSON: () => ({}) } as DOMRect) : rectOf(targetTop)
+    }) // abajo
     setup()
     await waitFor(() => expect(panel().className).toContain('tour-panel-top'))
     cleanup()
-    spy.mockImplementation(() => rectOf(60)) // arriba
+    targetTop = 60 // arriba
     setup()
     await waitFor(() => expect(panel().className).toContain('tour-panel-bottom'))
     spy.mockRestore()
@@ -377,7 +383,8 @@ describe('móvil y escritorio', () => {
     expect(css).toContain('env(safe-area-inset-top')
     expect(css).toContain('prefers-reduced-motion')
     expect(css).toMatch(/\.tour-layer \{[^}]*pointer-events: none/s)
-    expect(css).toMatch(/\.tour-ring \{[^}]*pointer-events: none/s)
+    expect(css).toContain("[data-tour-active='true']") // el marco es un estilo del propio control: no intercepta toques ni cambia su tamaño
+    expect(css).not.toContain('.tour-ring')
     expect(css).toMatch(/@media \(min-width: 720px\)/)
   })
 })

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { importedEventUnchanged, type ImportedEventFields } from "./eventDiff.ts"
 
 // pg_cron llama a esto cada hora (junto a sync-calendar-to-google-cron,
 // el sentido contrario) para traer lo que cada miembro conectado haya
@@ -134,6 +135,16 @@ Deno.serve(async (req) => {
           .eq("member_id", memberId)
         const mappingByGoogleId = new Map((mappings ?? []).map((m) => [m.google_event_id as string, m.event_id as string]))
         const seenGoogleIds = new Set<string>()
+        // Lo que ya hay guardado de los eventos importados: solo se escribe si ha cambiado algo (antes se hacía un update de TODOS en cada vuelta y cada update salía en «Actividad reciente»).
+        const storedById = new Map<string, ImportedEventFields>()
+        const importedIds = [...mappingByGoogleId.values()]
+        for (let i = 0; i < importedIds.length; i += 200) {
+          const { data: stored } = await admin
+            .from("calendar_events")
+            .select("id, title, description, start_at, end_at, all_day, recurrence_rule, exception_dates")
+            .in("id", importedIds.slice(i, i + 200))
+          for (const row of stored ?? []) storedById.set(row.id as string, row as unknown as ImportedEventFields)
+        }
 
         for (const item of items) {
           seenGoogleIds.add(item.id)
@@ -168,7 +179,7 @@ Deno.serve(async (req) => {
 
           let eventId = existingEventId
           if (eventId) {
-            await admin.from("calendar_events").update(eventFields).eq("id", eventId)
+            if (!importedEventUnchanged(storedById.get(eventId), eventFields)) await admin.from("calendar_events").update(eventFields).eq("id", eventId)
           } else {
             const { data: created, error: createError } = await admin
               .from("calendar_events")

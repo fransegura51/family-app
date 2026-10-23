@@ -161,3 +161,16 @@ describe('B4-UX01..06 · reglas de calidad de los recorridos', () => {
     expect(getTour('cal-crear-evento')!.steps.filter((s) => s.target === 'calendar.event-title')).toHaveLength(1)
   })
 })
+
+describe('FAM-TUT-05 · fecha de nacimiento y Comunidad: el texto del tutorial dice lo mismo que la regla efectiva', () => {
+  it('Comunidad es solo para mayores de 18 y una fecha desconocida NUNCA cuenta como mayoría de edad (regla del servidor reflejada en el dominio)', async () => {
+    const { accessFromStatus, unavailableReasonText } = await import('@/domain/communityAccess')
+    expect(accessFromStatus({ access: 'none', accessReason: 'age_unknown' }).level).toBe('none') // sin fecha, sin acceso
+    expect(unavailableReasonText('age_unknown')).toMatch(/fecha de nacimiento/)
+    expect(unavailableReasonText('under_18')).toMatch(/18 años/)
+    const step = getTour('fam-anadir-miembro')!.steps.find((s) => s.id === 'nacimiento')!
+    expect(step.text).toMatch(/18 años/)
+    expect(step.text).toMatch(/sin fecha no se entra en Comunidad/)
+    expect(step.text).not.toMatch(/sea cual sea la edad|se supone que es adulto(?!\))/)
+  })
+})

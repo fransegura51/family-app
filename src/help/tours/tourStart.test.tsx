@@ -78,7 +78,7 @@ describe('preparación del tutorial', () => {
     )
     await waitFor(() => expect(screen.getByTestId('menu').textContent).toBe('cerrado'))
     await says(/Pulsa «\+ Añadir producto»/)
-    await waitFor(() => expect(document.querySelector('.tour-ring')).toBeTruthy())
+    await waitFor(() => expect(document.querySelector('[data-tour-active="true"]')).toBeTruthy())
   })
 
   it('mientras llega la pantalla enseña «Preparando…» y NUNCA el aviso «No encuentro este control»', async () => {
@@ -90,7 +90,7 @@ describe('preparación del tutorial', () => {
     )
     await says(/Preparando la pantalla del tutorial/)
     expect(within(panel()).queryByText(/No encuentro este control/)).toBeNull()
-    expect(document.querySelector('.tour-ring')).toBeNull()
+    expect(document.querySelector('[data-tour-active="true"]')).toBeNull()
   })
 
   it('si la pantalla no llega (sin acceso…) lo dice con claridad y ofrece reintentar, ver los pasos o salir; no avanza ni finge', async () => {
@@ -105,7 +105,7 @@ describe('preparación del tutorial', () => {
     expect(within(panel()).getByRole('button', { name: /Reintentar/ })).toBeTruthy()
     fireEvent.click(within(panel()).getByRole('button', { name: /Ver los pasos escritos/ }))
     expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ kind: 'card', id: 'com-anadir-producto' }))
-    expect(document.querySelector('.tour-ring')).toBeNull()
+    expect(document.querySelector('[data-tour-active="true"]')).toBeNull()
   })
 
   it('«Reintentar» vuelve a pedir la pantalla y, si ya llega, empieza el tutorial', async () => {
@@ -150,7 +150,7 @@ describe('tutoriales sobre las pantallas reales', () => {
     )
     await says(/Pulsa «\+ Añadir producto»/)
     expect(document.querySelector('[data-help-id="shopping.add-product"]')).toBeTruthy()
-    await waitFor(() => expect(document.querySelector('.tour-ring')).toBeTruthy())
+    await waitFor(() => expect(document.querySelector('[data-tour-active="true"]')).toBeTruthy())
     expect(within(panel()).queryByText(/No encuentro este control/)).toBeNull()
     // al pulsarlo (la persona) se abre el formulario real y el tutorial sigue con el nombre
     fireEvent.click(document.querySelector('[data-help-id="shopping.add-product"]')!)

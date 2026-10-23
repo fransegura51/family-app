@@ -6,7 +6,7 @@ import { cardAccess, canOfferActions, type HelpAccessResult, type HelpCommunityS
 import { HELP_CARD_BY_ID, HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '@/help/catalog'
 import { buildHelpContext, communityStateFrom, moduleForPath } from '@/help/context'
 import { getHelpVoiceMode, HELP_VOICE_KEY, setHelpVoiceMode, setWelcomeState, type HelpVoiceMode } from '@/help/prefs'
-import { buildIndex, searchHelp, type SearchDoc, type SearchHit, type SearchResponse } from '@/help/search/searchEngine'
+import { buildIndex, searchHelp, suggestHelp, type SearchDoc, type SearchHit, type SearchResponse } from '@/help/search/searchEngine'
 import { addAnswer, addPepaText, addUserMessage, emptySession, recentQueries, replaceMessage, type HelpSession } from '@/help/session'
 import { isHelpAiEnabled } from '@/help/ai'
 import { rankHelpWithAi } from '@/help/aiClient'
@@ -51,6 +51,8 @@ export interface HelpApi {
   focusModule: HelpModuleId | null
   accessOf: (doc: SearchDoc) => HelpAccessResult
   accessOfCard: (card: HelpCard) => HelpAccessResult
+  /** Sugerencias mientras se escribe (fichas verificadas, ordenadas por relevancia, pocas). */
+  suggest: (text: string) => SearchHit[]
   search: (query: string) => SearchResponse
   ask: (query: string) => void
   /** Añade a la conversación la respuesta de una ficha concreta (sin escribir una pregunta). */
@@ -121,6 +123,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
   const accessOfCard = useCallback((card: HelpCard) => cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current), [])
 
   const search = useCallback((query: string) => searchHelp(helpIndex(), query, { access: accessOf }), [accessOf])
+  const suggest = useCallback((text: string) => suggestHelp(helpIndex(), text, { access: accessOf, max: 4 }), [accessOf])
 
   const speak = useCallback((text: string) => {
     setSpeakingText(text)
@@ -133,7 +136,8 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
 
   // Lo que se lee de una respuesta: la respuesta breve (y el límite si la función está a medias). Mismo texto que se ve.
   const spokenTextOf = useCallback((hit: SearchHit): string => {
-    if (hit.doc.kind === 'card') return hit.doc.card.state === 'disponible' ? hit.doc.card.quick : `${hit.doc.card.quick} ${hit.doc.card.limits ?? ''}`
+    // Mismo texto que ve cualquier persona: la limitación solo si afecta al uso (nunca el estado interno).
+    if (hit.doc.kind === 'card') return hit.doc.card.state === 'parcial' && hit.doc.card.limits && !hit.doc.card.limitsInternal ? `${hit.doc.card.quick} Ten en cuenta: ${hit.doc.card.limits}` : hit.doc.card.quick
     return `${hit.doc.entry.title}. ${hit.doc.entry.text.slice(0, 280)}`
   }, [])
 
@@ -299,6 +303,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       accessOf,
       accessOfCard,
       search,
+      suggest,
       ask,
       showCard,
       openHelp,
@@ -314,7 +319,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       speakingText,
       ensureCommunity,
     }),
-    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
+    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, suggest, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
   )
 
   const runningTour = activeTour ? getTour(activeTour) : undefined

@@ -8215,3 +8215,22 @@ details[open] > summary > .review-chevron {
   align-self: center;
   margin-left: auto;
 }
+
+/* iPhone (Safari y app instalada): un campo de texto con letra menor de 16 px hace que iOS amplíe la pantalla al enfocarlo, y al cerrar el teclado la deja descolocada. Los input y select ya
+   son de 16 px; el área de texto era de 14 px. Solo en iOS (no cambia el aspecto en ordenador ni en Android). */
+@supports (-webkit-touch-callout: none) {
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Con el teclado del móvil abierto, los botones redondos flotantes de arriba (Pepa, redes) se esconden con suavidad para no tapar el texto que se está escribiendo ni las sugerencias y
+   respuestas de la Ayuda; al cerrar el teclado vuelven. Ver FabSeparator.tsx. */
+.voice-fab-round {
+  transition: opacity 0.15s ease;
+}
+
+[data-pepa-keyboard='true'] .voice-fab-round {
+  opacity: 0;
+  pointer-events: none;
+}

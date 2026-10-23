@@ -601,3 +601,45 @@ details.help-quick[open] > summary::after {
 .tour-details li {
   margin: 4px 0;
 }
+
+/* Sugerencias mientras se escribe en el buscador (encima del cuadro: así quedan a la vista aunque el teclado ocupe la parte de abajo) */
+.help-suggestions {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 4px;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+  box-shadow: 0 4px 14px rgba(30, 42, 90, 0.12);
+}
+
+.help-suggestion {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 15px;
+}
+
+.help-suggestion:hover,
+.help-suggestion:focus-visible {
+  background: rgba(76, 110, 245, 0.1);
+}
+
+.help-suggestion-title {
+  font-weight: 700;
+}
+
+.help-suggestion-module {
+  font-size: 12px;
+  color: var(--muted, #6b7280);
+}

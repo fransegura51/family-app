@@ -874,6 +874,72 @@ console.log('\nPuerta por invitación (resumen): sin invitación válida no hay 
   })
 }
 
+// ---------------------------------------------------------------------------------------------------------- 0307 (pendiente de aplicar)
+console.log('\n0307 · Actividad reciente: un UPDATE que no cambia nada no se anota (migración PENDIENTE, probada en local)')
+{
+  const fam = await mkFamily(db, 'J')
+  const ana = await addAccount(db, fam, 'admin', 'AnaJ')
+  // Esquema mínimo de 0011 (tabla de actividad + un disparador sobre una tabla de eventos de prueba, con updated_at como calendar_events).
+  await db.exec(`create table activity_log (id uuid primary key default gen_random_uuid(), family_id uuid not null, actor_id uuid, table_name text not null, action text not null, record_id uuid, created_at timestamptz not null default now());
+    create table evt_test (id uuid primary key default gen_random_uuid(), family_id uuid not null, title text not null, start_at timestamptz not null default now(), updated_at timestamptz not null default now());
+    create function public.log_activity() returns trigger language plpgsql security definer set search_path = public as $f$ begin
+      insert into activity_log (family_id, actor_id, table_name, action, record_id) values (coalesce(NEW.family_id, OLD.family_id), auth.uid(), TG_TABLE_NAME, lower(TG_OP), coalesce(NEW.id, OLD.id)); return coalesce(NEW, OLD); end $f$;
+    create trigger trg_log_evt after insert or update or delete on evt_test for each row execute function public.log_activity();
+    grant select, insert, update, delete on evt_test to authenticated;`)
+  const n = async () => (await db.query('select count(*)::int n from activity_log')).rows[0].n
+  const ev = (await db.query(`insert into evt_test (family_id, title) values ($1, 'Dentista') returning id`, [fam])).rows[0].id
+
+  await t('ANTES de 0307 (disparador original): un update idéntico se anota igual que uno real — el fallo', async () => {
+    const before = await n()
+    await db.query(`update evt_test set title='Dentista' where id=$1`, [ev])
+    assert.equal(await n(), before + 1)
+  })
+
+  await db.exec(read('supabase/pending-migrations/0307_activity_log_skip_noop_updates.sql'))
+
+  await t('tras 0307: 49 updates idénticos seguidos (la sincronización horaria de Google) no anotan NADA', async () => {
+    const ids = []
+    for (let i = 0; i < 49; i++) ids.push((await db.query(`insert into evt_test (family_id, title) values ($1, $2) returning id`, [fam, 'Importado ' + i])).rows[0].id)
+    const before = await n()
+    for (const id of ids) await db.query(`update evt_test set title=title, start_at=start_at where id=$1`, [id])
+    assert.equal(await n(), before)
+  })
+
+  await t('un update que solo cambia updated_at tampoco es actividad', async () => {
+    const before = await n()
+    await db.query(`update evt_test set updated_at = now() + interval '1 hour' where id=$1`, [ev])
+    assert.equal(await n(), before)
+  })
+
+  await t('un cambio REAL se sigue anotando, con la persona que lo hizo; sin sesión (proceso automático) con actor nulo', async () => {
+    const before = await n()
+    await as(db, ana.id, () => db.query(`update evt_test set title='Dentista de Eric' where id=$1`, [ev]))
+    await db.query(`update evt_test set start_at = start_at + interval '1 day' where id=$1`, [ev])
+    assert.equal(await n(), before + 2)
+    const rows = (await db.query(`select actor_id from activity_log order by created_at desc, id limit 2`)).rows.map((r) => r.actor_id)
+    assert.ok(rows.includes(ana.id))
+    assert.ok(rows.includes(null))
+  })
+
+  await t('crear y borrar se anotan siempre', async () => {
+    const before = await n()
+    const id = (await db.query(`insert into evt_test (family_id, title) values ($1, 'x') returning id`, [fam])).rows[0].id
+    await db.query('delete from evt_test where id=$1', [id])
+    assert.equal(await n(), before + 2)
+  })
+
+  await t('nunca borra ni toca las filas de actividad que ya existían', async () => {
+    assert.ok((await n()) >= 1)
+  })
+
+  await t('deshacer 0307 devuelve el disparador original (vuelve a anotar los updates idénticos)', async () => {
+    await db.exec(read('supabase/rollbacks/0307_activity_log_skip_noop_updates_down.sql'))
+    const before = await n()
+    await db.query(`update evt_test set title=title where id=$1`, [ev])
+    assert.equal(await n(), before + 1)
+  })
+}
+
 console.log(`\n${passed} pruebas correctas, ${failed.length} falladas`)
 if (failed.length) {
   console.log('FALLADAS:', failed)

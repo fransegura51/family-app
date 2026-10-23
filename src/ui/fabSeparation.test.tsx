@@ -114,3 +114,28 @@ describe('separateFloatingButtons (pantalla)', () => {
     expect(readFileSync('src/ui/NavShell.tsx', 'utf8')).toContain('<FabSeparator />')
   })
 })
+
+describe('botones flotantes y teclado del móvil', () => {
+  it('con el teclado abierto se esconden (atributo en <html>) y al cerrarlo vuelven; el CSS los hace invisibles sin quitarlos', async () => {
+    const vv = Object.assign(new EventTarget(), { offsetTop: 0, offsetLeft: 0, width: 390, height: 768, scale: 1 })
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vv })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 768 })
+    render(<FabSeparator />)
+    expect(document.documentElement.hasAttribute('data-pepa-keyboard')).toBe(false)
+    act(() => {
+      vv.height = 420
+      vv.dispatchEvent(new Event('resize'))
+    })
+    expect(document.documentElement.getAttribute('data-pepa-keyboard')).toBe('true')
+    act(() => {
+      vv.height = 768
+      vv.dispatchEvent(new Event('resize'))
+    })
+    expect(document.documentElement.hasAttribute('data-pepa-keyboard')).toBe(false)
+    const css = readFileSync('src/ui/styles.css', 'utf8')
+    expect(css).toMatch(/\[data-pepa-keyboard='true'\] \.voice-fab-round \{[^}]*opacity: 0[^}]*pointer-events: none/s)
+    cleanup()
+    expect(document.documentElement.hasAttribute('data-pepa-keyboard')).toBe(false) // al desmontar no deja nada puesto
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined })
+  })
+})

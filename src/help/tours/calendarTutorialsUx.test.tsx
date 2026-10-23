@@ -46,7 +46,7 @@ const says = (t: RegExp | string) => waitFor(() => expect(within(panel()).getByT
 const btn = (name: RegExp) => within(panel()).getByRole('button', { name })
 const next = () => fireEvent.click(btn(/Siguiente/))
 const dateInput = () => document.querySelector('[data-help-id="calendar.event-date"] input') as HTMLInputElement
-const ring = () => document.querySelector('.tour-ring') as HTMLElement | null
+const ring = () => document.querySelector('[data-tour-active="true"]') as HTMLElement | null
 // Escribir en un campo y terminar (✓ del teclado de iPhone o tocar fuera = el campo pierde el foco): el tutorial NO avanza mientras se escribe, solo al terminar.
 const typeAndLeave = (el: Element, value: string) => {
   fireEvent.change(el, { target: { value } })
@@ -271,24 +271,25 @@ describe('B4-UX04 · «¿Para quién?» y puntos', () => {
 
 describe('B4-UX06 · explicación y marco van juntos', () => {
   it('el marco cambia con cada paso y nunca queda un resaltado del paso anterior', async () => {
-    const tops: Record<string, number> = { 'calendar.event-title': 100, 'calendar.event-date': 200, 'calendar.event-time': 300, 'calendar.event-allday': 400 }
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      const id = this.dataset?.helpId ?? (this.querySelector('[data-help-id]') as HTMLElement | null)?.dataset.helpId ?? '' // la etiqueta que rodea al campo marcado cuenta como el campo
-      const top = tops[id] ?? 0
-      return { top, left: 10, width: 100, height: 40, right: 110, bottom: top + 40, x: 10, y: top, toJSON: () => ({}) } as DOMRect
-    })
+    // El marcador es un atributo del propio control: en cada paso está en SU control (y en ninguno más), también el de «campo dentro de una etiqueta».
+    const marked = () => {
+      const all = document.querySelectorAll('[data-tour-active="true"]')
+      expect(all.length).toBeLessThanOrEqual(1)
+      const el = all[0] as HTMLElement | undefined
+      return el ? (el.dataset.helpId ?? (el.querySelector('[data-help-id]') as HTMLElement | null)?.dataset.helpId ?? '') : ''
+    }
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(100 - 4))
+    await waitFor(() => expect(marked()).toBe('calendar.event-title'))
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
-    await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(200 - 4))
+    await waitFor(() => expect(marked()).toBe('calendar.event-date'))
     next()
     await says(/hora de inicio/)
-    await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(300 - 4))
+    await waitFor(() => expect(marked()).toBe('calendar.event-time'))
     next()
     await says(/«Todo el día» sirve/)
-    await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(400 - 4))
+    await waitFor(() => expect(marked()).toBe('calendar.event-allday'))
   })
 
   it('si el control del paso no existe, no se dibuja ningún marco (ni el del paso anterior)', async () => {

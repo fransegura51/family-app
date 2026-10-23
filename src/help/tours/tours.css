@@ -10,15 +10,34 @@
   pointer-events: none;
 }
 
-.tour-ring {
-  position: absolute;
-  border: 3px solid #4c6ef5;
-  border-radius: 14px;
+/* El marco del control señalado va EN el propio control (el tutorial le pone data-tour-active): se mueve con él, sin coordenadas. Así no puede quedarse en otro sitio cuando el teclado de iOS
+   mueve el viewport, se desplaza un contenedor o cambia el tamaño. Es solo visual: no cambia el tamaño ni intercepta toques. */
+[data-tour-active='true'] {
+  border-radius: 12px;
   box-shadow:
-    0 0 0 4px rgba(76, 110, 245, 0.35),
-    0 0 0 9999px rgba(20, 30, 70, 0.28);
-  pointer-events: none;
-  /* Sin transiciones de posición: el marco se recoloca en cada fotograma mientras el teclado o el desplazamiento se mueven, y una transición lo dejaría siempre un paso por detrás. */
+    0 0 0 3px #4c6ef5,
+    0 0 0 8px rgba(76, 110, 245, 0.32) !important;
+  animation: tour-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tour-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px #4c6ef5,
+      0 0 0 8px rgba(76, 110, 245, 0.32);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px #4c6ef5,
+      0 0 0 11px rgba(76, 110, 245, 0.14);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tour-active='true'] {
+    animation: none;
+  }
 }
 
 .tour-panel {
@@ -63,8 +82,47 @@
   font-size: 12px;
 }
 
-.tour-panel-compact .tour-btn-extra {
+/* «⋯ Más»: con espacio, los controles secundarios se ven siempre (el resumen se oculta); en modo compacto quedan recogidos y a un toque. */
+.tour-more > summary {
   display: none;
+}
+
+.tour-panel-compact .tour-more > summary {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted, #6b7280);
+  list-style: none;
+}
+
+.tour-panel-compact .tour-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tour-actions-secondary {
+  margin-top: 6px;
+}
+
+.tour-exit {
+  margin-left: auto;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: #fff;
+  color: var(--text, #1c1f26);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tour-exit:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
 }
 
 .tour-panel-compact .tour-btn {
@@ -153,8 +211,3 @@
   text-align: left;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .tour-ring {
-    transition: none;
-  }
-}

@@ -1,6 +1,6 @@
 import type { HelpAccessResult } from '@/help/access'
 import type { HelpCard, HelpDocEntry, HelpModuleId } from '@/help/types'
-import { editDistance, root, significantTokens, stem } from '@/help/search/normalize'
+import { editDistance, normalizeText, root, significantTokens, stem } from '@/help/search/normalize'
 import { SYNONYMS } from '@/help/search/synonyms'
 
 // Buscador LOCAL de la Ayuda (sin llamadas a ningún servidor): busca primero en la documentación verificada de PEPA. Reconoce sinónimos y expresiones habituales, plurales y
@@ -90,10 +90,30 @@ export interface SearchOptions {
   /** Decide si la persona puede ver ese resultado: 'hidden' lo descarta, 'restricted' lo deja (con explicación). */
   access: (doc: SearchDoc) => HelpAccessResult
   limit?: number
+  /** Sugerencias mientras se escribe: la ÚLTIMA palabra puede estar a medias («miem» ~ «miembro»). */
+  prefixLastToken?: boolean
+  /** Solo fichas verificadas (sin los apartados de la explicación ampliada). */
+  cardsOnly?: boolean
+}
+
+// Parecido de la palabra que se está escribiendo (a medias) con las del texto: si es el comienzo de una palabra del texto cuenta casi como una coincidencia.
+function prefixMatch(tokens: string[], q: string): number {
+  if (q.length < 2) return 0
+  let best = 0
+  for (const d of tokens) {
+    if (d.startsWith(q) || stem(d).startsWith(q)) best = Math.max(best, d.length === q.length ? 1 : 0.88)
+  }
+  return best
 }
 
 const CLEAR_SCORE = 0.5
 const MIN_COVERAGE = 0.5
+
+// Sugerencias mientras se escribe (≥ 2 letras): las fichas verificadas más relevantes, pocas. Reutiliza el mismo índice y las mismas reglas de permisos que la búsqueda normal; no inventa nada.
+export function suggestHelp(index: IndexedDoc[], text: string, options: Pick<SearchOptions, 'access'> & { max?: number }): SearchHit[] {
+  if (normalizeText(text).length < 2) return []
+  return searchHelp(index, text, { access: options.access, limit: options.max ?? 4, prefixLastToken: true, cardsOnly: true }).hits
+}
 
 export function searchHelp(index: IndexedDoc[], query: string, options: SearchOptions): SearchResponse {
   const tokens = significantTokens(query)
@@ -101,17 +121,19 @@ export function searchHelp(index: IndexedDoc[], query: string, options: SearchOp
   const maxPerToken = FIELD_WEIGHT.title
   const hits: SearchHit[] = []
   for (const item of index) {
+    if (options.cardsOnly && item.doc.kind !== 'card') continue
     if (options.access(item.doc).status === 'hidden') continue
     let total = 0
     let covered = 0
     let inTitle = 0
-    for (const q of tokens) {
-      if (bestMatch(item.fields.title, q) >= 0.85) inTitle++
+    for (const [qi, q] of tokens.entries()) {
+      const partial = options.prefixLastToken === true && qi === tokens.length - 1
+      if (Math.max(bestMatch(item.fields.title, q), partial ? prefixMatch(item.fields.title, q) : 0) >= 0.85) inTitle++
       const variants: [string, number][] = [[q, 1], ...((SYNONYMS.get(q) ?? []).map((s) => [s, EXPANSION_WEIGHT]) as [string, number][])]
       let tokenBest = 0
       for (const [word, w] of variants) {
         for (const field of ['title', 'synonyms', 'body'] as const) {
-          const sim = bestMatch(item.fields[field], word)
+          const sim = Math.max(bestMatch(item.fields[field], word), partial && word === q ? prefixMatch(item.fields[field], word) : 0)
           if (sim > 0) tokenBest = Math.max(tokenBest, sim * FIELD_WEIGHT[field] * w)
         }
       }

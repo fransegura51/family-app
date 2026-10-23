@@ -61,7 +61,7 @@ export const famAnadirMiembro: TourDef = {
     },
     {
       id: 'nacimiento',
-      text: 'La fecha de nacimiento es opcional. Sirve para los cumpleaños y también para Comunidad PEPA, que es solo para mayores de 18 años, sea cual sea el tipo de miembro.',
+      text: 'La fecha de nacimiento es opcional. Sirve para los cumpleaños y para Comunidad PEPA, que es solo para mayores de 18 años: sin fecha no se entra en Comunidad (nunca se supone que alguien es adulto).',
       target: 'family.member-birth',
       completeOn: [],
       manualNext: true,

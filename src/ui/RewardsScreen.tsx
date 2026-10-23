@@ -23,6 +23,7 @@ import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { RaceTrack } from '@/ui/RaceTrack'
+import { MiCamino } from '@/ui/MiCamino'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
 import { Confetti } from '@/ui/Confetti'
@@ -265,7 +266,10 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           <>
             {raceRunners.length > 0 && (
               <>
-                <RaceTrack runners={raceRunners} />
+                {/* «Mi Camino» (PEPA-MICAMINO) — el modo Camino ya no repite la pista V6 de la Carrera:
+                    muestra el recorrido circular de los tres mundos con el total de puntos GANADOS de
+                    cada niño. Carrera sigue mostrando la pista V6 tal cual, sin tocarla. */}
+                {mode === 'camino' ? <MiCamino runners={raceRunners} /> : <RaceTrack runners={raceRunners} />}
                 {/* COR-1 — la pista mide los puntos GANADOS en el mes (o en total, en Camino), nunca
                     el saldo canjeable: gastar puntos en un canje no la hace retroceder. */}
                 <p className="muted" style={{ fontSize: 11, margin: '4px 0 10px' }}>

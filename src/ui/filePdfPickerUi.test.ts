@@ -137,7 +137,7 @@ describe('El pipeline de tickets no se toca — FileOrPdfPicker no conoce ni imp
   })
 
   it('uploadReceipt (subida + conciliación + receipts) sigue intacta: comprime, sube a Storage y concilia igual que antes', () => {
-    expect(RECEIPTS_SRC).toContain('const file = await compressImageFile(input.file)')
+    expect(RECEIPTS_SRC).toContain('const file = await compressImageFile(original)') // ahora en uploadReceiptFile (compartida con el justificante posterior)
     expect(RECEIPTS_SRC).toContain("supabase.storage.from('receipts').upload(path, file)")
   })
 

@@ -781,6 +781,47 @@ Encargo «PEPA — AUDITORÍA Y MEJORAS DE COMPRAS Y ECONOMÍA», Bloques 1-2. *
 
 ---
 
+## Compras manuales (COM-1, 24/10/2026)
+
+Encargo «AUDITORÍA Y MEJORAS DE COMPRAS Y ECONOMÍA», Bloque 3 + parte del 5.1/5.6. **Estado: implementado y probado en local; migración 0309 PREPARADA (`supabase/pending-migrations/`), NO aplicada en producción; cliente NO desplegado; sin Aprobar.** Orden de despliegue cuando se autorice: primero la migración 0309, después el cliente (el cliente ya pide `is_manual` y `payment_method`).
+
+Diseño (se reutiliza lo que había, sin módulos nuevos): una compra manual es un `receipts` más con `storage_path` NULL e `is_manual = true`, enlazado por `expense_id` a su gasto de Economía con `source = 'manual'`, que el banco (`enable-banking-sync-transactions`) y el alta de tickets ya conciliaban sin duplicar. El formulario es el mismo `ReceiptForm`, con el interruptor «📷 Con ticket / ✍️ Sin ticket».
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COM-1a | Compra rápida: establecimiento, fecha (hoy), importe, categoría, forma de pago, quién pagó (por defecto, quien registra). «Panadería — 8 € — Efectivo» en pocos toques; solo importe y fecha son obligatorios | **Implementado y probado** | `FinanceScreen.tsx` (`ReceiptForm`), `domain/manualPurchase.ts`, `data/receipts.ts` (`uploadReceipt` con `file: null`); `manualPurchase.test.ts` (13), `manualPurchases.test.ts` (11) |
+| COM-1b | Compra detallada (opcional): productos, cantidades, unidades, precio por unidad, clasificación, con el mismo catálogo y clasificador que los tickets | **Implementado y probado** | «+ Añadir productos (opcional)» abre las mismas líneas; se guardan por `saveLines` → `recordProductPurchase` (mismo camino que un ticket: Historial, estadísticas y comparador los ven); test estructural en `manualPurchasesAndEquivalencesMigrations.test.ts` |
+| COM-1c | Justificante posterior sin duplicar: foto sobre LA MISMA compra y gasto; si el ticket trae productos se ofrece completar el desglose; al subir un ticket cuyo importe (exacto, ±7 días, misma tienda si consta) coincide con una compra manual sin justificante se OFRECE «Sí, es la del…» (nunca se une sola) | **Implementado y probado** | `attachReceiptFile` (no pisa un justificante existente; condición `storage_path IS NULL`), 📎 en la fila, aviso en «Subir ticket»; `manualPurchases.test.ts` («justificante posterior»), `findManualPurchasesForTicket` |
+| COM-1d | Quién pagó ≠ autor del registro; por defecto la persona autenticada | **Implementado y probado** | `purchased_by_member_id` (ya existía) + `defaultPayerId`; la migración 0309 exige que sea de la misma familia (antes solo había una clave foránea) |
+| COM-1e | Sin doble contabilización con Economía/banco | **Implementado y probado** | Pagada con tarjeta y el banco ya trajo el gasto → se une a ese gasto (`ticket_banco`); en **efectivo nunca** se une a un apunte bancario; dos compras manuales iguales son dos compras; si falla el guardado no queda gasto huérfano. `manualPurchases.test.ts` |
+| COM-1f | Aislamiento entre familias | **Probado en la base real** | Transacción REVERTIDA sobre producción (familias de prueba): pagador de otra familia rechazado (check_violation), forma de pago inválida rechazada, un usuario de otra familia no ve la compra ni el gasto y no puede insertar en la familia ajena (42501). Tras la prueba: 0 columnas nuevas, 114 tickets / 947 gastos / 460 productos intactos |
+
+**Pendiente de COM-1**: probar en iPhone Safari/Android reales (solo se ha probado el comportamiento en pruebas automáticas); la forma de pago es una sola por compra (los **pagos mixtos** son el Bloque 5.2, pendiente); detección de duplicados entre manual/ticket/banco más allá de la oferta «es esta compra» (Bloque 5.5, pendiente).
+
+## Comparador inteligente de precios (COMP-1, 24/10/2026)
+
+Ampliación aprobada del encargo de Compras. **Estado: implementado y probado en local; migración 0310 PREPARADA (`supabase/pending-migrations/`), NO aplicada; cliente NO desplegado; sin Aprobar.** El cliente tolera la ausencia de 0310 (las equivalencias de la familia y las compartidas quedan vacías y el comparador sigue solo con el nombre de los productos).
+
+Arquitectura (sin segundo catálogo de categorías; reutiliza `productTextKey`, `lastComparablePriceByStore`/`measurementUnit`, CAT-1 y el historial de la familia): `domain/productSize.ts` (tamaño del envase del nombre y precio normalizado) → `domain/productIdentity.ts` (idéntico / equivalente / posible / distinto) → `domain/priceComparison.ts` (relación con prioridad familia > compartida validada > nombre; ficha por tienda; lista) → `data/productEquivalences.ts` + `ui/PriceComparisonPanels.tsx`. Es la única fuente: reutilizable por tickets, compras manuales, historial y lista.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COMP-1a | Tres situaciones: idéntico / equivalente / diferente; sin inventar coincidencias (las dudas son «posible» = sugerencia) | **Implementado y probado** | `productIdentity.test.ts` (18): abreviaturas de ticket, plurales, mayúsculas/tildes; otra marca u otro tamaño → equivalente; leche entera ≠ desnatada ≠ sin lactosa, arroz redondo ≠ integral, Pepinillos ≠ Pepino; «Leche» a secas → posible; la clase CAT-1 solo descarta |
+| COMP-1b | Precio por unidad: €/kg, €/l, €/ud, €/envase; no confundir unidades compradas con contenido; sin datos fiables → «no se puede calcular una comparación exacta» | **Implementado y probado** | `productSize.test.ts` (24): arroz 500 g vs 1 kg, leche 1 L vs 1,5 L, huevos 6 vs 12, multipack 6x330 ml, docena, dos tamaños en un nombre → ambiguo, `quantity` no altera el precio normalizado. **Limitación**: el contenido del envase solo existe en el NOMBRE (no hay columna), por eso productos sin «1 L»/«500 g» se quedan en €/envase |
+| COMP-1c | Aprendizaje de equivalencias en tres niveles (provisional / validada / personalizada) con la seguridad de CAT-1; lo dudoso = sugerencia corregible; una familia no altera las demás | **Implementado y probado** (migración preparada) | 0310: `product_equivalences` (RLS por familia, productos de la misma familia), `shared_equivalence_votes` (solo nombres normalizados + hash; sin lectura para usuarios), RPC `resolve_shared_equivalences` (solo clave, clave, nivel). 1 familia → provisional (solo sugiere); ≥2 sin objeción → validada; discrepancia o ≥2 «distintos» → bloqueada; un solo «no» no bloquea a las demás. Prueba REVERTIDA en producción: A→provisional, A+B→validada, C «distintos»→bloqueada, C rectifica→validada; B no ve las decisiones de A ni la tabla de votos ni escribe en A; productos de otra familia no enlazables |
+| COMP-1d | Ficha del producto: histórico, tiendas, fecha, último precio por tienda, precio normalizado, diferencia con la más barata, evolución, filtro idéntico/equivalente; registros originales intactos | **Implementado y probado** | `ProductPriceComparison` en el detalle de Historial de precios; `priceComparison.test.ts`, `priceComparisonPanels.test.tsx`; «No es equivalente» y «¿Es lo mismo? Sí/No» guardan la decisión de la familia |
+| COMP-1e | Comparador de la lista: total por tienda con cantidades, cobertura («N de M con precio»), fechas, aviso de precios antiguos (>60 días), nunca «más barato» por tener menos precios; completa si todas cubren la lista, si no solo el conjunto común (mínimo 3 artículos); sin ofertas vigentes | **Implementado y probado** | `compareShoppingList` + `ListPriceComparison` («💶 Comparar la lista entre tiendas», plegado por defecto y calculado al abrir); pruebas de lista completa, parcial, insuficiente, formatos distintos, sin tamaño, antiguos, equivalencia rechazada |
+| COMP-1f | Privacidad: sin catálogo global de precios; solo nombres normalizados viajan | **Probado** | La consulta compartida envía únicamente nombres (prueba `priceComparisonPanels.test.tsx`: no aparece ninguna tienda, precio ni fecha); migración sin columnas económicas (`manualPurchasesAndEquivalencesMigrations.test.ts`) |
+| COMP-1g | Integración con compras manuales y tickets | **Implementado y probado** | Mismo camino `saveLines → recordProductPurchase → product_prices` (test estructural) |
+
+**Pendiente de COMP-1**: marca/contenido del envase como dato estructurado (hoy se lee del nombre; mejoraría con una columna al guardar productos, decisión de diseño pendiente); pantalla para revisar equivalencias compartidas (hoy solo SQL); probar en móvil; arquitectura de «sugerencias de ahorro» preparada (`compareShoppingList` devuelve `savingVsNext`, cobertura y fechas) pero **sin interfaz** de sugerencias; validar con más familias reales (hoy solo 2 con datos).
+
+## Efectivo, pagos mixtos, devoluciones, traspasos y duplicados (Bloques 4 y 5)
+
+**Pendiente de implementar** (no empezados): carteras de efectivo y traspasos (Bloque 4), pagos mixtos, devoluciones/reembolsos, traspasos familiares, detección de duplicados e integración completa Compras–Economía (Bloque 5.2-5.6).
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

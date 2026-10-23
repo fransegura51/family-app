@@ -581,6 +581,10 @@ export interface Receipt {
   purchasedByMemberId: string | null
   // Suma (€, positiva) de los descuentos impresos en el ticket; 0 si no hay.
   discountTotal?: number
+  // Compra apuntada a mano, sin ticket (el justificante se puede añadir después sobre esta misma fila).
+  isManual?: boolean
+  // Forma de pago: efectivo | tarjeta | bizum | transferencia | otro; null = no indicada.
+  paymentMethod?: string | null
 }
 
 export interface Contact {

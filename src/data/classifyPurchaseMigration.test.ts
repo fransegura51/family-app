@@ -172,6 +172,6 @@ describe('interfaz: la categoría de una compra solo cambia por classify_purchas
       expect(code, file).not.toContain('classify_purchase')
     }
     // el formulario de ticket NUEVO sigue con una categoría por defecto propia (COM-01: la subcategoría real, no un literal fijo)
-    expect(FORM).toContain("useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
+    expect(FORM).toContain("useState(attachToProp ? (attachToProp.category ?? '') : receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
   })
 })

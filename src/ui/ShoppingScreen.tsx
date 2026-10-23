@@ -43,6 +43,7 @@ import {
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
 import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
+import { ListPriceComparison, ProductPriceComparison } from '@/ui/PriceComparisonPanels'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -1347,6 +1348,7 @@ function ShoppingListTab() {
       {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
       <h2 className="section-title">Lista de la Compra</h2>
+      {pending.length >= 2 && <ListPriceComparison items={pending} />}
       {storeGroups.map(([store, storeItems]) => {
         const pendingItems = storeItems.filter((i) => i.status === 'pendiente')
         const doneItems = storeItems.filter((i) => i.status === 'comprado')
@@ -3200,6 +3202,7 @@ function HistoryTab() {
                   ))}
               </select>
             </div>
+            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} />
           </div>
         </div>
       )}

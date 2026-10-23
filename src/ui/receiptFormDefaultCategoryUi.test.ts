@@ -20,7 +20,7 @@ function receiptFormBody(): string {
 describe('COM-01 — «Subir ticket» parte de la subcategoría real, no de «Alimentación» a secas', () => {
   it('un ticket NUEVO usa defaultReceiptCategory(categories), nunca el literal "Alimentación" a mano', () => {
     const body = receiptFormBody()
-    expect(body).toContain("const [category, setCategory] = useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
+    expect(body).toContain("const [category, setCategory] = useState(attachToProp ? (attachToProp.category ?? '') : receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))")
     // Tampoco debe quedar el reset tras guardar con el literal antiguo.
     expect(body).not.toContain("setCategory('Alimentación')")
     expect(body).toContain('setCategory(defaultReceiptCategory(categories))')

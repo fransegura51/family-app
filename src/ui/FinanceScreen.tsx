@@ -162,7 +162,8 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { deleteReceipt, getReceiptUrl, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deleteReceipt, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
@@ -5086,6 +5087,8 @@ export function ReceiptsTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Compra manual a la que se está añadiendo el ticket (justificante posterior).
+  const [attachingId, setAttachingId] = useState<string | null>(null)
   // Petición real: "créame una carpeta dentro de ticket por cada
   // supermercado... que cuando yo le toque la carpeta de Mercadona, se
   // me abran todos los tickets que hay guardados" — plegado por
@@ -5260,7 +5263,22 @@ export function ReceiptsTab() {
               {isOpen && (
                 <div className="event-list store-folder-contents">
                   {storeReceipts.map((r) =>
-                    editingId === r.id ? (
+                    attachingId === r.id ? (
+                      <ReceiptForm
+                        key={r.id}
+                        mode="add"
+                        attachTo={r}
+                        existingFolders={storeNames}
+                        knownStores={knownStores}
+                        categories={categories}
+                        members={members}
+                        onDone={() => {
+                          setAttachingId(null)
+                          reload()
+                        }}
+                        onCancel={() => setAttachingId(null)}
+                      />
+                    ) : editingId === r.id ? (
                       <ReceiptForm
                         key={r.id}
                         mode="edit"
@@ -5282,6 +5300,7 @@ export function ReceiptsTab() {
                         hasTicket={r.hasTicket}
                         members={members}
                         onEdit={() => setEditingId(r.id)}
+                        onAttach={() => setAttachingId(r.id)}
                         onDelete={() => handleDelete(r)}
                       />
                     ),
@@ -5760,12 +5779,14 @@ function ReceiptRow({
   hasTicket,
   members,
   onEdit,
+  onAttach,
   onDelete,
 }: {
   receipt: Receipt
   hasTicket: boolean
   members: FamilyMember[]
   onEdit: () => void
+  onAttach?: () => void
   onDelete: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -5834,6 +5855,8 @@ function ReceiptRow({
           {(receipt.discountTotal ?? 0) > 0 && <span> · 🏷️ −{(receipt.discountTotal ?? 0).toFixed(2)} € de descuentos</span>}
           <span> · {isPendingCategory(receipt.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : receipt.category}</span>
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
+          {isPaymentMethod(receipt.paymentMethod) && <span className="muted"> · {PAYMENT_METHOD_LABELS[receipt.paymentMethod]}</span>}
+          {receipt.isManual && !receipt.storagePath && <span className="muted" title="Compra apuntada a mano, sin ticket"> · ✍️ sin ticket</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
               los que no se haya subido el ticket" — este gasto se sabe
               solo por el banco, nadie ha subido la foto del ticket
@@ -5857,6 +5880,11 @@ function ReceiptRow({
                     📤
                   </button>
                 </>
+              )}
+              {receipt.isManual && !receipt.storagePath && onAttach && (
+                <button type="button" className="icon-button" onClick={onAttach} aria-label="Añadir el ticket a esta compra" title="Añadir el ticket">
+                  📎
+                </button>
               )}
               <button type="button" className="icon-button" onClick={onEdit} aria-label="Editar ticket" title="Editar">
                 ✏️
@@ -6063,9 +6091,12 @@ function ReceiptForm({
   existingFolders,
   categories,
   members,
+  attachTo: attachToProp,
 }: {
   mode: 'add' | 'edit'
   receipt?: Receipt
+  // Añadir el justificante a una compra ya guardada (p. ej. manual): no crea otra compra ni otro gasto.
+  attachTo?: Receipt
   onDone: () => void
   onCancel?: () => void
   knownStores: string[]
@@ -6074,15 +6105,21 @@ function ReceiptForm({
   members: FamilyMember[]
 }) {
   const [file, setFile] = useState<File | null>(null)
-  const [store, setStore] = useState(receipt?.store ?? '')
-  const [receiptDate, setReceiptDate] = useState(receipt?.receiptDate ?? toDateStr(new Date()))
-  const [totalAmount, setTotalAmount] = useState(receipt?.totalAmount != null ? String(receipt.totalAmount) : '')
+  const [attachTo, setAttachTo] = useState<Receipt | null>(attachToProp ?? null)
+  // Compra rápida SIN ticket (solo al crear): no hace falta foto; el justificante se puede añadir después.
+  const [noTicket, setNoTicket] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState(receipt?.paymentMethod ?? '')
+  const [showDetail, setShowDetail] = useState(false)
+  const [manualCandidates, setManualCandidates] = useState<Receipt[]>([])
+  const [store, setStore] = useState(attachToProp?.store ?? receipt?.store ?? '')
+  const [receiptDate, setReceiptDate] = useState(attachToProp?.receiptDate ?? receipt?.receiptDate ?? toDateStr(new Date()))
+  const [totalAmount, setTotalAmount] = useState((attachToProp ?? receipt)?.totalAmount != null ? String((attachToProp ?? receipt)?.totalAmount) : '')
   // COM-01 — un ticket nuevo parte directamente de la subcategoría "Supermercado, carnicería y tiendas
   // de alimentación" (preselección visible), no de la categoría general "Alimentación" como antes. Uno
   // existente sin categoría (NULL, pendiente) se abre SIN categoría: abrirlo o guardarlo no lo convierte
   // en Alimentación ni en esa subcategoría.
-  const [category, setCategory] = useState(receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))
-  const [purchasedByMemberId, setPurchasedByMemberId] = useState(receipt?.purchasedByMemberId ?? '')
+  const [category, setCategory] = useState(attachToProp ? (attachToProp.category ?? '') : receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))
+  const [purchasedByMemberId, setPurchasedByMemberId] = useState(attachToProp?.purchasedByMemberId ?? receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
@@ -6116,6 +6153,37 @@ function ReceiptForm({
     [lines, store],
   )
   const lineShared = useSharedClasses(lineSharedPairs, 350)
+
+  // Quién pagó, por defecto la persona que registra (no es lo mismo que el autor del registro: se puede cambiar).
+  useEffect(() => {
+    if (mode !== 'add' || attachToProp || purchasedByMemberId !== '' || members.length === 0) return
+    currentProfileId()
+      .then((id) => setPurchasedByMemberId((prev) => prev || defaultPayerId(members, id)))
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, members])
+
+  // Con un ticket delante (foto + importe), ¿es la misma compra que ya apuntaste a mano? Solo se OFRECE: nunca se une sola.
+  useEffect(() => {
+    if (mode !== 'add' || attachTo || noTicket || !file || !totalAmount) {
+      setManualCandidates([])
+      return
+    }
+    let cancelled = false
+    listManualPurchasesWithoutTicket()
+      .then((list) => {
+        if (cancelled) return
+        const found = findManualPurchasesForTicket(
+          list.map((c) => ({ id: c.id, store: c.store, receiptDate: c.receiptDate, totalAmount: c.totalAmount, storagePath: c.storagePath, isManual: c.isManual })),
+          { totalAmount: Number(totalAmount), receiptDate, store },
+        )
+        setManualCandidates(found.map((c) => list.find((l) => l.id === c.id)!))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [mode, attachTo, noTicket, file, totalAmount, receiptDate, store])
 
   useEffect(() => onManagersChanged(() => void reloadFoodTypes()), [])
 
@@ -6244,10 +6312,14 @@ function ReceiptForm({
   function resetAddForm() {
     uploadedReceiptId.current = null
     setFile(null)
+    setAttachTo(null)
+    setPaymentMethod('')
+    setShowDetail(false)
+    setManualCandidates([])
     setStore('')
     setTotalAmount('')
     setCategory(defaultReceiptCategory(categories))
-    setPurchasedByMemberId('')
+    setPurchasedByMemberId(defaultPayerId(members, null))
     setLines([])
     setSkippedLines([])
     setDiscountTotal(0)
@@ -6257,14 +6329,33 @@ function ReceiptForm({
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (mode === 'add' && !file) {
-      setError('Elige una foto o archivo del ticket')
+    if (mode === 'add' && !noTicket && !file) {
+      setError(attachTo ? 'Elige la foto o archivo del ticket' : 'Elige una foto o archivo del ticket, o usa «Sin ticket»')
       return
+    }
+    if (mode === 'add' && noTicket && !attachTo) {
+      const problem = validateManualPurchase({ store, date: receiptDate, total: totalAmount, paymentMethod })
+      if (problem) {
+        setError(problem)
+        return
+      }
     }
     setSaving(true)
     setError(null)
     try {
-      if (mode === 'add') {
+      if (mode === 'add' && attachTo) {
+        // Justificante posterior: la MISMA compra y el MISMO gasto; solo se rellena la foto (y, si el ticket trae productos, el desglose).
+        const attached = await attachReceiptFile(attachTo.id, file!)
+        if (!attached) {
+          setError('Esta compra ya tiene un ticket adjunto')
+          return
+        }
+        if (lines.some((l) => l.name.trim())) {
+          await deleteProductPricesByReceipt(attachTo.id)
+          await saveLines(attachTo.id)
+        }
+        resetAddForm()
+      } else if (mode === 'add') {
         // Si el ticket ya se subió y falló después el guardado de las líneas, al reintentar NO se vuelve a subir (saldría duplicado):
         // se reutiliza y se rehacen solo sus líneas.
         let receiptId = uploadedReceiptId.current
@@ -6272,7 +6363,9 @@ function ReceiptForm({
           await deleteProductPricesByReceipt(receiptId)
         } else {
           receiptId = await uploadReceipt({
-            file: file!,
+            file: noTicket ? null : file!,
+            isManual: noTicket,
+            paymentMethod: paymentMethod || null,
             store,
             receiptDate,
             totalAmount: totalAmount ? Number(totalAmount) : null,
@@ -6307,6 +6400,7 @@ function ReceiptForm({
           receiptDate,
           totalAmount: totalAmount ? Number(totalAmount) : null,
           purchasedByMemberId: purchasedByMemberId || null,
+          paymentMethod: paymentMethod || null,
         })
         // Se sustituyen todas las líneas por las editadas, en vez de
         // intentar emparejar una a una con las que ya había.
@@ -6325,8 +6419,25 @@ function ReceiptForm({
     <form onSubmit={handleSubmit} className="card member-form">
       {mode === 'add' && (
         <>
-          <h2>Subir ticket</h2>
-          <label>Foto o archivo</label>
+          <h2>{attachTo ? 'Añadir el ticket a esta compra' : noTicket ? 'Compra sin ticket' : 'Subir ticket'}</h2>
+          {!attachTo && (
+            <div className="chip-row" role="group" aria-label="Tipo de compra">
+              <button type="button" className={noTicket ? 'chip' : 'chip chip-active'} aria-pressed={!noTicket} onClick={() => setNoTicket(false)}>
+                📷 Con ticket
+              </button>
+              <button type="button" className={noTicket ? 'chip chip-active' : 'chip'} aria-pressed={noTicket} onClick={() => { setNoTicket(true); setFile(null); setLines([]); setOcrStatus('idle') }}>
+                ✍️ Sin ticket
+              </button>
+            </div>
+          )}
+          {attachTo && (
+            <p className="muted" style={{ fontSize: 13 }}>
+              Compra del {formatDate(attachTo.receiptDate)}{attachTo.store ? ` en ${attachTo.store}` : ''}{attachTo.totalAmount != null ? ` · ${attachTo.totalAmount.toFixed(2)} €` : ''}. Se añade el ticket a ella: no se crea otra compra ni otro gasto.
+            </p>
+          )}
+          {!noTicket && <label>Foto o archivo</label>}
+          {!noTicket && (
+          <>
           <FileOrPdfPicker
             file={file}
             sheetTitle="Añadir ticket"
@@ -6349,6 +6460,20 @@ function ReceiptForm({
             <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
               {ocrStatus === 'reading' ? 'Leyendo ticket… puede tardar unos segundos' : '📷 Leer ticket'}
             </button>
+          )}
+          </>
+          )}
+          {/* ¿Es una compra que ya apuntaste sin ticket? Solo se ofrece (importe exacto, ±7 días): nunca se une sola. */}
+          {!attachTo && manualCandidates.length > 0 && (
+            <div className="card" role="status" style={{ marginTop: 8 }}>
+              <p style={{ margin: 0 }}>¿Es una compra que ya apuntaste? Así no se cuenta dos veces:</p>
+              {manualCandidates.slice(0, 3).map((c) => (
+                <button key={c.id} type="button" className="link-button" style={{ display: 'block', marginTop: 4 }} onClick={() => { setAttachTo(c); setManualCandidates([]) }}>
+                  Sí, es la del {formatDate(c.receiptDate)}{c.store ? ` · ${c.store}` : ''} · {c.totalAmount?.toFixed(2)} € — añadir el ticket a ella
+                </button>
+              ))}
+              <p className="muted" style={{ fontSize: 12, margin: '4px 0 0' }}>Si es otra compra, sigue y guárdala como ticket nuevo.</p>
+            </div>
           )}
         </>
       )}
@@ -6416,6 +6541,25 @@ function ReceiptForm({
         </label>
       </div>
 
+      {(noTicket || (mode === 'edit' && receipt?.isManual) || paymentMethod) && (
+        <label>
+          Forma de pago
+          <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+            <option value="">—</option>
+            {PAYMENT_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {PAYMENT_METHOD_LABELS[m]}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {noTicket && !showDetail && lines.length === 0 && (
+        <button type="button" className="link-button" onClick={() => { setShowDetail(true); addBlankLine() }}>
+          + Añadir productos (opcional)
+        </button>
+      )}
+
       {loadingLines && <p className="muted">Cargando productos leídos…</p>}
       {skippedLines.length > 0 && (
         <p className="muted">
@@ -6431,7 +6575,7 @@ function ReceiptForm({
           Hay líneas con importe negativo (un abono, un descuento): no se guardan en Historial de precios, que solo admite precios de 0 en adelante. El ticket se guarda igual, con su total.
         </p>
       )}
-      {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
+      {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0 || showDetail) && (
         <div className="day-modal-group">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <p className="muted" style={{ flex: 1, margin: 0 }}>
@@ -6533,14 +6677,19 @@ function ReceiptForm({
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>
-          {saving ? 'Guardando…' : mode === 'add' ? 'Guardar ticket' : 'Guardar'}
+          {saving ? 'Guardando…' : mode === 'add' ? (noTicket ? 'Guardar compra' : attachTo ? 'Añadir ticket' : 'Guardar ticket') : 'Guardar'}
         </button>
         {mode === 'edit' && (
           <button type="button" className="link-button" onClick={onCancel}>
             Cancelar
           </button>
         )}
-        {mode === 'add' && (file || lines.length > 0) && (
+        {mode === 'add' && attachToProp && onCancel && (
+          <button type="button" className="link-button" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </button>
+        )}
+        {mode === 'add' && !attachToProp && (file || lines.length > 0) && (
           <button type="button" className="link-button" onClick={resetAddForm} disabled={saving}>
             Cancelar
           </button>

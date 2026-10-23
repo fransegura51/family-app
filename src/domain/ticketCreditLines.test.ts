@@ -77,7 +77,7 @@ describe('la pantalla de tickets no deja que un abono rompa el guardado', () => 
 
   it('«Subir ticket» tiene Cancelar cuando ya hay foto o líneas leídas: deja el formulario como nuevo, sin guardar nada', () => {
     expect(screen).toContain('function resetAddForm()')
-    expect(screen).toContain("{mode === 'add' && (file || lines.length > 0) && (")
+    expect(screen).toContain("{mode === 'add' && !attachToProp && (file || lines.length > 0) && (")
     expect(screen).toContain('onClick={resetAddForm}')
   })
 })

@@ -53,7 +53,8 @@ describe('sourceAfterTicketMatch', () => {
 
 describe('uploadReceipt usa la unión', () => {
   it('pide los gastos candidatos con esos orígenes y excluye los que ya tienen ticket', () => {
-    expect(receiptsSrc).toContain(".in('source', [...TICKET_MATCH_SOURCES])")
+    // Un ticket se une a banco / ticket_banco / manual; una compra manual sin ticket solo a un gasto del banco (nunca a otra compra manual).
+    expect(receiptsSrc).toContain(".in('source', input.isManual ? ['banco'] : [...TICKET_MATCH_SOURCES])")
     expect(receiptsSrc).toContain('pickTicketExpenseMatch(')
     expect(receiptsSrc).toContain(".from('receipts').select('expense_id').in('expense_id', candidateIds)")
     expect(receiptsSrc).toContain('source: sourceAfterTicketMatch(match.source)')

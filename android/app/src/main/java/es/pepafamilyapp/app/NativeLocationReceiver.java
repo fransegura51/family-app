@@ -42,7 +42,6 @@ public class NativeLocationReceiver extends BroadcastReceiver {
     private static final float JUMP_STEP_RADIUS_M = 100f;
     private static final long JUMP_HOLD_GAP_MS = 10 * 60_000L;
     private static final long JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000L;
-    private static final long JUMP_PERSIST_MS = 30 * 60_000L;
     private static final float MIN_MOVING_SPEED_MS = 0.5f;
     private static final float JUMP_MIN_AWAY_STEP_M = 15f;
     private static final int JUMP_SPEED_READINGS = 2;
@@ -110,7 +109,8 @@ public class NativeLocationReceiver extends BroadcastReceiver {
      * en casa de una habitación a otra): una POSICIÓN DE RED mal colocada a ~350 m que el móvil devolvía una y otra vez (mismas coordenadas, sin velocidad).
      *
      * Una lectura a más de JUMP_DISTANCE_M del último punto enviado (si ese punto es de hace menos de un día) se RETIENE. Solo se envía con pruebas de movimiento real:
-     * dos lecturas seguidas CON velocidad, o tres seguidas cada una MÁS lejos que la anterior, o 30 minutos seguidos en el mismo sitio. Si una lectura vuelve a la zona
+     * dos lecturas seguidas CON velocidad, o tres seguidas cada una MÁS lejos que la anterior (NO por llevar mucho rato en el mismo sitio: una posición de red falsa y fija
+     * se repitió 102 veces seguidas la noche del 22-23/10). Si una lectura vuelve a la zona
      * de antes, la retenida se descarta. Sin último punto reciente no se filtra nada.
      */
     private static boolean acceptAfterJumpCheck(Context context, SharedPreferences prefs, Location loc, long now) {
@@ -154,7 +154,7 @@ public class NativeLocationReceiver extends BroadcastReceiver {
         float previousFar = distanceMeters(lastLat, lastLng, heldLat, heldLng);
         int speedN = hasSpeed && speed >= MIN_MOVING_SPEED_MS ? prefs.getInt("jump_speed_n", 0) + 1 : 0;
         int awayN = fromLast - previousFar >= JUMP_MIN_AWAY_STEP_M ? prefs.getInt("jump_away_n", 0) + 1 : 0;
-        if (speedN >= JUMP_SPEED_READINGS || awayN >= JUMP_AWAY_READINGS || now - heldFirstAt >= JUMP_PERSIST_MS) {
+        if (speedN >= JUMP_SPEED_READINGS || awayN >= JUMP_AWAY_READINGS) {
             diag(context, "receptor: movimiento real confirmado " + detail + ", se envía");
             markSent(prefs, lat, lng, now);
             return true;

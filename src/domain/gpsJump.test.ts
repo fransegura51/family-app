@@ -1,7 +1,7 @@
 // Filtro de saltos de GPS (app abierta). Casos reales del 18/10/2026 (Paco, quieto en casa de una habitación a otra): una posición de red mal colocada a
 // ~350 m que el móvil devolvía una y otra vez, sin velocidad.
 import { describe, expect, it } from 'vitest'
-import { createJumpFilter, JUMP_CHECK_WINDOW_MS, JUMP_PERSIST_MS, type GpsReading } from './gpsJump'
+import { createJumpFilter, JUMP_CHECK_WINDOW_MS, type GpsReading } from './gpsJump'
 
 const CASA = { latitude: 38.1053157, longitude: -0.8499646 } // 09:02:54, en casa
 // Los puntos falsos reales de hoy (09:08:16 y 09:59:24 con las MISMAS coordenadas; 10:00:58, 10:01:46 y 10:03:22 idénticas; 10:03:28 otra a ~55 m).
@@ -70,12 +70,11 @@ describe('un movimiento de verdad SÍ se acepta', () => {
     for (let m = 25; m <= 500; m += 25) expect(f.accept(r(sur(m), 1, m))).toBe(true)
   })
 
-  it('una mudanza real: 30 minutos seguidos en el mismo sitio lejano acaban aceptándose', () => {
+  it('una posición de red falsa y FIJA que se repite toda la noche (102 lecturas cada ~6 min a 273 m, 22-23/10) NUNCA se acepta', () => {
     const f = createJumpFilter()
     expect(f.accept(r(CASA, 0))).toBe(true)
-    expect(f.accept(r(sur(400), 5))).toBe(false)
-    for (let m = 13; m < 5 + JUMP_PERSIST_MS / MIN; m += 8) expect(f.accept(r(sur(400), m))).toBe(false)
-    expect(f.accept(r(sur(402), 5 + JUMP_PERSIST_MS / MIN))).toBe(true)
+    const falsa = { latitude: 38.103935, longitude: -0.852557 }
+    for (let m = 6; m <= 102 * 6; m += 6) expect(f.accept(r(falsa, m))).toBe(false)
   })
 })
 

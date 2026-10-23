@@ -115,6 +115,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { formatDateFromTimestamp, formatDateTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { HelpHint } from '@/help/ui/HelpHint'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -1301,6 +1302,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         <button
           type="button"
           className="calendar-fab"
+          data-help-id="calendar.new-event"
           onClick={() => {
             setAddingEventMemberId(null)
             setAddingEvent(true)
@@ -4147,7 +4149,7 @@ function EditEventForm({
   )
 }
 
-function AddEventForm({
+export function AddEventForm({
   members,
   events,
   categories,
@@ -4273,6 +4275,7 @@ function AddEventForm({
         categoryId,
         ...attachment,
       })
+      emitHelpEvent('calendar.event-created') // para los tutoriales «Enséñame»: el evento YA está guardado
       setTitle('')
       setDate(defaultDate ?? '')
       setTime('')
@@ -4308,6 +4311,7 @@ function AddEventForm({
         <input
           type="text"
           list="event-titles"
+          data-help-id="calendar.event-title"
           value={title}
           onChange={(e) => handleTitleChange(e.target.value)}
           required
@@ -4318,7 +4322,7 @@ function AddEventForm({
           ))}
         </datalist>
       </label>
-      <label>
+      <label data-help-id="calendar.event-date">
         Fecha
         <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
@@ -4383,7 +4387,7 @@ function AddEventForm({
         onNoteChange={setNote}
       />
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="calendar.event-save">
         {saving ? 'Guardando…' : 'Crear evento'}
       </button>
     </form>

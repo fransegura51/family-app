@@ -181,6 +181,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     quick: 'Escribe en el buscador lo que quieres hacer o saber. La respuesta te lleva al sitio de la app («Llévame») o, si hay tutorial, te enseña paso a paso sobre la pantalla real («Enséñame»).',
     state: 'disponible',
     go: { path: '/ayuda' },
+    tour: 'bienvenida',
     labels: ['Llévame'],
     frequent: true,
     verified: V,

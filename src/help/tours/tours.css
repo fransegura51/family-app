@@ -1,0 +1,127 @@
+/* Tutoriales «Enséñame» (B4). La capa NO intercepta toques salvo en el propio panel de Pepa: el marco del control es solo visual. */
+.tour-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  pointer-events: none;
+}
+
+.tour-ring {
+  position: fixed;
+  border: 3px solid #4c6ef5;
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 4px rgba(76, 110, 245, 0.35),
+    0 0 0 9999px rgba(20, 30, 70, 0.28);
+  pointer-events: none;
+  transition: top 0.2s ease, left 0.2s ease, width 0.2s ease, height 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring {
+    transition: none;
+  }
+}
+
+.tour-panel {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  pointer-events: auto;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 18px;
+  box-shadow: 0 10px 34px rgba(30, 42, 90, 0.35);
+  padding: 12px 14px 14px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.tour-panel-bottom {
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+.tour-panel-top {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+}
+
+@media (min-width: 720px) {
+  .tour-panel {
+    left: auto;
+    right: 16px;
+    width: 380px;
+  }
+
+  .tour-panel-bottom {
+    bottom: 16px;
+  }
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.tour-head-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.tour-text {
+  margin: 4px 0 8px;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+
+.tour-sub {
+  margin: 4px 0 8px;
+  font-size: 14px;
+  color: var(--muted, #6b7280);
+}
+
+.tour-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tour-btn {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: #fff;
+  color: var(--text, #1c1f26);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tour-btn-primary {
+  background: var(--primary, #4c6ef5);
+  border-color: var(--primary, #4c6ef5);
+  color: #fff;
+}
+
+.tour-btn:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.tour-next {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tour-next .tour-btn {
+  width: 100%;
+  text-align: left;
+}

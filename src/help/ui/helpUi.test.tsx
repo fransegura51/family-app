@@ -304,11 +304,18 @@ describe('permisos: la Ayuda explica restricciones y no ofrece botones que no va
     expect(within(panel).getByText(/No hay avisos ni notificaciones de cumpleaños/)).toBeTruthy()
   })
 
-  it('«Enséñame» no se ofrece mientras el tutorial no exista (nunca un botón que no lleva a nada)', async () => {
+  it('«Enséñame» solo se ofrece cuando el tutorial existe (nunca un botón que no lleva a nada)', async () => {
+    app(ADULT, <Opener q="próximos cumpleaños" />) // ficha sin tutorial: sin botón
+    fireEvent.click(screen.getByText('abrir'))
+    const sin = await screen.findByRole('complementary')
+    expect(within(sin).queryByRole('button', { name: /Enséñame/ })).toBeNull()
+  })
+
+  it('«Enséñame» sí aparece en «Crear un evento», que ya tiene su tutorial real', async () => {
     app(ADULT, <Opener q="crear un evento" />)
     fireEvent.click(screen.getByText('abrir'))
     const panel = await screen.findByRole('complementary')
-    expect(within(panel).queryByRole('button', { name: 'Enséñame' })).toBeNull()
+    expect(within(panel).getByRole('button', { name: /Enséñame/ })).toBeTruthy()
   })
 })
 

@@ -92,6 +92,7 @@ import { shoppingListText } from '@/domain/share'
 import { shareText } from '@/services/share'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { HelpHint } from '@/help/ui/HelpHint'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
@@ -1438,7 +1439,7 @@ function ShoppingListTab() {
       <StoreManager stores={stores} storeColors={storeColors} chains={storeChains} aliases={storeChainAliases} onChanged={reload} />
 
       {!shoppingMode && (
-        <button type="button" className="screen-fab" onClick={() => setAddingItem(true)}>
+        <button type="button" className="screen-fab" data-help-id="shopping.add-product" onClick={() => setAddingItem(true)}>
           + Añadir producto
         </button>
       )}
@@ -2164,7 +2165,7 @@ function ShoppingItemRow({
   )
 }
 
-function AddShoppingItemForm({
+export function AddShoppingItemForm({
   suggestions,
   knownStores,
   hideHeading,
@@ -2235,6 +2236,7 @@ function AddShoppingItemForm({
     setError(null)
     try {
       await addShoppingItem({ name, quantity, unit, priority, tripId: null, store: store || null })
+      emitHelpEvent('shopping.product-added') // para los tutoriales «Enséñame»: el producto YA está guardado
       setName('')
       setQuantity('')
       setUnit('')
@@ -2264,6 +2266,7 @@ function AddShoppingItemForm({
         <input
           type="text"
           list="product-suggestions"
+          data-help-id="shopping.product-name"
           value={name}
           onChange={(e) => handleNameChange(e.target.value)}
           required
@@ -2287,7 +2290,7 @@ function AddShoppingItemForm({
           <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg" />
         </label>
       </div>
-      <label>
+      <label data-help-id="shopping.product-store">
         Tienda (opcional)
         <input type="text" list="known-stores" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
         <datalist id="known-stores">
@@ -2323,7 +2326,7 @@ function AddShoppingItemForm({
       )}
       <input type="file" accept="image/*" ref={photoInputRef} onChange={handlePhotoSelected} style={{ display: 'none' }} />
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="shopping.product-save">
         {saving ? 'Añadiendo…' : 'Añadir'}
       </button>
     </form>

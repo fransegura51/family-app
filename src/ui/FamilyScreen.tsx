@@ -34,6 +34,7 @@ import familiaHeaderImg from '@/assets/familia/familia-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { HelpHint } from '@/help/ui/HelpHint'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const MEMBER_TYPES: { value: MemberType; label: string }[] = [
   { value: 'admin', label: 'Administrador/a' },
@@ -384,7 +385,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             </button>
           </>
         ) : (
-          <button type="button" className="family-add-btn" onClick={() => setAddingMember(true)}>
+          <button type="button" className="family-add-btn" data-help-id="family.add-member" onClick={() => setAddingMember(true)}>
             + Añadir miembro
           </button>
         ))}
@@ -662,6 +663,7 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
         sex: sex || null,
         allowedSections: canRestrictSections(memberType) ? allowedSections : null,
       })
+      emitHelpEvent('family.member-added') // para los tutoriales «Enséñame»: la ficha YA está creada (no se ha enviado ninguna invitación)
       const createdName = name
       setName('')
       setBirthDate('')
@@ -748,9 +750,9 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
       </h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input type="text" data-help-id="family.member-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
-      <label>
+      <label data-help-id="family.member-type">
         Tipo
         <select value={memberType} onChange={(e) => setMemberType(e.target.value as MemberType)}>
           {MEMBER_TYPES.map((t) => (
@@ -783,7 +785,7 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
         </label>
       )}
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="family.member-save">
         {saving ? 'Añadiendo…' : 'Añadir'}
       </button>
     </form>

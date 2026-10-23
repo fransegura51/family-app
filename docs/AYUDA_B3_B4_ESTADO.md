@@ -18,6 +18,8 @@ Documento vivo. Última actualización: 23/10/2026. Base de diseño: «Nueva Ayu
 | Regla AYUDA-01 + pruebas «trinquete» | `CLAUDE.md`, `src/help/helpDebt.ts`, `src/help/catalog/*.test.ts` | Activo |
 | Valoraciones «¿Te ha servido?» (agregadas) | `src/help/feedback.ts` + migración 0306 | **Apagado** (`HELP_FEEDBACK_ENABLED = false`): necesita la migración 0306 |
 | Sincronización entre dispositivos de las preferencias de Ayuda y del progreso de tutoriales | `src/state/prefs/prefsRegistry.ts` + migración 0306 | **Apagado** (`HELP_PREFS_SYNC_ENABLED = false`): necesita la migración 0306 |
+| Tutoriales «Enséñame» sobre las pantallas reales (motor + 3 pilotos + bienvenida) | `src/help/tours/` (motor, definiciones, `TourRunner`, `helpBus`), marcas `data-help-id` en las pantallas | Activo con `HELP_CONTEXTUAL_ENABLED` (progreso local al dispositivo hasta aplicar 0306) |
+| Bienvenida opcional y aviso de primera visita a un módulo | `src/help/ui/HelpNudges.tsx`, `offerWelcomeToNewAccount` (alta) | Activo, **solo cuentas nuevas**; una vez; «Ahora no» la omite |
 | Búsqueda con IA (solo ELIGE entre fichas verificadas; cuentas adultas; solo si la búsqueda local no es clara) | `src/help/ai.ts`, `aiClient.ts`, `supabase/functions/help-search` | **Preparada y apagada** (`HELP_AI_ENABLED = false`): falta DESPLEGAR la función de servidor `help-search` |
 
 ## Interruptores (todos en el código; apagar = poner `false` y desplegar)
@@ -26,6 +28,15 @@ Documento vivo. Última actualización: 23/10/2026. Base de diseño: «Nueva Ayu
 - `HELP_FEEDBACK_ENABLED` (`src/help/feedback.ts`): muestra «¿Te ha servido?» y envía el sí/no agregado. Requiere 0306.
 - `HELP_PREFS_SYNC_ENABLED` (`src/state/prefs/prefsRegistry.ts`): las claves `pepa:help-*` viajan con la cuenta. Requiere 0306. Una prueba impide encenderlo sin la migración aplicada.
 - `HELP_AI_ENABLED` (`src/help/ai.ts`): búsqueda con IA. Preparada de extremo a extremo y probada con simulaciones, pero la función de servidor `help-search` NO está desplegada. Para activarla: `supabase functions deploy help-search` (usa la pasarela de IA existente: cuenta adulta, interruptor global `ai_config`, tope general, proveedor/modelo de `ai_config`, registro de uso), poner el interruptor a `true` y desplegar la web. Límites de consumo comprobados: tope diario propio de **40 llamadas por familia y día** (`HELP_SEARCH_DAILY_CAP`, aplicado por la pasarela antes de llamar al proveedor; si no puede leer el contador, no llama), en el cliente **1 llamada cada 2,5 s y 20 por sesión**, caché por pregunta y la IA solo se consulta cuando la búsqueda local no es clara. Se puede apagar sin desplegar nada: `update ai_config set value = '["help-search"]' where key = 'purposes_disabled'` (mecanismo existente de la pasarela) o con el interruptor general. Coste: mismo proveedor y nivel gratuito que el resto de la IA de PEPA; el techo de uso es el tope diario de arriba.
+
+## Tutoriales «Enséñame» (B4)
+
+- Tutoriales: **Calendario → Crear un evento** (`cal-crear-evento`), **Compras → Añadir un producto** (`com-anadir-producto`), **Familia → Añadir un miembro** (`fam-anadir-miembro`) y el **recorrido de bienvenida** (`bienvenida`, solo informativo). Se añaden nuevos en `src/help/tours/defs/` + `registry.ts` + `tour:` en la ficha + marcas `data-help-id` en la pantalla real.
+- Se ejecutan sobre los formularios reales: la persona escribe y pulsa; el tutorial solo observa (clics, campos, cambio de ruta) y señala con un aro (`pointer-events:none`). Los pasos **sensibles** (guardar, crear) no avanzan con un clic ni tienen «Siguiente»: esperan el aviso `emitHelpEvent(...)` que la pantalla emite **después** de que el servidor confirme. Si el guardado falla, el tutorial no avanza. Nunca crea, borra ni envía nada por su cuenta (el de Familia no envía invitaciones).
+- Siempre se puede cerrar («✕»/Salir) sin bloquear la app; si el control no está (otra pantalla, sin permiso) el panel lo dice y ofrece seguir con la Ayuda.
+- Bienvenida: la marca `pepa:help-welcome = pending` la deja el alta (crear familia o unirse con código); una cuenta anterior no tiene valor y **no recibe ninguna sugerencia**. Está siempre a mano en Ayuda («Recorrido de bienvenida»).
+- Pruebas: `engine.test.ts`, `tourDefs.test.ts` (AYUDA-01: las marcas y los avisos existen en el código de las pantallas), `tourRunner.test.tsx`, `tourPilotsReal.test.tsx` (formularios reales con datos simulados), `helpNudges.test.tsx`. **No sustituyen la prueba en dispositivos reales (ordenador y móvil).**
+- Apagar solo los tutoriales sin tocar el resto de la Ayuda: quitar `tour:` de las fichas o `canStartTour` (hoy cuelgan de `HELP_CONTEXTUAL_ENABLED`).
 
 ## Privacidad
 
@@ -42,7 +53,7 @@ Para activarla: aplicar 0306 (mover el archivo a `supabase/migrations/`), poner 
 
 ## Reversión
 
-1. **Ayuda nueva**: cada despliegue es un commit de `master`; el último estable antes de B3 es `a003376` (B2-UX). Revertir = `git revert <commit de B3>` y push (la web vuelve a la Ayuda anterior;
+1. **Ayuda nueva**: cada despliegue es un commit de `master`; el último estable antes de B3 es `a003376` (B2-UX); el último estable antes de B4 es `c788dba` (B3 documental/contextual). Revertir = `git revert <commit de B3>` y push (la web vuelve a la Ayuda anterior;
    no toca la base de datos). Si la pantalla falla, también se puede apagar el panel contextual quitando `<HelpPanel />` de `NavShell.tsx`.
 2. **Interruptores**: para quitar solo una pieza, poner su interruptor a `false`.
 3. **Base de datos**: revertir código **no** revierte la base de datos. Solo 0306 (si se aplica) añade objetos; se deshace con su script de reversión.

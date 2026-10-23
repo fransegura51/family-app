@@ -1,16 +1,18 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { communityStatusCache } from '@/data/communityStatusCache'
 import type { Profile } from '@/domain/types'
 import { cardAccess, canOfferActions, type HelpAccessResult, type HelpCommunityState, type HelpContext } from '@/help/access'
 import { HELP_CARD_BY_ID, HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '@/help/catalog'
 import { buildHelpContext, communityStateFrom, moduleForPath } from '@/help/context'
-import { getHelpVoiceMode, HELP_VOICE_KEY, setHelpVoiceMode, type HelpVoiceMode } from '@/help/prefs'
+import { getHelpVoiceMode, HELP_VOICE_KEY, setHelpVoiceMode, setWelcomeState, type HelpVoiceMode } from '@/help/prefs'
 import { buildIndex, searchHelp, type SearchDoc, type SearchHit, type SearchResponse } from '@/help/search/searchEngine'
 import { addAnswer, addPepaText, addUserMessage, emptySession, recentQueries, replaceMessage, type HelpSession } from '@/help/session'
 import { isHelpAiEnabled } from '@/help/ai'
 import { rankHelpWithAi } from '@/help/aiClient'
-import { hasTour } from '@/help/tours/registry'
+import { HelpNudges } from '@/help/ui/HelpNudges'
+import { getTour, hasTour } from '@/help/tours/registry'
+import type { TourNextOption } from '@/help/tours/TourRunner'
 import type { HelpCard, HelpModuleId } from '@/help/types'
 import { primeHelpVoice, speakHelp, stopHelpSpeech } from '@/help/voice'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
@@ -18,6 +20,9 @@ import { HelpUiContext } from '@/help/ui/helpContext'
 
 // Estado de la Ayuda «Pepa te acompaña»: abierta o minimizada, conversación (solo en memoria), permisos de la persona, búsqueda y voz. Se monta una vez en NavShell,
 // por encima de las rutas, así que la conversación sobrevive a «Llévame» (cambiar de pantalla) y a minimizar, pero NO a cerrar la Ayuda ni a recargar la app.
+// El corredor de tutoriales solo se descarga la primera vez que se empieza uno.
+const TourRunner = lazy(() => import('@/help/tours/TourRunner').then((m) => ({ default: m.TourRunner })))
+
 let cachedIndex: ReturnType<typeof buildIndex> | null = null
 function helpIndex() {
   cachedIndex ??= buildIndex(HELP_CARDS, LEGACY_ENTRIES)
@@ -53,6 +58,9 @@ export interface HelpApi {
   closeHelp: () => void
   goTo: (card: HelpCard) => void
   startTour: (card: HelpCard) => void
+  /** Empieza un tutorial por su identificador (recorrido de bienvenida, sugerencias al terminar otro). */
+  startTourById: (tourId: string) => void
+  activeTour: string | null
   canStartTour: (card: HelpCard) => boolean
   speak: (text: string) => void
   stopSpeaking: () => void
@@ -61,7 +69,7 @@ export interface HelpApi {
   ensureCommunity: () => void
 }
 
-export function HelpProvider({ profile, children, onStartTour }: { profile: Pick<Profile, 'role' | 'allowedSections'>; children: ReactNode; onStartTour?: (tourId: string) => void }) {
+export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'role' | 'allowedSections'>; children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [community, setCommunity] = useState<HelpCommunityState>(() => communityStateFrom(communityStatusCache.peek()))
@@ -70,6 +78,9 @@ export function HelpProvider({ profile, children, onStartTour }: { profile: Pick
   const [session, setSession] = useState<HelpSession>(() => emptySession())
   const [focusModule, setFocusModule] = useState<HelpModuleId | null>(null)
   const [speakingText, setSpeakingText] = useState<string | null>(null)
+  // Tutorial «Enséñame» en marcha (null = ninguno) y un contador para reiniciar el mismo si se elige otra vez.
+  const [activeTour, setActiveTour] = useState<string | null>(null)
+  const [tourRun, setTourRun] = useState(0)
   const voiceRef = useRef(voiceMode)
   voiceRef.current = voiceMode
   // Copia de la conversación para el camino asíncrono de la IA (que necesita el identificador del mensaje «Pensando…»).
@@ -218,18 +229,31 @@ export function HelpProvider({ profile, children, onStartTour }: { profile: Pick
   )
 
   const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [])
+  const startTourById = useCallback((tourId: string) => {
+    if (!getTour(tourId)) return
+    setPanelOpen(false)
+    stopHelpSpeech()
+    setSpeakingText(null)
+    setTourRun((n) => n + 1)
+    setActiveTour(tourId)
+  }, [])
+
   const startTour = useCallback(
     (card: HelpCard) => {
       if (!card.tour || !hasTour(card.tour)) {
         setSession((s) => addPepaText(s, 'Este recorrido todavía no está disponible. Puedes seguir los pasos de la ficha.'))
         return
       }
-      setPanelOpen(false)
-      stopHelpSpeech()
-      onStartTour?.(card.tour)
+      startTourById(card.tour)
     },
-    [onStartTour],
+    [startTourById],
   )
+
+  // Fin de un tutorial: cierra su capa. Si era el recorrido de bienvenida, se recuerda que ya se ha visto (o que se ha dejado).
+  const onTourClosed = useCallback((tourId: string, reason: 'completed' | 'exited') => {
+    setActiveTour(null)
+    if (tourId === 'bienvenida') setWelcomeState(reason === 'completed' ? 'done' : 'skipped')
+  }, [])
 
   // Al salir de la app o cerrar sesión se para la voz. (La conversación es de React: desaparece sola al desmontar.)
   useEffect(() => () => stopHelpSpeech(), [])
@@ -260,14 +284,46 @@ export function HelpProvider({ profile, children, onStartTour }: { profile: Pick
       closeHelp,
       goTo,
       startTour,
+      startTourById,
+      activeTour,
       canStartTour,
       speak,
       stopSpeaking,
       speakingText,
       ensureCommunity,
     }),
-    [ctx, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
+    [ctx, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
   )
 
-  return <HelpUiContext.Provider value={api}>{children}</HelpUiContext.Provider>
+  const runningTour = activeTour ? getTour(activeTour) : undefined
+  const nextOptions: TourNextOption[] = (runningTour?.next ?? []).flatMap((cardId): TourNextOption[] => {
+    const card = HELP_CARD_BY_ID.get(cardId)
+    if (!card) return []
+    const a = cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctx)
+    if (a.status !== 'allowed') return []
+    return card.tour && hasTour(card.tour) && card.tour !== runningTour?.id ? [{ kind: 'tour', id: card.tour, label: card.title }] : [{ kind: 'card', id: card.id, label: card.title }]
+  })
+
+  return (
+    <HelpUiContext.Provider value={api}>
+      {children}
+      {/* Sugerencias discretas: bienvenida opcional (cuentas nuevas) y primera visita a un módulo. */}
+      <HelpNudges />
+      {runningTour && (
+        <Suspense fallback={null}>
+          <TourRunner
+            key={`${runningTour.id}:${tourRun}`}
+            tour={runningTour}
+            voiceMode={voiceMode}
+            nextOptions={nextOptions}
+            onClose={(reason) => onTourClosed(runningTour.id, reason)}
+            onPick={(o) => {
+              if (o.kind === 'tour') startTourById(o.id)
+              else openHelp({ cardId: o.id })
+            }}
+          />
+        </Suspense>
+      )}
+    </HelpUiContext.Provider>
+  )
 }

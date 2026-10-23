@@ -1,0 +1,379 @@
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import type { HelpVoiceMode } from '@/help/prefs'
+import { setTourProgress } from '@/help/prefs'
+import { fieldOf, findTarget, markedAncestor } from '@/help/tours/domTargets'
+import { canGoNext, reduceTour, startState, stepOf } from '@/help/tours/engine'
+import { onHelpEvent } from '@/help/tours/helpBus'
+import type { ObservedSignal, TourDef } from '@/help/tours/types'
+import { HELP_ID_PATTERN } from '@/help/tours/domTargets'
+import { speakHelp, stopHelpSpeech } from '@/help/voice'
+import { PepaFace } from '@/help/ui/PepaFace'
+import '@/help/tours/tours.css'
+
+// Corredor de un tutorial «Enséñame» sobre la pantalla REAL. Hace tres cosas y solo tres: (1) mira lo que pasa en la pantalla (clics, escritura, cambios de pantalla y avisos de
+// «guardado» de la aplicación) y se lo cuenta al motor; (2) resalta el control real con un marco que NO intercepta toques (se pulsa el botón de verdad); (3) enseña el panel de Pepa con
+// el texto del paso. No pulsa, no escribe, no envía ni guarda NADA: la persona hace cada acción. Si el control no existe o cambia, ofrece una salida comprensible; nunca bloquea la app.
+export interface TourNextOption {
+  label: string
+  kind: 'tour' | 'card'
+  id: string
+}
+
+const MISSING_AFTER_MS = 3500
+const POLL_MS = 400
+
+export function TourRunner({
+  tour,
+  voiceMode,
+  nextOptions,
+  onClose,
+  onPick,
+  missingAfterMs = MISSING_AFTER_MS,
+}: {
+  tour: TourDef
+  voiceMode: HelpVoiceMode
+  nextOptions: TourNextOption[]
+  onClose: (reason: 'completed' | 'exited') => void
+  onPick: (option: TourNextOption) => void
+  /** Cuánto se espera a que aparezca el control antes de dar el paso por «sin control» (solo se cambia en pruebas). */
+  missingAfterMs?: number
+}) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [state, dispatch] = useReducer((s: ReturnType<typeof startState>, a: Parameters<typeof reduceTour>[2]) => reduceTour(tour, s, a), tour, startState)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [speaking, setSpeaking] = useState(false)
+  const stateRef = useRef(state)
+  stateRef.current = state
+  const allowed = tour.paths ?? [tour.startPath]
+  const allowedRef = useRef(allowed)
+  allowedRef.current = allowed
+  const navigatingRef = useRef(false)
+  // Paso al que se ha vuelto con «Atrás»: ya estaba hecho, así que no se vuelve a dar por conseguido solo (ni se omite): la persona decide con «Siguiente» o actuando de nuevo.
+  const backIndex = useRef<number | null>(null)
+  const closedRef = useRef(false)
+
+  const step = stepOf(tour, state)
+  const stepKey = `${state.index}:${state.status}`
+
+  // ---- Al empezar: ir a la pantalla del tutorial si la persona está en otra, y guardar que se ha empezado.
+  useEffect(() => {
+    setTourProgress(tour.id, { status: 'started', at: new Date().toISOString().slice(0, 10), version: tour.version })
+    if (!allowedRef.current.includes(location.pathname)) {
+      navigatingRef.current = true
+      navigate(tour.startPath)
+    }
+    return () => stopHelpSpeech()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
+  }, [])
+
+  // ---- Pantalla: si la persona se va a otra, el tutorial se pausa (sin bloquear nada) y se reanuda al volver.
+  useEffect(() => {
+    const ok = allowedRef.current.includes(location.pathname)
+    if (ok) navigatingRef.current = false
+    if (!ok && !navigatingRef.current) dispatch({ type: 'off-route' })
+    if (ok) dispatch({ type: 'on-route' })
+    dispatch({ type: 'signal', signal: { type: 'route', path: location.pathname } })
+  }, [location.pathname])
+
+  // ---- Señales de la pantalla real (el navegador → motor). Escuchas en captura: no cambian ni impiden nada.
+  useEffect(() => {
+    const send = (signal: ObservedSignal) => dispatch({ type: 'signal', signal })
+    const onClick = (e: Event) => {
+      const el = markedAncestor(e.target)
+      if (el) send({ type: 'click', target: el.dataset.helpId ?? '' })
+    }
+    const onInput = (e: Event) => {
+      const el = markedAncestor(e.target)
+      if (!el) return
+      const t = e.target as HTMLInputElement
+      send({ type: 'filled', target: el.dataset.helpId ?? '', length: typeof t.value === 'string' ? t.value.length : 0 })
+    }
+    const onChange = (e: Event) => {
+      const el = markedAncestor(e.target)
+      if (el) send({ type: 'change', target: el.dataset.helpId ?? '' })
+    }
+    document.addEventListener('click', onClick, true)
+    document.addEventListener('input', onInput, true)
+    document.addEventListener('change', onChange, true)
+    const off = onHelpEvent((name) => send({ type: 'event', name }))
+    return () => {
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('input', onInput, true)
+      document.removeEventListener('change', onChange, true)
+      off()
+    }
+  }, [])
+
+  // ---- Vigilancia de la pantalla: dónde está el control, si aparece, si ya estaba cumplido, y si desaparece (tutorial «roto» con salida).
+  const missingSince = useRef<number | null>(null)
+  const lastStepKey = useRef('')
+  const scrolled = useRef('')
+  const measure = useCallback(() => {
+    const s = stateRef.current
+    const cur = stepOf(tour, s)
+    if (!cur || (s.status !== 'running' && s.status !== 'broken')) {
+      setRect(null)
+      return
+    }
+    const el = cur.target ? findTarget(cur.target) : null
+    // Un paso que ya está cumplido al llegar (p. ej. el formulario ya abierto) se omite; el siguiente se evalúa en la vuelta siguiente.
+    const key = `${s.index}`
+    const enteredBack = backIndex.current === s.index
+    if (lastStepKey.current !== key) {
+      lastStepKey.current = key
+      if (!enteredBack && cur.skipIf?.some((sig) => (sig.type === 'appear' ? Boolean(findTarget(sig.target)) : false))) {
+        dispatch({ type: 'skip', index: s.index })
+        return
+      }
+    }
+    // Señales «appear» y «filled» ya cumplidas: se anuncian al motor (salvo en un paso al que se ha vuelto con «Atrás»).
+    for (const sig of enteredBack ? [] : cur.completeOn) {
+      if (sig.type === 'appear' && findTarget(sig.target)) dispatch({ type: 'signal', signal: { type: 'appear', target: sig.target } })
+      if (sig.type === 'filled') {
+        const t = findTarget(sig.target)
+        const f = t ? fieldOf(t) : null
+        if (f && f.value.length >= (sig.min ?? 1)) dispatch({ type: 'signal', signal: { type: 'filled', target: sig.target, length: f.value.length } })
+      }
+    }
+    if (!el) {
+      setRect(null)
+      if (cur.target) {
+        missingSince.current ??= Date.now()
+        if (Date.now() - missingSince.current > missingAfterMs && s.status === 'running') dispatch({ type: 'target-missing', index: s.index })
+      }
+      return
+    }
+    missingSince.current = null
+    if (s.status === 'broken') dispatch({ type: 'target-found' })
+    if (scrolled.current !== key) {
+      scrolled.current = key
+      const r0 = el.getBoundingClientRect()
+      const out = r0.top < 60 || r0.bottom > window.innerHeight - 60
+      if (out) el.scrollIntoView?.({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+    }
+    const r = el.getBoundingClientRect()
+    setRect((prev) => (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height ? prev : { top: r.top, left: r.left, width: r.width, height: r.height }))
+  }, [tour, missingAfterMs])
+
+  useEffect(() => {
+    missingSince.current = null
+    measure()
+    let raf = 0
+    const schedule = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(measure)
+    }
+    const mo = new MutationObserver(schedule)
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-help-id', 'hidden', 'class', 'style'] })
+    const timer = window.setInterval(measure, POLL_MS)
+    window.addEventListener('scroll', schedule, true)
+    window.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('scroll', schedule)
+    return () => {
+      cancelAnimationFrame(raf)
+      mo.disconnect()
+      window.clearInterval(timer)
+      window.removeEventListener('scroll', schedule, true)
+      window.removeEventListener('resize', schedule)
+      window.visualViewport?.removeEventListener('resize', schedule)
+      window.visualViewport?.removeEventListener('scroll', schedule)
+    }
+  }, [measure, stepKey])
+
+  // ---- Voz: cada paso se lee en modo «Hablando»; en «Por escrito» solo con el botón (el texto se ve siempre).
+  useEffect(() => {
+    if (state.status !== 'running' || !step) return
+    if (voiceMode === 'voice') {
+      setSpeaking(true)
+      void speakHelp(step.text, () => setSpeaking(false))
+    } else {
+      stopHelpSpeech()
+      setSpeaking(false)
+    }
+  }, [state.index, state.status, voiceMode, step])
+
+  // ---- Final: se guarda el progreso y se avisa al padre cuando la persona cierra el panel final o sale.
+  useEffect(() => {
+    if (state.status === 'completed') setTourProgress(tour.id, { status: 'completed', at: new Date().toISOString().slice(0, 10), version: tour.version })
+    if (state.status === 'exited' && !closedRef.current) {
+      closedRef.current = true
+      setTourProgress(tour.id, { status: 'dismissed', at: new Date().toISOString().slice(0, 10), version: tour.version })
+      stopHelpSpeech()
+      onClose('exited')
+    }
+  }, [state.status, tour, onClose])
+
+  const finish = () => {
+    if (closedRef.current) return
+    closedRef.current = true
+    stopHelpSpeech()
+    onClose('completed')
+  }
+
+  // Posición del panel: si el control está en la mitad de abajo, el panel va arriba (y al revés), para no taparlo.
+  const placeTop = rect ? rect.top + rect.height / 2 > window.innerHeight * 0.52 : false
+
+  const body = () => {
+    if (state.status === 'completed') {
+      return (
+        <>
+          <p className="tour-text">{tour.finishText}</p>
+          {nextOptions.length > 0 && (
+            <>
+              <p className="tour-sub">¿Qué otra cosa quieres conocer?</p>
+              <ul className="tour-next">
+                {nextOptions.map((o) => (
+                  <li key={`${o.kind}:${o.id}`}>
+                    <button type="button" className="tour-btn" onClick={() => { finish(); onPick(o) }}>
+                      {o.kind === 'tour' ? '🎓 ' : '❓ '}
+                      {o.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <div className="tour-actions">
+            <button type="button" className="tour-btn tour-btn-primary" onClick={finish}>
+              Cerrar
+            </button>
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'restart' })}>
+              ↺ Repetir
+            </button>
+          </div>
+        </>
+      )
+    }
+    if (state.status === 'broken') {
+      return (
+        <>
+          <p className="tour-text">No encuentro este control en tu pantalla (puede que sea otra versión, que tu cuenta no tenga acceso o que se haya cerrado una ventana).</p>
+          <p className="tour-sub">No pasa nada: puedes reintentarlo, seguir los pasos de la ficha de Ayuda o salir.</p>
+          <div className="tour-actions">
+            <button type="button" className="tour-btn tour-btn-primary" onClick={() => dispatch({ type: 'restart' })}>
+              ↺ Empezar de nuevo
+            </button>
+            <button type="button" className="tour-btn" onClick={() => onPick({ kind: 'card', id: tour.cardId, label: tour.title })}>
+              Ver los pasos escritos
+            </button>
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
+              ✕ Salir
+            </button>
+          </div>
+        </>
+      )
+    }
+    if (state.status === 'paused') {
+      return (
+        <>
+          <p className="tour-text">{state.reason === 'off-route' ? `Has salido de la pantalla del tutorial «${tour.title}». ¿Seguimos?` : 'Tutorial en pausa.'}</p>
+          <div className="tour-actions">
+            <button
+              type="button"
+              className="tour-btn tour-btn-primary"
+              onClick={() => {
+                if (state.reason === 'off-route') {
+                  navigatingRef.current = true
+                  navigate(tour.startPath)
+                }
+                dispatch({ type: 'resume' })
+                dispatch({ type: 'on-route' })
+              }}
+            >
+              ▶ Seguir
+            </button>
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
+              ✕ Salir
+            </button>
+          </div>
+        </>
+      )
+    }
+    if (!step) return null
+    return (
+      <>
+        <p className="tour-text" aria-live="polite">
+          {step.text}
+        </p>
+        {step.sensitive && <p className="tour-sub">🔒 Esta acción la haces tú; yo no la hago por ti.</p>}
+        <div className="tour-actions">
+          {state.index > 0 && (
+            <button
+              type="button"
+              className="tour-btn"
+              onClick={() => {
+                backIndex.current = state.index - 1
+                dispatch({ type: 'back' })
+              }}
+            >
+              ← Atrás
+            </button>
+          )}
+          {(canGoNext(step) || (backIndex.current === state.index && !step.sensitive)) && (
+            <button type="button" className="tour-btn tour-btn-primary" onClick={() => dispatch({ type: 'next', force: true })}>
+              Siguiente →
+            </button>
+          )}
+          <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'pause' })}>
+            ⏸ Pausar
+          </button>
+          <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'restart' })}>
+            ↺ Reiniciar
+          </button>
+          <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
+            ✕ Salir
+          </button>
+          {speaking ? (
+            <button type="button" className="tour-btn" onClick={() => { stopHelpSpeech(); setSpeaking(false) }} aria-label="Detener la voz">
+              ⏹ Detener
+            </button>
+          ) : (
+            <button type="button" className="tour-btn" onClick={() => { setSpeaking(true); void speakHelp(step.text, () => setSpeaking(false)) }} aria-label="Escuchar este paso en voz alta">
+              🔊 Escuchar
+            </button>
+          )}
+        </div>
+      </>
+    )
+  }
+
+  if (state.status === 'exited') return null
+  const total = tour.steps.length
+  const showRing = rect && state.status === 'running' && step?.target
+  return createPortal(
+    <div className="tour-layer" data-tour-layer="true">
+      {showRing && rect && (
+        <div className="tour-ring" aria-hidden="true" style={{ top: rect.top - 4, left: rect.left - 4, width: rect.width + 8, height: rect.height + 8 }} />
+      )}
+      <section
+        className={`tour-panel ${placeTop ? 'tour-panel-top' : 'tour-panel-bottom'}`}
+        role="dialog"
+        aria-modal="false"
+        aria-label={`Tutorial: ${tour.title}`}
+      >
+        <header className="tour-head">
+          <PepaFace size={30} />
+          <div className="tour-head-text">
+            <strong>{tour.title}</strong>
+            {state.status !== 'completed' && (
+              <span className="muted">
+                Paso {Math.min(state.index + 1, total)} de {total}
+              </span>
+            )}
+          </div>
+        </header>
+        {body()}
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+// Id de marca válido (para las pruebas y para quien escriba tutoriales).
+export function isValidHelpId(id: string): boolean {
+  return HELP_ID_PATTERN.test(id)
+}

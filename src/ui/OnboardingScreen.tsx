@@ -8,6 +8,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { invitationErrorMessage, type InvitationKind } from '@/domain/invitations'
 import { forgetPendingInvitation, recallPendingInvitation } from '@/domain/pendingInvitation'
 import { BIRTH_DATE_HELP, MIN_BIRTH_DATE, birthDateError, signupBirthDateServerMessage, todayIso } from '@/domain/signupBirthDate'
+import { offerWelcomeToNewAccount } from '@/help/prefs'
 
 type Mode = 'choose' | 'create' | 'join'
 
@@ -92,6 +93,7 @@ export function OnboardingScreen({ onCreated }: { onCreated: () => Promise<void>
 
   async function finished() {
     forgetPendingInvitation()
+    offerWelcomeToNewAccount() // cuenta nueva: se le ofrecerá (una vez, sin obligar) el recorrido de bienvenida de la Ayuda
     await onCreated()
   }
 

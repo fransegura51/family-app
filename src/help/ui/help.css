@@ -474,3 +474,49 @@
   align-items: center;
   gap: 4px;
 }
+
+/* Sugerencias discretas (bienvenida y primera visita a un módulo) */
+.help-nudge {
+  position: fixed;
+  z-index: 1240;
+  left: 8px;
+  right: 8px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--card-bg, #fff);
+  border: 1px solid #b6c2e8;
+  border-radius: 16px;
+  box-shadow: 0 8px 26px rgba(30, 42, 90, 0.25);
+}
+
+.help-nudge-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.help-nudge p {
+  margin: 0 0 6px;
+}
+
+.help-nudge-hint {
+  align-items: center;
+  padding: 6px 8px 6px 10px;
+  font-size: 14px;
+}
+
+.help-nudge-hint p {
+  flex: 1;
+  margin: 0;
+}
+
+@media (min-width: 720px) {
+  .help-nudge {
+    left: auto;
+    right: 16px;
+    width: 380px;
+    bottom: 16px;
+  }
+}

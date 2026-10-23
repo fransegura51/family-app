@@ -161,13 +161,14 @@ export function NavShell({ profile }: { profile: Profile }) {
       {menuOpen && <div className="nav-menu-overlay" onClick={() => setMenuOpen(false)} />}
 
       {menuOpen && (
-        <div className="nav-menu-flyout">
+        <div className="nav-menu-flyout" data-help-id="nav.flyout">
           {rest.map((tab) => (
             <button
               key={tab.to}
               type="button"
               className={'nav-menu-item' + (isActiveNavPath(location.pathname, tab) ? ' active' : '')}
               style={{ background: NAV_SECTION_COLORS.get(navSectionId(tab)) }}
+              data-help-id={`nav.tab.${tab.to === '/' ? 'inicio' : navSectionId(tab)}`}
               onClick={() => go(tab.to)}
             >
               <span className="nav-item-icon">{tab.icon}</span>
@@ -176,7 +177,7 @@ export function NavShell({ profile }: { profile: Profile }) {
             </button>
           ))}
           <CommunityMenuItem onGo={go} />
-          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('ayuda') }} onClick={() => go('/ayuda')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('ayuda') }} data-help-id="nav.help" onClick={() => go('/ayuda')}>
             <span className="nav-item-icon">❓</span>
             Ayuda
           </button>
@@ -206,6 +207,7 @@ export function NavShell({ profile }: { profile: Profile }) {
         <button
           type="button"
           className={'nav-item' + (menuOpen ? ' active' : '')}
+          data-help-id="nav.menu"
           onClick={() => setMenuOpen((v) => !v)}
           aria-label={menuOpen ? 'Cerrar menú' : 'Abrir menú'}
         >
@@ -217,6 +219,7 @@ export function NavShell({ profile }: { profile: Profile }) {
             key={tab.to}
             type="button"
             className={'nav-item' + (isActiveNavPath(location.pathname, tab) ? ' active' : '')}
+            data-help-id={`nav.tab.${tab.to === '/' ? 'inicio' : navSectionId(tab)}`}
             onClick={() => navigate(tab.to)}
           >
             <span className="nav-item-icon" style={{ position: 'relative' }}>

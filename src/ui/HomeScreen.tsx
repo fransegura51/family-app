@@ -455,6 +455,7 @@ function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
     onMouseLeave: handleMouseUp,
   }
   const slideInteractionProps = {
+    'data-help-id': 'inicio.carrusel', // marca para el recorrido de bienvenida («Enséñame»)
     role: 'button' as const,
     tabIndex: 0,
     ...pointerProps,

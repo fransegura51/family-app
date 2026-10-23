@@ -15,7 +15,7 @@ function window(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-const ROW = window(SRC, 'function ShoppingItemRow', '\nfunction AddShoppingItemForm')
+const ROW = window(SRC, 'function ShoppingItemRow', '\nexport function AddShoppingItemForm')
 
 describe('ojo en la fila (TEST: producto sin foto → sin ojo, producto con foto → ojo visible)', () => {
   it('el botón 👁 solo se pinta cuando photoPath existe', () => {

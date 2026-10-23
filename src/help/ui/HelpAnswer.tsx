@@ -3,6 +3,7 @@ import { HELP_VIDEOS } from '@/help/legacy/legacyHelp'
 import { HELP_MODULE_BY_ID } from '@/help/catalog'
 import { canOfferActions } from '@/help/access'
 import type { SearchHit } from '@/help/search/searchEngine'
+import { getTourProgress } from '@/help/prefs'
 import { helpSpeechSupported } from '@/help/voice'
 import { HELP_FEEDBACK_ENABLED } from '@/help/feedback'
 import { HelpFeedback } from '@/help/ui/HelpFeedback'
@@ -110,6 +111,7 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
         {actions && help.canStartTour(card) && (
           <button type="button" className="help-btn" onClick={() => help.startTour(card)}>
             Enséñame
+            {card.tour && getTourProgress(card.tour)?.status === 'completed' ? ' ✓' : ''}
           </button>
         )}
       </div>

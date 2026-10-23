@@ -55,6 +55,11 @@ export function AyudaScreen() {
       {help ? (
         <>
           <HelpVoiceSetting />
+          <div className="help-actions" style={{ margin: '8px 0' }}>
+            <button type="button" className="help-btn" onClick={() => help.startTourById('bienvenida')}>
+              🎓 Recorrido de bienvenida (1-2 minutos)
+            </button>
+          </div>
           <HelpConversation />
         </>
       ) : (

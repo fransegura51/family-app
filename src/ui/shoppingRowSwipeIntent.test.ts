@@ -16,7 +16,7 @@ function slice(src: string, fromMarker: string, toMarker: string): string {
   return src.slice(start, end)
 }
 
-const ROW = slice(SRC, 'function ShoppingItemRow', '\nfunction AddShoppingItemForm')
+const ROW = slice(SRC, 'function ShoppingItemRow', '\nexport function AddShoppingItemForm')
 
 describe('ShoppingItemRow — un toque no debe abrir el swipe de Eliminar (margen mínimo real antes de deslizar)', () => {
   it('define un umbral con nombre (no un número mágico) para distinguir un toque de un deslizamiento real', () => {

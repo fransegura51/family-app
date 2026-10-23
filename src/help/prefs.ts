@@ -27,12 +27,18 @@ export function setHelpVoiceMode(mode: HelpVoiceMode): void {
   prefSet(HELP_VOICE_KEY, mode)
 }
 
-// ---- Bienvenida («recorrido inicial opcional»): visto | omitido | hecho
+// ---- Bienvenida («recorrido inicial opcional»). Solo se ofrece a las cuentas NUEVAS: el alta (crear familia o unirse con un código) la deja en «pending». Una cuenta anterior no
+// tiene valor (null): no se le ofrece nada por sorpresa (el recorrido sigue disponible a mano en Ayuda).
 export type WelcomeState = 'pending' | 'done' | 'skipped'
 
-export function getWelcomeState(): WelcomeState {
+export function getWelcomeState(): WelcomeState | null {
   const v = read(HELP_WELCOME_KEY)
-  return v === 'done' || v === 'skipped' ? v : 'pending'
+  return v === 'pending' || v === 'done' || v === 'skipped' ? v : null
+}
+
+// Al terminar el alta: se marca para ofrecer la bienvenida una vez (nunca pisa un «hecho» ni un «omitido» anteriores).
+export function offerWelcomeToNewAccount(): void {
+  if (getWelcomeState() === null) prefSet(HELP_WELCOME_KEY, 'pending')
 }
 
 export function setWelcomeState(state: Exclude<WelcomeState, 'pending'>): void {

@@ -50,3 +50,18 @@ Cada explicación (`HelpExplainer`) declara los archivos en los que se apoya (`b
 ## 7. Qué hay que comprobar a mano en un iPhone real
 
 Teclado y recorridos con formularios largos (evento, tarea, producto, miembro, receta, documento), recorridos con modales (campana, ubicación, lugares), visitas con la barra inferior y el menú ☰, área de Ayuda en el panel con el teclado abierto, pestañas de áreas con scroll horizontal, y —cuando se encienda— adjuntar fotos en Soporte.
+
+## 8. Informe final de la Parte 1 (24/10/2026)
+
+1. **Funcionalidades implementadas**: las cuatro áreas de «Pepa te acompaña» (panel y pantalla de Ayuda), 17 visitas, 65 tutoriales (60 nuevos + los 4 pilotos + la bienvenida), 41 explicaciones, catálogo maestro por sección (también en el Centro de Administración → Ayuda), Soporte técnico completo pero apagado, y contratos para IA futura.
+2. **Visitas guiadas**: 17 (Inicio, Calendario, Compras, Economía, Cocina, Familia, Pequeños Grandes, Eventos, Comunidad, Documentos, Galería, Ubicación, Contactos, Cumpleaños, Configuración, Buzón y Ayuda).
+3. **Tutoriales «Enséñame»**: 65 creados y verificados contra el código por pruebas automáticas (control marcado existe, avisos de guardado emitidos, seguridad de pasos, textos ≤ 300 caracteres); 460 pasos en total entre visitas y tutoriales. No se probaron en un navegador real.
+4. **Secciones cubiertas**: todas las pedidas. «Hablar con PEPA» y «Cuentas» no tienen visita propia (no estaban en la lista; sus explicaciones están en Cuentas y en la Ayuda).
+5. **Explicaciones «Cómo funciona PEPA»**: 41 (Compras: lectura de tickets y clasificación de productos; Economía: categorización, pendientes, conciliación, conexión bancaria y por qué una corrección no enseña a PEPA; Calendario; Cocina; Pequeños Grandes; Eventos; Comunidad; Familia/cuentas/privacidad; Ubicación; Configuración/avisos; Documentos, Galería, Contactos, Cumpleaños, Inicio, campana; Sugerencias y Reseñas).
+6. **Soporte técnico**: interfaz de usuario y de administración completas, migración 0310 y reversión escritas, 29 pruebas SQL locales en verde. **Apagado**; no hay nada visible ni ninguna llamada al servidor.
+7. **Preparación para IA**: contratos en `src/support/responder.ts`; autor `ai` posible en el modelo; ninguna función crea mensajes `ai`; sin proveedor, sin endpoints; límites exigidos documentados.
+8. **Pruebas**: `tsc` limpio; ESLint 0 errores (2 avisos antiguos de RewardsScreen); Vitest completo 11.775 pruebas (en la última tanda completa fallaron 2 pruebas lentas del Centro de Administración solo por carga de la máquina; pasan solas y se les subió el tiempo de espera); SQL local 93 + 22 + 29 en verde; build correcto; despliegue de GitHub Pages en verde.
+9. **Migraciones preparadas y NO aplicadas**: `0310_support_tickets` (Soporte). Sigue pendiente también la 0306 (anterior).
+10. **Commits y despliegue**: `122ef1b` en `master` (web publicada, comprobado en el paquete en vivo: están las visitas y las áreas; no está nada de Soporte).
+11. **Limitaciones y riesgos**: ver §1 (hallazgos de producto sin corregir) y los avisos de cada grupo: tutoriales que dependen de que existan datos (una lista con productos, un evento, una receta…) se detienen con salida normal si faltan; Economía y Eventos no tienen destinos internos; Documentos/Galería usan selectores nativos de archivos; el tutorial de alias de Comunidad se detiene si ya hay alias.
+12. **Pruebas manuales en iPhone necesarias**: ver §7.

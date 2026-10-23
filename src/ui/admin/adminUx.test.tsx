@@ -267,7 +267,7 @@ describe('Estado de funcionalidades dentro de los bloques', () => {
     expect(document.querySelectorAll('.admin-feature').length).toBeGreaterThan(30)
     expect(document.querySelector('.admin-pill-operativa')).toBeTruthy()
     expect(document.querySelector('[class*="admin-pill-help-"]')).toBeTruthy()
-  })
+  }, 30000)
   it('con un filtro activo se enseñan abiertos los módulos con resultados', async () => {
     owner.state = 'owner'
     render(

@@ -1004,7 +1004,7 @@ function ShoppingListTab() {
   })
   // Aprendizaje compartido de las tiendas de los elementos de la lista (una sola consulta por lote, con caché).
   const listSharedPairs = useMemo(
-    () => items.filter((i) => i.store).map((i) => ({ store: i.store as string, text: i.name })),
+    () => items.map((i) => ({ store: i.store ?? '', text: i.name })),
     [items],
   )
   const listShared = useSharedClasses(listSharedPairs)
@@ -2711,7 +2711,7 @@ function HistoryTab() {
     () =>
       products.flatMap((p) => {
         const store = storeByProductId.get(p.id)
-        return store ? [{ store, text: p.displayName }] : []
+        return [{ store: store ?? '', text: p.displayName }]
       }),
     [products, storeByProductId],
   )

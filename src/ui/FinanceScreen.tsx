@@ -6112,7 +6112,7 @@ function ReceiptForm({
   )
   // Aprendizaje compartido de la tienda de ESTE ticket para cada línea leída (un solo lote, con espera al teclear).
   const lineSharedPairs = useMemo(
-    () => (store.trim() ? lines.filter((l) => l.name.trim()).map((l) => ({ store, text: l.name })) : []),
+    () => lines.filter((l) => l.name.trim()).map((l) => ({ store: store.trim(), text: l.name })),
     [lines, store],
   )
   const lineShared = useSharedClasses(lineSharedPairs, 350)
@@ -7071,11 +7071,11 @@ export function BudgetsTab({
     const pairs: { store: string; text: string }[] = []
     for (const pr of prices) {
       const name = nameById.get(pr.productId)
-      if (!name || !pr.store) continue
-      const key = `${pr.store}${name}`
+      if (!name) continue
+      const key = `${pr.store ?? ''}${name}`
       if (seen.has(key)) continue
       seen.add(key)
-      pairs.push({ store: pr.store, text: name })
+      pairs.push({ store: pr.store ?? '', text: name })
     }
     return pairs
   }, [prices, products])

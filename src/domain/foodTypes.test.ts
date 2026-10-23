@@ -107,3 +107,17 @@ describe('pescado y marisco (reportado: «en tipos de comida no sale pescado»)'
     expect(classifyFoodType(name).key).toBe('pescado')
   })
 })
+
+describe('Lasaña, Pepinillos, Rúcula y Tostas (reportado: salían «Nuevo» con el icono genérico)', () => {
+  it.each([
+    ['Lasaña', 'despensa'],
+    ['LASAÑA PRECOCIDA', 'despensa'],
+    ['Pepinillos', 'despensa'],
+    ['PEPINILLOS AG PEQ.', 'despensa'],
+    ['Rúcula', 'verdura'],
+    ['RUCULA', 'verdura'],
+    ['Tostas', 'panaderia'],
+  ])('%s → %s', (name, key) => {
+    expect(classifyFoodType(name).key).toBe(key)
+  })
+})

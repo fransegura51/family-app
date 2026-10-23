@@ -15,7 +15,7 @@ export function useSharedClasses(pairs: readonly SharedPair[], debounceMs = 0): 
   const signature = useMemo(
     () =>
       pairs
-        .filter((p) => p.store.trim() && p.text.trim())
+        .filter((p) => p.text.trim())
         .map((p) => sharedPairKey(p.store, p.text))
         .sort()
         .join(''),
@@ -52,6 +52,5 @@ export function useSharedClasses(pairs: readonly SharedPair[], debounceMs = 0): 
 
 /** Resultado compartido de un (tienda, texto) de ESTE contexto; null si no hay tienda inequívoca o no está cargado. */
 export function sharedHintFor(map: ReadonlyMap<string, SharedClassHint>, store: string | null | undefined, text: string): SharedClassHint | null {
-  if (!store?.trim()) return null
-  return map.get(sharedPairKey(store, text)) ?? null
+  return map.get(sharedPairKey(store?.trim() ?? '', text)) ?? null
 }

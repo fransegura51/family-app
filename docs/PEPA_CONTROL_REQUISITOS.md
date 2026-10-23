@@ -762,6 +762,25 @@ lógico de «total ganado». Nada pasa a **Aprobado** sin confirmación expresa 
 
 ---
 
+## Catálogo común de productos y aprendizaje compartido (CAT-1, 23/10/2026)
+
+Encargo «PEPA — AUDITORÍA Y MEJORAS DE COMPRAS Y ECONOMÍA», Bloques 1-2. **Estado: implementado y probado; aplicado en producción (0308); sin Aprobar** (falta confirmación expresa de Jennifer). Prioridad pactada: dejar esto cerrado antes de efectivo y compras manuales (Bloques 3-5, **pendientes**, sin empezar).
+
+**Diagnóstico (datos reales, proyecto `family-app`)**: 460 productos (449 nombres distintos) en 3 familias con datos (Hepburn 402, S. G. 46, Demo 12) de 7 familias; 283 con clase, 269 confirmados por la familia (todos con clase estándar del catálogo), 177 sin clase. Aprendizaje por cadena (0143): 169 claves aprobadas, solo Mercadona/Hiperber/Charter (3 de 16 cadenas). Causa de que una familia nueva reclasificara: no había ningún camino desde lo que confirman las familias hacia el conocimiento compartido, y fuera de esas 3 cadenas la RPC devolvía `chain_not_learnable`/`chain_unresolved`. «NUEVO» solo significa «no está en el historial de esta familia» (no «sin clasificar»); el icono 🍽️ aparece cuando no hay clase (decisión 4da0952: PEPA no adivina). Lasaña/Pepinillos/Rúcula/Tostas los había clasificado a mano la familia S. G. (nueva, tickets de Lidl), pero el clasificador por palabras no los conocía y Lidl no era aprendible, así que nadie más se beneficiaba. Sin fallos de RLS ni de consulta.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| CAT-1a | Aprendizaje compartido para todos los establecimientos (por texto, sin depender de la tienda; cadena aprobada por PEPA sigue primero) | **Implementado y probado** | `0308_shared_learning_all_stores.sql` (+ reversión), aplicada en producción; `resolve_shared_product_class` mantiene firma y permisos; cliente: `sharedClassLoader`, `useSharedClasses`, FinanceScreen, ShoppingScreen consultan también sin tienda |
+| CAT-1b | Tres niveles: provisional (1 familia) · validada (2+ familias independientes sin discrepancia, o revisión administrativa en `shared_product_general_review`) · personal (la clase de la familia manda siempre; discrepancia entre familias → ambiguo, no se sugiere) | **Implementado y probado** | Prueba en vivo (transacción revertida, familias de prueba): A confirma → `general_provisional`; A+B → `general_validated`; C discrepa → `ambiguous`; C vuelve a Automático → de nuevo validada. Tras la prueba: 0 productos y 0 votos sobrantes (460 productos) |
+| CAT-1c | Recuperar clasificaciones ya hechas | **Hecho** | Relleno en la propia migración: 245 votos / 243 textos distintos (241 de 1 familia = provisionales; «pepino» validado por 2 familias; «albahaca» en conflicto: Hepburn y S. G. la clasifican distinto y por eso no se sugiere nada). Solo productos confirmados con clase estándar; no se modificó ni borró ningún dato de las familias |
+| CAT-1d | Privacidad | **Probado** | Tabla solo `text_key`, `family_hash` (md5 con sal, no legible por usuarios), clase; RLS activa, sin políticas, permisos revocados (`has_table_privilege(authenticated)=false`); la RPC no devuelve el hash. Test estructural `sharedLearningAllStores.test.ts` |
+| CAT-1e | Reconocer Lasaña, Pepinillos, Rúcula, Tostas con categorías existentes | **Implementado y probado** | `foodTypes.ts` (despensa / despensa / verdura / panadería, sin categorías nuevas); `foodTypes.test.ts` (7 casos). En vivo, una familia nueva recibe esas clases por aprendizaje compartido |
+| CAT-1f | Prueba automatizada de regresión | **Hecho** | `sharedLearningAllStores.test.ts` (7), `sharedClassLoader.test.ts` actualizado, candados de migración subidos a 308; suite completa `src`: 605 archivos / 11 292 pruebas verdes |
+
+**Limitaciones y pendiente**: (1) hoy solo hay 2 familias con datos reales, así que casi todo el conocimiento es *provisional*: madurará solo al entrar más familias; las familias de prueba también votan (si distorsionan, bloquear el texto en `shared_product_general_review`). (2) Sin interfaz de revisión administrativa: se hace por SQL. (3) Pepinillos: Hepburn los tiene en Despensa y S. G. en Verdura (textos distintos: «pepinillo pequeño» ≠ «pepinillos vinagre»), así que no se registra conflicto; la regla por palabras los manda a Despensa y cada familia puede corregirlo (su elección manda). (4) No probado en móvil/Safari (cambio sin pantalla nueva). (5) Los Bloques 3-5 (compras manuales, efectivo, pagos mixtos, devoluciones, duplicados) siguen **pendientes de implementar**.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

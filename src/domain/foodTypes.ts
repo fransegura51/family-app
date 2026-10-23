@@ -114,7 +114,7 @@ const KEYWORDS_BY_TYPE: Record<string, string[]> = {
   panaderia: [
     'pan', 'panecillo', 'baguette', 'croissant', 'bolleria', 'magdalena',
     'bizcocho', 'galleta', 'donut', 'ensaimada', 'hojaldre', 'trenza',
-    'artesanitos', 'bollo',
+    'artesanitos', 'bollo', 'tosta',
   ],
   lacteos: [
     'leche', 'queso', 'yogur', 'yogomix', 'nata', 'mantequilla',
@@ -148,13 +148,13 @@ const KEYWORDS_BY_TYPE: Record<string, string[]> = {
     'calabacin', 'calabaza', 'pepino', 'berenjena', 'brocoli', 'coliflor',
     'espinaca', 'acelga', 'puerro', 'ajo', 'judia', 'guisante', 'apio',
     'remolacha', 'champinon', 'seta', 'verdura', 'hortaliza', 'ensalada',
-    'cogollo', 'canonigo',
+    'cogollo', 'canonigo', 'rucula',
   ],
   despensa: [
     'arroz', 'pasta', 'macarron', 'espagueti', 'aceite', 'vinagre', 'harina',
     'azucar', 'especia', 'salsa', 'mayonesa', 'ketchup', 'mostaza',
     'conserva', 'lenteja', 'garbanzo', 'alubia', 'legumbre', 'caldo',
-    'sopa', 'cereal', 'mermelada', 'miel',
+    'sopa', 'cereal', 'mermelada', 'miel', 'lasana', 'pepinillo', 'encurtido',
   ],
 }
 

@@ -122,6 +122,18 @@ export const CARDS_OTROS: HelpCard[] = [
     verified: V,
   },
   {
+    id: 'pg-mi-camino',
+    module: 'pequenos',
+    title: 'Mi Camino: el viaje por los tres mundos',
+    synonyms: ['mi camino', 'camino', 'mundos', 'vuelta', 'golosinas', 'submarino', 'espacio', 'planetas', 'recorrido'],
+    quick: 'Con «🛤️ Camino de recompensas» activado, la pista de Puntos y recompensas es Mi Camino: un viaje por tres mundos de 150 puntos (Pueblo de las Golosinas, Reino submarino y Planeta Espacial). Al llegar a 450 puntos vuelve a empezar sin perder nada: cuenta lo ganado, nunca baja al canjear un premio. Toca la tarjeta de cada niño/a para ver su camino y, en el espacio, toca los planetas para leer curiosidades.',
+    state: 'disponible',
+    go: { path: '/puntos' },
+    featureId: 'pequenos-grandes',
+    labels: ['🛤️ Camino de recompensas'],
+    verified: V,
+  },
+  {
     id: 'pg-recompensas',
     module: 'pequenos',
     title: 'Crear y canjear recompensas',

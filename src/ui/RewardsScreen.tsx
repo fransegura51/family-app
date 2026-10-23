@@ -24,6 +24,7 @@ import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { RaceTrack } from '@/ui/RaceTrack'
 import { MiCamino } from '@/ui/MiCamino'
+import { GrantHistoryItem } from '@/ui/PointGrantHistory'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CalendarCategoryEmojiPicker } from '@/ui/MenuSettingsScreen'
 import { Confetti } from '@/ui/Confetti'
@@ -93,8 +94,10 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [celebrating, setCelebrating] = useState<{ memberId: string; memberName: string; milestone: number } | null>(null)
   const [monthlyResults, setMonthlyResults] = useState<RewardMonthlyResult[]>([])
 
-  function reload() {
-    setLoading(true)
+  // reloadQuiet vuelve a leer todo SIN pantalla de «Cargando…»: tras corregir o anular puntos, el adulto se queda
+  // con el Historial abierto en el mismo sitio en vez de volver a empezar.
+  function load(spinner: boolean) {
+    if (spinner) setLoading(true)
     Promise.all([
       listEventCompletions(),
       listRewards(),
@@ -119,6 +122,12 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
+  }
+  function reload() {
+    load(true)
+  }
+  function reloadQuiet() {
+    load(false)
   }
 
   useEffect(reload, [])
@@ -323,6 +332,8 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                     )}
                     <MemberRewardsPanel
                       member={m}
+                      members={members}
+                      onGrantChanged={reloadQuiet}
                       balance={balance}
                       rewards={activeRewards}
                       redemptions={redemptions.filter((r) => r.memberId === m.id)}
@@ -561,6 +572,8 @@ function RewardsSubsection({ title, defaultOpen, children }: { title: string; de
 
 function MemberRewardsPanel({
   member,
+  members,
+  onGrantChanged,
   balance,
   rewards,
   redemptions,
@@ -571,6 +584,8 @@ function MemberRewardsPanel({
   setError,
 }: {
   member: FamilyMember
+  members: FamilyMember[]
+  onGrantChanged: () => void
   balance: number
   rewards: Reward[]
   redemptions: RewardRedemption[]
@@ -675,10 +690,10 @@ function MemberRewardsPanel({
                 {r.rewardTitle} · ⭐ {r.pointsSpent} · {REDEMPTION_STATUS_LABELS[r.status]}
               </li>
             ))}
+            {/* Corregir/anular puntos concedidos por error (PEPA-PUNTOS-CORR): solo en cada «Dar puntos» original y solo
+                para adultos; los canjes de arriba nunca tienen esa opción. */}
             {grants.map((g) => (
-              <li key={g.id}>
-                ⭐ {g.amount > 0 ? `+${g.amount}` : g.amount} {g.reason ? `· ${g.reason}` : ''}
-              </li>
+              <GrantHistoryItem key={g.id} grant={g} memberGrants={grants} members={members} memberName={member.name} balance={balance} isAdult={isAdult} onChanged={onGrantChanged} />
             ))}
           </ul>
         )}

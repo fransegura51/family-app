@@ -95,8 +95,11 @@ export interface RewardRedemption {
 }
 
 // Fase 4 (Parte 4.4) — "Dar puntos" manualmente: ledger aparte, nunca una columna de saldo mutable.
-// Una corrección es una fila NUEVA con amount negativo que referencia la original (reversesGrantId) —
-// nunca se edita ni se borra un movimiento ya dado.
+// Una corrección es una fila NUEVA que referencia la original (reversesGrantId) — nunca se edita ni se
+// borra un movimiento ya dado. kind (migración 0309): 'concesion' = el «Dar puntos» original; 'correccion' =
+// fila con la DIFERENCIA de cantidad; 'anulacion' = fila que descuenta lo vigente. Responsable = grantedBy.
+export type PointGrantKind = 'concesion' | 'correccion' | 'anulacion'
+
 export interface PointGrant {
   id: string
   familyId: string
@@ -105,6 +108,7 @@ export interface PointGrant {
   reason: string | null
   grantedBy: string | null
   reversesGrantId: string | null
+  kind: PointGrantKind
   createdAt: string
 }
 

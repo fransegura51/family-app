@@ -67,15 +67,58 @@ export function memberMonthlyRacePoints(
   memberId: string,
   yearMonth: string,
   completions: { memberId: string | null; pointsAwarded: number; occurrenceDate: string }[],
-  grants: { memberId: string; amount: number; createdAt: string }[],
+  grants: { id?: string; memberId: string; amount: number; createdAt: string; reversesGrantId?: string | null }[],
 ): number {
   const earned = completions
     .filter((c) => c.memberId === memberId && c.occurrenceDate.startsWith(yearMonth))
     .reduce((sum, c) => sum + c.pointsAwarded, 0)
+  // Una corrección o anulación (fila con reversesGrantId) cuenta en el MES DE LA CONCESIÓN ORIGINAL, no en el
+  // mes en que se corrigió: así anular hoy un «Dar puntos» de otro mes no deja negativo el mes actual ni
+  // toca un mes ya cerrado de la Carrera (sus resultados guardados nunca se recalculan).
+  const monthOf = new Map(grants.filter((g) => g.id).map((g) => [g.id as string, g.createdAt]))
   const granted = grants
-    .filter((g) => g.memberId === memberId && g.createdAt.startsWith(yearMonth))
+    .filter((g) => g.memberId === memberId && ((g.reversesGrantId && monthOf.get(g.reversesGrantId)) || g.createdAt).startsWith(yearMonth))
     .reduce((sum, g) => sum + g.amount, 0)
   return earned + granted
+}
+
+// Corregir o anular puntos concedidos por error (migración 0309). El libro de movimientos nunca se edita: la
+// cantidad VIGENTE de una concesión es la original más la suma de las filas de corrección/anulación que la
+// referencian. memberLifetimePoints (Mi Camino) y memberPointsBalance ya suman todas las filas, así que el
+// recorrido y el saldo se actualizan solos; los canjes jamás tocan el recorrido.
+export type PointGrantStatus = 'vigente' | 'corregida' | 'anulada'
+
+interface GrantRow {
+  id: string
+  amount: number
+  kind: 'concesion' | 'correccion' | 'anulacion'
+  reversesGrantId: string | null
+}
+
+export function grantEffectiveAmount(grant: GrantRow, allGrants: GrantRow[]): number {
+  return grant.amount + allGrants.filter((g) => g.reversesGrantId === grant.id).reduce((sum, g) => sum + g.amount, 0)
+}
+
+export function isOriginalGrant(grant: GrantRow): boolean {
+  return grant.kind === 'concesion' && !grant.reversesGrantId && grant.amount > 0
+}
+
+export function grantStatus(grant: GrantRow, allGrants: GrantRow[]): PointGrantStatus {
+  const effective = grantEffectiveAmount(grant, allGrants)
+  if (effective <= 0) return 'anulada'
+  return effective === grant.amount ? 'vigente' : 'corregida'
+}
+
+// Solo una concesión original y todavía no anulada admite «Corregir puntos» / «Anular concesión» (nunca un canje,
+// una corrección ni un movimiento de Calendario). El servidor lo vuelve a comprobar.
+export function canAdjustGrant(grant: GrantRow, allGrants: GrantRow[]): boolean {
+  return isOriginalGrant(grant) && grantEffectiveAmount(grant, allGrants) > 0
+}
+
+// ¿Dejaría este cambio el saldo del niño/a en negativo? (los puntos ya gastados o reservados en canjes no se
+// pueden descontar). delta < 0 al bajar o anular. El servidor aplica la misma regla.
+export function adjustmentWouldMakeBalanceNegative(balance: number, delta: number): boolean {
+  return delta < 0 && balance + delta < 0
 }
 
 export interface MilestoneProgress {

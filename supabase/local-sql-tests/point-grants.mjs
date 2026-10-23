@@ -46,7 +46,7 @@ const old1 = (await db.query(`insert into point_grants (family_id, member_id, am
 await db.query(`insert into point_grants (family_id, member_id, amount, reason, granted_by, reverses_grant_id) values ($1,$2,-5,'reversión antigua',$3,$4)`, [famA, kidA, adultA.id, old1])
 
 console.log('\n0309 · aplicar la migración')
-await db.exec(read('supabase/pending-migrations/0309_point_grant_corrections.sql'))
+await db.exec(read('supabase/migrations/0309_point_grant_corrections.sql'))
 
 const sum = async (member) => Number((await db.query('select coalesce(sum(amount),0) s from point_grants where member_id = $1', [member])).rows[0].s)
 const rows = async (member) => (await db.query('select * from point_grants where member_id = $1 order by created_at, id', [member])).rows

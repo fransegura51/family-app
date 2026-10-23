@@ -765,10 +765,11 @@ lógico de «total ganado». Nada pasa a **Aprobado** sin confirmación expresa 
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos
-concedidos por error». Rama `puntos-correcciones`. **La migración 0309 está PENDIENTE de aplicar** (vive en
-`supabase/pending-migrations/`, deshacer en `supabase/rollbacks/0309_point_grant_corrections_down.sql`): hasta que se aplique y se
-despliegue la web, la función no existe en producción. **Orden obligatorio: primero la migración, después la web** (la web lee la columna
-nueva `kind`; desplegarla antes rompería la lectura de puntos).
+concedidos por error». Rama `puntos-correcciones`. **Migración 0309 APLICADA en producción el 2026-10-23** (con autorización expresa,
+`supabase/migrations/0309_point_grant_corrections.sql`; deshacer en `supabase/rollbacks/0309_point_grant_corrections_down.sql`) y web desplegada después
+(la web lee la columna nueva `kind`, por eso el orden era migración → web). Antes de aplicarla se guardó una copia de `point_grants`
+(`public.point_grants_backup_20261023_pre0309`, 4 filas, suma 310, con RLS y sin acceso para la API) y se comprobó que los 4 movimientos
+existentes quedaron idénticos tras migrar. **Si ya se han hecho correcciones reales, NO revertir la migración**: dejaría esas filas sin etiquetar.
 
 | ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
 |---|---|---|---|---|---|
@@ -782,9 +783,11 @@ nueva `kind`; desplegarla antes rompería la lectura de puntos).
 | PUNTOS-CORR-8 | Respeta permisos y datos existentes, sin duplicar movimientos ni alterar el historial anterior | Sí | Sí — migración aditiva (columna con valor por defecto; filas antiguas que ya referenciaban otra se etiquetan `anulacion` sin cambiar ninguna cantidad); `Dar puntos` y canjes sin cambios | Sí — SQL: «las filas anteriores no cambian de cantidad»; `npm test` completo en verde | No |
 | PUNTOS-CORR-9 | Pruebas, Ayuda y registro; comprobación en móvil | Sí | Sí — ficha de Ayuda `pg-puntos` (ya no dice que no se puede corregir), texto ampliado, inventario del Centro de Administración y este registro | Sí — suites de Ayuda y Administración en verde; navegador a 375px sin desbordamiento horizontal | No |
 
-**Pendiente (honesto)**: (1) **aplicar la migración 0309 en producción y desplegar** — no hecho, requiere autorización expresa (toca la política de
-`point_grants` y añade una columna); (2) no probado con la sesión real de la familia: el navegador se probó con una página temporal (ya borrada) y un
-servidor simulado con las mismas reglas, y el SQL real en una base local en memoria (PGlite), no en Supabase; (3) PGlite tiene una sola conexión: la
+**Pendiente (honesto)**: (1) la comprobación de producción se hizo con una transacción que se revierte a propósito (sobre datos reales, sin dejar
+nada: siguen 4 movimientos, suma 310) y comprobó: corregir sube, misma cantidad → `no_change`, anular, segunda anulación → `already_annulled`, corregir tras
+anular → `already_annulled`, insert directo de una anulación → bloqueado por RLS, otra familia → `grant_not_found`; **no se probó el rechazo de un niño** (no hay
+perfiles de niño con cuenta en producción; sí está probado en PGlite); (2) no probado todavía con la sesión real de la familia en el móvil: el navegador se probó con
+una página temporal (ya borrada) y un servidor simulado con las mismas reglas; (3) PGlite tiene una sola conexión: la
 protección contra dos anulaciones simultáneas descansa en el bloqueo consultivo de PostgreSQL (el mismo patrón que ya usa el canje de premios), sin
 poder probarse con dos conexiones reales; (4) comprobar en iPhone y Android físicos; (5) un niño que ya gastó esos puntos no puede ser «descontado»
 (decisión de diseño para no dejar saldos negativos): hay que rechazar antes el canje pendiente. Nada pasa a **Aprobado** sin confirmación expresa.

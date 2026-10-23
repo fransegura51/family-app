@@ -1,6 +1,6 @@
 -- 0309 — Corregir o anular puntos concedidos por error (Pequeños Grandes → Puntos y recompensas → Historial).
 --
--- ESTADO: PENDIENTE de aplicar (vive en supabase/pending-migrations hasta que se autorice). Deshacer:
+-- ESTADO: APLICADA en producción el 23/10/2026 (con autorización expresa), tras guardar una copia de point_grants (public.point_grants_backup_20261023_pre0309, 4 filas) y comprobar los datos. Deshacer:
 -- supabase/rollbacks/0309_point_grant_corrections_down.sql.
 --
 -- Cómo se guardan hoy los puntos: `point_grants` es un libro de movimientos (nunca una columna de saldo).

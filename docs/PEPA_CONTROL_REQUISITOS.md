@@ -762,6 +762,38 @@ lógico de «total ganado». Nada pasa a **Aprobado** sin confirmación expresa 
 
 ---
 
+## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
+
+Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos
+concedidos por error». Rama `puntos-correcciones`. **Migración 0309 APLICADA en producción el 2026-10-23** (con autorización expresa,
+`supabase/migrations/0309_point_grant_corrections.sql`; deshacer en `supabase/rollbacks/0309_point_grant_corrections_down.sql`) y web desplegada después
+(la web lee la columna nueva `kind`, por eso el orden era migración → web). Antes de aplicarla se guardó una copia de `point_grants`
+(`public.point_grants_backup_20261023_pre0309`, 4 filas, suma 310, con RLS y sin acceso para la API) y se comprobó que los 4 movimientos
+existentes quedaron idénticos tras migrar. **Si ya se han hecho correcciones reales, NO revertir la migración**: dejaría esas filas sin etiquetar.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| PUNTOS-CORR-1 | Auditoría previa de cómo se guardan los puntos y elección de la solución más simple y segura | Sí (2026-10-23) | Sí — los puntos manuales ya vivían en `point_grants`, un libro de movimientos sin UPDATE/DELETE (saldo y Mi Camino se calculan sumando filas, nunca una columna): una corrección es una fila nueva con la diferencia, así saldo y Mi Camino se actualizan solos sin tocar `memberLifetimePoints`/`memberPointsBalance`. Había además una política de insert demasiado abierta (un adulto podía insertar cualquier fila, con cualquier signo, apuntando a cualquier id y a miembros de otra familia) y un `reversePointGrant` sin usar que saltaba cualquier validación: ambos retirados/endurecidos. Los puntos que llegan por «Hecho» en Calendario no son concesiones: se corrigen desmarcando la tarea | No aplica (auditoría) | No |
+| PUNTOS-CORR-2 | Solo adultos autorizados pueden corregir/anular | Sí | Sí — servidor: `adjust_point_grant` exige sesión y rol admin/adult de la misma familia (un niño recibe `not_allowed`); pantalla: la opción solo se pinta si `isAdult` | Sí — `supabase/local-sql-tests/point-grants.mjs` (PGlite, 22 pruebas) y `pointGrantHistoryUi.test.ts` | No |
+| PUNTOS-CORR-3 | Opción discreta «Corregir puntos» / «Anular concesión» en cada concesión del Historial; nunca en canjes ni en movimientos que no correspondan | Sí | Sí — `PointGrantHistory.tsx`: botón «⋯» solo en concesiones originales no anuladas; las filas de corrección/anulación y los canjes no tienen opciones | Sí — `pointGrantHistoryUi.test.ts`; en navegador a 375px (servidor simulado): con adulto aparece «⋯» solo en las concesiones; con niño no aparece ninguno | No |
+| PUNTOS-CORR-4 | Corregir = cambiar la cantidad; anular = confirmar e indicar cuántos puntos se descontarán | Sí | Sí — corregir enseña el efecto («Se descontarán/sumarán N puntos a …») y no deja guardar sin cambios ni con cantidades inválidas (1-10000); anular pide «Sí, anular» con «Se descontarán N puntos a …» | Sí — pruebas de interfaz y de servidor; en navegador: anular 140 → saldo 30 y Mi Camino 30 | No |
+| PUNTOS-CORR-5 | No borrar el registro: conservar el original y anotar fecha, responsable y motivo opcional | Sí | Sí — columna `kind` (concesion/correccion/anulacion) en `point_grants`; la corrección/anulación es una fila nueva con `created_at`, `granted_by` y `reason` opcional; sin políticas de update/delete; el original se ve tachado con «anulada» o «corregida: ahora +N» | Sí — SQL: la original no cambia nunca de cantidad, UPDATE/DELETE denegados; en navegador: fila «🚫 Anulación −140 · motivo · fecha · por Ana» | No |
+| PUNTOS-CORR-6 | Saldo y puntos históricos válidos de Mi Camino actualizados; el muñeco retrocede; los canjes nunca hacen retroceder Mi Camino | Sí | Sí — Mi Camino y el saldo suman todas las filas (sin cambios en su código); la **Carrera mensual** atribuye la corrección al mes de la concesión original (`memberMonthlyRacePoints`), sin cambiar su diseño ni recalcular meses cerrados | Sí — `pointGrantCorrections.test.ts` (160 puntos en Submarino → anular 140 → 20 en Golosinas; canjes: saldo baja y camino no); motor de Mi Camino ya probado con puntos que bajan (`miCaminoEngine.test.ts`); en navegador con 40 puntos canjeados: saldo 90, Camino 130 | No |
+| PUNTOS-CORR-7 | Evitar dobles anulaciones, saldos incoherentes y modificar puntos de otros niños o familias | Sí | Sí — servidor: `already_annulled` (también con dos intentos a la vez, bloqueo por miembro compartido con los canjes), `would_make_balance_negative` (lo ya gastado o reservado en canjes no se puede descontar; rechazado no cuenta, pendiente sí), `grant_not_found` para otra familia (sin confirmar que el id existe), concesiones nuevas solo a miembros de la propia familia; la pantalla avisa antes de enviar | Sí — los 22 casos de `point-grants.mjs` (incluye el endurecimiento del insert directo y otra familia) | No |
+| PUNTOS-CORR-8 | Respeta permisos y datos existentes, sin duplicar movimientos ni alterar el historial anterior | Sí | Sí — migración aditiva (columna con valor por defecto; filas antiguas que ya referenciaban otra se etiquetan `anulacion` sin cambiar ninguna cantidad); `Dar puntos` y canjes sin cambios | Sí — SQL: «las filas anteriores no cambian de cantidad»; `npm test` completo en verde | No |
+| PUNTOS-CORR-9 | Pruebas, Ayuda y registro; comprobación en móvil | Sí | Sí — ficha de Ayuda `pg-puntos` (ya no dice que no se puede corregir), texto ampliado, inventario del Centro de Administración y este registro | Sí — suites de Ayuda y Administración en verde; navegador a 375px sin desbordamiento horizontal | No |
+
+**Pendiente (honesto)**: (1) la comprobación de producción se hizo con una transacción que se revierte a propósito (sobre datos reales, sin dejar
+nada: siguen 4 movimientos, suma 310) y comprobó: corregir sube, misma cantidad → `no_change`, anular, segunda anulación → `already_annulled`, corregir tras
+anular → `already_annulled`, insert directo de una anulación → bloqueado por RLS, otra familia → `grant_not_found`; **no se probó el rechazo de un niño** (no hay
+perfiles de niño con cuenta en producción; sí está probado en PGlite); (2) no probado todavía con la sesión real de la familia en el móvil: el navegador se probó con
+una página temporal (ya borrada) y un servidor simulado con las mismas reglas; (3) PGlite tiene una sola conexión: la
+protección contra dos anulaciones simultáneas descansa en el bloqueo consultivo de PostgreSQL (el mismo patrón que ya usa el canje de premios), sin
+poder probarse con dos conexiones reales; (4) comprobar en iPhone y Android físicos; (5) un niño que ya gastó esos puntos no puede ser «descontado»
+(decisión de diseño para no dejar saldos negativos): hay que rechazar antes el canje pendiente. Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

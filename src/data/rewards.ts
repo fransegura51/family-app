@@ -144,7 +144,7 @@ export async function markRewardRedemptionEnjoyed(id: string): Promise<RewardRed
   return mapRedemption(data)
 }
 
-const POINT_GRANT_SELECT = 'id, family_id, member_id, amount, reason, granted_by, reverses_grant_id, created_at'
+const POINT_GRANT_SELECT = 'id, family_id, member_id, amount, reason, granted_by, reverses_grant_id, kind, created_at'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPointGrant(r: any): PointGrant {
@@ -156,6 +156,7 @@ function mapPointGrant(r: any): PointGrant {
     reason: r.reason,
     grantedBy: r.granted_by,
     reversesGrantId: r.reverses_grant_id,
+    kind: r.kind ?? (r.reverses_grant_id ? 'anulacion' : 'concesion'),
     createdAt: r.created_at,
   }
 }
@@ -264,22 +265,41 @@ export async function finalizeMonthlyResults(
   if (error) throw error
 }
 
-// Corrección trazable: NUNCA edita ni borra el movimiento original — inserta una fila nueva de signo
-// contrario que lo referencia, así el historial conserva que el error existió y cómo se corrigió.
-export async function reversePointGrant(grant: PointGrant, reason: string | null): Promise<PointGrant> {
-  const grantedBy = await currentProfileId()
-  const { data, error } = await supabase
-    .from('point_grants')
-    .insert({
-      family_id: grant.familyId,
-      member_id: grant.memberId,
-      amount: -grant.amount,
-      reason: reason?.trim() || `Corrección de un movimiento anterior`,
-      granted_by: grantedBy,
-      reverses_grant_id: grant.id,
-    })
-    .select(POINT_GRANT_SELECT)
-    .single()
-  if (error) throw error
+// Corregir o anular una concesión de puntos (migración 0309) — SIEMPRE por el RPC adjust_point_grant, nunca
+// un insert directo: el servidor comprueba que quien llama es un adulto de la familia, que lo corregido es una
+// concesión original (no un canje ni otra corrección), que no está ya anulada y que el saldo del niño/a no
+// queda negativo. NUNCA edita ni borra el movimiento original: inserta una fila nueva (correccion/anulacion)
+// con fecha, responsable y motivo opcional. Los errores del servidor se traducen aquí a frases claras.
+export type PointGrantAdjustment =
+  | { action: 'corregir'; newAmount: number }
+  | { action: 'anular' }
+
+const ADJUST_ERRORS: Record<string, string> = {
+  not_authenticated: 'Tu sesión ha caducado: vuelve a entrar.',
+  not_allowed: 'Solo un adulto de la familia puede corregir o anular puntos.',
+  grant_not_found: 'No se ha encontrado esa concesión de puntos.',
+  not_a_grant: 'Solo se pueden corregir o anular puntos concedidos con «Dar puntos».',
+  already_annulled: 'Esa concesión ya estaba anulada: no se puede anular ni corregir otra vez.',
+  invalid_amount: 'La cantidad debe ser un número entero entre 1 y 10000.',
+  no_change: 'La cantidad es la misma que ya tiene.',
+  invalid_action: 'Acción no válida.',
+  reason_too_long: 'El motivo es demasiado largo (máximo 300 caracteres).',
+  would_make_balance_negative: 'No se puede descontar: ese niño/a ya ha usado o reservado esos puntos en recompensas y su saldo quedaría en negativo. Si el canje sigue pendiente, recházalo primero.',
+}
+
+export function adjustPointGrantErrorMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : typeof err === 'object' && err !== null && 'message' in err ? String((err as { message: unknown }).message) : String(err)
+  for (const key of Object.keys(ADJUST_ERRORS)) if (raw.includes(key)) return ADJUST_ERRORS[key]
+  return 'No se pudo guardar el cambio. Inténtalo de nuevo.'
+}
+
+export async function adjustPointGrant(grantId: string, adjustment: PointGrantAdjustment, reason: string | null): Promise<PointGrant> {
+  const { data, error } = await supabase.rpc('adjust_point_grant', {
+    p_grant_id: grantId,
+    p_action: adjustment.action,
+    p_new_amount: adjustment.action === 'corregir' ? adjustment.newAmount : null,
+    p_reason: reason?.trim() || null,
+  })
+  if (error) throw new Error(adjustPointGrantErrorMessage(error))
   return mapPointGrant(data)
 }

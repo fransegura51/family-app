@@ -71,6 +71,8 @@ import configuracionHeaderImg from '@/assets/configuracion/configuracion-header.
 import { errorMessage } from '@/domain/errorMessage'
 import { formatDateTime } from '@/domain/dateFormat'
 import { flushPrefsNow } from '@/state/prefs/prefsRuntime'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 
 const PINNED_COUNT = 4
 
@@ -626,7 +628,7 @@ function SettingsGroup({
   children: ReactNode
 }) {
   return (
-    <div className="card ayuda-card" style={{ marginBottom: 8, background: color }}>
+    <div className="card ayuda-card" style={{ marginBottom: 8, background: color }} data-settings-open={open ? 'true' : undefined}>
       <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={open}>
         <span style={{ fontSize: 22 }} aria-hidden="true">
           {icon}
@@ -1628,6 +1630,7 @@ function CalendarExternalLinksSection() {
 }
 
 type SettingsGroupId = 'menu' | 'inicio' | 'colores' | 'familia' | 'pepa' | 'avisos' | 'cuenta' | 'economia' | 'compras' | 'seguridad' | 'filtros_temporales' | 'calendario'
+const SETTINGS_GROUP_IDS: SettingsGroupId[] = ['menu', 'inicio', 'colores', 'familia', 'pepa', 'avisos', 'cuenta', 'economia', 'compras', 'seguridad', 'filtros_temporales', 'calendario']
 
 // «Cerrar sesión» (antes en Familia, 16/10/2026). Hace falta para que cada persona pueda tener su PROPIA cuenta en su propio móvil en vez de compartir el login
 // de otra (p. ej. Paco entrando siempre como Jennifer, lo que confundía su ubicación con la de ella): cierra esta sesión para poder entrar con la cuenta nueva
@@ -1662,6 +1665,8 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
     () => (location.state as { group?: SettingsGroupId } | null)?.group ?? null,
   )
   const toggle = (id: SettingsGroupId) => setOpenGroup((cur) => (cur === id ? null : id))
+  // «Llévame» de la Ayuda: abre el tema de Configuración que corresponde (no son rutas).
+  useHelpDestinations(Object.fromEntries(SETTINGS_GROUP_IDS.map((id) => [`config.${id}`, () => setOpenGroup(id)])))
   // Un color por tema, con el estilo elegido en Colores.
   // (pastelPalette reparte los tonos por posición: pedir uno más no cambia el color de los de antes.)
   const groupColors = pastelPalette(12)
@@ -1674,6 +1679,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
       <SectionBreadcrumb subsection="Inicio" />
 
       <FamilyNameSection />
+      {openGroup && <HelpDestMark id={`config.${openGroup}`} reveal={'[data-settings-open="true"]'} />}
 
       {/* Acceso al Centro de Administración: solo cuentas propietarias de PEPA (verificado en el servidor). */}
       <AdminCenterCard />

@@ -6,7 +6,7 @@ import type { TourDef } from '@/help/tours/types'
 // la familia») se omiten solos. Orden = orden de la pantalla, para no saltar arriba y abajo.
 export const calCrearEvento: TourDef = {
   id: 'cal-crear-evento',
-  version: 2,
+  version: 3,
   title: 'Crear un evento en el calendario',
   cardId: 'cal-crear-evento',
   durationSec: 100,
@@ -24,9 +24,10 @@ export const calCrearEvento: TourDef = {
     },
     {
       id: 'titulo',
-      text: 'Escribe cómo se llama el evento, por ejemplo «Dentista de Eric».',
+      text: 'Escribe cómo se llama el evento, por ejemplo «Dentista de Eric». Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
       target: 'calendar.event-title',
-      completeOn: [{ type: 'filled', target: 'calendar.event-title', min: 2 }],
+      completeOn: [{ type: 'entered', target: 'calendar.event-title', min: 2 }],
+      manualNext: true,
     },
     {
       id: 'fecha',

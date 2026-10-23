@@ -23,6 +23,8 @@ import { GuardianshipPanel } from '@/ui/GuardianshipPanel'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 import { effectiveMemberType } from '@/domain/growth'
 import { birthDateLine } from '@/domain/memberBirthLabel'
 import { MemberAvatar } from '@/ui/MemberAvatar'
@@ -102,6 +104,12 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [addingMember, setAddingMember] = useState(false)
+  // «Llévame» y tutoriales de la Ayuda: las pestañas de Familia (no son rutas) se abren por su nombre.
+  useHelpDestinations({
+    'familia.miembros': () => setTab('Miembros'),
+    'familia.anadir-miembro': () => setTab('Miembros'),
+    'familia.peso': () => setTab('Peso y medidas'),
+  })
   const [babyUntilMonths, setBabyUntilMonths] = useState(DEFAULT_BABY_UNTIL_MONTHS)
   useEffect(() => {
     getBabyUntilMonths()
@@ -228,6 +236,8 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         ))}
       </div>
 
+      {tab === 'Peso y medidas' && <HelpDestMark id="familia.peso" />}
+      {tab === 'Miembros' && <HelpDestMark id="familia.miembros" />}
       {tab === 'Peso y medidas' && (
         <Suspense fallback={<p className="muted">Cargando…</p>}>
           <BodyTab />
@@ -385,7 +395,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             </button>
           </>
         ) : (
-          <button type="button" className="family-add-btn" data-help-id="family.add-member" onClick={() => setAddingMember(true)}>
+          <button type="button" className="family-add-btn" data-help-id="family.add-member" data-help-dest="familia.anadir-miembro" onClick={() => setAddingMember(true)}>
             + Añadir miembro
           </button>
         ))}
@@ -735,7 +745,7 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-dest="familia.anadir-miembro">
       {showModePrompt && (
         <AccountsModePromptModal
           onClose={() => {
@@ -762,15 +772,15 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
           ))}
         </select>
       </label>
-      <label>
+      <label data-help-id="family.member-color">
         Color
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
       </label>
-      <label>
+      <label data-help-id="family.member-birth">
         Fecha de nacimiento (opcional)
         <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin fecha de nacimiento" />
       </label>
-      <label>
+      <label data-help-id="family.member-sex">
         Sexo (opcional, solo para las curvas de crecimiento)
         <select value={sex} onChange={(e) => setSex(e.target.value as MemberSex | '')}>
           <option value="">Sin indicar</option>
@@ -779,7 +789,7 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
         </select>
       </label>
       {canRestrictSections(memberType) && (
-        <label>
+        <label data-help-id="family.member-sections">
           Secciones a las que puede entrar
           <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />
         </label>

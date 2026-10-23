@@ -16,6 +16,18 @@ export function clearAppOwnerCache(): void {
   cache.clear()
 }
 
+// Solo MIRA la memoria (nunca pregunta al servidor): «¿ya se sabe, de hace poco, que esta cuenta administra PEPA?». Lo usa la Ayuda para enseñar a la administración el estado interno de
+// una ficha sin sumar ni una consulta a Supabase; si no se sabe, se trata como persona normal (el detalle completo está en el Centro de Administración).
+export function peekAppOwner(userId: string | null | undefined): boolean {
+  const hit = userId ? cache.get(userId) : undefined
+  return Boolean(hit && hit.owner && Date.now() - hit.at < CACHE_MS)
+}
+
+// Solo para pruebas.
+export function rememberAppOwnerForTests(userId: string, owner: boolean): void {
+  cache.set(userId, { owner, at: Date.now() })
+}
+
 export function useAppOwner(options: { fresh?: boolean } = {}): AppOwnerState {
   const fresh = options.fresh === true
   const { session } = useSession()

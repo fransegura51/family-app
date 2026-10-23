@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
 import { FabSeparator } from '@/ui/FabSeparator'
+import { useCloseMenusOnHelp } from '@/help/destinations'
 import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { ToastHost } from '@/ui/ToastHost'
@@ -92,6 +93,7 @@ export function NavShell({ profile }: { profile: Profile }) {
   const [order, setOrder] = useState(() => resolveTabOrder(NAV_TAB_PATHS, loadTabOrder('bottom-nav')))
   useEffect(() => prefsDiag('navshell-order', { first4: order.slice(0, 4).join(','), at: 'mount' }), []) // eslint-disable-line react-hooks/exhaustive-deps -- diagnóstico temporal: solo al montar
   const [menuOpen, setMenuOpen] = useState(false)
+  useCloseMenusOnHelp(() => setMenuOpen(false)) // la Ayuda cierra el menú ☰ al llevar a otra pantalla o al empezar un tutorial
   const [manager, setManager] = useState<ManagerKind | null>(null)
   const [eventsNeedingAttention, setEventsNeedingAttention] = useState(0)
   useEffect(() => onOpenManager(setManager), [])

@@ -3,6 +3,7 @@ import { HELP_VIDEOS } from '@/help/legacy/legacyHelp'
 import { HELP_MODULE_BY_ID } from '@/help/catalog'
 import { canOfferActions } from '@/help/access'
 import type { SearchHit } from '@/help/search/searchEngine'
+import type { HelpCard } from '@/help/types'
 import { getTourProgress } from '@/help/prefs'
 import { helpSpeechSupported } from '@/help/voice'
 import { HELP_FEEDBACK_ENABLED } from '@/help/feedback'
@@ -53,7 +54,9 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
   const video = card.video ? HELP_VIDEOS[card.video] : undefined
   const restricted = access.status === 'restricted'
   const actions = canOfferActions(card, access)
-  const spoken = card.state === 'disponible' ? card.quick : `${card.quick} ${card.limits ?? ''}`
+  // Lo que se lee en voz alta es lo que ve cualquier persona: la limitación solo si afecta al uso (nunca el estado interno).
+  const publicLimit = card.state === 'parcial' && card.limits && !card.limitsInternal ? card.limits : null
+  const spoken = publicLimit ? `${card.quick} Ten en cuenta: ${publicLimit}` : card.quick
 
   return (
     <article className={`help-answer${compact ? ' help-answer-compact' : ''}`} aria-label={card.title}>
@@ -70,18 +73,14 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
         </>
       ) : (
         <>
-          {card.state === 'parcial' && (
-            <p className="help-badge help-badge-partial" role="note">
-              Funciona, pero con limitaciones
-            </p>
-          )}
           {card.state === 'desactivada' && (
             <p className="help-badge help-badge-off" role="note">
               Todavía no está disponible
             </p>
           )}
           <p className="help-answer-quick">{card.quick}</p>
-          {card.state !== 'disponible' && card.limits && <p className="help-note">{card.state === 'parcial' ? 'Limitación: ' : 'Por qué: '}{card.limits}</p>}
+          {publicLimit && <p className="help-note">Ten en cuenta: {publicLimit}</p>}
+          {card.state !== 'disponible' && <AdminStateNote card={card} />}
           {card.steps && card.steps.length > 0 && (
             <details className="help-more" open={!compact && card.steps.length <= 4}>
               <summary>Ver los pasos</summary>
@@ -117,6 +116,20 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
       </div>
       {HELP_FEEDBACK_ENABLED && !restricted && <HelpFeedback cardId={card.id} />}
     </article>
+  )
+}
+
+// Estado interno de la ficha (cobertura de la Ayuda: «parcial», «desactivada», motivos técnicos): SOLO para la administración de PEPA, según la memoria de 10 minutos de la comprobación
+// del servidor (la Ayuda NUNCA suma una consulta a Supabase por esto: si no se sabe, se trata como persona normal). Para el resto de personas no se pinta nada: la Ayuda les explica cómo usar la función y, si una limitación
+// afecta de verdad al uso, la dice con naturalidad (arriba). El detalle completo está en el Centro de Administración → Ayuda.
+function AdminStateNote({ card }: { card: HelpCard }) {
+  const help = useHelp()
+  if (!help.ownerKnown) return null
+  return (
+    <p className="help-note help-note-admin" role="note" data-testid="help-admin-state">
+      🛠 Solo administración PEPA · estado: {card.state === 'parcial' ? 'parcial' : 'desactivada'}
+      {card.limits ? ` — ${card.limits}` : ''}
+    </p>
   )
 }
 

@@ -151,6 +151,8 @@ import {
 import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
 import { Confetti } from '@/ui/Confetti'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 import { createShoppingStore, listShoppingStores } from '@/data/shoppingStores'
 import { colorForClass, pastelFromHsl, pastelPalette, storeColorResolver, toPastel, tone } from '@/domain/colors'
 import { subscribeBudgetsChanged } from '@/state/budgetsChanged'
@@ -454,6 +456,15 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   const [tab, setTab] = useState<SubTab>('Resumen')
   // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
   useSectionHome(() => setTab('Resumen'))
+  // «Llévame» de la Ayuda: cada pestaña de Economía (no son rutas) se abre por su nombre.
+  useHelpDestinations({
+    'economia.resumen': () => setTab('Resumen'),
+    'economia.estadisticas': () => setTab('Estadísticas'),
+    'economia.movimientos': () => setTab('Movimientos'),
+    'economia.presupuesto': () => setTab('Presupuesto Generales'),
+    'economia.banco': () => setTab('Banco'),
+    'economia.prevision': () => setTab('Previsión de pagos'),
+  })
   const [movementsFilter, setMovementsFilter] = useState<MovementsFilter | null>(null)
   // Petición real: "al tocar un área del dónut no debe llevarme
   // directamente a los movimientos filtrados... desde los movimientos
@@ -688,6 +699,12 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         </p>
       )}
 
+      {tab === 'Resumen' && <HelpDestMark id="economia.resumen" />}
+      {tab === 'Estadísticas' && <HelpDestMark id="economia.estadisticas" />}
+      {tab === 'Movimientos' && <HelpDestMark id="economia.movimientos" />}
+      {tab === 'Presupuesto Generales' && <HelpDestMark id="economia.presupuesto" />}
+      {tab === 'Banco' && <HelpDestMark id="economia.banco" />}
+      {tab === 'Previsión de pagos' && <HelpDestMark id="economia.prevision" />}
       {tab === 'Resumen' && <ResumenTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Estadísticas' && <EstadisticasTab key={refreshKey} onViewMovements={viewMovements} />}
       {tab === 'Movimientos' && (

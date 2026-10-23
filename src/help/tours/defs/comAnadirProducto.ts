@@ -3,11 +3,12 @@ import type { TourDef } from '@/help/tours/types'
 // Compras → Añadir un producto a la lista. Controles reales: el botón «+ Añadir producto», el nombre, la tienda (opcional) y «Añadir».
 export const comAnadirProducto: TourDef = {
   id: 'com-anadir-producto',
-  version: 1,
+  version: 2,
   title: 'Añadir un producto a la lista de la compra',
   cardId: 'com-anadir-producto',
   durationSec: 45,
   startPath: '/compras',
+  startDest: 'compras.lista', // el botón «+ Añadir producto» vive en la pestaña «Lista», no en la portada de Compras
   steps: [
     {
       id: 'abrir',
@@ -21,9 +22,10 @@ export const comAnadirProducto: TourDef = {
     },
     {
       id: 'nombre',
-      text: 'Escribe el producto, por ejemplo «Leche». Mientras escribes, PEPA te propone productos que ya has comprado.',
+      text: 'Escribe el producto, por ejemplo «Leche». Mientras escribes, PEPA te propone productos que ya has comprado. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
       target: 'shopping.product-name',
-      completeOn: [{ type: 'filled', target: 'shopping.product-name', min: 2 }],
+      completeOn: [{ type: 'entered', target: 'shopping.product-name', min: 2 }],
+      manualNext: true,
     },
     {
       id: 'tienda',

@@ -34,7 +34,11 @@ funcionalidad, en el MISMO cambio revisa:**
 1. Su **ficha de Ayuda** (`src/help/catalog/cards*.ts`): título, sinónimos, respuesta breve, pasos, estado (`disponible` / `parcial` / `desactivada`) y su límite si lo tiene. Una
    función apagada o a medias se explica como tal; nunca se vende como disponible.
 2. Los **textos de botones y pantallas** que cita la ficha (`labels`): deben ser exactamente los de la interfaz (una prueba lo comprueba contra el código).
-3. El destino de **«Llévame»** (`go.path`, debe existir en `src/help/routes.ts`) y los pasos/marcas de **«Enséñame»** (`src/help/tours`, marcas `data-help-id` en los controles).
+3. El destino de **«Llévame»** (`go.path`, debe existir en `src/help/routes.ts`; y `go.dest` si la función vive en una pestaña, tema o formulario interno que NO es una ruta: la pantalla lo
+   atiende con `useHelpDestinations` y pinta su marca con `<HelpDestMark />`, ver `src/help/destinations.ts`) y los pasos/marcas de **«Enséñame»** (`src/help/tours`, marcas `data-help-id` en los
+   controles; `startDest` si el tutorial empieza en una vista interna). Si cambias una pestaña o un tema, revisa los destinos que llevan a ella.
+   **Regla de visibilidad:** el estado interno de una ficha (`parcial`, `desactivada`, motivos técnicos) es solo para el Centro de Administración. En la Ayuda, `limits` se enseña a todo el mundo
+   SOLO si afecta al uso real y está redactado con naturalidad; si es un motivo interno (interruptores, pantallas pendientes…) marca la ficha con `limitsInternal: true`.
 4. Su ficha del **inventario del Centro de Administración** (`src/admin/features/featureInventory.ts`: estado, qué falta, límites, verificación y puntos clave de Ayuda).
 5. La **explicación ampliada** histórica (`src/help/legacy/legacyHelp.ts`) si la función ya aparecía allí.
 

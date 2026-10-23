@@ -33,9 +33,9 @@ export function AyudaScreen() {
     help.ensureCommunity()
   }, [help])
 
+  // La conversación coloca por sí misma la respuesta nueva a la vista (ver HelpConversation): aquí no hace falta desplazar nada más.
   const showCard = (id: string) => {
     help?.showCard(id)
-    requestAnimationFrame(() => topRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
   }
 
   return (

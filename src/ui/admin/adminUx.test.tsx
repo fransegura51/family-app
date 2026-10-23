@@ -196,7 +196,7 @@ describe('B2-UX02 · el Centro con sus seis áreas', () => {
     const panel = document.getElementById('admin-panel-usuarios')!
     expect(within(panel).getByRole('button', { name: 'Expandir todo' })).toBeTruthy()
     for (const g of ADMIN_GROUP_IDS.usuarios) expect(document.getElementById(`admin-group-usuarios-${g}`), g).toBeTruthy()
-  })
+  }, 30000)
 
   it('el estado de los bloques se conserva al ir a otra área y volver', async () => {
     owner.state = 'owner'

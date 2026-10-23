@@ -6,6 +6,7 @@ import { setTourProgress } from '@/help/prefs'
 import { fieldOf, findTarget, markedAncestor, ringElementOf } from '@/help/tours/domTargets'
 import { canGoNext, groupHasMore, previousIndex, reduceTour, startState, stepOf } from '@/help/tours/engine'
 import { onHelpEvent } from '@/help/tours/helpBus'
+import { clearDestination, closeOpenMenus, requestDestination, waitForDestination } from '@/help/destinations'
 import type { ObservedSignal, TourDef } from '@/help/tours/types'
 import { choosePanelSide, freeZone, readVisibleArea, sameArea, scrollContentBy, scrollDeltaToReveal } from '@/help/tours/viewport'
 import { HELP_ID_PATTERN } from '@/help/tours/domTargets'
@@ -23,6 +24,8 @@ export interface TourNextOption {
 }
 
 const MISSING_AFTER_MS = 3500
+const PREPARE_MS = 8000 // tiempo máximo (no de cortesía) para que llegue la pantalla del tutorial; pasado, se dice con claridad que no se ha podido abrir
+const PANEL_PRESS_MS = 500
 const POLL_MS = 400
 // Un paso OPCIONAL cuyo control no existe en este momento (p. ej. «Puntos» con «Toda la familia», o la hora en un evento de todo el día) se omite casi al instante, sin dejar a la
 // persona mirando un paso sin marco; los pasos necesarios siguen esperando MISSING_AFTER_MS antes de ofrecer la salida.
@@ -41,6 +44,7 @@ export function TourRunner({
   onPick,
   missingAfterMs = MISSING_AFTER_MS,
   confirmMs = { focused: CONFIRM_FOCUSED_MS, blurred: CONFIRM_BLURRED_MS, afterBlur: CONFIRM_AFTER_BLUR_MS },
+  prepareMs = PREPARE_MS,
 }: {
   tour: TourDef
   voiceMode: HelpVoiceMode
@@ -51,6 +55,8 @@ export function TourRunner({
   missingAfterMs?: number
   /** Esperas de la confirmación de una fecha (solo se cambian en pruebas). */
   confirmMs?: { focused: number; blurred: number; afterBlur: number }
+  /** Tiempo máximo para que llegue la pantalla de partida (solo se cambia en pruebas). */
+  prepareMs?: number
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -71,6 +77,29 @@ export function TourRunner({
   // Paso al que se ha vuelto con «Atrás»: ya estaba hecho, así que no se vuelve a dar por conseguido solo (ni se omite): la persona decide con «Siguiente» o actuando de nuevo.
   const backIndex = useRef<number | null>(null)
   const closedRef = useRef(false)
+  // Preparación: antes del primer paso se cierran los menús, se lleva a la persona a la pantalla (y vista) del tutorial y se ESPERA a que esté en pantalla. 'wait' = llegando;
+  // 'ok' = lista; 'failed' = no se pudo abrir (sin acceso, pantalla distinta…): se explica en vez de fingir que se avanza.
+  const [prep, setPrep] = useState<'wait' | 'ok' | 'failed'>(tour.startDest ? 'wait' : 'ok')
+  const prepRef = useRef(prep)
+  prepRef.current = prep
+  const prepareRef = useRef<() => () => void>(() => () => undefined)
+  prepareRef.current = () => {
+    if (!tour.startDest) return () => undefined
+    let live = true
+    setPrep('wait')
+    const intent = requestDestination(tour.startDest)
+    waitForDestination(tour.startDest, prepareMs).then((r) => {
+      if (!live) return
+      clearDestination(intent)
+      setPrep(r === 'reached' ? 'ok' : 'failed')
+    })
+    return () => {
+      live = false
+      clearDestination(intent)
+    }
+  }
+  const stopPrepare = useRef<() => void>(() => undefined)
+  const lastPanelPress = useRef(0)
 
   const step = stepOf(tour, state)
   const stepKey = `${state.index}:${state.status}`
@@ -78,11 +107,16 @@ export function TourRunner({
   // ---- Al empezar: ir a la pantalla del tutorial si la persona está en otra, y guardar que se ha empezado.
   useEffect(() => {
     setTourProgress(tour.id, { status: 'started', at: new Date().toISOString().slice(0, 10), version: tour.version })
+    closeOpenMenus() // un menú abierto taparía la pantalla del tutorial
+    stopPrepare.current = prepareRef.current()
     if (!allowedRef.current.includes(location.pathname)) {
       navigatingRef.current = true
       navigate(tour.startPath)
     }
-    return () => stopHelpSpeech()
+    return () => {
+      stopPrepare.current()
+      stopHelpSpeech()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al montar
   }, [])
 
@@ -114,7 +148,20 @@ export function TourRunner({
       pending.add(id)
       timers.set(id, window.setTimeout(() => confirmIfValid(id), document.activeElement === field ? confirmMs.focused : wait))
     }
+    // «Terminó de escribir»: el campo pierde el foco (✓ del teclado, tocar fuera) o se pulsa intro. Un toque en los botones de la tarjeta de Pepa no cuenta (haría saltar dos pasos).
+    const pressedPanel = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest('[data-tour-layer]')) lastPanelPress.current = Date.now()
+    }
+    const sendEntered = (e: Event) => {
+      const el = markedAncestor(e.target)
+      const f = el && e.target instanceof Element ? fieldOf(el) : null
+      if (el?.dataset.helpId && f && (f instanceof HTMLInputElement || f instanceof HTMLTextAreaElement) && f.value.trim().length > 0) send({ type: 'entered', target: el.dataset.helpId, length: f.value.trim().length })
+    }
+    const onKeyDown = (e: Event) => {
+      if ((e as KeyboardEvent).key === 'Enter') sendEntered(e)
+    }
     const onFocusOut = (e: Event) => {
+      if (Date.now() - lastPanelPress.current > PANEL_PRESS_MS) sendEntered(e)
       const el = markedAncestor(e.target)
       const id = el?.dataset.helpId
       if (id && pending.has(id)) {
@@ -143,12 +190,20 @@ export function TourRunner({
     document.addEventListener('input', onInput, true)
     document.addEventListener('change', onChange, true)
     document.addEventListener('focusout', onFocusOut, true)
+    document.addEventListener('keydown', onKeyDown, true)
+    document.addEventListener('pointerdown', pressedPanel, true)
+    document.addEventListener('touchstart', pressedPanel, true)
+    document.addEventListener('mousedown', pressedPanel, true)
     const off = onHelpEvent((name) => send({ type: 'event', name }))
     return () => {
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('input', onInput, true)
       document.removeEventListener('change', onChange, true)
       document.removeEventListener('focusout', onFocusOut, true)
+      document.removeEventListener('keydown', onKeyDown, true)
+      document.removeEventListener('pointerdown', pressedPanel, true)
+      document.removeEventListener('touchstart', pressedPanel, true)
+      document.removeEventListener('mousedown', pressedPanel, true)
       for (const t of timers.values()) window.clearTimeout(t)
       off()
     }
@@ -162,7 +217,7 @@ export function TourRunner({
   const measure = useCallback(() => {
     const s = stateRef.current
     const cur = stepOf(tour, s)
-    if (!cur || (s.status !== 'running' && s.status !== 'broken')) {
+    if (!cur || (s.status !== 'running' && s.status !== 'broken') || prepRef.current !== 'ok') {
       setRect(null)
       return
     }
@@ -278,7 +333,7 @@ export function TourRunner({
       vv?.removeEventListener('resize', burst)
       vv?.removeEventListener('scroll', schedule)
     }
-  }, [measure, revealTarget, stepKey])
+  }, [measure, revealTarget, stepKey, prep])
 
   // Altura real del panel (cambia con el texto del paso y con el modo compacto): decide a qué lado va para no tapar el control.
   useLayoutEffect(() => {
@@ -325,7 +380,46 @@ export function TourRunner({
   sideRef.current = side
   const placeTop = side === 'top'
 
+  const retryPrepare = () => {
+    stopPrepare.current()
+    stopPrepare.current = prepareRef.current()
+    dispatch({ type: 'restart' })
+  }
+
   const body = () => {
+    if (prep === 'wait') {
+      return (
+        <>
+          <p className="tour-text" aria-live="polite">
+            Preparando la pantalla del tutorial…
+          </p>
+          <div className="tour-actions">
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
+              ✕ Salir
+            </button>
+          </div>
+        </>
+      )
+    }
+    if (prep === 'failed') {
+      return (
+        <>
+          <p className="tour-text">No he podido abrir la pantalla de este tutorial. Puede que tu cuenta no tenga acceso a esa sección o que todavía se esté cargando.</p>
+          <p className="tour-sub">No pasa nada: puedes reintentarlo, seguir los pasos de la ficha de Ayuda o salir.</p>
+          <div className="tour-actions">
+            <button type="button" className="tour-btn tour-btn-primary" onClick={retryPrepare}>
+              ↺ Reintentar
+            </button>
+            <button type="button" className="tour-btn" onClick={() => onPick({ kind: 'card', id: tour.cardId, label: tour.title })}>
+              Ver los pasos escritos
+            </button>
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
+              ✕ Salir
+            </button>
+          </div>
+        </>
+      )
+    }
     if (state.status === 'completed') {
       return (
         <>
@@ -407,6 +501,18 @@ export function TourRunner({
         <p className="tour-text" aria-live="polite">
           {step.text}
         </p>
+        {step.details && step.details.length > 0 && (
+          <details className="tour-details">
+            <summary>{step.detailsLabel ?? 'Más información'}</summary>
+            <ul>
+              {step.details.map((d) => (
+                <li key={d.title}>
+                  <strong>{d.title}:</strong> {d.text}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {step.sensitive && <p className="tour-sub">🔒 Esta acción la haces tú; yo no la hago por ti.</p>}
         <div className="tour-actions">
           {previousIndex(state) !== null && (

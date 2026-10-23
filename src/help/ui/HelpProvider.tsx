@@ -10,12 +10,14 @@ import { buildIndex, searchHelp, type SearchDoc, type SearchHit, type SearchResp
 import { addAnswer, addPepaText, addUserMessage, emptySession, recentQueries, replaceMessage, type HelpSession } from '@/help/session'
 import { isHelpAiEnabled } from '@/help/ai'
 import { rankHelpWithAi } from '@/help/aiClient'
+import { clearDestination, closeOpenMenus, requestDestination, revealDestination, waitForDestination } from '@/help/destinations'
 import { HelpNudges } from '@/help/ui/HelpNudges'
 import { getTour, hasTour } from '@/help/tours/registry'
 import type { TourNextOption } from '@/help/tours/TourRunner'
 import type { HelpCard, HelpModuleId } from '@/help/types'
 import { primeHelpVoice, speakHelp, stopHelpSpeech } from '@/help/voice'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { peekAppOwner } from '@/state/useAppOwner'
 import { HelpUiContext } from '@/help/ui/helpContext'
 
 // Estado de la Ayuda «Pepa te acompaña»: abierta o minimizada, conversación (solo en memoria), permisos de la persona, búsqueda y voz. Se monta una vez en NavShell,
@@ -37,6 +39,8 @@ interface OpenOptions {
 
 export interface HelpApi {
   ctx: HelpContext
+  /** La memoria dice que esta cuenta administra PEPA (sin consultar al servidor): solo para enseñar el estado interno de las fichas. */
+  ownerKnown: boolean
   voiceMode: HelpVoiceMode
   setVoiceMode: (m: HelpVoiceMode) => void
   panelOpen: boolean
@@ -69,7 +73,7 @@ export interface HelpApi {
   ensureCommunity: () => void
 }
 
-export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'role' | 'allowedSections'>; children: ReactNode }) {
+export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'role' | 'allowedSections'> & { id?: string }; children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [community, setCommunity] = useState<HelpCommunityState>(() => communityStateFrom(communityStatusCache.peek()))
@@ -218,12 +222,28 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
     setFocusModule(null)
   }, [])
 
+  // «Llévame»: va al destino EXACTO (pestaña, tema, formulario…), no solo a la portada del módulo. Cierra los menús abiertos, pide el destino a la pantalla, navega y COMPRUEBA en
+  // pantalla que ha llegado (sin temporizadores de cortesía). Si no llega (cuenta sin acceso, pantalla que no carga), lo dice y vuelve a abrir la Ayuda; nunca finge haber llegado.
+  const pathRef = useRef(location.pathname)
+  pathRef.current = location.pathname
   const goTo = useCallback(
     (card: HelpCard) => {
       if (!card.go) return
-      // «Llévame»: va a la pantalla real y deja la Ayuda minimizada (la conversación sigue en memoria).
       setPanelOpen(false)
-      navigate(card.go.path)
+      closeOpenMenus()
+      const dest = card.go.dest
+      const intent = dest ? requestDestination(dest) : null
+      navigate(card.go.path, { replace: pathRef.current === card.go.path })
+      if (!dest || !intent) return
+      void waitForDestination(dest).then((r) => {
+        clearDestination(intent)
+        if (r === 'reached') {
+          revealDestination(dest)
+          return
+        }
+        setSession((s) => addPepaText(s, `No he podido llegar a «${card.title}». Puede que tu cuenta no tenga acceso a esa parte o que la pantalla aún se esté cargando. Prueba otra vez o búscalo en el menú.`))
+        setPanelOpen(true)
+      })
     },
     [navigate],
   )
@@ -232,6 +252,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
   const startTourById = useCallback((tourId: string) => {
     if (!getTour(tourId)) return
     setPanelOpen(false)
+    closeOpenMenus()
     stopHelpSpeech()
     setSpeakingText(null)
     setTourRun((n) => n + 1)
@@ -261,6 +282,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
   const api = useMemo<HelpApi>(
     () => ({
       ctx,
+      ownerKnown: peekAppOwner(profile.id),
       voiceMode,
       setVoiceMode: (m) => {
         setHelpVoiceMode(m)
@@ -292,7 +314,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       speakingText,
       ensureCommunity,
     }),
-    [ctx, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
+    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
   )
 
   const runningTour = activeTour ? getTour(activeTour) : undefined

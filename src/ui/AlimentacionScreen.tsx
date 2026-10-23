@@ -35,6 +35,8 @@ import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { CocinarTab } from '@/ui/CocinarTab'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
@@ -126,6 +128,14 @@ export function AlimentacionScreen() {
   // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /
   // EconomiaMenuDropdown en FinanceScreen.tsx), aplicado aquí.
   const [menuOpen, setMenuOpen] = useState(false)
+  useCloseMenusOnHelp(() => setMenuOpen(false))
+  // «Llévame» de la Ayuda: cada vista interna de la cocina (no son rutas) se abre por su nombre.
+  useHelpDestinations({
+    'cocina.inicio': () => setTab('Inicio'),
+    'cocina.menu': () => setTab('Menú'),
+    'cocina.recetas': () => setTab('Recetas'),
+    'cocina.cocinar': () => setTab('Cocinar'),
+  })
   const [pinnedItems, setPinnedItems] = useState<AlimentacionMenuItemKey[]>(() => loadAlimentacionPinnedItems())
   const [menuLayout, setMenuLayout] = useState<AlimentacionMenuGroup[]>(() => loadAlimentacionMenuLayout())
   usePrefChange('familyapp:alimentacion-pinned-tabs', () => setPinnedItems(loadAlimentacionPinnedItems()))
@@ -217,6 +227,10 @@ export function AlimentacionScreen() {
         </p>
       )}
 
+      {tab === 'Inicio' && <HelpDestMark id="cocina.inicio" />}
+      {tab === 'Menú' && <HelpDestMark id="cocina.menu" />}
+      {tab === 'Recetas' && <HelpDestMark id="cocina.recetas" />}
+      {tab === 'Cocinar' && <HelpDestMark id="cocina.cocinar" />}
       {tab === 'Inicio' && <AlimentacionInicioTab onNavigate={setTab} />}
       {tab === 'Menú' && <MenuTab
           onOpenRecipe={(id) => {

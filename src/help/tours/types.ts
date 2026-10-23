@@ -7,6 +7,7 @@ export type TourSignal =
   | { type: 'appear'; target: string } // el control marcado aparece en pantalla (p. ej. se abrió el formulario)
   | { type: 'filled'; target: string; min?: number } // el campo marcado (o el primer campo dentro) tiene al menos `min` caracteres (por defecto 1)
   | { type: 'change'; target: string } // el campo marcado cambia de valor (listas desplegables, casillas)
+  | { type: 'entered'; target: string; min?: number } // la persona terminó de escribir en el campo marcado (lo deja con el teclado o pulsa intro) y tiene al menos `min` caracteres: nunca mientras escribe
   | { type: 'confirmed'; target: string } // el campo marcado (p. ej. una fecha) ha cambiado Y la selección ha terminado: valor válido, selector cerrado o sin tocar un momento
   | { type: 'route'; path: string } // la persona llega a esa pantalla
   | { type: 'event'; name: string } // la aplicación anuncia que algo se ha guardado de verdad (helpBus)
@@ -17,6 +18,7 @@ export type ObservedSignal =
   | { type: 'appear'; target: string }
   | { type: 'filled'; target: string; length: number }
   | { type: 'change'; target: string }
+  | { type: 'entered'; target: string; length: number }
   | { type: 'confirmed'; target: string }
   | { type: 'route'; path: string }
   | { type: 'event'; name: string }
@@ -41,6 +43,10 @@ export interface TourStep {
   group?: string
   /** Texto del botón que salta el grupo (por defecto «Saltar opciones»). */
   skipGroupLabel?: string
+  /** Explicaciones breves desplegables bajo el texto del paso (p. ej. qué significa cada tipo de miembro). Cerradas por defecto, para no saturar la tarjeta. */
+  details?: Array<{ title: string; text: string }>
+  /** Título del desplegable de `details`. */
+  detailsLabel?: string
 }
 
 export interface TourDef {
@@ -53,6 +59,8 @@ export interface TourDef {
   durationSec: number
   /** Pantalla de partida (el tutorial lleva a ella si la persona está en otra). */
   startPath: string
+  /** Destino exacto dentro de esa pantalla (pestaña, formulario…; ver src/help/destinations.ts). El tutorial no empieza hasta que ese destino está en pantalla. */
+  startDest?: string
   /** Pantallas donde el tutorial tiene sentido; si la persona se va a otra, el tutorial se pausa sin bloquear nada. Por defecto, solo `startPath`. */
   paths?: string[]
   steps: TourStep[]

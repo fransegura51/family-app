@@ -520,3 +520,84 @@
     bottom: 16px;
   }
 }
+
+/* Listas de preguntas recomendadas desplegables (Ayuda de [módulo] abierta, Acciones frecuentes plegada) */
+details.help-quick {
+  margin: 6px 0;
+  border: 1px solid var(--border, #d9dee8);
+  border-radius: 12px;
+  padding: 2px 10px 8px;
+  background: var(--card-bg, #fff);
+}
+
+details.help-quick > summary {
+  cursor: pointer;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  list-style: none;
+}
+
+details.help-quick > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.help-quick > summary::after {
+  content: '▸';
+  margin-left: auto;
+  color: var(--muted, #6b7280);
+}
+
+details.help-quick[open] > summary::after {
+  content: '▾';
+}
+
+/* Al enseñar una respuesta nueva, el navegador la coloca desde su principio sin pegarla al borde */
+.help-log .help-bubble {
+  scroll-margin-top: 8px;
+}
+
+.help-conversation-page .help-log .help-bubble {
+  scroll-margin-top: 72px;
+}
+
+/* Nota interna de estado, solo para la administración de PEPA */
+.help-note-admin {
+  border: 1px dashed #b45309;
+  background: #fffbeb;
+  color: #78350f;
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+/* Desplazamiento contenido dentro de la hoja (no arrastra la pantalla de debajo) */
+.help-panel-body {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Tarjeta de un tutorial: desplegable de explicaciones */
+.tour-details {
+  margin: 4px 0 8px;
+  font-size: 14px;
+}
+
+.tour-details > summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+}
+
+.tour-details ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.tour-details li {
+  margin: 4px 0;
+}

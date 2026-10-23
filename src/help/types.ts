@@ -46,6 +46,8 @@ export interface HelpAccessRule {
 export interface HelpGo {
   /** Ruta real de la app (debe estar en KNOWN_APP_ROUTES). */
   path: string
+  /** Destino exacto dentro de esa pantalla (pestaña, tema de Configuración, formulario…): ver src/help/destinations.ts. Si falta, «Llévame» lleva a la portada del módulo. */
+  dest?: string
   /** Texto del botón; por defecto «Llévame». */
   label?: string
 }
@@ -66,6 +68,8 @@ export interface HelpCard {
   state: HelpCardState
   /** Obligatorio si el estado no es «disponible»: qué límite tiene o por qué no está. */
   limits?: string
+  /** El texto de `limits` es de estado interno (interruptores, pantallas pendientes…): solo lo ve la administración de PEPA. Si falta, es una limitación real de uso y se explica a todo el mundo con naturalidad. */
+  limitsInternal?: boolean
   /** «Llévame». */
   go?: HelpGo
   /** Identificador del recorrido «Enséñame» (B4), si lo hay. */

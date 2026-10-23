@@ -47,6 +47,11 @@ const btn = (name: RegExp) => within(panel()).getByRole('button', { name })
 const next = () => fireEvent.click(btn(/Siguiente/))
 const dateInput = () => document.querySelector('[data-help-id="calendar.event-date"] input') as HTMLInputElement
 const ring = () => document.querySelector('.tour-ring') as HTMLElement | null
+// Escribir en un campo y terminar (✓ del teclado de iPhone o tocar fuera = el campo pierde el foco): el tutorial NO avanza mientras se escribe, solo al terminar.
+const typeAndLeave = (el: Element, value: string) => {
+  fireEvent.change(el, { target: { value } })
+  fireEvent.focusOut(el)
+}
 
 beforeEach(() => {
   setTargetVisibilityForTests(() => true)
@@ -63,7 +68,7 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
   async function toDateStep() {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
   }
 
@@ -125,7 +130,7 @@ describe('B4-UX03 · recorrido de opciones adicionales', () => {
   async function toOptions() {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     next()
     await says(/hora de inicio/)
@@ -161,7 +166,7 @@ describe('B4-UX03 · recorrido de opciones adicionales', () => {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
     fireEvent.click(screen.getByLabelText(/Todo el día/)) // sin horas
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Viaje' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Viaje')
     await says(/Aquí eliges el día/)
     next()
     await says(/«Todo el día» sirve/) // saltó la hora sin quedarse mirando un paso vacío
@@ -172,7 +177,7 @@ describe('B4-UX03 · recorrido de opciones adicionales', () => {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
     fireEvent.click(screen.getByLabelText(/Todo el día/))
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Viaje' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Viaje')
     await says(/Aquí eliges el día/)
     next()
     await says(/«Todo el día» sirve/)
@@ -210,7 +215,7 @@ describe('B4-UX04 · «¿Para quién?» y puntos', () => {
   async function toWho(form = eventForm()) {
     run('cal-crear-evento', form)
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     next()
     await says(/hora de inicio/)
@@ -251,7 +256,7 @@ describe('B4-UX04 · «¿Para quién?» y puntos', () => {
   it('el tutorial de TAREAS enseña lo mismo (quién la hace + puntos) sobre el formulario de tarea', async () => {
     run('cal-crear-tarea', taskForm())
     await says(/Escribe qué hay que hacer/)
-    fireEvent.change(document.querySelector('[data-help-id="calendar.task-title"]')!, { target: { value: 'Sacar la basura' } })
+    typeAndLeave(document.querySelector('[data-help-id="calendar.task-title"]')!, 'Sacar la basura')
     await says(/Aquí eliges para qué día es/)
     next()
     await says(/«Privado»: si lo marcas, solo tú verás esta tarea/)
@@ -275,7 +280,7 @@ describe('B4-UX06 · explicación y marco van juntos', () => {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
     await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(100 - 4))
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     await waitFor(() => expect(parseFloat(ring()!.style.top)).toBe(200 - 4))
     next()
@@ -302,7 +307,7 @@ describe('datos del formulario y guardado confirmado', () => {
   it('pausar, volver atrás, avanzar y reiniciar el tutorial NO borra lo que la persona ya escribió', async () => {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista de Eric' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista de Eric')
     await says(/Aquí eliges el día/)
     fireEvent.click(btn(/Pausar/))
     await says(/Tutorial en pausa/)
@@ -319,7 +324,7 @@ describe('datos del formulario y guardado confirmado', () => {
   it('termina SOLO cuando el servidor confirma; el evento se guarda con la persona y los puntos elegidos; el tutorial no guarda nada', async () => {
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     next()
     await says(/hora de inicio/)
@@ -345,7 +350,7 @@ describe('datos del formulario y guardado confirmado', () => {
     data.createEvent.mockRejectedValueOnce(new Error('Sin conexión'))
     run('cal-crear-evento', eventForm())
     await says(/Escribe cómo se llama el evento/)
-    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Dentista' } })
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     next()
     fireEvent.click(btn(/Saltar opciones/))
@@ -363,7 +368,7 @@ describe('datos del formulario y guardado confirmado', () => {
   it('el tutorial de tareas termina con el aviso de tarea creada', async () => {
     run('cal-crear-tarea', taskForm())
     await says(/Escribe qué hay que hacer/)
-    fireEvent.change(document.querySelector('[data-help-id="calendar.task-title"]')!, { target: { value: 'Basura' } })
+    typeAndLeave(document.querySelector('[data-help-id="calendar.task-title"]')!, 'Basura')
     await says(/Aquí eliges para qué día es/)
     next()
     await says(/«Privado»/)

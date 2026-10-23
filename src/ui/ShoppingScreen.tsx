@@ -58,6 +58,8 @@ import { resolveStoreChain, type StoreChainAliasRow, type StoreChainRow } from '
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 import { listReceipts } from '@/data/receipts'
 import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
@@ -204,6 +206,15 @@ export function ShoppingScreen() {
   // desplegable ☰ con sacar/meter/editar (ver economiaMenu.ts /
   // EconomiaMenuDropdown en FinanceScreen.tsx), aplicado aquí.
   const [menuOpen, setMenuOpen] = useState(false)
+  useCloseMenusOnHelp(() => setMenuOpen(false))
+  // «Llévame» y tutoriales de la Ayuda: cada pestaña de Compras (no son rutas) se abre por su nombre.
+  useHelpDestinations({
+    'compras.inicio': () => setTab('Inicio'),
+    'compras.lista': () => setTab('Lista'),
+    'compras.historial': () => setTab('Historial'),
+    'compras.tickets': () => setTab('Tickets'),
+    'compras.estadistica': () => setTab('Estadística compras'),
+  })
   const [pinnedItems, setPinnedItems] = useState<ComprasMenuItemKey[]>(() => loadComprasPinnedItems())
   const [menuLayout, setMenuLayout] = useState<ComprasMenuGroup[]>(() => loadComprasMenuLayout())
   usePrefChange('familyapp:compras-pinned-tabs', () => setPinnedItems(loadComprasPinnedItems()))
@@ -300,6 +311,11 @@ export function ShoppingScreen() {
         </p>
       )}
 
+      {tab === 'Inicio' && <HelpDestMark id="compras.inicio" />}
+      {tab === 'Lista' && <HelpDestMark id="compras.lista" />}
+      {tab === 'Historial' && <HelpDestMark id="compras.historial" />}
+      {tab === 'Tickets' && <HelpDestMark id="compras.tickets" />}
+      {tab === 'Estadística compras' && <HelpDestMark id="compras.estadistica" />}
       {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} />}
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab />}

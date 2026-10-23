@@ -21,6 +21,7 @@ import {
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useHelpDestinations } from '@/help/destinations'
 import { CalendarCategoriesSection } from '@/ui/MenuSettingsScreen'
 import {
   completeEventOccurrence,
@@ -213,6 +214,18 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // columna de esa persona en la vista Familiar — null en el resto de
   // casos (botón flotante normal).
   const [addingEventMemberId, setAddingEventMemberId] = useState<string | null>(null)
+  // «Llévame» de la Ayuda: abre el formulario real (sin guardar nada) para crear un evento o una tarea.
+  useHelpDestinations({
+    'calendario.nuevo-evento': () => {
+      setAddingTask(false)
+      setAddingEventMemberId(null)
+      setAddingEvent(true)
+    },
+    'calendario.nueva-tarea': () => {
+      setAddingEvent(false)
+      setAddingTask(true)
+    },
+  })
   // Vacío = sin filtrar (toda la familia) — varios miembros a la vez,
   // no solo uno, petición real: "quiero que puedas filtrar por cada
   // miembro... y que Pepa detecte solamente las tareas de ese
@@ -4345,7 +4358,7 @@ export function AddEventForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-dest="calendario.nuevo-evento">
       {!hideHeading && (
         <h2 className="help-heading">
           Nuevo evento
@@ -4551,7 +4564,7 @@ export function AddTaskForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-dest="calendario.nueva-tarea">
       <label>
         Título
         <input type="text" data-help-id="calendar.task-title" value={title} onChange={(e) => setTitle(e.target.value)} required />

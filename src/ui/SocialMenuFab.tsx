@@ -1,5 +1,6 @@
 import { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, useRef, useState } from 'react'
 import { FAB_SAFE_GAP_PX, fabTopCss, safeAreaTopPx } from '@/ui/safeArea'
+import { useCloseMenusOnHelp } from '@/help/destinations'
 
 // Petición real: "hazme un botón que ponga redes sociales y agrupa
 // las cuatro botones de las redes sociales... para que no ocupe lugar
@@ -62,6 +63,7 @@ export function SocialMenuFab({ items, slot = DEFAULT_SLOT }: { items: SocialMen
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [dragging, setDragging] = useState(false)
   const [open, setOpen] = useState(false)
+  useCloseMenusOnHelp(() => setOpen(false))
   const dragRef = useRef<{ startX: number; startY: number; moved: number } | null>(null)
   const wasDraggedRef = useRef(false)
 

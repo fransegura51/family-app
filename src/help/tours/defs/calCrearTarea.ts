@@ -22,9 +22,10 @@ export const calCrearTarea: TourDef = {
     },
     {
       id: 'titulo',
-      text: 'Escribe qué hay que hacer, por ejemplo «Sacar la basura».',
+      text: 'Escribe qué hay que hacer, por ejemplo «Sacar la basura». Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
       target: 'calendar.task-title',
-      completeOn: [{ type: 'filled', target: 'calendar.task-title', min: 2 }],
+      completeOn: [{ type: 'entered', target: 'calendar.task-title', min: 2 }],
+      manualNext: true,
     },
     {
       id: 'fecha',

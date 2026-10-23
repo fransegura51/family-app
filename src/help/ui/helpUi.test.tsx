@@ -300,8 +300,30 @@ describe('permisos: la Ayuda explica restricciones y no ofrece botones que no va
     app(ADULT, <Opener q="próximos cumpleaños" />)
     fireEvent.click(screen.getByText('abrir'))
     const panel = await screen.findByRole('complementary')
-    expect(within(panel).getByText('Funciona, pero con limitaciones')).toBeTruthy()
-    expect(within(panel).getByText(/No hay avisos ni notificaciones de cumpleaños/)).toBeTruthy()
+    // Para cualquier persona: sin etiquetas técnicas de estado; la limitación que afecta al uso, dicha con naturalidad.
+    expect(within(panel).queryByText('Funciona, pero con limitaciones')).toBeNull()
+    expect(within(panel).getByText(/Ten en cuenta: No hay avisos ni notificaciones de cumpleaños/)).toBeTruthy()
+    expect(within(panel).queryByTestId('help-admin-state')).toBeNull()
+  })
+
+  it('el estado interno (parcial, motivo técnico) solo lo ve la administración de PEPA y sin consultar al servidor', async () => {
+    const { rememberAppOwnerForTests, clearAppOwnerCache } = await import('@/state/useAppOwner')
+    rememberAppOwnerForTests('admin-1', true)
+    const calls = supabaseCalls.n
+    app({ ...ADULT, id: 'admin-1' } as never, <Opener q="próximos cumpleaños" />)
+    fireEvent.click(screen.getByText('abrir'))
+    const panel = await screen.findByRole('complementary')
+    expect(within(panel).getByTestId('help-admin-state').textContent).toMatch(/Solo administración PEPA · estado: parcial/)
+    expect(supabaseCalls.n).toBe(calls)
+    clearAppOwnerCache()
+  })
+
+  it('un motivo técnico (interruptor, pantalla pendiente) nunca se enseña a una persona normal', async () => {
+    app(ADULT, <Opener q="alergias en las recetas" />)
+    fireEvent.click(screen.getByText('abrir'))
+    const panel = await screen.findByRole('complementary')
+    expect(within(panel).getByText('Todavía no está disponible')).toBeTruthy()
+    expect(within(panel).queryByText(/Interruptor|preparada pero apagada|migración/i)).toBeNull()
   })
 
   it('«Enséñame» solo se ofrece cuando el tutorial existe (nunca un botón que no lleva a nada)', async () => {
@@ -331,9 +353,13 @@ describe('sin resultados y accesos frecuentes', () => {
     app(ADULT, <HelpHint label="Ayuda sobre Calendario" />)
     fireEvent.click(screen.getByRole('button', { name: 'Ayuda sobre Calendario' }))
     const panel = await screen.findByRole('complementary')
-    const frequent = within(panel).getByRole('region', { name: 'Acciones frecuentes' })
-    expect(within(frequent).getAllByRole('button').length).toBeGreaterThanOrEqual(4)
-    expect(within(panel).getByRole('region', { name: 'Ayuda de Calendario' })).toBeTruthy()
+    // «Ayuda de [módulo]» desplegada por defecto; «Acciones frecuentes» plegada (el buscador queda a la vista sin listas enormes).
+    const mod = within(panel).getByText(/Ayuda de Calendario/).closest('details')!
+    expect(mod.hasAttribute('open')).toBe(true)
+    expect(within(mod).getAllByRole('button').length).toBeGreaterThanOrEqual(4)
+    const frequent = within(panel).getByText('Acciones frecuentes').closest('details')!
+    expect(frequent.hasAttribute('open')).toBe(false)
+    expect(frequent.querySelectorAll('button').length).toBeGreaterThanOrEqual(4) // están ahí, solo plegadas
   })
 
   it('el cuadro de pregunta se llama «¿Qué quieres hacer o saber?» y envía con Enter', async () => {

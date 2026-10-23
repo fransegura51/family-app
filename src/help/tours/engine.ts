@@ -36,6 +36,8 @@ export function signalMatches(expected: TourSignal, obs: ObservedSignal): boolea
       return obs.type === 'filled' && obs.target === expected.target && obs.length >= (expected.min ?? 1)
     case 'change':
       return obs.type === 'change' && obs.target === expected.target
+    case 'entered':
+      return obs.type === 'entered' && obs.target === expected.target && obs.length >= (expected.min ?? 1)
     case 'confirmed':
       return obs.type === 'confirmed' && obs.target === expected.target
     case 'route':

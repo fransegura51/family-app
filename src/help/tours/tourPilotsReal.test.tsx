@@ -147,3 +147,35 @@ describe('el recorrido de bienvenida sobre la barra real', () => {
     expect(data.createEvent).not.toHaveBeenCalled()
   })
 })
+
+// B4-UX01: el mismo motor con el teclado abierto en los otros dos pilotos (Compras y Familia) sobre sus formularios reales: la capa sigue al área visible y la escritura no se bloquea.
+describe('con el teclado abierto (visualViewport) en Compras y Familia', () => {
+  function fakeKeyboard() {
+    const vv = Object.assign(new EventTarget(), { offsetTop: 0, offsetLeft: 0, width: 390, height: 420, scale: 1 })
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vv })
+    return vv
+  }
+  afterEach(() => Object.defineProperty(window, 'visualViewport', { configurable: true, value: undefined }))
+
+  it('Compras: la capa mide el área visible, la tarjeta es compacta y escribir el nombre sigue avanzando', async () => {
+    fakeKeyboard()
+    run('com-anadir-producto', '/compras', <AddShoppingItemForm suggestions={[]} knownStores={[]} hideHeading onAdded={() => undefined} />)
+    await says(/Escribe el producto/)
+    const layer = document.querySelector('[data-tour-layer]') as HTMLElement
+    expect(layer.dataset.keyboard).toBe('true')
+    expect(layer.style.height).toBe('420px')
+    expect(panel().className).toContain('tour-panel-compact')
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Leche' } })
+    await says(/pon la tienda/)
+  })
+
+  it('Familia: lo mismo con el nombre del miembro', async () => {
+    fakeKeyboard()
+    run('fam-anadir-miembro', '/familia', <AddMemberForm onAdded={() => undefined} existingMembers={[]} />)
+    await says('Escribe su nombre.')
+    expect((document.querySelector('[data-tour-layer]') as HTMLElement).dataset.keyboard).toBe('true')
+    expect(panel().className).toContain('tour-panel-compact')
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Eric' } })
+    await says(/Elige qué es/)
+  })
+})

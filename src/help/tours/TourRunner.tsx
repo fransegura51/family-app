@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import type { HelpVoiceMode } from '@/help/prefs'
 import { setTourProgress } from '@/help/prefs'
-import { fieldOf, findTarget, markedAncestor } from '@/help/tours/domTargets'
+import { fieldOf, findTarget, markedAncestor, ringElementOf } from '@/help/tours/domTargets'
 import { canGoNext, reduceTour, startState, stepOf } from '@/help/tours/engine'
 import { onHelpEvent } from '@/help/tours/helpBus'
 import type { ObservedSignal, TourDef } from '@/help/tours/types'
+import { choosePanelSide, freeZone, readVisibleArea, sameArea, scrollContentBy, scrollDeltaToReveal } from '@/help/tours/viewport'
 import { HELP_ID_PATTERN } from '@/help/tours/domTargets'
 import { speakHelp, stopHelpSpeech } from '@/help/voice'
 import { PepaFace } from '@/help/ui/PepaFace'
@@ -45,6 +46,11 @@ export function TourRunner({
   const [state, dispatch] = useReducer((s: ReturnType<typeof startState>, a: Parameters<typeof reduceTour>[2]) => reduceTour(tour, s, a), tour, startState)
   const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
   const [speaking, setSpeaking] = useState(false)
+  // Área realmente visible (descontando el teclado) y altura del panel: el marco y el panel se colocan respecto a ella, no a la pantalla entera (B4-UX01).
+  const [area, setArea] = useState(readVisibleArea)
+  const [panelH, setPanelH] = useState(0)
+  const panelRef = useRef<HTMLElement | null>(null)
+  const sideRef = useRef<'top' | 'bottom'>('bottom')
   const stateRef = useRef(state)
   stateRef.current = state
   const allowed = tour.paths ?? [tour.startPath]
@@ -119,6 +125,8 @@ export function TourRunner({
       return
     }
     const el = cur.target ? findTarget(cur.target) : null
+    const nowArea = readVisibleArea()
+    setArea((prev) => (sameArea(prev, nowArea) ? prev : nowArea))
     // Un paso que ya está cumplido al llegar (p. ej. el formulario ya abierto) se omite; el siguiente se evalúa en la vuelta siguiente.
     const key = `${s.index}`
     const enteredBack = backIndex.current === s.index
@@ -151,12 +159,28 @@ export function TourRunner({
     if (scrolled.current !== key) {
       scrolled.current = key
       const r0 = el.getBoundingClientRect()
-      const out = r0.top < 60 || r0.bottom > window.innerHeight - 60
+      const out = r0.top < nowArea.top + 60 || r0.bottom > nowArea.top + nowArea.height - 60
       if (out) el.scrollIntoView?.({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     }
-    const r = el.getBoundingClientRect()
+    const r = ringElementOf(el).getBoundingClientRect()
     setRect((prev) => (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height ? prev : { top: r.top, left: r.left, width: r.width, height: r.height }))
   }, [tour, missingAfterMs])
+
+  // Si tras abrirse o cerrarse el teclado el control queda fuera de la zona libre (bajo el teclado o bajo el panel), se desplaza el CONTENIDO lo justo para verlo. Solo mueve el
+  // desplazamiento del contenedor: no toca el formulario ni el foco, así que no interrumpe la escritura.
+  const revealTarget = useCallback(() => {
+    const s = stateRef.current
+    const cur = stepOf(tour, s)
+    const el = cur?.target ? findTarget(cur.target) : null
+    if (!el || s.status !== 'running') return
+    const a = readVisibleArea()
+    const r = ringElementOf(el).getBoundingClientRect()
+    const bottomOffset = a.keyboard ? 8 : a.width >= 720 ? 16 : 100
+    const ph = panelRef.current?.offsetHeight ?? 0
+    const ring = { top: r.top - a.top, bottom: r.bottom - a.top }
+    const zone = freeZone(sideRef.current, a.height, ph, bottomOffset)
+    scrollContentBy(el, scrollDeltaToReveal(ring, zone.top, zone.bottom))
+  }, [tour])
 
   useEffect(() => {
     missingSince.current = null
@@ -166,23 +190,58 @@ export function TourRunner({
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(measure)
     }
+    // Ráfaga: durante la animación del teclado, del foco o de un desplazamiento el control se mueve fotograma a fotograma; se mide en cada uno (y al terminar se recoloca) en lugar de
+    // fiarse de una sola lectura intermedia. Esto es lo que dejaba el marco desalineado en el iPhone.
+    let burstRaf = 0
+    let burstUntil = 0
+    let settle = 0
+    const frame = () => {
+      measure()
+      burstRaf = Date.now() < burstUntil ? requestAnimationFrame(frame) : 0
+    }
+    const burst = () => {
+      const ms = 900
+      burstUntil = Date.now() + ms
+      if (!burstRaf) burstRaf = requestAnimationFrame(frame)
+      window.clearTimeout(settle)
+      settle = window.setTimeout(() => {
+        measure()
+        revealTarget()
+        measure()
+      }, ms + 60)
+    }
     const mo = new MutationObserver(schedule)
     mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-help-id', 'hidden', 'class', 'style'] })
     const timer = window.setInterval(measure, POLL_MS)
+    const vv = window.visualViewport
     window.addEventListener('scroll', schedule, true)
-    window.addEventListener('resize', schedule)
-    window.visualViewport?.addEventListener('resize', schedule)
-    window.visualViewport?.addEventListener('scroll', schedule)
+    window.addEventListener('resize', burst)
+    window.addEventListener('orientationchange', burst)
+    document.addEventListener('focusin', burst)
+    document.addEventListener('focusout', burst)
+    vv?.addEventListener('resize', burst)
+    vv?.addEventListener('scroll', schedule)
     return () => {
       cancelAnimationFrame(raf)
+      cancelAnimationFrame(burstRaf)
+      window.clearTimeout(settle)
       mo.disconnect()
       window.clearInterval(timer)
       window.removeEventListener('scroll', schedule, true)
-      window.removeEventListener('resize', schedule)
-      window.visualViewport?.removeEventListener('resize', schedule)
-      window.visualViewport?.removeEventListener('scroll', schedule)
+      window.removeEventListener('resize', burst)
+      window.removeEventListener('orientationchange', burst)
+      document.removeEventListener('focusin', burst)
+      document.removeEventListener('focusout', burst)
+      vv?.removeEventListener('resize', burst)
+      vv?.removeEventListener('scroll', schedule)
     }
-  }, [measure, stepKey])
+  }, [measure, revealTarget, stepKey])
+
+  // Altura real del panel (cambia con el texto del paso y con el modo compacto): decide a qué lado va para no tapar el control.
+  useLayoutEffect(() => {
+    const h = panelRef.current?.offsetHeight ?? 0
+    if (Math.abs(h - panelH) > 1) setPanelH(h)
+  }, [panelH, state.index, state.status, area.compact, area.keyboard, speaking])
 
   // ---- Voz: cada paso se lee en modo «Hablando»; en «Por escrito» solo con el botón (el texto se ve siempre).
   useEffect(() => {
@@ -214,8 +273,14 @@ export function TourRunner({
     onClose('completed')
   }
 
-  // Posición del panel: si el control está en la mitad de abajo, el panel va arriba (y al revés), para no taparlo.
-  const placeTop = rect ? rect.top + rect.height / 2 > window.innerHeight * 0.52 : false
+  // Posición del panel, respecto al ÁREA VISIBLE (con el teclado abierto es mucho más baja que la pantalla): al lado donde no tape el control. Si ambos lados valen, manda la regla
+  // de siempre: control en la mitad de abajo → panel arriba (y al revés).
+  const bottomOffset = area.keyboard ? 8 : area.width >= 720 ? 16 : 100
+  const ringSpan = rect ? { top: rect.top - area.top - 4, bottom: rect.top - area.top + rect.height + 4 } : null
+  const halfRule: 'top' | 'bottom' = ringSpan && (ringSpan.top + ringSpan.bottom) / 2 > area.height * 0.52 ? 'top' : 'bottom'
+  const side: 'top' | 'bottom' = ringSpan && panelH > 0 ? choosePanelSide(ringSpan, area.height, panelH, bottomOffset, halfRule) : halfRule
+  sideRef.current = side
+  const placeTop = side === 'top'
 
   const body = () => {
     if (state.status === 'completed') {
@@ -318,21 +383,21 @@ export function TourRunner({
               Siguiente →
             </button>
           )}
-          <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'pause' })}>
+          <button type="button" className="tour-btn tour-btn-extra" onClick={() => dispatch({ type: 'pause' })}>
             ⏸ Pausar
           </button>
-          <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'restart' })}>
+          <button type="button" className="tour-btn tour-btn-extra" onClick={() => dispatch({ type: 'restart' })}>
             ↺ Reiniciar
           </button>
           <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'exit' })}>
             ✕ Salir
           </button>
           {speaking ? (
-            <button type="button" className="tour-btn" onClick={() => { stopHelpSpeech(); setSpeaking(false) }} aria-label="Detener la voz">
+            <button type="button" className="tour-btn tour-btn-extra" onClick={() => { stopHelpSpeech(); setSpeaking(false) }} aria-label="Detener la voz">
               ⏹ Detener
             </button>
           ) : (
-            <button type="button" className="tour-btn" onClick={() => { setSpeaking(true); void speakHelp(step.text, () => setSpeaking(false)) }} aria-label="Escuchar este paso en voz alta">
+            <button type="button" className="tour-btn tour-btn-extra" onClick={() => { setSpeaking(true); void speakHelp(step.text, () => setSpeaking(false)) }} aria-label="Escuchar este paso en voz alta">
               🔊 Escuchar
             </button>
           )}
@@ -345,12 +410,19 @@ export function TourRunner({
   const total = tour.steps.length
   const showRing = rect && state.status === 'running' && step?.target
   return createPortal(
-    <div className="tour-layer" data-tour-layer="true">
+    <div
+      className="tour-layer"
+      data-tour-layer="true"
+      data-keyboard={area.keyboard ? 'true' : 'false'}
+      style={{ top: area.top, left: area.left, width: area.width, height: area.height }}
+    >
       {showRing && rect && (
-        <div className="tour-ring" aria-hidden="true" style={{ top: rect.top - 4, left: rect.left - 4, width: rect.width + 8, height: rect.height + 8 }} />
+        <div className="tour-ring" aria-hidden="true" style={{ top: rect.top - area.top - 4, left: rect.left - area.left - 4, width: rect.width + 8, height: rect.height + 8 }} />
       )}
       <section
-        className={`tour-panel ${placeTop ? 'tour-panel-top' : 'tour-panel-bottom'}`}
+        ref={panelRef}
+        className={`tour-panel ${placeTop ? 'tour-panel-top' : 'tour-panel-bottom'}${area.compact ? ' tour-panel-compact' : ''}`}
+        style={{ maxHeight: Math.max(120, Math.round(area.height * (area.compact ? 0.4 : 0.46))), ...(area.keyboard ? ({ '--tour-bottom': '8px' } as React.CSSProperties) : null) }}
         role="dialog"
         aria-modal="false"
         aria-label={`Tutorial: ${tour.title}`}

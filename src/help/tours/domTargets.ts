@@ -30,6 +30,13 @@ export function fieldOf(el: HTMLElement): HTMLInputElement | HTMLTextAreaElement
   return el.querySelector('input, textarea, select')
 }
 
+// Qué elemento se rodea con el marco: un campo suelto se resalta junto con su etiqueta («Título» + el cuadro), para que el marco no corte la etiqueta ni se quede a medias encima de ella.
+export function ringElementOf(el: HTMLElement): HTMLElement {
+  const parent = el.parentElement
+  if (parent && parent.tagName === 'LABEL' && fieldOf(el) === el && parent.querySelectorAll('input, textarea, select').length === 1) return parent
+  return el
+}
+
 export function markedAncestor(node: EventTarget | null): HTMLElement | null {
   return node instanceof Element ? node.closest<HTMLElement>('[data-help-id]') : null
 }

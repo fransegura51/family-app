@@ -54,6 +54,7 @@ export function NotificationBell() {
         ref={buttonRef}
         type="button"
         className="notification-bell"
+        data-help-id="notificaciones.campana"
         aria-label={unread > 0 ? `Avisos: ${unread} sin leer` : 'Avisos'}
         aria-haspopup="dialog"
         aria-expanded={open}

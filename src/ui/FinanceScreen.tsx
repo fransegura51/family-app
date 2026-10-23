@@ -136,6 +136,7 @@ import {
 } from '@/domain/forecastInstallmentSplitForm'
 import { centsToEurosString, checkCentsDistribution, eurosStringToCents, type CentsDistributionCheck } from '@/domain/forecastMoneyCents'
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { DateField } from '@/ui/DateField'
 import { getAccountsMode, getDateFilterPreferences, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode, type DateFilterPreferences } from '@/data/family'
 import {
@@ -618,6 +619,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       <KitchenHeaderWithMenu
         imgSrc={economiaHeaderImg}
         alt="Economía"
+        helpId="finance.menu"
         open={economiaMenuOpen}
         ariaLabel={economiaMenuOpen ? 'Cerrar menú de Economía' : 'Abrir menú de Economía'}
         onToggle={() => {
@@ -1204,7 +1206,7 @@ function AccountBalanceCards({
   }, [])
 
   return (
-    <div className="account-cards-block">
+    <div className="account-cards-block" data-help-id="finance.accounts">
       <div className="account-cards-heading">
         <strong>Mis cuentas</strong>
         <button type="button" className="account-cards-view-all" onClick={onViewAll} aria-label="Ver todas las cuentas">
@@ -1246,7 +1248,7 @@ function AccountBalanceCards({
         {/* Petición real: "no me has puesto para poder agregar cuentas
             a esa pantalla" — entrada directa al formulario de conectar
             banco (ya en Banco), sin tener que saber que vive ahí. */}
-        <button type="button" className="account-card account-card-add" onClick={onAddAccount}>
+        <button type="button" className="account-card account-card-add" data-help-id="finance.add-account" onClick={onAddAccount}>
           <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
           <span>Añadir cuenta</span>
         </button>
@@ -1256,7 +1258,7 @@ function AccountBalanceCards({
           configuración" — conectar/desconectar/asignar dueño vive ahora
           en Configuración (ver BankAccountsModal), así que desde aquí
           mismo se puede ir directo sin buscarlo en ☰ Menú. */}
-      <Link to="/menu-organizar" state={{ group: 'economia' }} className="link-button" style={{ display: 'block', marginTop: 8 }}>
+      <Link to="/menu-organizar" state={{ group: 'economia' }} className="link-button" data-help-id="finance.accounts-settings" style={{ display: 'block', marginTop: 8 }}>
         ⚙️ Configuración cuentas
       </Link>
     </div>
@@ -1902,7 +1904,7 @@ function BankTab({
               pida más (el movimiento más antiguo guardado nunca pasa de
               ahí), así que esas dos opciones no tenían ningún efecto. */}
           <div style={{ marginTop: 12 }}>
-            <button type="button" onClick={handleSync} disabled={syncing}>
+            <button type="button" data-help-id="finance.bank-sync" onClick={handleSync} disabled={syncing}>
               {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
             </button>
             <div style={{ marginTop: 6 }}>
@@ -2074,7 +2076,7 @@ function DateFilterTab({
   const label = (p: SpendRangePreset) => (p === 'mes' ? 'Mes contable' : PRESET_LABELS[p])
 
   return (
-    <div style={{ margin: '8px 0' }}>
+    <div style={{ margin: '8px 0' }} data-help-id="finance.date-filter">
       <button type="button" className={'chip' + (open ? ' chip-active' : '')} onClick={() => setOpen((v) => !v)}>
         📅 Fecha: {label(preset)} {open ? '▲' : '▼'}
       </button>
@@ -2122,7 +2124,7 @@ function PendingSignal({ signal, onOpen }: { signal: PendingSpending; onOpen: ()
   const text = pendingSignalText(signal)
   if (!text) return null
   return (
-    <button type="button" className="pending-signal" onClick={onOpen}>
+    <button type="button" className="pending-signal" data-help-id="finance.pending-signal" onClick={onOpen}>
       <span aria-hidden>⏳</span> {text} <span aria-hidden>→</span>
     </button>
   )
@@ -2403,7 +2405,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
 
       <PendingSignal signal={pendingSignal(expenses)} onOpen={() => onViewMovements({ label: PENDING_LABEL, pendingOnly: true })} />
 
-      <div className="card event-card">
+      <div className="card event-card" data-help-id="finance.summary-card">
         <strong>Resumen — {PRESET_LABELS[preset]}</strong>
         <p style={{ color: '#1e8449', margin: '6px 0 0' }}>
           Ingresos: +{totalIncome.toFixed(2)} €{' '}
@@ -2543,7 +2545,7 @@ function PepaConclusionsWidget({
   }
 
   return (
-    <div className="pepa-conclusion-banner">
+    <div className="pepa-conclusion-banner" data-help-id="finance.conclusions">
       <div
         className="pepa-conclusion-note"
         onTouchStart={handleTouchStart}
@@ -3208,7 +3210,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
       {/* Skill de Pepa, punto 8: mismo selector, mismo periodo, mismo
           total general — solo cambia la dimensión de agrupación. */}
-      <div className="filter-row" style={{ marginBottom: 8 }}>
+      <div className="filter-row" style={{ marginBottom: 8 }} data-help-id="finance.stats-views">
         <button type="button" className={'chip' + (view === 'categorias' ? ' chip-active' : '')} onClick={() => setView('categorias')}>
           Categorías
         </button>
@@ -3223,7 +3225,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
         </button>
       </div>
 
-      <div className="card event-card">
+      <div className="card event-card" data-help-id="finance.stats-card">
         <strong>Gastos — {periodLabel}</strong>
         <p style={{ margin: '4px 0' }}>{totalReal.toFixed(2)} €</p>
         {body}
@@ -3843,7 +3845,7 @@ function ExpensesTab({
       {error && <p className="error">{error}</p>}
 
       {onOpenNewMovement && !filter && (
-        <button type="button" style={{ marginBottom: 8 }} onClick={onOpenNewMovement}>
+        <button type="button" style={{ marginBottom: 8 }} data-help-id="finance.new-movement" onClick={onOpenNewMovement}>
           + Nuevo movimiento
         </button>
       )}
@@ -3918,7 +3920,7 @@ function ExpensesTab({
         </div>
       )}
 
-      <p className="points-badge">
+      <p className="points-badge" data-help-id="finance.movements-total">
         {monthTotal.toFixed(2)} € gastados
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
@@ -3930,13 +3932,13 @@ function ExpensesTab({
           (ver MERCHANT_CATEGORY_RULES en enable-banking-sync-
           transactions); es un acierto frecuente, no una certeza. */}
       {accounts.length > 0 && (
-        <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+        <p className="muted" style={{ fontSize: 12, marginTop: 4 }} data-help-id="finance.movements-note">
           ℹ️ La categoría de los movimientos importados del banco se asigna por sugerencia, según el comercio —
           revísala y corrígela si no encaja (toca el movimiento para editarlo).
         </p>
       )}
 
-      <div style={{ marginTop: 8 }}>
+      <div style={{ marginTop: 8 }} data-help-id="finance.movements-filter">
         <DropdownFilter label="Filtrar por" value={typeFilter} onChange={(k) => setTypeFilter(k as typeof typeFilter)} options={TYPE_FILTER_OPTIONS} />
       </div>
       {typeFilter === 'categoria' && (
@@ -4166,7 +4168,7 @@ function MovementRow({
 }) {
   const source = SOURCE_META[e.source]
   return (
-    <div className="movement-row" onClick={onClick} style={{ background: rowColor }}>
+    <div className="movement-row" data-help-id="finance.movement-row" onClick={onClick} style={{ background: rowColor }}>
       <span
         className="movement-row-dot"
         style={{ background: tag ? tag.color : 'transparent' }}
@@ -4288,7 +4290,7 @@ function MovementFormFields({
     <>
       {mode === 'create' && (
         <div className="filter-row">
-          <button type="button" className={'chip' + (!draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, false))}>
+          <button type="button" className={'chip' + (!draft.isIncome ? ' chip-active' : '')} data-help-id="finance.movement-type" onClick={() => onChange(switchMovementType(draft, false))}>
             Gasto
           </button>
           <button type="button" className={'chip' + (draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, true))}>
@@ -4297,7 +4299,7 @@ function MovementFormFields({
         </div>
       )}
       {draft.isIncome ? (
-        <label>
+        <label data-help-id="finance.movement-category">
           Categoría
           <select value={draft.incomeCategory ?? ''} onChange={(e) => onChange(changeIncomeCategory(draft, e.target.value))}>
             {incomeCategories.length === 0 && <option value="Ingreso">Ingreso</option>}
@@ -4309,7 +4311,7 @@ function MovementFormFields({
           </select>
         </label>
       ) : (
-        <label>
+        <label data-help-id="finance.movement-category">
           Categoría
           <CategorySelect
             value={draft.expenseCategory ?? ''}
@@ -4320,11 +4322,11 @@ function MovementFormFields({
         </label>
       )}
       <div className="inline-fields">
-        <label>
+        <label data-help-id="finance.movement-date">
           Fecha
           <DateField value={draft.date} onChange={(date) => onChange({ ...draft, date })} placeholder="Seleccionar fecha" required={required} />
         </label>
-        <label>
+        <label data-help-id="finance.movement-amount">
           Importe (€)
           <input type="number" step="0.01" value={draft.amount} onChange={(e) => onChange({ ...draft, amount: e.target.value })} required={required} />
         </label>
@@ -4332,7 +4334,7 @@ function MovementFormFields({
       {!draft.isIncome && (
         <label>
           Establecimiento (opcional)
-          <input type="text" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
+          <input type="text" data-help-id="finance.movement-store" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
         </label>
       )}
       {classificationKind && (
@@ -4352,11 +4354,11 @@ function MovementFormFields({
           </p>
         </label>
       )}
-      <label>
+      <label data-help-id="finance.movement-tag">
         Etiqueta (opcional)
         <TagSelect value={draft.tagId} onChange={(v) => onChange({ ...draft, tagId: v })} tags={tags} />
       </label>
-      <label>
+      <label data-help-id="finance.movement-notes">
         Concepto (opcional)
         <input type="text" value={draft.notes} onChange={(e) => onChange({ ...draft, notes: e.target.value })} placeholder="Anotación tuya sobre este movimiento" />
       </label>
@@ -4457,6 +4459,7 @@ function EditExpenseInline({
         productClassification: values.productClassification,
         ...(expense.isIncome ? {} : { store: values.store }),
       })
+      emitHelpEvent('finance.movement-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onDone()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -4482,7 +4485,7 @@ function EditExpenseInline({
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="button" onClick={handleSave} disabled={saving}>
+        <button type="button" data-help-id="finance.edit-save" onClick={handleSave} disabled={saving}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
         <button type="button" className="link-button" onClick={onCancel}>
@@ -4857,6 +4860,7 @@ function AddExpenseToAnyCategoryInline({
     setError(null)
     try {
       await addExpense(buildNewExpenseInput(draft, categories))
+      emitHelpEvent('finance.movement-added') // para los tutoriales «Enséñame»: el movimiento YA está guardado
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -4866,10 +4870,10 @@ function AddExpenseToAnyCategoryInline({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="member-form">
+    <form onSubmit={handleSubmit} className="member-form" data-help-id="finance.new-movement-form">
       <MovementFormFields mode="create" draft={draft} onChange={setDraft} categories={categories} tags={tags} />
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="finance.new-save">
         {saving ? 'Guardando…' : draft.isIncome ? 'Apuntar ingreso' : 'Apuntar gasto'}
       </button>
     </form>
@@ -5690,7 +5694,7 @@ function CategorySelect({
         // después de abrirlo. Al ser ahora una ventana emergente fija, el
         // resto de la página ya no se mueve al expandir una categoría.
         <div className="modal-overlay" onClick={close}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="finance.category-picker" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {expandedParent ? `${expandedParent.icon} ${expandedParent.name}` : 'Elige una categoría'}
@@ -6006,6 +6010,7 @@ function ReceiptLineClassPicker({
       <button
         type="button"
         className="receipt-line-class-icon"
+        data-help-id="shopping.receipt-line-class"
         onClick={() => setOpen((v) => !v)}
         title={resolved.classification || 'Sin clasificar — toca para elegir'}
       >
@@ -6283,6 +6288,7 @@ function ReceiptForm({
           uploadedReceiptId.current = receiptId
         }
         await saveLines(receiptId)
+        emitHelpEvent('shopping.receipt-saved') // para los tutoriales «Enséñame»: el ticket YA está guardado
         resetAddForm()
       } else if (receipt) {
         // La categoría de un ticket (y la de su gasto vinculado) se cambia SOLO con classify_purchase: atómica gasto ↔ ticket y sin pisar
@@ -6322,11 +6328,12 @@ function ReceiptForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" {...(mode === 'add' ? { 'data-help-id': 'shopping.receipt-form' } : {})}>
       {mode === 'add' && (
         <>
           <h2>Subir ticket</h2>
           <label>Foto o archivo</label>
+          <div data-help-id="shopping.receipt-file">
           <FileOrPdfPicker
             file={file}
             sheetTitle="Añadir ticket"
@@ -6337,6 +6344,7 @@ function ReceiptForm({
               setOcrStatus('idle')
             }}
           />
+          </div>
           {/* Petición real: "lo de subir ticket, ¿se puede poner algo más
               compacto?" — el aviso de que la foto se borra a los 3 meses
               sigue aquí, pero como nota pequeña bajo el propio picker de
@@ -6346,7 +6354,7 @@ function ReceiptForm({
           </p>
 
           {file && (
-            <button type="button" className="voice-mic-button" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
+            <button type="button" className="voice-mic-button" data-help-id="shopping.receipt-read" onClick={handleReadTicket} disabled={ocrStatus === 'reading'}>
               {ocrStatus === 'reading' ? 'Leyendo ticket… puede tardar unos segundos' : '📷 Leer ticket'}
             </button>
           )}
@@ -6383,6 +6391,7 @@ function ReceiptForm({
         <input
           type="text"
           list="receipt-known-stores"
+          data-help-id="shopping.receipt-store"
           value={store}
           onChange={(e) => setStore(e.target.value)}
           placeholder="Mercadona"
@@ -6393,13 +6402,13 @@ function ReceiptForm({
           Fecha
           <DateField value={receiptDate} onChange={setReceiptDate} placeholder="Seleccionar fecha" required />
         </label>
-        <label>
+        <label data-help-id="shopping.receipt-total">
           Importe total (€)
           <input type="number" step="0.01" value={totalAmount} onChange={(e) => setTotalAmount(e.target.value)} />
         </label>
       </div>
       <div className="inline-fields">
-        <label>
+        <label data-help-id="shopping.receipt-category">
           Categoría
           <CategorySelect value={category} onChange={setCategory} categories={categories} compact emptyLabel={receipt && receipt.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
         </label>
@@ -6432,7 +6441,7 @@ function ReceiptForm({
         </p>
       )}
       {!loadingLines && (ocrStatus === 'done' || mode === 'edit' || lines.length > 0) && (
-        <div className="day-modal-group">
+        <div className="day-modal-group" data-help-id="shopping.receipt-lines">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <p className="muted" style={{ flex: 1, margin: 0 }}>
               Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
@@ -6472,6 +6481,7 @@ function ReceiptForm({
                     value={line.name}
                     onChange={(e) => updateLine(i, { name: e.target.value, classOverride: undefined })}
                     placeholder="Producto"
+                    data-help-id="shopping.receipt-line-name"
                   />
                   {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
                   <button type="button" className="link-button" onClick={() => removeLine(i)}>
@@ -6532,7 +6542,7 @@ function ReceiptForm({
 
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} {...(mode === 'add' ? { 'data-help-id': 'shopping.receipt-save' } : {})}>
           {saving ? 'Guardando…' : mode === 'add' ? 'Guardar ticket' : 'Guardar'}
         </button>
         {mode === 'edit' && (
@@ -7945,7 +7955,7 @@ function BudgetsSection({
         )}
       </div>
 
-      <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+      <button type="button" className="link-button" data-help-id="finance.new-budget" onClick={() => setShowAddForm(true)}>
         + Nuevo presupuesto
       </button>
       {showAddForm && (
@@ -8840,6 +8850,7 @@ function AddBudgetForm({
     setError(null)
     try {
       await createBudget({ periodType, periodStart, category, amount: Number(amount), budgetGroup: group, ownerMemberId })
+      emitHelpEvent('finance.budget-created') // para los tutoriales «Enséñame»: el presupuesto YA está guardado
       setCategory('')
       setAmount('')
       onAdded()
@@ -8851,8 +8862,8 @@ function AddBudgetForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="member-form">
-      <label>
+    <form onSubmit={handleSubmit} className="member-form" data-help-id="finance.budget-form">
+      <label data-help-id="finance.budget-period">
         Periodo
         <select value={periodType} onChange={(e) => setPeriodType(e.target.value as BudgetPeriod)}>
           <option value="mensual">Mensual</option>
@@ -8863,16 +8874,16 @@ function AddBudgetForm({
         Empieza el
         <DateField value={periodStart} onChange={setPeriodStart} placeholder="Seleccionar fecha de inicio" required />
       </label>
-      <label>
+      <label data-help-id="finance.budget-category">
         Categoría
         <CategorySelect value={category} onChange={setCategory} categories={categories} allowGeneral />
       </label>
-      <label>
+      <label data-help-id="finance.budget-amount">
         Importe (€)
         <input type="number" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} required />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="finance.budget-save">
         {saving ? 'Guardando…' : 'Crear presupuesto'}
       </button>
     </form>
@@ -9509,7 +9520,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       {error && <p className="error">{error}</p>}
 
       <div className="inline-fields" style={{ marginBottom: 8 }}>
-        <button type="button" onClick={() => setShowAddForm(true)}>
+        <button type="button" data-help-id="finance.add-forecast" onClick={() => setShowAddForm(true)}>
           + Añadir pago
         </button>
         <button type="button" className="link-button" onClick={() => setShowDocumentImport(true)}>
@@ -9601,7 +9612,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               7: sin auto-conciliación todavía). */}
           {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0 || reconciliationHistory.length > 0) && (
             <>
-              <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} onClick={() => setReconcileOpen((v) => !v)}>
+              <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} data-help-id="finance.reconcile-toggle" onClick={() => setReconcileOpen((v) => !v)}>
                 {reconcileOpen ? '▾' : '▸'} 🔎{' '}
                 {reconciliationCandidates.length > 0
                   ? `${reconciliationCandidates.length} pago${reconciliationCandidates.length === 1 ? '' : 's'} por revisar`
@@ -9614,7 +9625,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                     const key = candidateKey(c)
                     const busy = reconcileBusyKey === key
                     return (
-                      <div key={key} className="card" style={{ padding: 12, marginBottom: 8 }}>
+                      <div key={key} className="card" style={{ padding: 12, marginBottom: 8 }} data-help-id="finance.reconcile-card">
                         <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
                           {c.confidence === 'high' ? 'PEPA ha encontrado un posible cargo' : 'Puede que sea este cargo — revísalo'}
                         </p>
@@ -9637,10 +9648,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                         </div>
                         <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{c.reasons.map((r) => r.label).join(' · ')}</p>
                         <div style={{ display: 'flex', gap: 8 }}>
-                          <button type="button" disabled={busy} onClick={() => confirmCandidate(c)}>
+                          <button type="button" disabled={busy} data-help-id="finance.reconcile-confirm" onClick={() => confirmCandidate(c)}>
                             {busy ? 'Guardando…' : 'Confirmar'}
                           </button>
-                          <button type="button" className="link-button" disabled={busy} onClick={() => dismissCandidate(c)}>
+                          <button type="button" className="link-button" disabled={busy} data-help-id="finance.reconcile-dismiss" onClick={() => dismissCandidate(c)}>
                             No es este
                           </button>
                         </div>
@@ -10749,6 +10760,7 @@ function ForecastPaymentForm({
       // sustituye los overrides de ciclo por una lista vacía — así cambiar de "Número de pagos" a
       // "Hasta que lo desactive" limpia el plan anterior en vez de dejarlo fantasma.
       await replaceForecastPlanOverrides(id, finitePlanSubmission ? finitePlanSubmission.overrides : [])
+      emitHelpEvent('finance.forecast-saved') // para los tutoriales «Enséñame»: el pago previsto YA está guardado
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -10797,13 +10809,13 @@ function ForecastPaymentForm({
       : null
 
   return (
-    <form onSubmit={handleSubmit} className="member-form">
+    <form onSubmit={handleSubmit} className="member-form" data-help-id="finance.forecast-form">
       <label>
         Concepto
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input type="text" data-help-id="finance.forecast-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
       </label>
 
-      <label>
+      <label data-help-id="finance.forecast-amount-status">
         {amountStatusFieldLabel}
         <select value={amountStatus} onChange={(e) => setAmountStatus(e.target.value as ForecastAmountStatus)}>
           {(Object.keys(AMOUNT_STATUS_LABELS) as ForecastAmountStatus[]).map((s) => (
@@ -10815,7 +10827,7 @@ function ForecastPaymentForm({
       </label>
       {amountStatus !== 'unknown' && (
         <div style={{ display: 'flex', gap: 8 }}>
-          <label style={{ flex: 1 }}>
+          <label style={{ flex: 1 }} data-help-id="finance.forecast-amount">
             {amountFieldLabel}
             <input type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </label>
@@ -10861,7 +10873,7 @@ function ForecastPaymentForm({
         </p>
       )}
 
-      <label>
+      <label data-help-id="finance.forecast-category">
         Categoría
         <CategorySelect value={categoryName} onChange={setCategoryName} categories={categories} />
       </label>
@@ -10873,7 +10885,7 @@ function ForecastPaymentForm({
           forecast_loan_details y la sección de solo lectura de préstamos ya clasificados (más abajo en
           PrevisionPagosTab) siguen existiendo tal cual para leer registros antiguos — solo se retira la
           forma de crear/editarlos desde aquí. */}
-      <label>
+      <label data-help-id="finance.forecast-due">
         Vencimiento
         <DateField value={dueDate} onChange={setDueDate} placeholder="Seleccionar vencimiento" required />
       </label>
@@ -11100,7 +11112,7 @@ function ForecastPaymentForm({
       {/* Ajuste UX — pregunta SEPARADA de "¿Cómo se paga?": se refiere a la OBLIGACIÓN completa, nunca a
           los pagos/cuotas individuales de arriba. Un plan finito (IBI en 6 pagos) responde que NO — con
           el sexto pago termina. Un seguro que se renueva cada año responde que SÍ. */}
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="finance.forecast-repeat">
         <input type="checkbox" checked={recurs} onChange={(e) => setRecurs(e.target.checked)} />
         ¿Este pago volverá a repetirse cuando termine?
       </label>
@@ -11248,7 +11260,7 @@ function ForecastPaymentForm({
       </label>
 
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="finance.forecast-save">
         {saving ? 'Guardando…' : payment ? 'Guardar cambios' : 'Crear pago previsto'}
       </button>
     </form>

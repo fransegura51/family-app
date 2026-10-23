@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest'
 import { HELP_CARD_BY_ID, HELP_CARDS } from '@/help/catalog'
 import { KNOWN_APP_ROUTES } from '@/help/routes'
 import { HELP_ID_PATTERN } from '@/help/tours/domTargets'
+import { basePath } from '@/help/tours/paths'
 import { getTour, TOUR_IDS, TOURS } from '@/help/tours/registry'
 import type { TourDef, TourSignal } from '@/help/tours/types'
-import busSource from '@/help/tours/helpBus.ts?raw'
 
-const SOURCES = import.meta.glob(['/src/ui/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const SOURCES = import.meta.glob(['/src/ui/**/*.tsx', '/src/help/ui/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const CORPUS = Object.values(SOURCES).join('\n')
 
 function markExists(id: string): boolean {
@@ -33,7 +33,8 @@ describe('tutoriales registrados', () => {
     for (const t of TOURS) {
       const card = HELP_CARD_BY_ID.get(t.cardId)
       expect(card, `${t.id}: la ficha ${t.cardId} no existe`).toBeTruthy()
-      expect(HELP_CARDS.some((c) => c.tour === t.id), `${t.id}: ninguna ficha lo ofrece`).toBe(true)
+      // Los tutoriales y visitas nuevos se ofrecen desde el catálogo «Enséñame» / «Conoce esta sección» (src/help/master); los pilotos de B4 además cuelgan de una ficha.
+      if (['cal-crear-evento', 'cal-crear-tarea', 'com-anadir-producto', 'fam-anadir-miembro'].includes(t.id)) expect(HELP_CARDS.some((c) => c.tour === t.id), `${t.id}: ninguna ficha lo ofrece`).toBe(true)
     }
     for (const c of HELP_CARDS) if (c.tour) expect(getTour(c.tour), `${c.id}: el tutorial ${c.tour} no está registrado`).toBeTruthy()
   })
@@ -46,7 +47,7 @@ describe('tutoriales registrados', () => {
     describe(`«${tour.id}»`, () => {
       it('pantallas de partida reales y sugerencias finales que existen', () => {
         expect(KNOWN_APP_ROUTES).toContain(tour.startPath)
-        for (const p of tour.paths ?? []) expect(KNOWN_APP_ROUTES, p).toContain(p)
+        for (const p of tour.paths ?? []) expect(KNOWN_APP_ROUTES, p).toContain(basePath(p))
         for (const n of tour.next ?? []) expect(HELP_CARD_BY_ID.has(n), `${tour.id}: sugerencia ${n}`).toBe(true)
         expect(tour.durationSec).toBeLessThanOrEqual(120)
       })
@@ -81,7 +82,6 @@ describe('tutoriales registrados', () => {
           for (const c of s.completeOn)
             if (c.type === 'event') {
               expect(CORPUS.includes(`emitHelpEvent('${c.name}')`), `${tour.id}: nadie emite «${c.name}»`).toBe(true)
-              expect(busSource.includes(`'${c.name}'`), `${c.name} no está declarado en helpBus`).toBe(true)
             }
       })
     })

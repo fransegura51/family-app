@@ -7,6 +7,7 @@ import type { PostDetail } from '@/domain/community'
 import { publicRecipeToKitchenInput } from '@/domain/communityRecipeBridge'
 import { errorMessage } from '@/domain/errorMessage'
 import { copyCommunityPhotoToKitchen } from '@/ui/community/recipes/recipePhotoCopy'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import '@/ui/community/recipes/communityRecipes.css'
 
 // «Guardar en mi Cocina» (CMN-§5.2): crea una copia EDITABLE de la receta pública en la Cocina privada de la familia, con el mismo createRecipe de siempre, y
@@ -29,6 +30,7 @@ export function RecipeImportButton({ detail, onImported }: { detail: PostDetail;
 
   async function register(id: string) {
     await recordRecipeImport(publicRecipe.id, id)
+    emitHelpEvent('comunidad.recipe-imported') // para los tutoriales «Enséñame»: la receta YA está en tu Cocina
     setPhase('done')
     onImported?.()
   }
@@ -91,7 +93,7 @@ export function RecipeImportButton({ detail, onImported }: { detail: PostDetail;
       )}
 
       {phase !== 'done' && phase !== 'record-failed' && !already && (
-        <button type="button" className="primary" onClick={run} disabled={phase === 'working'}>
+        <button type="button" className="primary" data-help-id="comunidad.recipe-import" onClick={run} disabled={phase === 'working'}>
           {phase === 'working' ? 'Guardando…' : '📥 Guardar en mi Cocina'}
         </button>
       )}

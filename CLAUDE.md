@@ -41,6 +41,13 @@ funcionalidad, en el MISMO cambio revisa:**
    SOLO si afecta al uso real y está redactado con naturalidad; si es un motivo interno (interruptores, pantallas pendientes…) marca la ficha con `limitsInternal: true`.
 4. Su ficha del **inventario del Centro de Administración** (`src/admin/features/featureInventory.ts`: estado, qué falta, límites, verificación y puntos clave de Ayuda).
 5. La **explicación ampliada** histórica (`src/help/legacy/legacyHelp.ts`) si la función ya aparecía allí.
+6. Si la función tiene **visita guiada** («Conoce esta sección»), **tutoriales** («Enséñame») o **explicaciones** («Cómo funciona PEPA»): revisa `src/help/tours/defs/**` (marcas `data-help-id`, textos
+   de los pasos) y `src/help/explainers/**` (lo que afirman y `basedOn`). El **catálogo maestro** (`src/help/master`, prueba `masterCatalog.test.ts`) comprueba que cada sección tiene visita, que ninguna
+   visita cambia datos, que ningún tutorial pulsa por la persona borrar/enviar/publicar/pagar y que cada explicación se apoya en archivos y textos de pantalla que existen. Una explicación solo
+   afirma lo que el código hace: si cambias el comportamiento (p. ej. cómo se clasifica un ticket o un movimiento), cambia su explicación en el mismo cambio.
+7. **Soporte técnico** (`src/support`, migración pendiente `supabase/pending-migrations/0310_support_tickets.sql`): está APAGADO por `SUPPORT_ENABLED = false` hasta que la migración se revise y se aplique;
+   una prueba impide encenderlo sin la migración en `supabase/migrations`. Los avisos nunca llevan datos privados; el contexto técnico es una lista blanca (idéntica en el servidor y en `src/support/context.ts`).
+   La IA para Soporte NO está activada: `src/support/responder.ts` solo define contratos.
 
 Comprobaciones automáticas (`npm test`): `src/help/catalog/catalog.test.ts` (botones citados existen en el código, rutas reales, fichas ↔ inventario) y
 `src/help/catalog/ayuda01.test.ts` (trinquete: toda función del inventario tiene ficha, la cobertura no empeora, sin rutas rotas). La **deuda histórica** está identificada en

@@ -14,7 +14,7 @@ const prefs = await import('@/help/prefs')
 
 function mount(path: string, over: Record<string, unknown> = {}) {
   const startTourById = vi.fn()
-  const api = { startTourById, activeTour: null, panelOpen: false, ...over } as never
+  const api = { startTourById, activeTour: null, panelOpen: false, canDoTour: () => true, ...over } as never
   render(
     <MemoryRouter initialEntries={[path]}>
       <HelpUiContext.Provider value={api}>
@@ -93,6 +93,21 @@ describe('aviso de primera visita a un módulo', () => {
     mount('/calendario')
     expect(screen.queryByText(/¿Primera vez en/)).toBeNull()
     expect(prefs.hasSeenModuleHint('calendario')).toBe(false)
+  })
+
+  it('ofrece «Conoce esta sección» (nunca se abre sola) si la sección tiene visita y la cuenta puede hacerla', () => {
+    prefs.offerWelcomeToNewAccount()
+    const { startTourById } = mount('/calendario')
+    expect(startTourById).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Conoce esta sección' }))
+    expect(startTourById).toHaveBeenCalledWith('visita-calendario')
+  })
+
+  it('sin permiso para la visita, el aviso sale sin ese botón', () => {
+    prefs.offerWelcomeToNewAccount()
+    mount('/calendario', { canDoTour: () => false })
+    expect(screen.getByText(/¿Primera vez en/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Conoce esta sección' })).toBeNull()
   })
 
   it('se puede cerrar con la ✕', () => {

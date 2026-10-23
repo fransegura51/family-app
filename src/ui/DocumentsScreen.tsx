@@ -20,6 +20,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { analyzeDocumentExpiry } from '@/services/documentExpiry'
 import { formatDate } from '@/domain/dateFormat'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -125,7 +126,7 @@ export function DocumentsScreen() {
           estilo más dinámicas" (captura de referencia). Tocar una la
           abre debajo, en vez de navegar a otra pantalla, para no
           perder de vista el resto de carpetas. */}
-      <div className="doc-folder-grid">
+      <div className="doc-folder-grid" data-help-id="documentos.carpetas">
         {sortedCategoryNames.map((catName) => {
           const catDocs = docsForCategory(catName)
           const style = categoryStyle(catName)
@@ -168,6 +169,7 @@ export function DocumentsScreen() {
         <button
           type="button"
           className={'doc-folder-card doc-folder-card-add' + (addingCategory ? ' doc-folder-card-active' : '')}
+          data-help-id="documentos.nueva-carpeta"
           onClick={() => setAddingCategory((v) => !v)}
         >
           <span className="doc-folder-icon doc-folder-icon-add">➕</span>
@@ -210,7 +212,7 @@ export function DocumentsScreen() {
           a Familia Paco o donde sea", en vez de tener un formulario
           repetido dentro de cada carpeta. Un único botón, y el destino
           (categoría + persona) se elige en el propio formulario. */}
-      <button type="button" className="screen-fab" onClick={() => setUploading(true)}>
+      <button type="button" className="screen-fab" data-help-id="documentos.subir" onClick={() => setUploading(true)}>
         + Subir foto
       </button>
 
@@ -400,7 +402,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
         </p>
       </div>
       {shareError && <p className="error">{shareError}</p>}
-      <div className="task-card-actions">
+      <div className="task-card-actions" data-help-id="documentos.acciones">
         {url ? (
           <a href={url} target="_blank" rel="noreferrer" className="link-button" aria-label="Ver documento">
             👁
@@ -439,6 +441,7 @@ function AddCategoryInline({ onAdded }: { onAdded: () => void }) {
     setError(null)
     try {
       await createDocumentCategory(name.trim())
+      emitHelpEvent('documents.folder-created') // para los tutoriales «Enséñame»: la carpeta YA está guardada
       setName('')
       onAdded()
     } catch (err) {
@@ -450,8 +453,8 @@ function AddCategoryInline({ onAdded }: { onAdded: () => void }) {
 
   return (
     <form onSubmit={handleSubmit} className="inline-fields">
-      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nueva categoría (p. ej. Salud)" />
-      <button type="submit" disabled={saving || !name.trim()}>
+      <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Nueva categoría (p. ej. Salud)" data-help-id="documentos.carpeta-nombre" />
+      <button type="submit" disabled={saving || !name.trim()} data-help-id="documentos.carpeta-guardar">
         + Añadir categoría
       </button>
       {error && <p className="error">{error}</p>}
@@ -516,6 +519,7 @@ function AddDocumentForm({
     setError(null)
     try {
       await uploadMemberDocument({ memberId: memberId || null, file, title, category, expiryDate: expiryDate || null })
+      emitHelpEvent('documents.document-added') // para los tutoriales «Enséñame»: el documento YA está guardado
       setFile(null)
       setTitle('')
       setExpiryDate('')
@@ -530,7 +534,7 @@ function AddDocumentForm({
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
-      <label>Archivo</label>
+      <label data-help-id="documentos.archivo">Archivo</label>
       <FileOrPdfPicker
         file={file}
         onChange={(f) => {
@@ -540,7 +544,7 @@ function AddDocumentForm({
       />
       {file && (
         <div>
-          <button type="button" className="link-button" onClick={handleDetectExpiry} disabled={scanStatus === 'reading'}>
+          <button type="button" className="link-button" data-help-id="documentos.detectar" onClick={handleDetectExpiry} disabled={scanStatus === 'reading'}>
             {scanStatus === 'reading' ? 'Leyendo el documento…' : '🔍 Detectar caducidad'}
           </button>
           {scanStatus === 'done' && <p className="muted">✓ Fecha de caducidad detectada — revísala abajo antes de guardar.</p>}
@@ -549,11 +553,11 @@ function AddDocumentForm({
       )}
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required />
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="DNI" required data-help-id="documentos.titulo" />
       </label>
       <label>
         A qué carpeta (categoría)
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
+        <select value={category} onChange={(e) => setCategory(e.target.value)} data-help-id="documentos.categoria">
           <option value="">Sin categoría</option>
           {categories.map((c) => (
             <option key={c} value={c}>
@@ -564,7 +568,7 @@ function AddDocumentForm({
       </label>
       <label>
         A quién
-        <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
+        <select value={memberId} onChange={(e) => setMemberId(e.target.value)} data-help-id="documentos.persona">
           <option value="">Sin especificar</option>
           {members.map((m) => (
             <option key={m.id} value={m.id}>
@@ -573,17 +577,17 @@ function AddDocumentForm({
           ))}
         </select>
       </label>
-      <label>
+      <label data-help-id="documentos.vencimiento">
         Fecha de vencimiento (opcional)
         <DateField value={expiryDate} onChange={setExpiryDate} placeholder="Sin vencimiento" />
       </label>
       {expiryDate && (
-        <p className="muted">
+        <p className="muted" data-help-id="documentos.aviso-vencimiento">
           Se apuntará en el Calendario y avisará 30, 7 y 1 día antes de que venza.
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="documentos.guardar">
         {saving ? 'Subiendo…' : 'Guardar'}
       </button>
     </form>

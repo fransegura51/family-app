@@ -21,7 +21,7 @@ import {
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
-import { useHelpDestinations } from '@/help/destinations'
+import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
 import { CalendarCategoriesSection } from '@/ui/MenuSettingsScreen'
 import {
   completeEventOccurrence,
@@ -126,6 +126,18 @@ import { emitHelpEvent } from '@/help/tours/helpBus'
 // vistas solo ofrece el acceso secundario "⚙️ Gestionar calendarios".
 const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal'] as const
 type ViewMode = (typeof VIEWS)[number]
+
+// Marcas de la Ayuda: una por cada vista del menú ☰ (ids fijos; no cambian nada de lo que se ve).
+const VIEW_HELP_MARK: Record<ViewMode, Record<string, string>> = {
+  'Vista general': { 'data-help-id': 'calendar.view-inicio' },
+  Mes: { 'data-help-id': 'calendar.view-mes' },
+  Semana: { 'data-help-id': 'calendar.view-semana' },
+  '3 días': { 'data-help-id': 'calendar.view-3-dias' },
+  Día: { 'data-help-id': 'calendar.view-dia' },
+  Familiar: { 'data-help-id': 'calendar.view-familiar' },
+  Agenda: { 'data-help-id': 'calendar.view-agenda' },
+  Personal: { 'data-help-id': 'calendar.view-personal' },
+}
 
 function isCalendarioSubTab(key: CalendarioMenuItemKey): key is ViewMode {
   return (VIEWS as readonly string[]).includes(key)
@@ -282,6 +294,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // nombres de los miembros (filtro de abajo) se quedan siempre
   // visibles, fuera del desplegable — petición real explícita.
   const [calendarMenuOpen, setCalendarMenuOpen] = useState(false)
+  // Al empezar una visita o un tutorial de la Ayuda se cierran los menús desplegados (el ☰ de Calendario incluido): solo reacciona a la Ayuda.
+  useCloseMenusOnHelp(() => setCalendarMenuOpen(false))
   const [pinnedViews, setPinnedViews] = useState<CalendarioMenuItemKey[]>(() => loadCalendarioPinnedItems())
   const [calendarMenuLayout, setCalendarMenuLayout] = useState<CalendarioMenuGroup[]>(() => loadCalendarioMenuLayout())
   usePrefChange('familyapp:calendario-pinned-tabs', () => setPinnedViews(loadCalendarioPinnedItems()))
@@ -661,6 +675,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       const ev = events.find((e) => e.id === eventId)
       const soleMember = ev && ev.memberIds.length === 1 ? ev.memberIds[0] : null
       await completeEventOccurrence(eventId, dateStr, soleMember, ev?.points ?? 0)
+      emitHelpEvent('calendar.event-completed') // para los tutoriales «Enséñame»: el apunte YA está marcado como hecho
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo marcar como hecho'))
@@ -904,6 +919,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         alt="Calendario"
         open={calendarMenuOpen}
         ariaLabel={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
+        helpId="calendar.menu"
         onToggle={() => {
             if (!calendarMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setCalendarMenuOpen((v) => !v)
@@ -973,7 +989,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
 
       {view === 'Mes' ? (
         <>
-          <div className="month-nav">
+          <div className="month-nav" data-help-id="calendar.month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
               ‹
             </button>
@@ -1060,7 +1076,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         </>
       ) : view === 'Vista general' ? (
         <>
-          <div className="month-nav">
+          <div className="month-nav" data-help-id="calendar.month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
               ‹
             </button>
@@ -1210,6 +1226,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           swipeHandlers={daySwipe}
           onAdd={async (text) => {
             await addPersonalNote(selectedDate, text)
+            emitHelpEvent('calendar.note-added') // para los tutoriales «Enséñame»: la nota YA está guardada
             reload()
           }}
           onDelete={async (id) => {
@@ -1659,7 +1676,7 @@ function DayModal({
   onManageCategories: () => void
 }) {
   return (
-    <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+    <div className="day-panel" data-help-id="calendar.day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
       <div className="modal-header">
         {/* Arrastrar con el dedo cambia de día (petición real); estas
             flechas hacen lo mismo con un toque, para quien prefiera
@@ -2055,13 +2072,13 @@ function PersonalView({
         </p>
       )}
 
-      <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+      <p className="muted" data-help-id="calendar.note-privacy" style={{ fontSize: 12, marginTop: 12 }}>
         🔒 Notas privadas — solo tú puedes ver lo que apuntes aquí, ni el resto de la familia lo verá.
       </p>
 
       <form onSubmit={handleAdd} className="inline-fields">
-        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe algo para este día…" />
-        <button type="submit" disabled={!text.trim() || saving}>
+        <input type="text" data-help-id="calendar.note-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe algo para este día…" />
+        <button type="submit" data-help-id="calendar.note-add" disabled={!text.trim() || saving}>
           {saving ? 'Guardando…' : '+ Añadir'}
         </button>
       </form>
@@ -2698,17 +2715,21 @@ function CompletionCircle({
   color,
   onComplete,
   onUncomplete,
+  helpMark = true,
 }: {
   done: boolean
   color: string
   onComplete?: () => void
   onUncomplete?: () => void
+  /** Marca del tutorial «Enséñame»: solo en un círculo que aún se puede marcar (pendiente). Las citas de calendarios enlazados la desactivan: no son eventos propios. */
+  helpMark?: boolean
 }) {
   if (!onComplete && !onUncomplete) return null
   return (
     <button
       type="button"
       className={'completion-circle' + (done ? ' completion-circle-done' : '')}
+      {...(helpMark && !done && onComplete ? { 'data-help-id': 'calendar.entry-complete' } : {})}
       style={done ? { color } : undefined}
       onClick={(e) => {
         e.stopPropagation()
@@ -2834,11 +2855,12 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
       >
         <div className="agenda-stripe" style={entry.colors.length <= 1 ? { background: entry.color } : undefined}>
           <ColorSegments colors={entry.colors} direction="column" />
-          <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} />
+          <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} helpMark={!entry.isExternal} />
         </div>
         <button
           type="button"
           className="agenda-row-body"
+          {...(entry.onEdit ? { 'data-help-id': 'calendar.entry-edit' } : {})}
           onClick={() => {
             if (openX !== 0) {
               setOpenX(0)
@@ -3108,7 +3130,7 @@ function EventCard({
             Calendario: "mandos de edición, archivo y eliminación de forma ordenada y compacta") y su
             aria-label/title propios. El sub-flujo de confirmación de borrado (¿Seguro?/Solo un día/Toda
             la serie/Cancelar) no se toca, solo su disparador inicial. */}
-        <button type="button" className="icon-button-share icon-button-share-sm" onClick={onEdit} aria-label="Editar" title="Editar">
+        <button type="button" className="icon-button-share icon-button-share-sm" data-help-id="calendar.entry-edit" onClick={onEdit} aria-label="Editar" title="Editar">
           ✏️
         </button>
         {onShare && (
@@ -3185,7 +3207,7 @@ function MemberFilterDropdown({
   const summary = selected.length === 0 ? 'Todos' : members.filter((m) => selected.includes(m.id)).map((m) => m.name).join(', ')
 
   return (
-    <div>
+    <div data-help-id="calendar.filter">
       <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {selected.length > 0 && (
@@ -3225,8 +3247,8 @@ function MemberFilterDropdown({
                 ✕
               </button>
             </div>
-            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
-              <button type="button" className="category-picker-row" style={{ justifyContent: 'space-between' }} onClick={onClear}>
+            <div className="category-picker-panel" data-help-id="calendar.filter-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              <button type="button" className="category-picker-row" data-help-id="calendar.filter-all" style={{ justifyContent: 'space-between' }} onClick={onClear}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#9ca3af' }} />
                   Todos
@@ -3238,6 +3260,7 @@ function MemberFilterDropdown({
                   key={m.id}
                   type="button"
                   className="category-picker-row"
+                  data-help-id="calendar.filter-person"
                   style={{ justifyContent: 'space-between' }}
                   onClick={() => onToggle(m.id)}
                 >
@@ -3278,7 +3301,14 @@ function FieldDropdown({ label, summary, children, helpId }: { label: string; su
               <h2 className="section-title" style={{ margin: 0 }}>
                 {label}
               </h2>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+              {/* Marca de la Ayuda para la ✕ de «Repetición» y de «Recordatorio» (los tutoriales piden cerrar la ventana antes de seguir). */}
+              <button
+                type="button"
+                className="modal-close"
+                {...(label === 'Repetición' ? { 'data-help-id': 'calendar.repeat-close' } : label === 'Recordatorio' ? { 'data-help-id': 'calendar.reminder-close' } : {})}
+                onClick={() => setOpen(false)}
+                aria-label="Cerrar"
+              >
                 ✕
               </button>
             </div>
@@ -3344,11 +3374,11 @@ function WhoDropdown({
               <h2 className="section-title" style={{ margin: 0 }}>
                 ¿Para quién?
               </h2>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+              <button type="button" className="modal-close" data-help-id="calendar.who-close" onClick={() => setOpen(false)} aria-label="Cerrar">
                 ✕
               </button>
             </div>
-            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+            <div className="category-picker-panel" data-help-id="calendar.who-list" style={{ maxHeight: 'none', border: 'none' }}>
               {members.map((m) => (
                 <button
                   key={m.id}
@@ -3513,7 +3543,7 @@ function ReminderPicker({
   return (
     <div>
       {hasEnd && (
-        <div className="filter-row">
+        <div className="filter-row" data-help-id="calendar.reminder-anchor">
           <button
             type="button"
             className={'chip' + (anchor === 'start' ? ' chip-active' : '')}
@@ -3531,7 +3561,7 @@ function ReminderPicker({
         </div>
       )}
 
-      <div className="recurrence-preset-list">
+      <div className="recurrence-preset-list" data-help-id="calendar.reminder-presets">
         <button
           type="button"
           className={'chip recurrence-preset' + (reminders.length === 0 ? ' chip-active' : '')}
@@ -3636,7 +3666,7 @@ function RecurrenceControl({
   return (
     <div>
       <p className="muted">Repetir</p>
-      <div className="recurrence-preset-list">
+      <div className="recurrence-preset-list" data-help-id="calendar.repeat-presets">
         {RECURRENCE_PRESETS.map((p) => (
           <button
             key={p.key}
@@ -3682,11 +3712,11 @@ function RecurrenceControl({
 
       {value.freq && (
         <>
-          <label>
+          <label data-help-id="calendar.repeat-until">
             Repetir hasta (opcional)
             <DateField value={value.until} onChange={(until) => onChange({ ...value, until })} placeholder="Sin fecha de fin" />
           </label>
-          <label className="checkbox-label">
+          <label className="checkbox-label" data-help-id="calendar.repeat-holidays">
             <input
               type="checkbox"
               checked={value.skipHolidays}
@@ -4032,6 +4062,7 @@ function EditEventForm({
       } else {
         await updateEventFromOccurrenceForward(event.id, occurrenceDate, payload)
       }
+      emitHelpEvent('calendar.event-updated') // para los tutoriales «Enséñame»: los cambios YA están guardados
       onDone()
     } catch (err) {
       setError(errorMessage(err, isTask ? 'No se pudo guardar la tarea' : 'No se pudo guardar el evento'))
@@ -4044,9 +4075,9 @@ function EditEventForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input type="text" data-help-id="calendar.edit-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
       </label>
-      <label>
+      <label data-help-id="calendar.edit-date">
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
@@ -4058,7 +4089,7 @@ function EditEventForm({
           filtra quién puede llegar a leerlo (RLS, ver migración 0089).
           RETOQUE: antes vivía dentro de {!isTask && ...} (bug real: una Tarea no podía marcarse
           privada) — ahora se ofrece igual para Evento y para Tarea. */}
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="calendar.edit-private">
         <input
           type="checkbox"
           checked={visibility === 'private'}
@@ -4070,7 +4101,7 @@ function EditEventForm({
       {!isTask && (
         <>
           {!allDay && (
-            <div className="inline-fields">
+            <div className="inline-fields" data-help-id="calendar.edit-time">
               <label>
                 Empieza
                 <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
@@ -4094,6 +4125,7 @@ function EditEventForm({
           (un "Cada semana" sin día marcado sigue siendo válido: repite el mismo día que la fecha). */}
       <FieldDropdown
         label="Repetición"
+        helpId="calendar.edit-repeat"
         summary={
           recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
           'No se repite'
@@ -4104,12 +4136,13 @@ function EditEventForm({
       {!isTask && (
         <FieldDropdown
           label="Recordatorio"
+          helpId="calendar.edit-reminder"
           summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
         >
           <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
         </FieldDropdown>
       )}
-      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
+      <WhoDropdown helpId="calendar.edit-who" members={members} selected={selectedMembers} onToggle={toggleMember} />
       <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
@@ -4118,7 +4151,7 @@ function EditEventForm({
           los adultos también"). Al marcarlo "Hecho" esa persona se los
           lleva. */}
       {selectedMembers.length === 1 && (
-        <label>
+        <label data-help-id="calendar.edit-points">
           Puntos al marcarlo "Hecho" (opcional)
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
@@ -4142,7 +4175,7 @@ function EditEventForm({
       {/* Encargo "tareas recurrentes" (Parte 6) — solo aparece cuando el Evento/Tarea YA se repite;
           uno suelto nunca ve esto y guarda exactamente como antes. */}
       {event.recurrenceRule && (
-        <fieldset className="edit-scope-fieldset">
+        <fieldset className="edit-scope-fieldset" data-help-id="calendar.edit-scope">
           <legend>Guardar cambios en</legend>
           <label className="checkbox-label">
             <input type="radio" checked={editScope === 'series'} onChange={() => handleScopeChange('series')} />
@@ -4160,10 +4193,10 @@ function EditEventForm({
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving || !recurrenceValid}>
+        <button type="submit" data-help-id="calendar.edit-save" disabled={saving || !recurrenceValid}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
-        <button type="button" className="link-button" onClick={onCancel}>
+        <button type="button" className="link-button" data-help-id="calendar.edit-cancel" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -4747,7 +4780,7 @@ function CalendarioMenuDropdown({
   }
 
   return (
-    <div className="economia-menu-dropdown">
+    <div className="economia-menu-dropdown" data-help-id="calendar.menu-panel">
       <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
         {editMode ? '✓ Listo' : '✏️ Editar'}
       </button>
@@ -4829,7 +4862,7 @@ function CalendarioMenuDropdown({
                     {entry.key === openFirstKey && <OpensFirstBadge />}
                   </span>
                 ) : (
-                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
+                  <button type="button" className="economia-menu-item" {...(isTab ? VIEW_HELP_MARK[entry.key as ViewMode] : {})} onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                     {entry.key === openFirstKey && <OpensFirstBadge />}

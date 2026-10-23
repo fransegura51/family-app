@@ -34,6 +34,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import type { EventDayPlanItem } from '@/domain/types'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { useDragReorder } from '@/ui/useDragReorder'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 type EditTarget = { mode: 'new' } | { mode: 'edit'; item: EventDayPlanItem }
 type CoincidenceStep = 'ask' | 'order' | 'change'
@@ -98,6 +99,7 @@ export function DayPlanSection({ eventId }: { eventId: string }) {
     } else {
       itemId = await addEventDayPlanItem(eventId, draft.title, timeKey(draft.time), draft.note, null, draft.showOnShare)
       timeChanged = timeKey(draft.time) !== null
+      emitHelpEvent('eventos.moment-added') // para los tutoriales «Enséñame»: el momento YA está guardado
     }
     const fresh = await reload()
     setEditing(null)
@@ -232,7 +234,7 @@ export function DayPlanSection({ eventId }: { eventId: string }) {
         </>
       )}
 
-      <button type="button" className="link-button" style={{ marginTop: 8 }} onClick={() => setEditing({ mode: 'new' })}>
+      <button type="button" className="link-button" style={{ marginTop: 8 }} data-help-id="eventos.moment-add" onClick={() => setEditing({ mode: 'new' })}>
         + Añadir momento
       </button>
 
@@ -300,9 +302,9 @@ function DayPlanEditSheet({ target, onClose, onSave }: { target: EditTarget; onC
           )}
           <label>
             Nombre
-            <input type="text" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={saving} />
+            <input type="text" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} disabled={saving} data-help-id="eventos.moment-name" />
           </label>
-          <label>
+          <label data-help-id="eventos.moment-time">
             🕐 Hora (opcional)
             <input type="time" value={draft.time} onChange={(e) => setDraft({ ...draft, time: e.target.value })} disabled={saving} />
           </label>
@@ -315,14 +317,14 @@ function DayPlanEditSheet({ target, onClose, onSave }: { target: EditTarget; onC
             Nota (opcional)
             <textarea value={draft.note} rows={3} onChange={(e) => setDraft({ ...draft, note: e.target.value })} disabled={saving} />
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }} data-help-id="eventos.moment-share">
             <input type="checkbox" checked={draft.showOnShare} onChange={(e) => setDraft({ ...draft, showOnShare: e.target.checked })} disabled={saving} />
             <span>Mostrar al compartir</span>
           </label>
           <p className="muted" style={{ fontSize: 12, margin: 0 }}>
             Si lo desmarcas, este momento es solo para vosotros y no saldrá en el plan que compartáis.
           </p>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.moment-save">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </form>

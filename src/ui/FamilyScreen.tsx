@@ -228,9 +228,17 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
         <img src={familiaHeaderImg} alt="Familia" className="kitchen-header-img" />
       </div>
       <SectionBreadcrumb subsection={tab === 'Miembros' ? 'Inicio' : tab} />
-      <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }}>
+      <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }} data-help-id="family.tabs">
         {(['Miembros', 'Peso y medidas'] as const).map((t) => (
-          <button key={t} type="button" role="tab" aria-selected={tab === t} className={tab === t ? 'segmented-active' : ''} onClick={() => setTab(t)}>
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            aria-selected={tab === t}
+            className={tab === t ? 'segmented-active' : ''}
+            onClick={() => setTab(t)}
+            {...(t === 'Miembros' ? { 'data-help-id': 'family.tab-members' } : { 'data-help-id': 'family.tab-weight' })}
+          >
             {t === 'Miembros' ? '👨‍👩‍👧‍👦 Miembros' : '⚖️ Peso y medidas'}
           </button>
         ))}
@@ -247,7 +255,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
       {tab === 'Miembros' && (
         <>
       <div className="family-toolbar">
-        <Link to="/actividad" className="link-button">
+        <Link to="/actividad" className="link-button" data-help-id="family.activity-link">
           🕘 Actividad reciente
         </Link>
       </div>
@@ -256,7 +264,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
           familia: viven en Configuración (☰ Menú → Configuración), en los temas «Avisos», «Pepa» y «Mi cuenta». */}
       {/* Permisos de Comunidad de las personas de 15 a 17 años: solo para administradores de la familia; consulta solo al abrirla. */}
       {error && <p className="error">{error}</p>}
-      <div className="event-list">
+      <div className="event-list" data-help-id="family.member-list">
         {order.map((m) =>
           editingId === m.id ? (
             <EditMemberForm
@@ -283,6 +291,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                 onPointerUp={handleDragEnd}
                 onPointerCancel={handleDragEnd}
                 aria-label="Arrastrar para reordenar"
+                data-help-id="family.member-drag"
               >
                 ⠿
               </span>
@@ -352,6 +361,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                   aria-label={`Acciones de ${m.name}`}
                   aria-expanded={menuOpenId === m.id}
                   onClick={() => setMenuOpenId((cur) => (cur === m.id ? null : m.id))}
+                  {...(canRestrictSections(m.memberType) ? { 'data-help-id': 'family.member-actions-limited' } : { 'data-help-id': 'family.member-actions' })}
                 >
                   ⋯
                 </button>
@@ -359,7 +369,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
               {(isAdmin || canEditMemberCard(m, profile, me, links)) && menuOpenId === m.id && (
                 <div className="member-row-actions">
                   <PhotoUploadButton memberId={m.id} onUploaded={reload} />
-                  <button type="button" className="link-button" onClick={() => setEditingId(m.id)}>
+                  <button type="button" className="link-button" onClick={() => setEditingId(m.id)} data-help-id="family.member-edit">
                     ✏️ Editar
                   </button>
                   {/* Solo tiene sentido para quien todavía no tiene su
@@ -425,7 +435,7 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
   }
 
   return (
-    <label className="link-button" style={{ cursor: 'pointer' }}>
+    <label className="link-button" style={{ cursor: 'pointer' }} data-help-id="family.member-photo">
       {uploading ? 'Subiendo…' : '📷 Foto'}
       <input type="file" accept="image/*" onChange={handleChange} style={{ display: 'none' }} disabled={uploading} />
     </label>
@@ -521,6 +531,7 @@ function EditMemberForm({
           allowedSections: canRestrictSections(memberType) ? allowedSections : null,
         })
       }
+      emitHelpEvent('family.member-updated') // para los tutoriales «Enséñame»: la ficha YA está guardada en el servidor
       onDone()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -533,10 +544,10 @@ function EditMemberForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input type="text" data-help-id="family.edit-name" value={name} onChange={(e) => setName(e.target.value)} required />
       </label>
       {!limited && (
-        <label>
+        <label data-help-id="family.edit-type">
           Tipo
           <select value={memberType} onChange={(e) => setMemberType(e.target.value as MemberType)}>
             {MEMBER_TYPES.map((t) => (
@@ -547,15 +558,15 @@ function EditMemberForm({
           </select>
         </label>
       )}
-      <label>
+      <label data-help-id="family.edit-color">
         Color
         <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
       </label>
-      <label>
+      <label data-help-id="family.edit-birth">
         {isOwn && limited ? 'Fecha de nacimiento' : 'Fecha de nacimiento (opcional)'}
         <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin fecha de nacimiento" />
       </label>
-      <label>
+      <label data-help-id="family.edit-sex">
         Sexo (opcional, solo para las curvas de crecimiento)
         <select value={sex} onChange={(e) => setSex(e.target.value as MemberSex | '')}>
           <option value="">Sin indicar</option>
@@ -564,14 +575,14 @@ function EditMemberForm({
         </select>
       </label>
       {!limited && canRestrictSections(memberType) && (
-        <label>
+        <label data-help-id="family.edit-sections">
           Secciones a las que puede entrar
           <SectionsChecklist value={allowedSections} onChange={setAllowedSections} />
         </label>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} data-help-id="family.edit-save">
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
         <button type="button" className="link-button" onClick={onCancel}>

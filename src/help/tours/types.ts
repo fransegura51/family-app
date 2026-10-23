@@ -51,6 +51,16 @@ export interface TourStep {
 
 export interface TourDef {
   id: string
+  /** 'visit' = «Conoce esta sección» (visita introductoria de un módulo, solo informativa); 'tutorial' (por defecto) = «Enséñame» (una gestión concreta). */
+  kind?: 'tutorial' | 'visit'
+  /** Módulo de la Ayuda al que pertenece (para agrupar el catálogo y decidir los permisos). */
+  module?: import('@/help/types').HelpModuleId
+  /** Una línea para el catálogo «¿Qué quieres aprender a hacer?». */
+  summary?: string
+  /** Grupo dentro del módulo (p. ej. «Tareas»). */
+  group?: string
+  /** Quién puede hacerlo (además del acceso al módulo): un tutorial de administración no se ofrece a un niño. */
+  access?: import('@/help/types').HelpAccessRule
   /** Sube cuando cambia la interfaz que recorre: un tutorial completado con otra versión se puede ofrecer de nuevo. */
   version: number
   title: string

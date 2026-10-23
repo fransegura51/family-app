@@ -162,7 +162,7 @@ export function CommunityHome() {
       <h1 className="community-visually-hidden">Comunidad PEPA</h1>
       <Breadcrumbs crumbs={homeCrumbs} />
 
-      <nav className="community-home-sections" aria-label="Secciones de Comunidad">
+      <nav className="community-home-sections" aria-label="Secciones de Comunidad" data-help-id="comunidad.sections">
         {SECTIONS.map((s) => (
           <Link key={s.id} to={paths.section(s.id)} className="community-home-section">
             <span className="community-home-section-icon" aria-hidden="true">
@@ -176,7 +176,7 @@ export function CommunityHome() {
         ))}
       </nav>
 
-      <form className="community-home-search" role="search" onSubmit={onSearch}>
+      <form className="community-home-search" role="search" onSubmit={onSearch} data-help-id="comunidad.search">
         <label htmlFor="community-home-q" className="community-visually-hidden">
           Buscar en Comunidad
         </label>
@@ -195,11 +195,11 @@ export function CommunityHome() {
 
       <div className="community-home-actions">
         {canParticipate && (
-          <button type="button" className="primary community-home-create" onClick={() => void onCreate()}>
+          <button type="button" className="primary community-home-create" data-help-id="comunidad.create-post" onClick={() => void onCreate()}>
             ✍️ Crear publicación
           </button>
         )}
-        <Link to={paths.rules} className="link-button">
+        <Link to={paths.rules} className="link-button" data-help-id="comunidad.rules-link">
           Normas
         </Link>
       </div>
@@ -236,7 +236,7 @@ export function CommunityHome() {
       {visible.map((block) => {
         const def = HOME_BLOCKS.find((b) => b.id === block.id)
         return (
-          <section key={block.id} className="community-home-block" aria-labelledby={`community-block-${block.id}`}>
+          <section key={block.id} className="community-home-block" aria-labelledby={`community-block-${block.id}`} data-help-id="comunidad.home-block">
             <h2 id={`community-block-${block.id}`}>{def?.title}</h2>
             <div className="community-card-list">
               {block.items.map((item) => (

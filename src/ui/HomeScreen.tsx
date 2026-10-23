@@ -158,7 +158,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
           título y "¿Cómo te puedo ayudar?" debajo (petición real). */}
       {/* Campana de avisos: solo en Inicio, compacta, en la esquina superior derecha DE LA CABECERA (a la altura del saludo), sin fila propia: no empuja
           el saludo ni el carrusel hacia abajo. */}
-      <div className="home-header">
+      <div className="home-header" data-help-id="inicio.cabecera">
         <img src={pepaAvatar} alt="Pepa" className="home-pepa-avatar" />
         <div className="home-header-text">
           <h1 className="home-greeting">
@@ -184,11 +184,11 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       {/* Petición real: "quiero que se puedan organizar como yo quiera,
           que se puedan mover de sitio" — el orden es solo de este
           móvil (localStorage), cada uno puede querer el suyo. */}
-      <button type="button" className="link-button" onClick={() => setOrganizing(!organizing)}>
+      <button type="button" className="link-button" data-help-id="inicio.organizar" onClick={() => setOrganizing(!organizing)}>
         {organizing ? '✓ Listo' : '↕️ Organizar'}
       </button>
 
-      <div className="card-grid">
+      <div className="card-grid" data-help-id="inicio.tarjetas">
         {orderedCards.map((card, i) => (
           <HomeCard
             key={card.id}
@@ -386,7 +386,7 @@ function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   // Engranaje del carrusel: abre su configuración (qué diapositivas salen, fotos al azar o fijas). Pequeño, en la esquina de cada diapositiva.
   const gear = (
-    <button type="button" className="home-carousel-gear" onClick={onOpenSettings} aria-label="Configurar el carrusel de Inicio">
+    <button type="button" className="home-carousel-gear" data-help-id="inicio.carrusel-ajustes" onClick={onOpenSettings} aria-label="Configurar el carrusel de Inicio">
       <span aria-hidden="true">⚙️</span>
     </button>
   )
@@ -533,7 +533,7 @@ function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
   // novedades (respuestas sin ver), luego donde ha participado y, por último, lo reciente (ver communityCarouselLines). Cada línea abre su publicación; el título y el enlace de abajo abren Comunidad. Mismo marco (tamaño) que las demás diapositivas.
   if (current.kind === 'community') {
     return (
-      <div className="home-photo-banner home-community-banner" style={{ background: NAV_SECTION_COLORS.get('comunidad') }} aria-label="Comunidad PEPA" {...pointerProps}>
+      <div className="home-photo-banner home-community-banner" data-help-id="inicio.carrusel" style={{ background: NAV_SECTION_COLORS.get('comunidad') }} aria-label="Comunidad PEPA" {...pointerProps}>
         <Link to="/comunidad" className="home-community-title">
           🏡 Comunidad PEPA
         </Link>
@@ -566,7 +566,7 @@ function PhotoBanner({ onOpenSettings }: { onOpenSettings: () => void }) {
   // Familias que todavía no han subido fotos a su Galería PEPA: una tarjeta informativa sencilla (desaparece con la primera foto).
   if (current.kind === 'gallery-info') {
     return (
-      <div className="home-photo-banner home-gallery-info-banner" style={{ background: NAV_SECTION_COLORS.get('galeria') }} aria-label="Fotos de la familia" {...pointerProps}>
+      <div className="home-photo-banner home-gallery-info-banner" data-help-id="inicio.carrusel" style={{ background: NAV_SECTION_COLORS.get('galeria') }} aria-label="Fotos de la familia" {...pointerProps}>
         <p className="home-gallery-info-title">📷 Fotos de la familia</p>
         <p className="home-gallery-info-text">Cuando subáis imágenes a vuestra Galería PEPA, aquí podréis ver hasta cinco fotografías.</p>
         <Link to="/galeria" className="home-slide-link">
@@ -622,7 +622,7 @@ function HomeCard({
       </div>
       <span className="home-card-icon">{icon}</span>
       {organizing && (
-        <div className="home-card-move">
+        <div className="home-card-move" data-help-id="inicio.mover">
           <button
             type="button"
             className="link-button"

@@ -3,6 +3,9 @@ import type { TourDef } from '@/help/tours/types'
 // Compras → Añadir un producto a la lista. Controles reales: el botón «+ Añadir producto», el nombre, la tienda (opcional) y «Añadir».
 export const comAnadirProducto: TourDef = {
   id: 'com-anadir-producto',
+  module: 'compras',
+  summary: 'Apuntar un producto en la lista de la compra, con su tienda.',
+  group: 'Lista de la compra',
   version: 2,
   title: 'Añadir un producto a la lista de la compra',
   cardId: 'com-anadir-producto',

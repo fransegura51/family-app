@@ -56,6 +56,7 @@ import { RecipeFields } from '@/ui/community/recipes/RecipeFields'
 import { useCommunityPhotosAllowed } from '@/ui/community/useCommunityPhotosAllowed'
 import { useRecipeSeed } from '@/ui/community/useRecipeSeed'
 import { useUnsavedChangesGuard } from '@/ui/community/useUnsavedChangesGuard'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import '@/ui/community/communityEditor.css'
 
 // «Nueva publicación» y «Editar publicación» (rutas `nueva` y `editar/:id`). Especificación sección 4 y recorridos B y C.
@@ -327,6 +328,7 @@ export function PostEditorPage() {
       setPersisted(new Set(form.photos))
       const until = new Date(now.getTime() + DRAFT_DAYS * 24 * 60 * 60 * 1000)
       setMessage(`Borrador guardado. Se conserva ${DRAFT_DAYS} días (hasta el ${until.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}) desde este último guardado.`)
+      emitHelpEvent('comunidad.draft-saved') // para los tutoriales «Enséñame»: el borrador YA está guardado (nada se publica)
       return true
     } catch (e) {
       setSubmitError(failureText(e))
@@ -490,7 +492,7 @@ export function PostEditorPage() {
       )}
 
       {/* Tipo */}
-      <div id="ce-field-kind" className="ce-field">
+      <div id="ce-field-kind" className="ce-field" data-help-id="comunidad.editor-kind">
         <span className="ce-label" id="ce-kind-label">
           ¿Qué quieres publicar?
         </span>
@@ -631,7 +633,7 @@ export function PostEditorPage() {
       </div>
 
       {/* Título */}
-      <div id="ce-field-title" className="ce-field">
+      <div id="ce-field-title" className="ce-field" data-help-id="comunidad.editor-title">
         <span className="ce-label">Título</span>
         <AutoGrowTextarea
           value={form.title}
@@ -669,7 +671,7 @@ export function PostEditorPage() {
       </div>
 
       {/* Texto */}
-      <div id="ce-field-body">
+      <div id="ce-field-body" data-help-id="comunidad.editor-body">
         <RichTextEditor value={form.body} onChange={(v) => update({ body: v })} label={copy.label} help={copy.help} placeholder={copy.placeholder} disabled={busy !== null} error={errors.body} />
       </div>
 
@@ -688,7 +690,7 @@ export function PostEditorPage() {
       )}
 
       {/* Fotos */}
-      <div id="ce-field-photos">
+      <div id="ce-field-photos" data-help-id="comunidad.editor-photos">
         {photosAllowed === false ? (
           // Persona menor de edad: sin selector de fotos (el servidor también las rechaza).
           <p className="muted ce-help" id="ce-photos-note">

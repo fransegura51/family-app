@@ -48,7 +48,7 @@ export function NotificationsCard() {
   const active = permission === 'granted' && !disabled && subscribed === true
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="notifications.device-card">
       <h2>🔔 Avisos en este móvil</h2>
 
       {permission === 'unsupported' && (

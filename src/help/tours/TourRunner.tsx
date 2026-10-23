@@ -6,6 +6,7 @@ import { setTourProgress } from '@/help/prefs'
 import { fieldOf, findTarget, markedAncestor, ringElementOf } from '@/help/tours/domTargets'
 import { canGoNext, groupHasMore, previousIndex, reduceTour, startState, stepOf } from '@/help/tours/engine'
 import { onHelpEvent } from '@/help/tours/helpBus'
+import { pathAllowed } from '@/help/tours/paths'
 import { clearDestination, closeOpenMenus, requestDestination, waitForDestination } from '@/help/destinations'
 import type { ObservedSignal, TourDef } from '@/help/tours/types'
 import { choosePanelSide, freeZone, readVisibleArea, sameArea, scrollContentBy, scrollDeltaToReveal } from '@/help/tours/viewport'
@@ -121,7 +122,7 @@ export function TourRunner({
     setTourProgress(tour.id, { status: 'started', at: new Date().toISOString().slice(0, 10), version: tour.version })
     closeOpenMenus() // un menú abierto taparía la pantalla del tutorial
     stopPrepare.current = prepareRef.current()
-    if (!allowedRef.current.includes(location.pathname)) {
+    if (!pathAllowed(allowedRef.current, location.pathname)) {
       navigatingRef.current = true
       navigate(tour.startPath)
     }
@@ -134,7 +135,7 @@ export function TourRunner({
 
   // ---- Pantalla: si la persona se va a otra, el tutorial se pausa (sin bloquear nada) y se reanuda al volver.
   useEffect(() => {
-    const ok = allowedRef.current.includes(location.pathname)
+    const ok = pathAllowed(allowedRef.current, location.pathname)
     if (ok) navigatingRef.current = false
     if (!ok && !navigatingRef.current) dispatch({ type: 'off-route' })
     if (ok) dispatch({ type: 'on-route' })

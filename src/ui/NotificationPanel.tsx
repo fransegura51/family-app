@@ -335,6 +335,7 @@ export function NotificationPanel({
       <div
         ref={panelRef}
         className="notification-panel"
+        data-help-id="notificaciones.panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={detail ? `${titleId}-detail` : titleId}
@@ -346,7 +347,7 @@ export function NotificationPanel({
         <div hidden={detail !== null}>
           <header className="notification-panel-header">
             <h2 id={titleId}>Avisos</h2>
-            <button type="button" className="notification-close" onClick={onClose} aria-label="Cerrar avisos">
+            <button type="button" className="notification-close" data-help-id="notificaciones.cerrar" onClick={onClose} aria-label="Cerrar avisos">
               <span aria-hidden="true">✕</span>
             </button>
           </header>
@@ -367,16 +368,16 @@ export function NotificationPanel({
             </p>
           )}
 
-          {items !== null && total === 0 && <p className="muted notification-empty">No tienes avisos. Aquí aparecerán los de los últimos 30 días.</p>}
+          {items !== null && total === 0 && <p className="muted notification-empty" data-help-id="notificaciones.vacio">No tienes avisos. Aquí aparecerán los de los últimos 30 días.</p>}
 
           {items !== null && total > 0 && (
-            <p className="notification-counts" role="status">
+            <p className="notification-counts" data-help-id="notificaciones.contador" role="status">
               <strong>{countsLabel(unread, read)}</strong>
             </p>
           )}
 
           {items !== null && total > 0 && (
-            <div className="notification-actions">
+            <div className="notification-actions" data-help-id="notificaciones.acciones">
               {!selecting ? (
                 <>
                   <button type="button" className="link-button" onClick={() => setSelecting(true)}>
@@ -431,6 +432,7 @@ export function NotificationPanel({
                   <button
                     type="button"
                     className="notification-bucket-title"
+                    data-help-id="notificaciones.bloque"
                     aria-expanded={!isCollapsed}
                     aria-controls={bodyId}
                     onClick={() => setCollapsed((prev) => ({ ...prev, [view.bucket]: !isCollapsed }))}

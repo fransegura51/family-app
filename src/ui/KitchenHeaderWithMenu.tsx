@@ -43,8 +43,8 @@ export function useMenuFabTop(anchor: RefObject<HTMLElement | null>): { top: num
 }
 
 // El botón en sí, pintado en <body>.
-export const MenuFab = forwardRef<HTMLButtonElement, { top: number | null; open: boolean; ariaLabel: string; onClick: () => void; controls?: string; expanded?: boolean }>(function MenuFab(
-  { top, open, ariaLabel, onClick, controls, expanded },
+export const MenuFab = forwardRef<HTMLButtonElement, { top: number | null; open: boolean; ariaLabel: string; onClick: () => void; controls?: string; expanded?: boolean; helpId?: string }>(function MenuFab(
+  { top, open, ariaLabel, onClick, controls, expanded, helpId },
   ref,
 ) {
   if (typeof document === 'undefined') return null
@@ -58,6 +58,7 @@ export const MenuFab = forwardRef<HTMLButtonElement, { top: number | null; open:
       aria-label={ariaLabel}
       aria-controls={controls}
       aria-expanded={expanded}
+      data-help-id={helpId}
     >
       {open ? '✕' : '☰'} Menú
     </button>,
@@ -71,19 +72,22 @@ export function KitchenHeaderWithMenu({
   open,
   ariaLabel,
   onToggle,
+  helpId,
 }: {
   imgSrc: string
   alt: string
   open: boolean
   ariaLabel: string
   onToggle: () => void
+  /** Marca `data-help-id` para la Ayuda (visitas y tutoriales); no cambia nada visible. */
+  helpId?: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const { top, measure } = useMenuFabTop(ref)
   return (
     <div className="kitchen-header" ref={ref}>
       <img src={imgSrc} alt={alt} className="kitchen-header-img" onLoad={measure} />
-      <MenuFab top={top} open={open} ariaLabel={ariaLabel} onClick={onToggle} />
+      <MenuFab top={top} open={open} ariaLabel={ariaLabel} onClick={onToggle} helpId={helpId} />
     </div>
   )
 }

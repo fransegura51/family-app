@@ -257,6 +257,7 @@ export function ShoppingScreen() {
       <KitchenHeaderWithMenu
         imgSrc={comprasHeaderImg}
         alt="Compras"
+        helpId="shopping.menu"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
         onToggle={() => {
@@ -328,11 +329,11 @@ export function ShoppingScreen() {
 }
 
 function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void }) {
-  const shortcuts: { tab: SubTab; body: string }[] = [
-    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.' },
-    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.' },
-    { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
-    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.' },
+  const shortcuts: { tab: SubTab; body: string; 'data-help-id': string }[] = [
+    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.', 'data-help-id': 'shopping.card-lista' },
+    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.', 'data-help-id': 'shopping.card-historial' },
+    { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
+    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.', 'data-help-id': 'shopping.card-estadistica' },
   ]
   // Petición real: extender el pastel también a estas tarjetas de
   // acceso rápido, igual que Inicio/Eventos — un color por tarjeta.
@@ -397,6 +398,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
               key={s.tab}
               type="button"
               className="section-shortcut-card"
+              data-help-id={s['data-help-id']}
               style={{ background: cardColors[i] }}
               onClick={() => onNavigate(s.tab)}
             >
@@ -431,7 +433,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
               (Economía → Resumen, FinanceScreen.tsx): imagen + bocadillo + swipe + puntos, selección
               inicial aleatoria solo al montar. */}
           <PepaComprasWidget insights={insights} onNavigateToHistory={() => onNavigate('Historial')} />
-          <div className="card event-card">
+          <div className="card event-card" data-help-id="shopping.basket">
             <p style={{ margin: 0 }}>
               Este mes llevas {currentBasket.toFixed(2)} € registrados en la cesta de tickets de alimentación
               {receiptsThisMonth > 0 ? ` (${receiptsThisMonth} ticket${receiptsThisMonth === 1 ? '' : 's'})` : ''}.
@@ -493,7 +495,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
 
   if (insights.length === 0) {
     return (
-      <div className="pepa-compras-banner">
+      <div className="pepa-compras-banner" data-help-id="shopping.insights">
         <div className="pepa-compras-note">
           <img src={pepaComprasImg} alt="" className="pepa-compras-note-img" />
           <div className="pepa-compras-bubble-content">
@@ -525,7 +527,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
   }
 
   return (
-    <div className="pepa-compras-banner">
+    <div className="pepa-compras-banner" data-help-id="shopping.insights">
       <div
         className="pepa-compras-note"
         onTouchStart={handleTouchStart}
@@ -587,7 +589,7 @@ function PorQueHaCambiadoMiCompra({
   const hasPrevious = purchases.some((p) => p.recordedDate.startsWith(previousMonth))
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="shopping.why-changed">
       <strong>¿Por qué ha cambiado mi compra?</strong>
       {!hasCurrent || !hasPrevious ? (
         <p className="muted" style={{ marginTop: 6 }}>
@@ -1300,6 +1302,7 @@ function ShoppingListTab() {
   async function setStatus(id: string, status: ShoppingItemStatus) {
     try {
       await updateShoppingItemStatus(id, status)
+      emitHelpEvent('shopping.item-status-changed') // para los tutoriales «Enséñame»: el cambio YA está guardado
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo actualizar'))
@@ -1325,7 +1328,7 @@ function ShoppingListTab() {
     <div>
       {error && <p className="error">{error}</p>}
       <div className="shopping-toolbar">
-        <p className="points-badge">
+        <p className="points-badge" data-help-id="shopping.counter">
           {bought.length}/{total || 0} comprados
         </p>
         {shoppingMode && bought.length > 0 && (
@@ -1335,11 +1338,11 @@ function ShoppingListTab() {
               ` (${boughtWithoutPrice} sin precio conocido)`}
           </p>
         )}
-        <button type="button" className="link-button" onClick={() => setShoppingMode(!shoppingMode)}>
+        <button type="button" className="link-button" data-help-id="shopping.shopping-mode" onClick={() => setShoppingMode(!shoppingMode)}>
           {shoppingMode ? 'Salir de modo compra' : '🛒 Modo compra'}
         </button>
         {pending.length > 0 && (
-          <button type="button" className="link-button" onClick={handleShareAll}>
+          <button type="button" className="link-button" data-help-id="shopping.share-all" onClick={handleShareAll}>
             📤 Compartir todo
           </button>
         )}
@@ -1361,6 +1364,7 @@ function ShoppingListTab() {
         <div key={store} id={`shopping-store-${normalize(store)}`}>
           <h3
             className="shopping-store-heading shopping-store-heading-toggle"
+            data-help-id="shopping.store-heading"
             role="button"
             tabIndex={0}
             onClick={() => toggleStoreCollapsed(store)}
@@ -1438,7 +1442,7 @@ function ShoppingListTab() {
           tocar el nombre se ven como acciones a la primera, así que se
           explican aquí en vez de dejarlos por descubrir. */}
       {visible.length > 0 && (
-        <p className="muted" style={{ fontSize: 12 }}>
+        <p className="muted" style={{ fontSize: 12 }} data-help-id="shopping.list-hint">
           Toca un producto para editarlo, desliza hacia la izquierda para borrarlo.
         </p>
       )}
@@ -1447,7 +1451,7 @@ function ShoppingListTab() {
           debajo de la lista de pendientes" — antes iba justo encima,
           delante de lo que de verdad se mira primero al entrar. */}
       {!shoppingMode && (
-        <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => openManager('clases')}>
+        <button type="button" className="link-button" style={{ fontSize: 13 }} data-help-id="shopping.manage-classes" onClick={() => openManager('clases')}>
           ⚙️ Gestionar clases de productos
         </button>
       )}
@@ -2148,6 +2152,7 @@ function ShoppingItemRow({
         <button
           type="button"
           className="price-row-name price-row-name-button"
+          data-help-id="shopping.item-name"
           onClick={() => {
             if (openX !== 0) {
               setOpenX(0)
@@ -2169,6 +2174,7 @@ function ShoppingItemRow({
         <button
           type="button"
           className={'shopping-check' + (done ? ' shopping-check-checked' : '')}
+          data-help-id="shopping.item-check"
           onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
           aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
         >
@@ -2437,6 +2443,7 @@ function EditShoppingItemForm({
     setError(null)
     try {
       await updateShoppingItem(item.id, { name, quantity, unit, priority, store: store || null })
+      emitHelpEvent('shopping.product-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -2449,7 +2456,7 @@ function EditShoppingItemForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Nombre
-        <input type="text" list="product-suggestions-edit" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input type="text" list="product-suggestions-edit" data-help-id="shopping.edit-name" value={name} onChange={(e) => setName(e.target.value)} required />
         <datalist id="product-suggestions-edit">
           {suggestions.map((s) => (
             <option key={s.normalizedName} value={s.displayName} />
@@ -2466,7 +2473,7 @@ function EditShoppingItemForm({
           <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg" />
         </label>
       </div>
-      <label>
+      <label data-help-id="shopping.edit-store">
         Tienda
         <input type="text" list="known-stores-edit" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
         <datalist id="known-stores-edit">
@@ -2510,7 +2517,7 @@ function EditShoppingItemForm({
         <input type="file" accept="image/*" ref={photoInputRef} onChange={handlePhotoSelected} style={{ display: 'none' }} />
       </div>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="shopping.edit-save">
         {saving ? 'Guardando…' : 'Guardar'}
       </button>
     </form>
@@ -2906,6 +2913,7 @@ function HistoryTab() {
       // actualiza en la misma escritura (Fase 6C). Nunca depende de la tienda.
       const chosen = nextType ? foodTypes.find((t) => t.name === nextType) : undefined
       await setProductFoodType(detail.productId, nextType || null, chosen?.kind)
+      emitHelpEvent('shopping.product-class-changed') // para los tutoriales «Enséñame»: la clase YA está guardada
       setProducts((prev) =>
         prev.map((p) =>
           p.id === detail.productId
@@ -3002,7 +3010,7 @@ function HistoryTab() {
       {error && <p className="error">{error}</p>}
       <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
 
-      <div className="filter-row">
+      <div className="filter-row" data-help-id="shopping.history-mode">
         <button
           type="button"
           className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')}
@@ -3019,7 +3027,7 @@ function HistoryTab() {
         </button>
       </div>
 
-      <h2 className="section-title">Sugerencias para la próxima compra</h2>
+      <h2 className="section-title" data-help-id="shopping.history-suggestions">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
           <div
@@ -3057,6 +3065,7 @@ function HistoryTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar un producto para añadirlo a la lista…"
+          data-help-id="shopping.history-search"
           style={{ flex: 1 }}
         />
         <button
@@ -3065,12 +3074,13 @@ function HistoryTab() {
           onClick={() => setShowFoodTypesModal(true)}
           title="Clasificaciones de productos"
           aria-label="Clasificaciones de productos"
+          data-help-id="shopping.history-classes"
         >
           ⚙️
         </button>
       </div>
 
-      <div className="card event-card">
+      <div className="card event-card" data-help-id="shopping.history-total">
         <strong>Total de la compra</strong>
         <p>
           {currentBasket.toFixed(2)} €
@@ -3113,6 +3123,7 @@ function HistoryTab() {
                 <button
                   type="button"
                   className="price-row-name price-row-name-button"
+                  data-help-id="shopping.history-product"
                   onClick={() => openDetail(c.productId, c.name)}
                 >
                   {c.name}
@@ -3146,7 +3157,7 @@ function HistoryTab() {
 
       {detail && (
         <div className="modal-overlay" onClick={() => setDetail(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="shopping.product-detail" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {detail.name}
@@ -3179,7 +3190,7 @@ function HistoryTab() {
                   classifyFoodType habría elegido); en Otros no hay
                   adivinador, así que vacío es simplemente "sin
                   clasificar". */}
-              <select value={detail.foodType} onChange={(e) => handleChangeFoodType(e.target.value)}>
+              <select value={detail.foodType} data-help-id="shopping.product-class" onChange={(e) => handleChangeFoodType(e.target.value)}>
                 <option value="">
                   {autoLabelFor(detail.productId, detail.name)
                     ? `Automático (${autoLabelFor(detail.productId, detail.name)})`

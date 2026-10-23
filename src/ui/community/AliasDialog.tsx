@@ -4,6 +4,7 @@ import { communityErrorText, toCommunityError } from '@/domain/communityErrors'
 import { suggestAlias } from '@/domain/communityAlias'
 import { COMMUNITY_RULES, type MyCommunityProfile } from '@/domain/community'
 import { useDialogFocus } from '@/ui/community/useDialogFocus'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Se abre al PRIMER intento de publicar, comentar, valorar o seguir (leer no pide nada). El alias es público, distinto del nombre privado de la familia y se
 // puede cambiar después (la identidad interna no cambia). La primera vez se enseñan las normas y hay que aceptarlas.
@@ -48,6 +49,7 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
     setSaving(true)
     try {
       await setCommunityAlias(alias.trim(), emoji, accepted)
+      emitHelpEvent('comunidad.alias-saved') // para los tutoriales «Enséñame»: el alias YA está guardado
       await onDone()
     } catch (e) {
       if (toCommunityError(e).code === 'ALIAS_TAKEN' && generated !== null && alias.trim() === generated) {
@@ -80,6 +82,7 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
             value={alias}
             maxLength={24}
             autoFocus
+            data-help-id="comunidad.alias-input"
             onChange={(e) => {
               setAlias(e.target.value)
               if (generated !== null && e.target.value.trim() !== generated) setGenerated(null)
@@ -87,14 +90,14 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
             placeholder="Por ejemplo: CroquetaViajera"
             aria-describedby="alias-help"
           />
-          <button type="button" className="community-alias-suggest" onClick={suggestAnother}>
+          <button type="button" className="community-alias-suggest" data-help-id="comunidad.alias-suggest" onClick={suggestAnother}>
             🎲 Sugerir otro
           </button>
         </div>
         <p id="alias-help" className="muted">
           Entre 3 y 24 caracteres: letras, números, espacios, puntos, guiones o guiones bajos. Puedes quedarte con la propuesta, pedir otra las veces que quieras o escribir la tuya.
         </p>
-        <fieldset className="community-avatar-picker">
+        <fieldset className="community-avatar-picker" data-help-id="comunidad.alias-emoji">
           <legend>Tu icono (opcional)</legend>
           <div className="community-avatar-grid">
             {AVATARS.map((a) => (
@@ -114,12 +117,12 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
         {needsRules && (
           <>
             <h3>Normas de Comunidad</h3>
-            <ul className="community-rules">
+            <ul className="community-rules" data-help-id="comunidad.alias-rules">
               {COMMUNITY_RULES.map((r) => (
                 <li key={r}>{r}</li>
               ))}
             </ul>
-            <label className="checkbox-label community-touch-label">
+            <label className="checkbox-label community-touch-label" data-help-id="comunidad.alias-accept">
               <input type="checkbox" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
               He leído y acepto las normas
             </label>
@@ -131,7 +134,7 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
           </p>
         )}
         <div className="modal-actions">
-          <button type="button" className="primary" disabled={saving || alias.trim().length < 3 || (needsRules && !accepted)} onClick={() => void save()}>
+          <button type="button" className="primary" data-help-id="comunidad.alias-save" disabled={saving || alias.trim().length < 3 || (needsRules && !accepted)} onClick={() => void save()}>
             {saving ? 'Guardando…' : 'Guardar y continuar'}
           </button>
           <button type="button" className="link-button" onClick={onCancel}>

@@ -1,0 +1,64 @@
+/* Soporte tecnico de "Pepa te acompana": usuario y administracion. Usa los colores de la app (variables existentes) y respeta el modo oscuro. */
+.support-area { display: flex; flex-direction: column; gap: 10px; }
+.support-intro { margin: 0; }
+.support-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.support-item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border, #d9d9e3); background: var(--surface, #fff); color: inherit; cursor: pointer;
+}
+.support-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.support-item-main strong { overflow-wrap: anywhere; }
+.support-item-side { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.support-dot { width: 10px; height: 10px; border-radius: 50%; background: #e03131; display: inline-block; }
+.support-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: #e7f0ff; color: #1c4aa8; white-space: nowrap; }
+.support-badge-en_revision { background: #fff3d6; color: #8a5a00; }
+.support-badge-esperando_usuario { background: #ffe3e3; color: #a12525; }
+.support-badge-resuelta { background: #dff6e4; color: #1d6b32; }
+.support-badge-cerrada { background: #ececf1; color: #555; }
+.support-form { display: flex; flex-direction: column; gap: 6px; }
+.support-form label { font-weight: 600; margin-top: 4px; }
+.support-form input, .support-form select, .support-form textarea {
+  font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border, #c9c9d6); background: var(--surface, #fff); color: inherit; width: 100%; box-sizing: border-box;
+}
+.support-small { font-size: 13px; margin: 2px 0; }
+.support-error { color: #c92a2a; margin: 4px 0; }
+.support-files { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.support-file-list { list-style: none; margin: 0; padding: 0; width: 100%; }
+.support-file-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 2px 0; }
+.support-context summary { cursor: pointer; font-weight: 600; }
+.support-title { margin: 6px 0 2px; overflow-wrap: anywhere; }
+.support-meta { margin: 0; }
+.support-thread { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.support-msg { padding: 8px 10px; border-radius: 12px; background: var(--surface-2, #f1f1f6); max-width: 92%; }
+.support-msg-user { align-self: flex-end; background: #e7f0ff; color: #11224a; }
+.support-msg-admin { align-self: flex-start; }
+.support-msg-ai { align-self: flex-start; border: 1px dashed #7c5cff; }
+.support-msg-internal { align-self: stretch; max-width: 100%; background: #fff7d6; color: #4a3b00; border: 1px solid #e6c84a; }
+.support-msg-head { margin: 0; font-size: 12px; opacity: 0.8; }
+.support-msg-body { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-event { font-size: 12px; opacity: 0.7; text-align: center; }
+.support-confirm { padding: 8px 10px; border-radius: 12px; background: #dff6e4; color: #123d1d; }
+.support-attachments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.support-admin-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.support-admin-filters select { font: inherit; padding: 4px 8px; border-radius: 8px; }
+.support-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.support-stat { padding: 6px 10px; border-radius: 10px; background: var(--surface-2, #f1f1f6); font-size: 13px; }
+.support-admin-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .support-badge { background: #1d2f55; color: #bcd2ff; }
+  :root:not([data-theme="light"]) .support-badge-en_revision { background: #4a3a10; color: #ffe29a; }
+  :root:not([data-theme="light"]) .support-badge-esperando_usuario { background: #4d1f1f; color: #ffc9c9; }
+  :root:not([data-theme="light"]) .support-badge-resuelta { background: #1b3d27; color: #b8efc7; }
+  :root:not([data-theme="light"]) .support-badge-cerrada { background: #2b2b33; color: #c8c8d0; }
+  :root:not([data-theme="light"]) .support-msg-user { background: #1d2f55; color: #e3ecff; }
+  :root:not([data-theme="light"]) .support-msg-internal { background: #3d3410; color: #ffeaa0; border-color: #8a7421; }
+  :root:not([data-theme="light"]) .support-confirm { background: #1b3d27; color: #d5f5de; }
+}
+:root[data-theme="dark"] .support-badge { background: #1d2f55; color: #bcd2ff; }
+:root[data-theme="dark"] .support-badge-en_revision { background: #4a3a10; color: #ffe29a; }
+:root[data-theme="dark"] .support-badge-esperando_usuario { background: #4d1f1f; color: #ffc9c9; }
+:root[data-theme="dark"] .support-badge-resuelta { background: #1b3d27; color: #b8efc7; }
+:root[data-theme="dark"] .support-badge-cerrada { background: #2b2b33; color: #c8c8d0; }
+:root[data-theme="dark"] .support-msg-user { background: #1d2f55; color: #e3ecff; }
+:root[data-theme="dark"] .support-msg-internal { background: #3d3410; color: #ffeaa0; border-color: #8a7421; }
+:root[data-theme="dark"] .support-confirm { background: #1b3d27; color: #d5f5de; }

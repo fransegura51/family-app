@@ -37,6 +37,7 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
@@ -177,6 +178,7 @@ export function AlimentacionScreen() {
         alt="La cocina de Pepa"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
+        helpId="cocina.menu-vistas"
         onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
@@ -246,15 +248,16 @@ export function AlimentacionScreen() {
 }
 
 function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
-  const shortcuts: { tab: SubTab; body: string }[] = [
-    { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.' },
-    { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.' },
-    { tab: 'Cocinar', body: 'Dile a Pepa qué ingredientes tienes y te propone qué cocinar, con su receta.' },
+  // `helpMark`: marca para la Ayuda (visita guiada); no cambia nada visible.
+  const shortcuts: { tab: SubTab; body: string; helpMark: { 'data-help-id': string } }[] = [
+    { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.', helpMark: { 'data-help-id': 'cocina.inicio-menu' } },
+    { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.', helpMark: { 'data-help-id': 'cocina.inicio-recetas' } },
+    { tab: 'Cocinar', body: 'Dile a Pepa qué ingredientes tienes y te propone qué cocinar, con su receta.', helpMark: { 'data-help-id': 'cocina.inicio-cocinar' } },
   ]
   // Un color pastel por tarjeta, igual que Compras Inicio.
   const cardColors = pastelPalette(shortcuts.length)
   return (
-    <div className="event-list">
+    <div className="event-list" data-help-id="cocina.inicio-tarjetas">
       {shortcuts.map((s, i) => {
         const meta = ALIMENTACION_MENU_ITEM_META[s.tab]
         return (
@@ -264,6 +267,7 @@ function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => vo
             className="section-shortcut-card"
             style={{ background: cardColors[i] }}
             onClick={() => onNavigate(s.tab)}
+            {...s.helpMark}
           >
             <span className="section-shortcut-card-icon" aria-hidden="true">
               {meta.icon}
@@ -662,7 +666,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
     <div>
       {error && <p className="error">{error}</p>}
       {communityVisible === true && (
-        <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)}>
+        <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)} data-help-id="cocina.menu-importar">
           📥 Importar menú de Comunidad
         </button>
       )}
@@ -670,6 +674,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
         <button
           type="button"
           className="menu-week-shop-btn"
+          data-help-id="cocina.menu-semana-compras"
           onClick={() => setShopping({ scope: { scope: 'week' }, title: 'Todos los platos de toda la semana' })}
         >
           🛒 Añadir semana a Compras
@@ -678,7 +683,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
       {dates.map((date) => {
         const dayLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
         return (
-        <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
+        <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }} data-help-id="cocina.menu-dia">
           <div className="menu-day-head">
             <strong>{dayLabel}</strong>
             {hasShoppableEntry(entries, recipes, { scope: 'day', date }) && (
@@ -687,6 +692,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                 className="menu-icon-btn"
                 title="Añadir a Compras los platos de este día"
                 aria-label={`Añadir a Compras los platos de ${dayLabel}`}
+                data-help-id="cocina.menu-dia-compras"
                 onClick={() => setShopping({ scope: { scope: 'day', date }, title: `Los platos de ${dayLabel}` })}
               >
                 🛒
@@ -743,7 +749,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                       <span>{e.freeText}</span>
                     )}
                   </div>
-                  <div className="menu-slot-actions">
+                  <div className="menu-slot-actions" data-help-id="cocina.menu-acciones">
                     {cart(e, label)}
                     <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
                       <PencilIcon />
@@ -764,6 +770,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                       recipes={recipes}
                       onPick={async (pick) => {
                         await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
+                        emitHelpEvent('cocina.menu-entry-added')
                         setAddingFor(null)
                         reload()
                       }}
@@ -771,7 +778,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     />
                   ) : (
                     <div className="menu-slot-name">
-                      <button type="button" className="link-button" onClick={() => setAddingFor({ date, meal: meal.value })}>
+                      <button type="button" className="link-button" data-help-id="cocina.menu-anadir" onClick={() => setAddingFor({ date, meal: meal.value })}>
                         + Añadir
                       </button>
                     </div>
@@ -901,8 +908,8 @@ function MenuEntryPicker({
   const pickedRecipe = recipeId ? recipes.find((r) => r.id === recipeId) : null
 
   return (
-    <span className="menu-picker">
-      <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+    <span className="menu-picker" data-help-id="cocina.menu-selector">
+      <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)} data-help-id="cocina.menu-receta">
         <option value="">— receta —</option>
         {recipes.map((r) => (
           <option key={r.id} value={r.id}>
@@ -917,10 +924,12 @@ function MenuEntryPicker({
         placeholder="o texto libre"
         value={freeText}
         onChange={(e) => setFreeText(e.target.value)}
+        data-help-id="cocina.menu-texto"
       />
       <button
         type="button"
         className="link-button"
+        data-help-id="cocina.menu-ok"
         onClick={() => onPick({ recipeId: recipeId || null, freeText: recipeId ? null : freeText || null })}
       >
         OK
@@ -1119,6 +1128,7 @@ function RecipesTab() {
         <input
           type="search"
           value={recipeSearch}
+          data-help-id="cocina.recetas-buscar"
           onChange={(e) => setRecipeSearch(e.target.value)}
           placeholder="Escribe el nombre de la receta…"
         />
@@ -1145,7 +1155,7 @@ function RecipesTab() {
       )}
 
       <div className="filter-row recipe-quick-filters">
-        <button type="button" className={'chip' + (favoritesOnly ? ' chip-active' : '')} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly((v) => !v)}>
+        <button type="button" className={'chip' + (favoritesOnly ? ' chip-active' : '')} aria-pressed={favoritesOnly} data-help-id="cocina.recetas-favoritos" onClick={() => setFavoritesOnly((v) => !v)}>
           ⭐ Favoritos
         </button>
         <button
@@ -1153,6 +1163,7 @@ function RecipesTab() {
           className={'chip' + (filtersOpen || activeFilterCount > 0 ? ' chip-active' : '')}
           aria-expanded={filtersOpen}
           aria-controls="recipe-filters-panel"
+          data-help-id="cocina.recetas-filtros"
           onClick={() => setFiltersOpen((v) => !v)}
         >
           🎚️ Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
@@ -1193,7 +1204,7 @@ function RecipesTab() {
         </div>
       )}
 
-      <div className="event-list">
+      <div className="event-list" data-help-id="cocina.recetas-lista">
         {filteredRecipes.map((r) => (
           <button
             key={r.id}
@@ -1211,7 +1222,7 @@ function RecipesTab() {
         )}
       </div>
 
-      <button type="button" className="screen-fab" onClick={() => setAdding(true)}>
+      <button type="button" className="screen-fab" data-help-id="cocina.receta-nueva" onClick={() => setAdding(true)}>
         + Nueva receta
       </button>
 
@@ -1720,6 +1731,7 @@ function RecipeForm({
         await updateRecipe(recipe.id, input)
       } else {
         await createRecipe(input)
+        emitHelpEvent('cocina.recipe-created')
       }
       onDone()
     } catch (err) {
@@ -1731,12 +1743,12 @@ function RecipeForm({
 
   return (
     <form onSubmit={handleSubmit} className="recipe-form">
-      <RecipeTitleField value={title} onChange={setTitle} required placeholder="Nombre de la receta (p. ej. Tortilla de patatas)" suggestions={searchHistory} ariaLabel="Título" />
+      <RecipeTitleField value={title} onChange={setTitle} required placeholder="Nombre de la receta (p. ej. Tortilla de patatas)" suggestions={searchHistory} ariaLabel="Título" helpId="cocina.receta-titulo" />
 
       {mode === 'add' && (
         <div className="recipe-field">
           <span className="recipe-field-label">¿Cómo quieres empezar?</span>
-          <div className="segmented" role="tablist">
+          <div className="segmented" role="tablist" data-help-id="cocina.receta-modo">
             {(
               [
                 ['manual', '✍️ Escribirla'],
@@ -1862,11 +1874,17 @@ function RecipeForm({
         steps={steps}
         onStepsChange={setSteps}
         legacyNotes={legacyNotes ? { value: notes, onChange: setNotes } : undefined}
+        marks={{
+          servings: { 'data-help-id': 'cocina.receta-raciones' },
+          tags: { 'data-help-id': 'cocina.receta-etiquetas' },
+          ingredients: { 'data-help-id': 'cocina.receta-ingredientes' },
+          steps: { 'data-help-id': 'cocina.receta-pasos' },
+        }}
       />
 
       {error && <p className="error">{error}</p>}
       <div className="recipe-form-footer">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} {...(mode === 'add' ? { 'data-help-id': 'cocina.receta-guardar' } : {})}>
           {saving ? 'Guardando…' : mode === 'edit' ? 'Guardar cambios' : 'Crear receta'}
         </button>
         {onCancel && (

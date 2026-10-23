@@ -5,6 +5,7 @@ import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notification
 import { DEFAULT_NOTIFICATION_PREFS, detectDeviceTimezone, listTimezones, timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
 import { TaskSummaryPrefs } from '@/ui/TaskSummaryPrefs'
 import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Ajustes de avisos de CADA persona (se guardan en el servidor, así que valen en todos sus dispositivos):
 //  · Zona horaria propia (quien ya existía empieza en Europe/Madrid; si el móvil está en otra, se ofrece cambiarla, nunca se cambia sola).
@@ -61,6 +62,7 @@ export function NotificationPrefsCard() {
     try {
       await saveNotificationPrefs(patch)
       setMessage('Guardado')
+      if (patch.taskOverdueEnabled === true) emitHelpEvent('notifications.task-overdue-enabled') // para los tutoriales «Enséñame»: el aviso YA está guardado
     } catch {
       setPrefs(previous)
       setError('No se ha podido guardar. Inténtalo de nuevo.')
@@ -71,12 +73,12 @@ export function NotificationPrefsCard() {
   const options = zones.includes(prefs.timezone) ? zones : [prefs.timezone, ...zones]
 
   return (
-    <div className="card">
+    <div className="card" data-help-id="notifications.prefs-card">
       <h3>🕗 Horarios de tus avisos</h3>
       {!loaded && <p className="muted">Cargando…</p>}
       {loaded && (
         <>
-          <label>
+          <label data-help-id="notifications.timezone">
             Tu zona horaria
             <select value={prefs.timezone} onChange={(e) => save({ timezone: e.target.value })}>
               {options.map((z) => (

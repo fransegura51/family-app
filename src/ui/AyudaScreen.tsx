@@ -5,7 +5,7 @@
 // (src/help/catalog), el destino de «Llévame», los pasos de «Enséñame» y la cobertura que se ve en el Centro de Administración. Las pruebas de src/help comprueban que los
 // botones citados existen en el código y que las rutas son reales.
 import { useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import ayudaHeaderImg from '@/assets/ayuda/ayuda-header.jpg'
 import { HELP_MODULES, HELP_VIDEOS, cardsOfModule, legacyEntriesOfModule, summaryOfModule } from '@/help/catalog'
 import { moduleAccess } from '@/help/access'
@@ -15,6 +15,7 @@ import { HelpVideo } from '@/help/ui/HelpVideo'
 import { useOptionalHelp } from '@/help/ui/helpContext'
 import { HelpVoiceSetting } from '@/help/ui/HelpVoiceSetting'
 import { PepaFace } from '@/help/ui/PepaFace'
+import { SUPPORT_ENABLED } from '@/support/flags'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import '@/help/ui/help.css'
 
@@ -24,6 +25,9 @@ export function AyudaScreen() {
   const wanted = (location.state as { module?: string } | null)?.module
   const [expanded, setExpanded] = useState<string | null>(wanted ?? null)
   const topRef = useRef<HTMLDivElement | null>(null)
+  // Un aviso de Soporte llega aquí con ?soporte=<incidencia>: se abre el área de Soporte técnico (solo si está activado; si no, esa pestaña ni existe).
+  const [params] = useSearchParams()
+  const wantsSupport = params.get('soporte') !== null
 
   // Al entrar en Ayuda se comprueba (una sola vez, con la memoria compartida) si Comunidad está abierta para esta cuenta, para decidir qué fichas se enseñan.
   const ensured = useRef(false)
@@ -32,6 +36,10 @@ export function AyudaScreen() {
     ensured.current = true
     help.ensureCommunity()
   }, [help])
+  const setAreaRef = help?.setArea
+  useEffect(() => {
+    if (wantsSupport && SUPPORT_ENABLED) setAreaRef?.('support')
+  }, [wantsSupport, setAreaRef])
 
   // La conversación coloca por sí misma la respuesta nueva a la vista (ver HelpConversation): aquí no hace falta desplazar nada más.
   const showCard = (id: string) => {
@@ -56,7 +64,7 @@ export function AyudaScreen() {
         <>
           <HelpVoiceSetting />
           <div className="help-actions" style={{ margin: '8px 0' }}>
-            <button type="button" className="help-btn" onClick={() => help.startTourById('bienvenida')}>
+            <button type="button" className="help-btn" data-help-id="ayuda.bienvenida" onClick={() => help.startTourById('bienvenida')}>
               🎓 Recorrido de bienvenida (1-2 minutos)
             </button>
           </div>
@@ -68,14 +76,14 @@ export function AyudaScreen() {
 
       <h2 className="help-section-title">Todos los temas de PEPA</h2>
       <p className="muted">Toca un tema para ver sus preguntas más habituales y toda su explicación.</p>
-      <div className="help-modules">
+      <div className="help-modules" data-help-id="ayuda.temas">
         {HELP_MODULES.map((m) => (
           <ModuleCard key={m.id} mod={m} open={expanded === m.id} onToggle={() => setExpanded((cur) => (cur === m.id ? null : m.id))} onShowCard={showCard} />
         ))}
       </div>
 
       <h2 className="help-section-title">Vídeos explicativos</h2>
-      <ul className="help-video-list">
+      <ul className="help-video-list" data-help-id="ayuda.videos">
         {Object.entries(HELP_VIDEOS).map(([route, v]) => {
           const mod = HELP_MODULES.find((m) => m.legacyRoute === route)
           return (

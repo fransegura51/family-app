@@ -17,18 +17,18 @@ export function TaskSummaryPrefs({ prefs, onSave }: { prefs: NotificationPrefs; 
         zona horaria ({timezoneLabel(prefs.timezone)}) y se ajusta sola con los cambios de hora.
       </p>
 
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="notifications.task-overdue">
         <input type="checkbox" checked={prefs.taskOverdueEnabled} onChange={(e) => void onSave({ taskOverdueEnabled: e.target.checked })} />
         Avisarme de las tareas atrasadas
       </label>
       {prefs.taskOverdueEnabled && (
         <>
-          <TimeSelect24 label="Hora del aviso de tareas atrasadas" value={prefs.taskOverdueTime} onChange={(v) => void onSave({ taskOverdueTime: v })} />
+          <TimeSelect24 label="Hora del aviso de tareas atrasadas" value={prefs.taskOverdueTime} onChange={(v) => void onSave({ taskOverdueTime: v })} helpId="notifications.task-overdue-time" />
           <p className="muted task-summary-help">Un resumen de las tareas vencidas que siguen pendientes.</p>
         </>
       )}
 
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="notifications.task-today">
         <input type="checkbox" checked={prefs.taskTodayEnabled} onChange={(e) => void onSave({ taskTodayEnabled: e.target.checked })} />
         Avisarme de las tareas de hoy
       </label>

@@ -68,6 +68,9 @@ import { consumeMemberFocus, onMemberFocus } from '@/services/mapFocus'
 import { pastelPalette } from '@/domain/colors'
 import { formatTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -80,6 +83,12 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
   const [tab, setTab] = useState<SubTab>('Inicio')
   // "Ubicación" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /ubicacion.
   useSectionHome(() => setTab('Inicio'))
+  // «Llévame» y tutoriales de la Ayuda: las pestañas de Ubicación (no son rutas) se abren por su nombre.
+  useHelpDestinations({
+    'ubicacion.inicio': () => setTab('Inicio'),
+    'ubicacion.mapa': () => setTab('Ubicación'),
+    'ubicacion.reglas': () => setTab('Reglas'),
+  })
   // Petición real: "el formato que has hecho ahora para meter todas
   // las pestañas me gusta mucho, aplícalo a toda la aplicación" —
   // mismo desplegable ☰ con sacar/meter/editar que Economía.
@@ -119,13 +128,14 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         alt="Ubicación"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
+        helpId="ubicacion.menu"
         onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
           }}
       />
       <SectionBreadcrumb subsection={UBICACION_MENU_ITEM_META[tab].label} />
-      <p className="muted">
+      <p className="muted" data-help-id="ubicacion.intro">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
         mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola. Línea continua: recorrido
         registrado. Línea de rayas: tramo sin datos (el móvil solo manda su posición con la app abierta).
@@ -174,6 +184,9 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         </p>
       )}
 
+      {tab === 'Inicio' && <HelpDestMark id="ubicacion.inicio" />}
+      {tab === 'Ubicación' && <HelpDestMark id="ubicacion.mapa" />}
+      {tab === 'Reglas' && <HelpDestMark id="ubicacion.reglas" />}
       {tab === 'Inicio' && <UbicacionInicioTab onNavigate={setTab} />}
       {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
       {tab === 'Reglas' && <RulesTab />}
@@ -776,7 +789,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           routePolyline={routePolyline}
           focusMemberId={memberFocus}
         />
-        <div className="location-map-chips">
+        <div className="location-map-chips" data-help-id="ubicacion.member-chips">
           {members.map((m) => {
             const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
             return (
@@ -851,14 +864,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         )
       )}
 
-      <div className="segmented" style={{ marginTop: 16 }} role="tablist">
-        <button type="button" role="tab" aria-selected={panelTab === 'lugares'} className={panelTab === 'lugares' ? 'segmented-active' : ''} onClick={() => setPanelTab('lugares')}>
+      <div className="segmented" style={{ marginTop: 16 }} role="tablist" data-help-id="ubicacion.panel-tabs">
+        <button type="button" role="tab" aria-selected={panelTab === 'lugares'} className={panelTab === 'lugares' ? 'segmented-active' : ''} onClick={() => setPanelTab('lugares')} data-help-id="ubicacion.tab-places">
           🏠 Lugares
         </button>
-        <button type="button" role="tab" aria-selected={panelTab === 'estoy-aqui'} className={panelTab === 'estoy-aqui' ? 'segmented-active' : ''} onClick={() => setPanelTab('estoy-aqui')}>
+        <button type="button" role="tab" aria-selected={panelTab === 'estoy-aqui'} className={panelTab === 'estoy-aqui' ? 'segmented-active' : ''} onClick={() => setPanelTab('estoy-aqui')} data-help-id="ubicacion.tab-here">
           📍 ¡Estoy aquí!
         </button>
-        <button type="button" role="tab" aria-selected={panelTab === 'compartir'} className={panelTab === 'compartir' ? 'segmented-active' : ''} onClick={() => setPanelTab('compartir')}>
+        <button type="button" role="tab" aria-selected={panelTab === 'compartir'} className={panelTab === 'compartir' ? 'segmented-active' : ''} onClick={() => setPanelTab('compartir')} data-help-id="ubicacion.tab-share">
           👥 Compartir ubicación
         </button>
       </div>
@@ -872,7 +885,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
 
           {/* Petición real (17/10/2026): «Lugares frecuentes» pasaba muy desapercibido y costaba encontrarlo: tarjeta grande, con el título grande y
               cuántos lugares hay guardados. Sigue siendo plegable. */}
-          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen}>
+          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} data-help-id="ubicacion.places-toggle">
             <span className="places-toggle-icon" aria-hidden="true">
               🏠
             </span>
@@ -1481,6 +1494,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     setError(null)
     try {
       await addPlace({ name, category: category.trim() || null, latitude: coords.latitude, longitude: coords.longitude, radiusM, notifyArrivals })
+      emitHelpEvent('location.place-added') // para los tutoriales «Enséñame»: el lugar YA está guardado
       setName('')
       setCategory('')
       setNotifyArrivals(false)
@@ -1494,13 +1508,13 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="ubicacion.place-form">
       <h2>Nuevo lugar</h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Supermercado" required />
+        <input type="text" data-help-id="ubicacion.place-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Supermercado" required />
       </label>
-      <label>
+      <label data-help-id="ubicacion.place-category">
         Categoría (opcional)
         <input
           type="text"
@@ -1509,15 +1523,15 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
           placeholder="Trabajo, casa de mamá, campo de papá…"
         />
       </label>
-      <label>
+      <label data-help-id="ubicacion.place-radius">
         Radio (m)
         <input type="number" value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} />
       </label>
-      <label className="inline-fields" style={{ alignItems: 'center' }}>
+      <label className="inline-fields" style={{ alignItems: 'center' }} data-help-id="ubicacion.place-notify">
         <input type="checkbox" checked={notifyArrivals} onChange={(e) => setNotifyArrivals(e.target.checked)} />
         🔔 Avisarme cuando alguien llegue o se vaya de aquí
       </label>
-      <div className="inline-fields">
+      <div className="inline-fields" data-help-id="ubicacion.place-position">
         <button type="button" className="link-button" onClick={() => setPickerOpen(true)}>
           🔍 Buscar por nombre
         </button>
@@ -1526,7 +1540,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="ubicacion.place-save">
         {saving ? 'Guardando…' : 'Guardar lugar'}
       </button>
       {pickerOpen && (
@@ -1651,6 +1665,7 @@ function AddRuleForm({
         timeOfDay: triggerType === 'hora_diaria' ? timeOfDay || null : null,
         message,
       })
+      emitHelpEvent('location.rule-created') // para los tutoriales «Enséñame»: la regla YA está guardada
       setName('')
       setMessage('')
       onAdded()
@@ -1662,13 +1677,13 @@ function AddRuleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="ubicacion.rule-form">
       <h2>Nueva regla</h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mochila escolar" required />
+        <input type="text" data-help-id="ubicacion.rule-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mochila escolar" required />
       </label>
-      <label>
+      <label data-help-id="ubicacion.rule-when">
         Cuándo
         <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as AutomationTriggerType)}>
           {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
@@ -1679,7 +1694,7 @@ function AddRuleForm({
         </select>
       </label>
       {isLocationTrigger && (
-        <label>
+        <label data-help-id="ubicacion.rule-place">
           Lugar
           <select value={placeId} onChange={(e) => setPlaceId(e.target.value)} required>
             <option value="">— elige un lugar —</option>
@@ -1692,12 +1707,12 @@ function AddRuleForm({
         </label>
       )}
       {triggerType === 'hora_diaria' && (
-        <label>
+        <label data-help-id="ubicacion.rule-time">
           Hora
           <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} required />
         </label>
       )}
-      <label>
+      <label data-help-id="ubicacion.rule-who">
         Para quién (opcional)
         <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
           <option value="">Cualquiera</option>
@@ -1710,10 +1725,10 @@ function AddRuleForm({
       </label>
       <label>
         Mensaje del aviso
-        <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="¡No olvides la mochila!" required />
+        <input type="text" data-help-id="ubicacion.rule-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="¡No olvides la mochila!" required />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="ubicacion.rule-save">
         {saving ? 'Guardando…' : 'Crear regla'}
       </button>
     </form>

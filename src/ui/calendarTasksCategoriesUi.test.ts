@@ -151,7 +151,7 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
   })
 
   it('EditEventForm nunca cambia `kind` al guardar (sin conversión Evento↔Tarea esta fase)', () => {
-    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    if (!recurrenceValid) return\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label>\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>')
+    const submit = slice(CALENDAR_SRC, 'async function handleSubmit(e: FormEvent) {\n    e.preventDefault()\n    if (!recurrenceValid) return\n    setSaving(true)\n    setError(null)\n    try {\n      const effectiveAllDay', 'return (\n    <form onSubmit={handleSubmit} className="card member-form">\n      <label>\n        Título\n        <input type="text" data-help-id="calendar.edit-title" value={title} onChange={(e) => setTitle(e.target.value)} required />\n      </label>\n      <label data-help-id="calendar.edit-date">\n        Fecha\n        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />\n      </label>')
     // Encargo "tareas recurrentes" (Parte 6) — el guardado "toda la serie" sigue llamando a
     // updateEvent(event.id, ...) igual que siempre; `kind` solo se LEE de event.kind (nunca hay
     // ningún control en el formulario que lo cambie), y ahora viaja también dentro de `payload`
@@ -167,7 +167,7 @@ describe('Encargo "tareas recurrentes" (Parte 6) — EditEventForm ofrece "solo 
 
   it('el selector de alcance vive detrás de `event.recurrenceRule &&` — un Evento/Tarea suelto nunca lo ve', () => {
     const guardIdx = FORM.indexOf('{event.recurrenceRule && (')
-    const fieldsetIdx = FORM.indexOf('<fieldset className="edit-scope-fieldset">')
+    const fieldsetIdx = FORM.indexOf('<fieldset className="edit-scope-fieldset" data-help-id="calendar.edit-scope">')
     expect(guardIdx).toBeGreaterThan(-1)
     expect(fieldsetIdx).toBeGreaterThan(guardIdx)
     expect(FORM).toContain('Solo esta repetición')

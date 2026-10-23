@@ -51,6 +51,8 @@ export interface RecipeEditorFieldsProps {
 
   limits?: RecipeEditorLimits
   disabled?: boolean
+  // Marcas `data-help-id` para la Ayuda (tutoriales «Enséñame»), una por bloque. No cambian nada visible; sin ellas, el componente se pinta igual que siempre.
+  marks?: Partial<Record<'servings' | 'tags' | 'ingredients' | 'steps', { 'data-help-id': string }>>
 }
 
 export function RecipeEditorFields({
@@ -67,6 +69,7 @@ export function RecipeEditorFields({
   legacyNotes,
   limits = {},
   disabled,
+  marks,
 }: RecipeEditorFieldsProps) {
   const uid = useId()
   const [newTag, setNewTag] = useState('')
@@ -82,7 +85,7 @@ export function RecipeEditorFields({
 
   return (
     <>
-      <div className="recipe-field">
+      <div className="recipe-field" {...marks?.servings}>
         <label className="recipe-field-label" htmlFor={`${uid}-servings`}>
           Raciones (opcional)
         </label>
@@ -103,7 +106,7 @@ export function RecipeEditorFields({
         {servingsNote}
       </div>
 
-      <div className="recipe-field">
+      <div className="recipe-field" {...marks?.tags}>
         <span className="recipe-field-label">Etiquetas</span>
         <div className="filter-row">
           {tagOptions.map((tag) => {
@@ -143,7 +146,7 @@ export function RecipeEditorFields({
         {atTagLimit && <p className="muted">Máximo {limits.maxTags} etiquetas.</p>}
       </div>
 
-      <div className="recipe-field">
+      <div className="recipe-field" {...marks?.ingredients}>
         <span className="recipe-field-label">Ingredientes</span>
         {ingredients.map((r, i) => (
           <div key={r.id} className="recipe-ing-row">
@@ -214,7 +217,7 @@ export function RecipeEditorFields({
           <textarea id={`${uid}-notes`} rows={6} value={legacyNotes.value} onChange={(e) => legacyNotes.onChange(e.target.value)} disabled={disabled} />
         </div>
       ) : (
-        <div className="recipe-field">
+        <div className="recipe-field" {...marks?.steps}>
           <span className="recipe-field-label">Preparación</span>
           {steps.map((st, i) => (
             <div key={st.id} className="recipe-step-row">
@@ -264,6 +267,7 @@ export function RecipeTitleField({
   required,
   large = true,
   disabled,
+  helpId,
 }: {
   value: string
   onChange: (text: string) => void
@@ -276,10 +280,12 @@ export function RecipeTitleField({
   // Letra grande (la Cocina); la hoja de publicar de Comunidad usa la normal.
   large?: boolean
   disabled?: boolean
+  /** Marca `data-help-id` para la Ayuda; no cambia nada visible. */
+  helpId?: string
 }) {
   const uid = useId()
   return (
-    <div className="recipe-field">
+    <div className="recipe-field" data-help-id={helpId}>
       {label && (
         <label className="recipe-field-label" htmlFor={`${uid}-title`}>
           {label}

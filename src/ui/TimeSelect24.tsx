@@ -10,11 +10,11 @@ export function splitTime(value: string): { h: string; m: string } {
   return m ? { h: m[1], m: m[2] } : { h: '08', m: '00' }
 }
 
-export function TimeSelect24({ label, value, onChange, disabled }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean }) {
+export function TimeSelect24({ label, value, onChange, disabled, helpId }: { label: string; value: string; onChange: (value: string) => void; disabled?: boolean; helpId?: string }) {
   const id = useId()
   const { h, m } = splitTime(value)
   return (
-    <fieldset className="time-select-24" disabled={disabled}>
+    <fieldset className="time-select-24" disabled={disabled} data-help-id={helpId}>
       <legend>{label}</legend>
       <div className="time-select-24-row">
         <select aria-label={`${label}: hora`} id={`${id}-h`} value={h} onChange={(e) => onChange(`${e.target.value}:${m}`)}>

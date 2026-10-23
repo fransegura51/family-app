@@ -46,6 +46,8 @@ import type { EventCompletion } from '@/data/calendar'
 import puntosHeaderImg from '@/assets/puntos/puntos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // PG-PUNTOS-FINANZAS (Parte A3) — "YYYY-MM" del mes de hoy, para filtrar la Carrera mensual. Función
 // aparte (no inline) para que ambos sitios que la necesitan (reload y el render) usen siempre el mismo
@@ -189,6 +191,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
 
   return (
     <div className="screen">
+      <HelpDestMark id="pequenos.recompensas" />
       <div className="kitchen-header kitchen-header-wide">
         <img src={puntosHeaderImg} alt="Puntos y recompensas" className="kitchen-header-img" />
       </div>
@@ -241,7 +244,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           montados unos encima de otros — el título ahora ocupa SIEMPRE su propia fila entera
           (flex-basis:100%) y los dos botones van juntos debajo, nunca pegados al texto. */}
       <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
-        <h2 className="section-title" style={{ flex: '1 0 100%', margin: 0 }}>Puntos por persona</h2>
+        <h2 className="section-title" style={{ flex: '1 0 100%', margin: 0 }} data-help-id="pequenos.puntos-por-persona">Puntos por persona</h2>
         {isAdult && (
           <button type="button" className="link-button" onClick={() => setShowModeSettings((v) => !v)}>
             ⚙️ {mode === 'camino' ? '🛤️ Camino' : '🏁 Carrera'}
@@ -316,7 +319,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
                       <MemberAvatar member={m} size={32} />
                       <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
                     </div>
-                    <div className="inline-fields" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                    <div className="inline-fields" style={{ flexWrap: 'wrap', gap: 6, marginTop: 6 }} data-help-id="pequenos.puntos-disponibles">
                       <span className="points-badge">{progressChipLabel}: {progressPoints}</span>
                       <span className="points-badge">⭐ Puntos disponibles: {balance}</span>
                     </div>
@@ -361,7 +364,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           {showAddReward ? (
             <AddRewardForm onClose={() => setShowAddReward(false)} onAdded={() => { setShowAddReward(false); reload() }} />
           ) : (
-            <button type="button" className="link-button" onClick={() => setShowAddReward(true)} style={{ marginBottom: 6 }}>
+            <button type="button" className="link-button" data-help-id="pequenos.recompensa-nueva" onClick={() => setShowAddReward(true)} style={{ marginBottom: 6 }}>
               + Nueva recompensa
             </button>
           )}
@@ -614,6 +617,7 @@ function MemberRewardsPanel({
     setError(null)
     try {
       await requestRewardRedemption(reward.id, member.id)
+      emitHelpEvent('pequenos.reward-requested')
       onChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo solicitar la recompensa'))
@@ -628,7 +632,7 @@ function MemberRewardsPanel({
     <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid #eee' }}>
       {isAdult && (
         <div className="filter-row" style={{ marginBottom: 6 }}>
-          <button type="button" className="link-button" onClick={() => setShowGivePoints((v) => !v)}>
+          <button type="button" className="link-button" data-help-id="pequenos.dar-puntos" onClick={() => setShowGivePoints((v) => !v)}>
             ⭐ Dar puntos
           </button>
         </div>
@@ -659,7 +663,7 @@ function MemberRewardsPanel({
                         · ⭐ {reward.pointsCost}
                       </span>
                     </span>
-                    <button type="button" className="task-toggle" disabled={!canAfford || requestingId === reward.id} onClick={() => void handleRequest(reward)}>
+                    <button type="button" className="task-toggle" data-help-id="pequenos.solicitar" disabled={!canAfford || requestingId === reward.id} onClick={() => void handleRequest(reward)}>
                       {requestingId === reward.id ? 'Solicitando…' : 'Solicitar'}
                     </button>
                   </div>
@@ -752,6 +756,7 @@ function GivePointsForm({ member, onClose, onGiven, setError }: { member: Family
     setError(null)
     try {
       await givePoints(member.id, Math.round(n), reason.trim() || null)
+      emitHelpEvent('pequenos.points-given')
       setAmount('')
       setReason('')
       onGiven()
@@ -777,14 +782,14 @@ function GivePointsForm({ member, onClose, onGiven, setError }: { member: Family
       </div>
       <label style={{ marginTop: 6 }}>
         Cantidad
-        <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
+        <input type="number" min={1} value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus data-help-id="pequenos.dar-puntos-cantidad" />
       </label>
       <label style={{ marginTop: 6 }}>
         Motivo (opcional)
-        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ha ayudado en casa..." />
+        <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ha ayudado en casa..." data-help-id="pequenos.dar-puntos-motivo" />
       </label>
       <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} data-help-id="pequenos.dar-puntos-enviar">
           {saving ? 'Guardando…' : 'Dar puntos'}
         </button>
         <button type="button" className="link-button" onClick={onClose}>
@@ -818,19 +823,19 @@ function RewardFields({
     <>
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus />
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required autoFocus data-help-id="pequenos.recompensa-titulo" />
       </label>
-      <label style={{ marginTop: 6 }}>
+      <label style={{ marginTop: 6 }} data-help-id="pequenos.recompensa-emoji">
         Emoji (opcional)
         <CalendarCategoryEmojiPicker value={emoji} onChange={setEmoji} />
       </label>
       <label style={{ marginTop: 6 }}>
         Coste en puntos
-        <input type="number" min={1} value={pointsCost} onChange={(e) => setPointsCost(e.target.value)} />
+        <input type="number" min={1} value={pointsCost} onChange={(e) => setPointsCost(e.target.value)} data-help-id="pequenos.recompensa-coste" />
       </label>
       <label style={{ marginTop: 6 }}>
         Descripción (opcional)
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} data-help-id="pequenos.recompensa-descripcion" />
       </label>
     </>
   )
@@ -857,6 +862,7 @@ function AddRewardForm({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     setError(null)
     try {
       await createReward({ title, pointsCost: cost, emoji: emoji || null, description: description.trim() || null })
+      emitHelpEvent('pequenos.reward-created')
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear la recompensa'))
@@ -871,7 +877,7 @@ function AddRewardForm({ onClose, onAdded }: { onClose: () => void; onAdded: () 
       {error && <p className="error">{error}</p>}
       <RewardFields title={title} setTitle={setTitle} pointsCost={pointsCost} setPointsCost={setPointsCost} emoji={emoji} setEmoji={setEmoji} description={description} setDescription={setDescription} />
       <div className="filter-row" style={{ marginTop: 8 }}>
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} data-help-id="pequenos.recompensa-crear">
           {saving ? 'Guardando…' : 'Crear recompensa'}
         </button>
         <button type="button" className="link-button" onClick={onClose}>

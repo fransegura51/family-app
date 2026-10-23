@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/data/errorReports'
 import { errorMessage } from '@/domain/errorMessage'
 import { AdminGroup, groupKey, useAdminGroups } from '@/ui/admin/AdminGroups'
 import { AmazonWebhookSettings } from '@/ui/admin/AmazonWebhookSettings'
 import { formatDate } from '@/ui/admin/adminFormat'
+import { SupportAdminPanel } from '@/ui/admin/SupportAdminPanel'
+import { SUPPORT_ENABLED } from '@/support/flags'
 
 // Área «Sistema» del Centro de Administración: errores de la app (de todas las familias), automatizaciones técnicas (webhooks de Amazon, Mercadona y correo de eventos),
 // diagnóstico temporal de la sincronización de preferencias y enlaces a las vistas administrativas de Sugerencias y Reseñas. Es el contenido del antiguo «Panel de admin»
 // (/admin-uso) trasladado SIN cambios de lógica: mismos datos, mismos botones, mismos permisos (el servidor exige is_app_owner).
 export function AreaSistema() {
   const groups = useAdminGroups()
+  // Los avisos de Soporte llevan aquí con ?soporte=<incidencia>: el bloque se abre directamente en esa conversación.
+  const supportTicket = new URLSearchParams(useLocation().search).get('soporte')
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que no falle" — los errores que sufre cualquier
   // familia llegan a client_errors (ver 0092) y se ven aquí, agrupados
@@ -137,6 +141,12 @@ export function AreaSistema() {
       <AdminGroup area="sistema" id="automatizaciones" title="⚙️ Automatizaciones" summary="Direcciones y token para que Amazon, Mercadona y el correo de eventos lleguen solos">
         <AmazonWebhookSettings />
       </AdminGroup>
+
+      {SUPPORT_ENABLED && (
+        <AdminGroup area="sistema" id="soporte" title="🛟 Soporte técnico" summary="Incidencias de las personas usuarias: responder, asignar, estado, notas internas e incidencias parecidas" defaultOpen={Boolean(supportTicket)} forceOpen={Boolean(supportTicket)}>
+          <SupportAdminPanel initialTicketId={supportTicket} />
+        </AdminGroup>
+      )}
 
       <AdminGroup area="sistema" id="vistas" title="Otras vistas administrativas" summary="Sugerencias y reseñas de todas las familias" defaultOpen>
       <p className="muted">Estas pantallas ya existían y siguen siendo las mismas; desde aquí se llega a ellas.</p>

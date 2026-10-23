@@ -28,6 +28,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import type { FamilyEvent, InvitationCanvas, InvitationLayer, InvitationTextAlign, InvitationTextStyle } from '@/domain/types'
 import { getEventInvitation, getInvitationPhotoUrl, saveEventInvitation, uploadInvitationPhoto } from '@/data/events'
 import { loadRecentInvitationEmoji, recordRecentInvitationEmoji } from '@/state/invitationRecentEmoji'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 // Fase 3 Bloque 5B — "✨ Pepa, hazla por mí": el editor solo COORDINA (sube foto, decide qué plantilla/
 // estilo está activo, aplica el resultado como una operación de historial); todas las recetas, la
@@ -2247,6 +2248,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
     setError(null)
     try {
       await saveEventInvitation(event.id, templateKey, { backgroundGradient, layers, backgroundOffsetX, backgroundOffsetY, backgroundScale, customTextArea }, backgroundImagePath)
+      emitHelpEvent('eventos.invitation-saved') // para los tutoriales «Enséñame»: el diseño YA está guardado (no se envía a nadie)
       // INV-EDITOR-5 — a partir de aquí, lo guardado ya coincide con lo que se ve: deja de estar "sucio".
       savedSnapshotRef.current = comparableSnapshotKey(currentSnapshot())
       setConfirmingExit(false)
@@ -2669,7 +2671,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               <button type="button" className="link-button" onClick={() => togglePanel('pepa')}>
                 ✨ Pepa, hazla por mí
               </button>
-              <button type="button" className="link-button" onClick={handleSave} disabled={saving} style={{ marginLeft: 'auto', fontWeight: 600 }}>
+              <button type="button" className="link-button" data-help-id="eventos.invitation-save" onClick={handleSave} disabled={saving} style={{ marginLeft: 'auto', fontWeight: 600 }}>
                 {saving ? 'Guardando…' : '💾 Guardar'}
               </button>
             </div>
@@ -3122,7 +3124,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
             {/* Barra contextual + su panel (como mucho uno abierto a la vez), fija abajo, respetando el
                 Home Indicator del iPhone (env(safe-area-inset-bottom)). */}
             {!textEditMode && (
-            <div className="invitation-toolbar-wrap">
+            <div className="invitation-toolbar-wrap" data-help-id="eventos.invitation-toolbar">
               {/* CAUSA RAÍZ REAL del arrastre roto en "Ajustar foto" (demostrada con
                   document.elementFromPoint sobre el DOM real, no una hipótesis de motor/WebKit) —
                   .invitation-panel-overlay es position:fixed + inset:0 + z-index:55: cubre TODA la pantalla,
@@ -3621,7 +3623,7 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
                       <span className="invitation-toolbar-icon">🖌️</span>
                       <span>Decorar</span>
                     </button>
-                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'plantilla' ? ' invitation-toolbar-btn-active' : '')} onClick={() => togglePanel('plantilla')}>
+                    <button type="button" className={'invitation-toolbar-btn' + (panel === 'plantilla' ? ' invitation-toolbar-btn-active' : '')} data-help-id="eventos.invitation-template" onClick={() => togglePanel('plantilla')}>
                       <span className="invitation-toolbar-icon">🎨</span>
                       <span>Plantilla</span>
                     </button>

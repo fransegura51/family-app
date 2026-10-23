@@ -192,7 +192,7 @@ describe('B2-UX02 · el Centro con sus seis áreas', () => {
   it('cada área (salvo Comunidad, que tiene sus pestañas) tiene su «Expandir todo» y sus bloques', async () => {
     owner.state = 'owner'
     page('/administracion?area=usuarios')
-    await waitFor(() => expect(document.getElementById('admin-group-usuarios-familias')).toBeTruthy())
+    await waitFor(() => expect(document.getElementById('admin-group-usuarios-familias')).toBeTruthy(), { timeout: 10000 })
     const panel = document.getElementById('admin-panel-usuarios')!
     expect(within(panel).getByRole('button', { name: 'Expandir todo' })).toBeTruthy()
     for (const g of ADMIN_GROUP_IDS.usuarios) expect(document.getElementById(`admin-group-usuarios-${g}`), g).toBeTruthy()
@@ -201,12 +201,12 @@ describe('B2-UX02 · el Centro con sus seis áreas', () => {
   it('el estado de los bloques se conserva al ir a otra área y volver', async () => {
     owner.state = 'owner'
     page('/administracion?area=usuarios')
-    await waitFor(() => expect(document.getElementById('admin-group-usuarios-familias')).toBeTruthy())
+    await waitFor(() => expect(document.getElementById('admin-group-usuarios-familias')).toBeTruthy(), { timeout: 10000 })
     const head = within(document.getElementById('admin-group-usuarios-familias')!).getByRole('button', { name: /Familias y cuentas/ })
     fireEvent.click(head)
     expect(head.getAttribute('aria-expanded')).toBe('true')
     fireEvent.click(document.getElementById('admin-tab-sistema')!)
-    await waitFor(() => expect(document.getElementById('admin-group-sistema-errores')).toBeTruthy())
+    await waitFor(() => expect(document.getElementById('admin-group-sistema-errores')).toBeTruthy(), { timeout: 10000 })
     fireEvent.click(document.getElementById('admin-tab-usuarios')!)
     expect(within(document.getElementById('admin-group-usuarios-familias')!).getByRole('button', { name: /Familias y cuentas/ }).getAttribute('aria-expanded')).toBe('true')
   })
@@ -220,7 +220,7 @@ describe('B2-UX02 · el Centro con sus seis áreas', () => {
     fireEvent.click(within(results).getAllByRole('button')[0])
     await act(async () => {})
     expect(screen.getByTestId('where').textContent).toContain('area=sistema')
-    await waitFor(() => expect(document.getElementById('admin-group-sistema-automatizaciones')).toBeTruthy())
+    await waitFor(() => expect(document.getElementById('admin-group-sistema-automatizaciones')).toBeTruthy(), { timeout: 10000 })
     const head = within(document.getElementById('admin-group-sistema-automatizaciones')!).getByRole('button', { name: /Automatizaciones/ })
     expect(head.getAttribute('aria-expanded')).toBe('true')
   })

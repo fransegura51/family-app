@@ -59,7 +59,7 @@ export function CommunityToolbar({ canParticipate, profileId }: { canParticipate
   const location = useLocation()
   const items = communityToolbarItems(profileId).filter((i) => canParticipate || !i.participates)
   return (
-    <nav className="community-toolbar" aria-label="Herramientas de Comunidad">
+    <nav className="community-toolbar" aria-label="Herramientas de Comunidad" data-help-id="comunidad.toolbar">
       {items.map((i) => {
         const active = [i.to, ...(i.alsoActive ?? [])].some((to) => isOn(location.pathname, to))
         return (

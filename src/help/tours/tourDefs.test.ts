@@ -13,6 +13,8 @@ const CORPUS = Object.values(SOURCES).join('\n')
 
 function markExists(id: string): boolean {
   if (CORPUS.includes(`data-help-id="${id}"`) || CORPUS.includes(`'data-help-id': '${id}'`)) return true
+  // Componentes que reciben la marca por la propiedad `helpId` y la pintan como data-help-id en su contenedor.
+  if (CORPUS.includes(`helpId="${id}"`)) return true
   // Marcas calculadas por plantilla (una por sección de la barra): nav.tab.<sección>
   if (id.startsWith('nav.tab.')) return CORPUS.includes('data-help-id={`nav.tab.')
   return false
@@ -105,5 +107,57 @@ describe('tutoriales registrados', () => {
     const t = getTour('fam-anadir-miembro')!
     expect(t.finishText).toMatch(/no envío ninguna invitación/i)
     expect(t.steps[t.steps.length - 1].completeOn).toEqual([{ type: 'event', name: 'family.member-added' }])
+  })
+})
+
+describe('B4-UX01..06 · reglas de calidad de los recorridos', () => {
+  it('toda propiedad `helpId` que usan las pantallas se pinta como data-help-id (la marca llega al DOM)', () => {
+    const calendar = SOURCES['/src/ui/CalendarScreen.tsx']
+    expect(calendar.match(/data-help-id=\{helpId\}/g)?.length ?? 0).toBeGreaterThanOrEqual(4) // FieldDropdown, WhoDropdown, CategoryDropdown, EventExtrasFields
+  })
+
+  it('los grupos de opciones solo tienen pasos opcionales o informativos, nunca sensibles, y «¿Para quién?» queda fuera de ellos', () => {
+    for (const t of TOURS)
+      for (const s of t.steps) {
+        if (s.group) {
+          expect(s.sensitive, `${t.id}/${s.id}`).toBeFalsy()
+          expect(s.manualNext || s.optional, `${t.id}/${s.id}`).toBeTruthy()
+        }
+        if (s.id === 'quien') expect(s.group, `${t.id}: «¿Para quién?» no es una opción secundaria`).toBeUndefined()
+      }
+  })
+
+  it('cada paso de opción con control que puede no existir es opcional (se omite solo, sin marco huérfano)', () => {
+    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
+      const t = getTour(id)!
+      for (const s of t.steps.filter((x) => x.group || x.id === 'puntos')) expect(s.optional, `${id}/${s.id}`).toBe(true)
+    }
+  })
+
+  it('los tutoriales de evento y tarea explican persona, puntos y «Toda la familia», y piden los puntos solo para una persona', () => {
+    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
+      const t = getTour(id)!
+      const who = t.steps.find((s) => s.id === 'quien')!
+      expect(who.text).toMatch(/una persona/)
+      expect(who.text).toMatch(/puntos/)
+      expect(who.text).toMatch(/Toda la familia/)
+      expect(t.steps.find((s) => s.id === 'puntos')!.text).toMatch(/una sola persona/)
+    }
+  })
+
+  it('el paso de la fecha avanza al confirmar la selección y también se puede pasar con «Siguiente»', () => {
+    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
+      const f = getTour(id)!.steps.find((s) => s.id === 'fecha')!
+      expect(f.completeOn).toEqual([{ type: 'confirmed', target: f.target }])
+      expect(f.manualNext).toBe(true)
+    }
+  })
+
+  it('el recorrido del evento enseña, cuando existen, todas las opciones reales del formulario', () => {
+    const targets = getTour('cal-crear-evento')!.steps.map((s) => s.target)
+    for (const t of ['calendar.event-time', 'calendar.event-allday', 'calendar.event-private', 'calendar.event-repeat', 'calendar.event-reminder', 'calendar.event-who', 'calendar.event-points', 'calendar.event-category', 'calendar.event-extras'])
+      expect(targets).toContain(t)
+    // ningún paso apunta al título por error (era el fallo del paso de «opciones»)
+    expect(getTour('cal-crear-evento')!.steps.filter((s) => s.target === 'calendar.event-title')).toHaveLength(1)
   })
 })

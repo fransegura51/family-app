@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import type { HelpVoiceMode } from '@/help/prefs'
 import { setTourProgress } from '@/help/prefs'
 import { fieldOf, findTarget, markedAncestor, ringElementOf } from '@/help/tours/domTargets'
-import { canGoNext, reduceTour, startState, stepOf } from '@/help/tours/engine'
+import { canGoNext, groupHasMore, previousIndex, reduceTour, startState, stepOf } from '@/help/tours/engine'
 import { onHelpEvent } from '@/help/tours/helpBus'
 import type { ObservedSignal, TourDef } from '@/help/tours/types'
 import { choosePanelSide, freeZone, readVisibleArea, sameArea, scrollContentBy, scrollDeltaToReveal } from '@/help/tours/viewport'
@@ -24,6 +24,14 @@ export interface TourNextOption {
 
 const MISSING_AFTER_MS = 3500
 const POLL_MS = 400
+// Un paso OPCIONAL cuyo control no existe en este momento (p. ej. «Puntos» con «Toda la familia», o la hora en un evento de todo el día) se omite casi al instante, sin dejar a la
+// persona mirando un paso sin marco; los pasos necesarios siguen esperando MISSING_AFTER_MS antes de ofrecer la salida.
+const OPTIONAL_GRACE_MS = 350
+// Confirmación de un campo con selector (fecha): el valor cambió y se da por elegido cuando se cierra el selector (el campo pierde el foco) o, si el campo conserva el foco (el
+// selector del iPhone lo deja enfocado), tras un rato sin más cambios. Mientras se sigue girando el selector no se avanza.
+const CONFIRM_FOCUSED_MS = 1800
+const CONFIRM_BLURRED_MS = 450
+const CONFIRM_AFTER_BLUR_MS = 150
 
 export function TourRunner({
   tour,
@@ -32,6 +40,7 @@ export function TourRunner({
   onClose,
   onPick,
   missingAfterMs = MISSING_AFTER_MS,
+  confirmMs = { focused: CONFIRM_FOCUSED_MS, blurred: CONFIRM_BLURRED_MS, afterBlur: CONFIRM_AFTER_BLUR_MS },
 }: {
   tour: TourDef
   voiceMode: HelpVoiceMode
@@ -40,11 +49,13 @@ export function TourRunner({
   onPick: (option: TourNextOption) => void
   /** Cuánto se espera a que aparezca el control antes de dar el paso por «sin control» (solo se cambia en pruebas). */
   missingAfterMs?: number
+  /** Esperas de la confirmación de una fecha (solo se cambian en pruebas). */
+  confirmMs?: { focused: number; blurred: number; afterBlur: number }
 }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [state, dispatch] = useReducer((s: ReturnType<typeof startState>, a: Parameters<typeof reduceTour>[2]) => reduceTour(tour, s, a), tour, startState)
-  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number; key: string } | null>(null)
   const [speaking, setSpeaking] = useState(false)
   // Área realmente visible (descontando el teclado) y altura del panel: el marco y el panel se colocan respecto a ella, no a la pantalla entera (B4-UX01).
   const [area, setArea] = useState(readVisibleArea)
@@ -87,6 +98,30 @@ export function TourRunner({
   // ---- Señales de la pantalla real (el navegador → motor). Escuchas en captura: no cambian ni impiden nada.
   useEffect(() => {
     const send = (signal: ObservedSignal) => dispatch({ type: 'signal', signal })
+    // Confirmación de campos con selector (fecha): ver CONFIRM_*.
+    const timers = new Map<string, number>()
+    const pending = new Set<string>()
+    const confirmIfValid = (id: string) => {
+      timers.delete(id)
+      const t = findTarget(id)
+      const f = t ? fieldOf(t) : null
+      if (!f || f.value === '' || !f.validity.valid) return
+      pending.delete(id)
+      send({ type: 'confirmed', target: id })
+    }
+    const scheduleConfirm = (id: string, field: Element, wait: number) => {
+      window.clearTimeout(timers.get(id))
+      pending.add(id)
+      timers.set(id, window.setTimeout(() => confirmIfValid(id), document.activeElement === field ? confirmMs.focused : wait))
+    }
+    const onFocusOut = (e: Event) => {
+      const el = markedAncestor(e.target)
+      const id = el?.dataset.helpId
+      if (id && pending.has(id)) {
+        window.clearTimeout(timers.get(id))
+        timers.set(id, window.setTimeout(() => confirmIfValid(id), confirmMs.afterBlur))
+      }
+    }
     const onClick = (e: Event) => {
       const el = markedAncestor(e.target)
       if (el) send({ type: 'click', target: el.dataset.helpId ?? '' })
@@ -96,21 +131,28 @@ export function TourRunner({
       if (!el) return
       const t = e.target as HTMLInputElement
       send({ type: 'filled', target: el.dataset.helpId ?? '', length: typeof t.value === 'string' ? t.value.length : 0 })
+      if (el.dataset.helpId && e.target instanceof Element) scheduleConfirm(el.dataset.helpId, e.target, confirmMs.blurred)
     }
     const onChange = (e: Event) => {
       const el = markedAncestor(e.target)
-      if (el) send({ type: 'change', target: el.dataset.helpId ?? '' })
+      if (!el) return
+      send({ type: 'change', target: el.dataset.helpId ?? '' })
+      if (el.dataset.helpId && e.target instanceof Element) scheduleConfirm(el.dataset.helpId, e.target, confirmMs.blurred)
     }
     document.addEventListener('click', onClick, true)
     document.addEventListener('input', onInput, true)
     document.addEventListener('change', onChange, true)
+    document.addEventListener('focusout', onFocusOut, true)
     const off = onHelpEvent((name) => send({ type: 'event', name }))
     return () => {
       document.removeEventListener('click', onClick, true)
       document.removeEventListener('input', onInput, true)
       document.removeEventListener('change', onChange, true)
+      document.removeEventListener('focusout', onFocusOut, true)
+      for (const t of timers.values()) window.clearTimeout(t)
       off()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- las esperas de confirmación solo cambian en pruebas
   }, [])
 
   // ---- Vigilancia de la pantalla: dónde está el control, si aparece, si ya estaba cumplido, y si desaparece (tutorial «roto» con salida).
@@ -150,7 +192,8 @@ export function TourRunner({
       setRect(null)
       if (cur.target) {
         missingSince.current ??= Date.now()
-        if (Date.now() - missingSince.current > missingAfterMs && s.status === 'running') dispatch({ type: 'target-missing', index: s.index })
+        const limit = cur.optional ? Math.min(missingAfterMs, OPTIONAL_GRACE_MS) : missingAfterMs
+        if (Date.now() - missingSince.current > limit && s.status === 'running') dispatch({ type: 'target-missing', index: s.index })
       }
       return
     }
@@ -163,7 +206,7 @@ export function TourRunner({
       if (out) el.scrollIntoView?.({ block: 'center', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     }
     const r = ringElementOf(el).getBoundingClientRect()
-    setRect((prev) => (prev && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height ? prev : { top: r.top, left: r.left, width: r.width, height: r.height }))
+    setRect((prev) => (prev && prev.key === key && prev.top === r.top && prev.left === r.left && prev.width === r.width && prev.height === r.height ? prev : { top: r.top, left: r.left, width: r.width, height: r.height, key }))
   }, [tour, missingAfterMs])
 
   // Si tras abrirse o cerrarse el teclado el control queda fuera de la zona libre (bajo el teclado o bajo el panel), se desplaza el CONTENIDO lo justo para verlo. Solo mueve el
@@ -276,7 +319,7 @@ export function TourRunner({
   // Posición del panel, respecto al ÁREA VISIBLE (con el teclado abierto es mucho más baja que la pantalla): al lado donde no tape el control. Si ambos lados valen, manda la regla
   // de siempre: control en la mitad de abajo → panel arriba (y al revés).
   const bottomOffset = area.keyboard ? 8 : area.width >= 720 ? 16 : 100
-  const ringSpan = rect ? { top: rect.top - area.top - 4, bottom: rect.top - area.top + rect.height + 4 } : null
+  const ringSpan = rect && rect.key === String(state.index) && step?.target ? { top: rect.top - area.top - 4, bottom: rect.top - area.top + rect.height + 4 } : null
   const halfRule: 'top' | 'bottom' = ringSpan && (ringSpan.top + ringSpan.bottom) / 2 > area.height * 0.52 ? 'top' : 'bottom'
   const side: 'top' | 'bottom' = ringSpan && panelH > 0 ? choosePanelSide(ringSpan, area.height, panelH, bottomOffset, halfRule) : halfRule
   sideRef.current = side
@@ -366,12 +409,12 @@ export function TourRunner({
         </p>
         {step.sensitive && <p className="tour-sub">🔒 Esta acción la haces tú; yo no la hago por ti.</p>}
         <div className="tour-actions">
-          {state.index > 0 && (
+          {previousIndex(state) !== null && (
             <button
               type="button"
               className="tour-btn"
               onClick={() => {
-                backIndex.current = state.index - 1
+                backIndex.current = previousIndex(state)
                 dispatch({ type: 'back' })
               }}
             >
@@ -381,6 +424,11 @@ export function TourRunner({
           {(canGoNext(step) || (backIndex.current === state.index && !step.sensitive)) && (
             <button type="button" className="tour-btn tour-btn-primary" onClick={() => dispatch({ type: 'next', force: true })}>
               Siguiente →
+            </button>
+          )}
+          {groupHasMore(tour, state) && (
+            <button type="button" className="tour-btn" onClick={() => dispatch({ type: 'skip-group' })}>
+              {step.skipGroupLabel ?? 'Saltar opciones'}
             </button>
           )}
           <button type="button" className="tour-btn tour-btn-extra" onClick={() => dispatch({ type: 'pause' })}>
@@ -408,7 +456,8 @@ export function TourRunner({
 
   if (state.status === 'exited') return null
   const total = tour.steps.length
-  const showRing = rect && state.status === 'running' && step?.target
+  // El marco solo se dibuja si se midió PARA ESTE paso: al cambiar de paso nunca queda un resaltado del anterior (B4-UX06).
+  const showRing = rect && rect.key === String(state.index) && state.status === 'running' && step?.target
   return createPortal(
     <div
       className="tour-layer"

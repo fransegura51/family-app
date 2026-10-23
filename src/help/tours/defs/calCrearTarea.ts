@@ -1,0 +1,97 @@
+import type { TourDef } from '@/help/tours/types'
+
+// Calendario → Crear una tarea. Mismo motor y misma forma que «Crear un evento»: una tarea solo exige título y fecha; «¿Para quién?» (quién debe hacerla) y los puntos tienen paso
+// propio; el resto son opciones que se pueden saltar. Una tarea nunca lleva hora ni recordatorio. Nunca guarda por la persona.
+export const calCrearTarea: TourDef = {
+  id: 'cal-crear-tarea',
+  version: 1,
+  title: 'Crear una tarea',
+  cardId: 'cal-crear-tarea',
+  durationSec: 90,
+  startPath: '/calendario',
+  steps: [
+    {
+      id: 'abrir',
+      text: 'Vamos a crear una tarea. Pulsa el botón «+ Nueva tarea».',
+      target: 'calendar.new-task',
+      completeOn: [
+        { type: 'click', target: 'calendar.new-task' },
+        { type: 'appear', target: 'calendar.task-title' },
+      ],
+      skipIf: [{ type: 'appear', target: 'calendar.task-title' }],
+    },
+    {
+      id: 'titulo',
+      text: 'Escribe qué hay que hacer, por ejemplo «Sacar la basura».',
+      target: 'calendar.task-title',
+      completeOn: [{ type: 'filled', target: 'calendar.task-title', min: 2 }],
+    },
+    {
+      id: 'fecha',
+      text: 'Aquí eliges para qué día es. Cuando hayas elegido la fecha seguiré yo; si ya es la correcta, pulsa «Siguiente».',
+      target: 'calendar.task-date',
+      completeOn: [{ type: 'confirmed', target: 'calendar.task-date' }],
+      manualNext: true,
+    },
+    {
+      id: 'privado',
+      text: '«Privado»: si lo marcas, solo tú verás esta tarea.',
+      target: 'calendar.task-private',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'repeticion',
+      text: '«Repetición» hace que la tarea se repita (cada semana, cada mes…). Puedes dejarlo en «No se repite».',
+      target: 'calendar.task-repeat',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'quien',
+      text: 'Aquí eliges quién debe hacer la tarea. Puedes asignarla a una persona y poner los puntos que recibirá cuando corresponda. Si eliges «Toda la familia», no hay puntos porque no hay una persona destinataria.',
+      target: 'calendar.task-who',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'puntos',
+      text: 'Con una sola persona elegida aparece este campo: los puntos que ganará al marcar la tarea como «Hecha». Es opcional; puedes dejarlo en 0.',
+      target: 'calendar.task-points',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'categoria',
+      text: '«Categoría» agrupa la tarea con un color. Es opcional.',
+      target: 'calendar.task-category',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-2',
+    },
+    {
+      id: 'extras',
+      text: 'Con estos iconos puedes añadir una ubicación, una foto o un archivo, y una nota.',
+      target: 'calendar.task-extras',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-2',
+    },
+    {
+      id: 'guardar',
+      text: 'Cuando lo tengas, pulsa «Crear tarea». Yo no lo hago por ti: lo pulsas tú.',
+      target: 'calendar.task-save',
+      completeOn: [{ type: 'event', name: 'calendar.task-created' }],
+      sensitive: true,
+    },
+  ],
+  finishText: '¡Listo! Tu tarea ya está en el calendario. Cuando se haga, toca su círculo para marcarla como hecha; si tiene puntos, los gana la persona asignada.',
+  next: ['cal-crear-evento', 'cal-puntos', 'cal-repeticion'],
+}

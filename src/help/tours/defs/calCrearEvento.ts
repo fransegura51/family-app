@@ -1,13 +1,15 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Calendario → Crear un evento. Recorre los controles REALES de «+ Nuevo evento»: el botón flotante, el título, la fecha y «Crear evento». Nunca guarda por la persona:
-// el último paso solo señala el botón y espera a que la aplicación confirme que el evento se ha creado.
+// Calendario → Crear un evento. Recorre los controles REALES de «+ Nuevo evento»: el botón flotante, el título, la fecha, las demás opciones (en dos grupos que se pueden saltar),
+// «¿Para quién?» con sus puntos (paso propio, fuera de las opciones secundarias) y «Crear evento». Nunca guarda por la persona: el último paso solo señala el botón y espera a que la
+// aplicación confirme que el evento se ha creado. Los pasos opcionales cuyo control no existe en ese momento (p. ej. la hora en un evento de «Todo el día», o los puntos con «Toda
+// la familia») se omiten solos. Orden = orden de la pantalla, para no saltar arriba y abajo.
 export const calCrearEvento: TourDef = {
   id: 'cal-crear-evento',
-  version: 1,
+  version: 2,
   title: 'Crear un evento en el calendario',
   cardId: 'cal-crear-evento',
-  durationSec: 60,
+  durationSec: 100,
   startPath: '/calendario',
   steps: [
     {
@@ -28,17 +30,91 @@ export const calCrearEvento: TourDef = {
     },
     {
       id: 'fecha',
-      text: 'Comprueba el día: aquí eliges la fecha del evento. Si ya es la correcta, pulsa «Siguiente».',
+      text: 'Aquí eliges el día. Cuando hayas elegido la fecha seguiré yo; si ya es la correcta, pulsa «Siguiente».',
       target: 'calendar.event-date',
+      completeOn: [{ type: 'confirmed', target: 'calendar.event-date' }],
+      manualNext: true,
+    },
+    // ── Otras opciones (1/2): se pueden recorrer o saltar de golpe. Ninguna es obligatoria.
+    {
+      id: 'hora',
+      text: 'Si quieres, pon aquí la hora de inicio y, si hace falta, la de fin. Es opcional.',
+      target: 'calendar.event-time',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'todo-el-dia',
+      text: '«Todo el día» sirve para eventos sin hora, como un cumpleaños o un viaje. Al marcarlo desaparecen las horas.',
+      target: 'calendar.event-allday',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'privado',
+      text: '«Privado»: si lo marcas, solo tú verás este evento. Nadie más de la familia lo ve.',
+      target: 'calendar.event-private',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'repeticion',
+      text: '«Repetición» hace que el evento se repita (cada semana, cada mes…). Tócalo para ver las opciones; puedes dejarlo en «No se repite».',
+      target: 'calendar.event-repeat',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    {
+      id: 'recordatorio',
+      text: '«Recordatorio» te avisa antes del evento. Tócalo para elegir cuánto antes; puedes poner varios o ninguno.',
+      target: 'calendar.event-reminder',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-1',
+    },
+    // ── Para quién y puntos: paso propio, no es una opción secundaria.
+    {
+      id: 'quien',
+      text: 'Aquí eliges para quién es el evento. Puedes asignarlo a una persona y poner los puntos que recibirá cuando corresponda. Si eliges «Toda la familia», no hay puntos porque no hay una persona destinataria.',
+      target: 'calendar.event-who',
       completeOn: [],
       manualNext: true,
     },
     {
-      id: 'opciones',
-      text: 'Si quieres, más abajo puedes poner hora, repetición, recordatorio, ubicación, foto o nota, y para quién es. Ninguna de esas cosas es obligatoria.',
-      target: 'calendar.event-title',
+      id: 'puntos',
+      text: 'Con una sola persona elegida aparece este campo: los puntos que ganará al marcar el evento como «Hecho». Es opcional; puedes dejarlo en 0.',
+      target: 'calendar.event-points',
       completeOn: [],
       manualNext: true,
+      optional: true,
+    },
+    // ── Otras opciones (2/2)
+    {
+      id: 'categoria',
+      text: '«Categoría» agrupa el evento con un color, por ejemplo «Salud» o «Cole». Es opcional; el engranaje ⚙️ sirve para gestionarlas.',
+      target: 'calendar.event-category',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-2',
+    },
+    {
+      id: 'extras',
+      text: 'Con estos iconos puedes añadir una ubicación, una foto o un archivo, y una nota. Cada uno se abre al tocarlo.',
+      target: 'calendar.event-extras',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      group: 'opciones-2',
     },
     {
       id: 'guardar',

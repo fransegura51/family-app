@@ -81,7 +81,7 @@ describe('AddTaskForm — formulario reducido: nunca hora/fin/recordatorios, nun
 
   it('"¿Para quién?" empieza en el usuario autenticado (defaultMemberId), nunca "Toda la familia" por defecto', () => {
     expect(FORM).toContain('defaultMemberId?: string | null')
-    expect(FORM).toContain('useState<string[]>(defaultMemberId ? [defaultMemberId] : [])')
+    expect(FORM).toContain('useAssignees(defaultMemberId ? [defaultMemberId] : undefined)') // CAL-01: el gancho compartido (ver calendarDefaultAssignee.test.tsx)
   })
 
   it('repetición semanal personalizada sin ningún día: no se puede guardar (botón deshabilitado)', () => {
@@ -97,12 +97,12 @@ describe('AddTaskForm — formulario reducido: nunca hora/fin/recordatorios, nun
   })
 
   it('reutiliza WhoDropdown ("¿Para quién?", incluye "Toda la familia" = selección vacía) — nunca un selector nuevo', () => {
-    expect(FORM).toContain('<WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />')
+    expect(FORM).toContain('<WhoDropdown helpId="calendar.task-who" members={members} selected={selectedMembers} onToggle={toggleMember} />')
     expect(FORM).not.toContain('function WhoDropdown(')
   })
 
   it('reutiliza CategoryDropdown, EventExtrasFields (ubicación/adjunto/nota) y el campo de puntos — todo opcional, nunca sistemas paralelos', () => {
-    expect(FORM).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
+    expect(FORM).toContain('<CategoryDropdown helpId="calendar.task-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
     expect(FORM).toContain('<EventExtrasFields')
     expect(FORM).toMatch(/Puntos al marcarla "Hecha"/)
     expect(FORM).not.toContain('function EventExtrasFields(')
@@ -115,7 +115,7 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
     expect(form).toContain('RecurrenceControl')
     expect(form).toContain('ReminderPicker')
     expect(form).toContain('🔒 Privado — Solo yo puedo verlo')
-    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
+    expect(form).toContain('<CategoryDropdown helpId="calendar.event-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
   // Encargo "tareas recurrentes" — isTask ya NO oculta Repetición (antes sí, `recurrenceRule: null` fijo);

@@ -7,6 +7,7 @@ export type TourSignal =
   | { type: 'appear'; target: string } // el control marcado aparece en pantalla (p. ej. se abrió el formulario)
   | { type: 'filled'; target: string; min?: number } // el campo marcado (o el primer campo dentro) tiene al menos `min` caracteres (por defecto 1)
   | { type: 'change'; target: string } // el campo marcado cambia de valor (listas desplegables, casillas)
+  | { type: 'confirmed'; target: string } // el campo marcado (p. ej. una fecha) ha cambiado Y la selección ha terminado: valor válido, selector cerrado o sin tocar un momento
   | { type: 'route'; path: string } // la persona llega a esa pantalla
   | { type: 'event'; name: string } // la aplicación anuncia que algo se ha guardado de verdad (helpBus)
 
@@ -16,6 +17,7 @@ export type ObservedSignal =
   | { type: 'appear'; target: string }
   | { type: 'filled'; target: string; length: number }
   | { type: 'change'; target: string }
+  | { type: 'confirmed'; target: string }
   | { type: 'route'; path: string }
   | { type: 'event'; name: string }
 
@@ -35,6 +37,10 @@ export interface TourStep {
   optional?: boolean
   /** Se omite si ya se cumple al llegar (p. ej. el formulario ya está abierto). */
   skipIf?: TourSignal[]
+  /** Grupo de pasos opcionales (p. ej. «otras opciones»): mientras se recorre ese grupo se ofrece «Saltar opciones», que pasa al primer paso posterior fuera del grupo. */
+  group?: string
+  /** Texto del botón que salta el grupo (por defecto «Saltar opciones»). */
+  skipGroupLabel?: string
 }
 
 export interface TourDef {

@@ -1310,7 +1310,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         >
           + Nuevo evento
         </button>
-        <button type="button" className="calendar-fab calendar-fab-task" onClick={() => setAddingTask(true)}>
+        <button type="button" className="calendar-fab calendar-fab-task" data-help-id="calendar.new-task" onClick={() => setAddingTask(true)}>
           + Nueva tarea
         </button>
       </div>
@@ -1345,7 +1345,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               events={events}
               categories={categories}
               defaultDate={selectedDate}
-              defaultMemberIds={addingEventMemberId ? [addingEventMemberId] : undefined}
+              defaultMemberIds={addingEventMemberId ? [addingEventMemberId] : myMemberId ? [myMemberId] : undefined}
+              defaultMissing={!addingEventMemberId && !myMemberId}
               hideHeading
               onAdded={() => {
                 reload()
@@ -1375,6 +1376,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               categories={categories}
               defaultDate={selectedDate}
               defaultMemberId={myMemberId}
+              defaultMissing={!myMemberId}
               onAdded={() => {
                 reload()
                 setAddingTask(false)
@@ -3246,10 +3248,10 @@ function MemberFilterDropdown({
 // repeticiones, los recordatorios... en desplegables" — sin tocar el
 // control de dentro, que conserva toda su funcionalidad (preajustes,
 // modo personalizado, varios recordatorios con distinto ancla...).
-function FieldDropdown({ label, summary, children }: { label: string; summary: string; children: ReactNode }) {
+function FieldDropdown({ label, summary, children, helpId }: { label: string; summary: string; children: ReactNode; helpId?: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div>
+    <div data-help-id={helpId}>
       <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {label}: {summary}
@@ -3283,16 +3285,18 @@ function WhoDropdown({
   members,
   selected,
   onToggle,
+  helpId,
 }: {
   members: FamilyMember[]
   selected: string[]
   onToggle: (id: string) => void
+  helpId?: string
 }) {
   const [open, setOpen] = useState(false)
   const summary = selected.length === 0 ? 'Toda la familia' : members.filter((m) => selected.includes(m.id)).map((m) => m.name).join(', ')
 
   return (
-    <div>
+    <div data-help-id={helpId}>
       <p className="muted">¿Para quién?</p>
       <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -3364,6 +3368,7 @@ function CategoryDropdown({
   selected,
   onChange,
   onManageCategories,
+  helpId,
 }: {
   categories: CalendarCategory[]
   selected: string | null
@@ -3374,13 +3379,14 @@ function CategoryDropdown({
   // + el engranaje se ven SIEMPRE, para poder crear la primera categoría desde aquí mismo; el selector
   // en sí (el botón "▼" y su modal) sigue apareciendo solo si ya hay alguna, exactamente como antes.
   onManageCategories: () => void
+  helpId?: string
 }) {
   const [open, setOpen] = useState(false)
   const selectedCategory = selected ? categories.find((c) => c.id === selected) : null
   const summary = selectedCategory ? `${selectedCategory.emoji} ${selectedCategory.name}` : 'Sin categoría'
 
   return (
-    <div>
+    <div data-help-id={helpId}>
       <p className="muted calendar-category-field-label">
         Categoría (opcional)
         <button
@@ -3697,6 +3703,7 @@ function EventExtrasFields({
   onRemoveExistingAttachment,
   note,
   onNoteChange,
+  helpId,
 }: {
   locationLabel: string
   onLocationLabelChange: (v: string) => void
@@ -3708,6 +3715,8 @@ function EventExtrasFields({
   onRemoveExistingAttachment: () => void
   note: string
   onNoteChange: (v: string) => void
+  /** Marca del tutorial «Enséñame» para la fila de iconos (ubicación, adjunto, nota). */
+  helpId?: string
 }) {
   const [locating, setLocating] = useState(false)
   const [showMap, setShowMap] = useState(false)
@@ -3763,7 +3772,7 @@ function EventExtrasFields({
 
   return (
     <>
-      <div className="filter-row">
+      <div className="filter-row" data-help-id={helpId}>
         <button
           type="button"
           className={'chip' + (openSections.has('location') ? ' chip-active' : '')}
@@ -4149,6 +4158,42 @@ function EditEventForm({
   )
 }
 
+// CAL-01 — «¿Para quién?» de un formulario NUEVO (evento o tarea): empieza en la persona que lo crea (la ficha de la cuenta autenticada), no en «Toda la familia». «Toda la familia»
+// sigue disponible quitando la selección. Reglas: (1) si la persona elige algo a mano, ninguna actualización posterior (la ficha que llega tarde, un autorrelleno por título) lo pisa;
+// (2) si la ficha de la cuenta no llega a estar entre los miembros, no se preselecciona a NADIE más: el formulario lo dice con claridad (ver `defaultMissing`); (3) los formularios de
+// edición no usan este gancho: parten de lo guardado.
+export function useAssignees(defaultIds: string[] | undefined) {
+  const defaultKey = (defaultIds ?? []).join(',')
+  const idsOf = (key: string) => (key ? key.split(',') : [])
+  const [selected, setSelected] = useState<string[]>(() => idsOf(defaultKey))
+  const touched = useRef(false)
+  useEffect(() => {
+    if (touched.current) return
+    setSelected((prev) => (prev.join(',') === defaultKey ? prev : idsOf(defaultKey)))
+  }, [defaultKey])
+  return {
+    selected,
+    toggle: (id: string) => {
+      touched.current = true
+      setSelected((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
+    },
+    /** Autorrelleno desde un evento anterior con el mismo título: solo si la persona no ha elegido nada a mano. Devuelve si se aplicó. */
+    fromAutofill: (ids: string[]): boolean => {
+      if (touched.current) return false
+      setSelected(ids)
+      return true
+    },
+    /** Tras guardar: vuelve al valor por defecto, como un formulario recién abierto. */
+    reset: () => {
+      touched.current = false
+      setSelected(idsOf(defaultKey))
+    },
+  }
+}
+
+const DEFAULT_ASSIGNEE_MISSING =
+  'No he podido identificar tu ficha dentro de la familia, así que no hay nadie preseleccionado. Elige para quién es; si no eliges a nadie será para Toda la familia.'
+
 export function AddEventForm({
   members,
   events,
@@ -4159,6 +4204,7 @@ export function AddEventForm({
   hideHeading,
   onManageCategories,
   defaultVisibility = 'shared',
+  defaultMissing = false,
 }: {
   members: FamilyMember[]
   events: CalendarEvent[]
@@ -4166,6 +4212,8 @@ export function AddEventForm({
   onAdded: () => void
   defaultDate?: string
   defaultMemberIds?: string[]
+  /** La cuenta no tiene ficha entre los miembros: se avisa en vez de preseleccionar a otra persona. */
+  defaultMissing?: boolean
   hideHeading?: boolean
   onManageCategories: () => void
   // RETOQUE — 'private' cuando se crea desde Calendario → Personal (ver CalendarScreen): el checkbox
@@ -4186,7 +4234,8 @@ export function AddEventForm({
     until: '',
   })
   const [reminders, setReminders] = useState<EventReminder[]>([])
-  const [selectedMembers, setSelectedMembers] = useState<string[]>(defaultMemberIds ?? [])
+  const assignees = useAssignees(defaultMemberIds)
+  const selectedMembers = assignees.selected
   const [points, setPoints] = useState(0)
   const [locationLabel, setLocationLabel] = useState('')
   const [coords, setCoords] = useState<{ latitude: number; longitude: number } | null>(null)
@@ -4226,15 +4275,12 @@ export function AddEventForm({
       until: parsed.until ?? '',
     })
     setReminders(match.reminders)
-    setSelectedMembers(match.memberIds)
-    setPoints(match.points)
+    if (assignees.fromAutofill(match.memberIds)) setPoints(match.points) // si la persona ya eligió a mano para quién es, no se le cambia
   }
 
   const uniqueTitles = Array.from(new Set(events.map((e) => e.title)))
 
-  function toggleMember(id: string) {
-    setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
-  }
+  const toggleMember = assignees.toggle
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -4282,7 +4328,7 @@ export function AddEventForm({
       setEndTime('')
       setRecurrence({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
       setReminders([])
-      setSelectedMembers([])
+      assignees.reset()
       setPoints(0)
       setLocationLabel('')
       setCoords(null)
@@ -4327,7 +4373,7 @@ export function AddEventForm({
         <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
       {!allDay && (
-        <div className="inline-fields">
+        <div className="inline-fields" data-help-id="calendar.event-time">
           <label>
             Empieza
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
@@ -4338,11 +4384,11 @@ export function AddEventForm({
           </label>
         </div>
       )}
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="calendar.event-allday">
         <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
         Todo el día
       </label>
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="calendar.event-private">
         <input
           type="checkbox"
           checked={visibility === 'private'}
@@ -4352,6 +4398,7 @@ export function AddEventForm({
       </label>
       <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
+        helpId="calendar.event-repeat"
         label="Repetición"
         summary={
           recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
@@ -4361,20 +4408,27 @@ export function AddEventForm({
         <RecurrenceControl value={recurrence} onChange={setRecurrence} />
       </FieldDropdown>
       <FieldDropdown
+        helpId="calendar.event-reminder"
         label="Recordatorio"
         summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
       >
         <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
       </FieldDropdown>
-      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
+      <WhoDropdown helpId="calendar.event-who" members={members} selected={selectedMembers} onToggle={toggleMember} />
+      {defaultMissing && selectedMembers.length === 0 && (
+        <p className="muted" role="note" data-testid="default-assignee-missing">
+          {DEFAULT_ASSIGNEE_MISSING}
+        </p>
+      )}
+      <CategoryDropdown helpId="calendar.event-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {selectedMembers.length === 1 && (
-        <label>
+        <label data-help-id="calendar.event-points">
           Puntos al marcarlo "Hecho" (opcional)
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
       )}
       <EventExtrasFields
+        helpId="calendar.event-extras"
         locationLabel={locationLabel}
         onLocationLabelChange={setLocationLabel}
         coords={coords}
@@ -4406,7 +4460,7 @@ export function AddEventForm({
 // ni recordatorios, como pide el encargo explícitamente. "¿Para quién?" ahora empieza en el usuario
 // autenticado (defaultMemberId), nunca "Toda la familia" por defecto — requisito ya acordado antes, sin
 // tocar el comportamiento de "Nuevo evento" (que sigue sin preselección propia, fuera de este encargo).
-function AddTaskForm({
+export function AddTaskForm({
   members,
   categories,
   onAdded,
@@ -4414,6 +4468,7 @@ function AddTaskForm({
   defaultMemberId,
   onManageCategories,
   defaultVisibility = 'shared',
+  defaultMissing = false,
 }: {
   members: FamilyMember[]
   categories: CalendarCategory[]
@@ -4422,10 +4477,13 @@ function AddTaskForm({
   defaultMemberId?: string | null
   onManageCategories: () => void
   defaultVisibility?: 'shared' | 'private'
+  /** La cuenta no tiene ficha entre los miembros: se avisa en vez de preseleccionar a otra persona. */
+  defaultMissing?: boolean
 }) {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState(defaultDate ?? '')
-  const [selectedMembers, setSelectedMembers] = useState<string[]>(defaultMemberId ? [defaultMemberId] : [])
+  const assignees = useAssignees(defaultMemberId ? [defaultMemberId] : undefined)
+  const selectedMembers = assignees.selected
   const [recurrence, setRecurrence] = useState<RecurrenceValue>({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
   const [recurrenceValid, setRecurrenceValid] = useState(true)
   const [categoryId, setCategoryId] = useState<string | null>(null)
@@ -4441,9 +4499,7 @@ function AddTaskForm({
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
-  function toggleMember(id: string) {
-    setSelectedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]))
-  }
+  const toggleMember = assignees.toggle
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -4474,9 +4530,10 @@ function AddTaskForm({
         syncToGoogle: false,
         ...attachment,
       })
+      emitHelpEvent('calendar.task-created') // para los tutoriales «Enséñame»: la tarea YA está guardada
       setTitle('')
       setDate(defaultDate ?? '')
-      setSelectedMembers(defaultMemberId ? [defaultMemberId] : [])
+      assignees.reset()
       setRecurrence({ freq: '', byDay: [], interval: 1, skipHolidays: false, until: '' })
       setCategoryId(null)
       setPoints(0)
@@ -4497,13 +4554,13 @@ function AddTaskForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input type="text" data-help-id="calendar.task-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
       </label>
-      <label>
+      <label data-help-id="calendar.task-date">
         Fecha
         <DateField value={date} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="calendar.task-private">
         <input
           type="checkbox"
           checked={visibility === 'private'}
@@ -4513,6 +4570,7 @@ function AddTaskForm({
       </label>
       <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
+        helpId="calendar.task-repeat"
         label="Repetición"
         summary={
           recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
@@ -4521,15 +4579,21 @@ function AddTaskForm({
       >
         <RecurrenceControl value={recurrence} onChange={setRecurrence} requireWeeklyDays onValidChange={setRecurrenceValid} />
       </FieldDropdown>
-      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
+      <WhoDropdown helpId="calendar.task-who" members={members} selected={selectedMembers} onToggle={toggleMember} />
+      {defaultMissing && selectedMembers.length === 0 && (
+        <p className="muted" role="note" data-testid="default-assignee-missing">
+          {DEFAULT_ASSIGNEE_MISSING}
+        </p>
+      )}
+      <CategoryDropdown helpId="calendar.task-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {selectedMembers.length === 1 && (
-        <label>
+        <label data-help-id="calendar.task-points">
           Puntos al marcarla "Hecha" (opcional)
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
       )}
       <EventExtrasFields
+        helpId="calendar.task-extras"
         locationLabel={locationLabel}
         onLocationLabelChange={setLocationLabel}
         coords={coords}
@@ -4542,7 +4606,7 @@ function AddTaskForm({
         onNoteChange={setNote}
       />
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving || !recurrenceValid}>
+      <button type="submit" disabled={saving || !recurrenceValid} data-help-id="calendar.task-save">
         {saving ? 'Guardando…' : 'Crear tarea'}
       </button>
     </form>

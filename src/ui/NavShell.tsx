@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { VoiceCapture } from '@/ui/VoiceCapture'
 import { SocialMenuFab, type SocialMenuItem } from '@/ui/SocialMenuFab'
+import { FabSeparator } from '@/ui/FabSeparator'
 import { useShowClassicButtons } from '@/ui/useShowClassicButtons'
 import { ScrollToTopFab } from '@/ui/ScrollToTopFab'
 import { ToastHost } from '@/ui/ToastHost'
@@ -156,6 +157,7 @@ export function NavShell({ profile }: { profile: Profile }) {
         </Suspense>
       )}
       <SocialMenuFab items={SOCIAL_MENU_ITEMS} slot={showClassicButtons ? 5 : 1} />
+      <FabSeparator />
       <ScrollToTopFab />
 
       {menuOpen && <div className="nav-menu-overlay" onClick={() => setMenuOpen(false)} />}

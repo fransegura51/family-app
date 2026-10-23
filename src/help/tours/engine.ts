@@ -12,6 +12,8 @@ export type TourAction =
   | { type: 'signal'; signal: ObservedSignal }
   // `force`: «Siguiente» en un paso al que se ha vuelto con «Atrás» (ya estaba hecho): permitido salvo en pasos sensibles.
   | { type: 'next'; force?: boolean }
+  // Salta lo que queda del grupo de pasos opcionales en el que está (nunca un paso sensible: los de guardar quedan fuera de cualquier grupo).
+  | { type: 'skip-group' }
   | { type: 'back' }
   | { type: 'pause' }
   | { type: 'resume' }
@@ -34,6 +36,8 @@ export function signalMatches(expected: TourSignal, obs: ObservedSignal): boolea
       return obs.type === 'filled' && obs.target === expected.target && obs.length >= (expected.min ?? 1)
     case 'change':
       return obs.type === 'change' && obs.target === expected.target
+    case 'confirmed':
+      return obs.type === 'confirmed' && obs.target === expected.target
     case 'route':
       return obs.type === 'route' && obs.path === expected.path
     case 'event':
@@ -72,12 +76,24 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
     case 'next':
       if (state.status === 'paused' || !step) return state
       return canGoNext(step) || (action.force === true && !step.sensitive) ? advance(tour, state) : state
+    case 'skip-group': {
+      if (state.status !== 'running' || !step?.group) return state
+      let i = state.index
+      const skipped = [...state.skipped]
+      while (i < tour.steps.length && tour.steps[i].group === step.group && !tour.steps[i].sensitive) {
+        skipped.push(i)
+        i++
+      }
+      if (i >= tour.steps.length) return { ...state, index: tour.steps.length, status: 'completed', reason: undefined, skipped }
+      return { ...state, index: i, status: 'running', reason: undefined, skipped }
+    }
     case 'skip':
       if (action.index !== undefined && action.index !== state.index) return state
       return state.status === 'running' && step ? advance(tour, state, state.index) : state
-    case 'back':
-      if (state.index === 0) return state
-      return { ...state, index: state.index - 1, status: 'running', reason: undefined }
+    case 'back': {
+      const prev = previousIndex(state)
+      return prev === null ? state : { ...state, index: prev, status: 'running', reason: undefined }
+    }
     case 'pause':
       return state.status === 'running' ? { ...state, status: 'paused', reason: undefined } : state
     case 'resume':
@@ -98,6 +114,19 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
     case 'on-route':
       return state.status === 'paused' && state.reason === 'off-route' ? { ...state, status: 'running', reason: undefined } : state
   }
+}
+
+// Paso al que lleva «Atrás»: el anterior que no se omitió (volver a un paso omitido lo dejaría saltar otra vez hacia delante). null si no hay ninguno.
+export function previousIndex(state: TourState): number | null {
+  let i = state.index - 1
+  while (i >= 0 && state.skipped.includes(i)) i--
+  return i >= 0 ? i : null
+}
+
+// ¿Queda algún paso del mismo grupo después de este? (para ofrecer «Saltar opciones» solo cuando sirve)
+export function groupHasMore(tour: TourDef, state: TourState): boolean {
+  const step = tour.steps[state.index]
+  return Boolean(step?.group && tour.steps.slice(state.index + 1).some((s) => s.group === step.group))
 }
 
 export function stepOf(tour: TourDef, state: TourState): TourStep | undefined {

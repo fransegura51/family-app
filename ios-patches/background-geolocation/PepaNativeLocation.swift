@@ -38,7 +38,6 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     // (src/domain/gpsJump.ts): una lectura a más de jumpMeters de la última enviada (si es de hace menos de un día) se RETIENE y solo se acepta con
     //   · dos lecturas seguidas CON velocidad (≥ minMovingSpeed; una posición de red no trae velocidad), o
     //   · tres lecturas seguidas, cada una más lejos de la última enviada que la anterior (un camino de verdad se aleja; una posición que baila, no), o
-    //   · 30 min seguida en el mismo sitio (una mudanza real).
     // Si la lectura vuelve a la zona de antes, la retenida se descarta.
     // Causa del 17/10/2026: al relanzar iOS la app cerrada, la PRIMERA lectura es a menudo la última posición guardada (antigua) y el servidor, que cambia por
     // «ahora» toda hora de hace más de 10 minutos, la daba por reciente. Una lectura de más de maxReadingAgeSeconds de antigüedad no se envía; y la última
@@ -53,7 +52,6 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
     private static let jumpHoldGapSeconds: TimeInterval = 600
     // El último punto enviado puede ser de hace horas (quieta en casa no llegan lecturas): el filtro SIGUE valiendo hasta un día.
     private static let jumpCheckWindowSeconds: TimeInterval = 86_400
-    private static let jumpPersistSeconds: TimeInterval = 1_800
     private static let minMovingSpeed: CLLocationSpeed = 0.5
     private static let jumpMinAwayStep: CLLocationDistance = 15
     private static let jumpSpeedReadings = 2
@@ -244,9 +242,11 @@ public final class PepaNativeLocation: NSObject, CLLocationManagerDelegate {
             awayReadings: fromLast - previousFar >= PepaNativeLocation.jumpMinAwayStep ? held.awayReadings + 1 : 0
         )
         heldJump = next
+        // Sin «llevar 30 min en el mismo sitio»: el 22-23/10/2026 una posición de red falsa llegó con las MISMAS coordenadas cada 6 min durante 9 horas
+        // (102 lecturas, de las 23:15 a las 08:31, mientras se dormía en casa), así que cualquier tiempo de permanencia la acabaría aceptando.
+        // Un desplazamiento real trae velocidad o se va alejando; si de verdad pasa más de un día sin lecturas, el filtro deja de valer.
         if next.speedReadings >= PepaNativeLocation.jumpSpeedReadings
-            || next.awayReadings >= PepaNativeLocation.jumpAwayReadings
-            || location.timestamp.timeIntervalSince(next.first.timestamp) >= PepaNativeLocation.jumpPersistSeconds {
+            || next.awayReadings >= PepaNativeLocation.jumpAwayReadings {
             return markAccepted(location)
         }
         return false

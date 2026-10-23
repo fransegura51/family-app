@@ -163,7 +163,13 @@ import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { attachReceiptFile, currentProfileId, deleteReceipt, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
+import { CashWalletsSection, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog } from '@/ui/CashAndPaymentsUi'
+import { addMovement, listCashLinkedExpenseIds, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
+import { shortfallNotice, usableWallets, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
+import { findExistingEconomyExpense, type DupExpense } from '@/domain/duplicateDetection'
+import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/purchasePayments'
+import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
+import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
@@ -1643,6 +1649,10 @@ function BankTab({
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [bankMyMemberId, setBankMyMemberId] = useState<string | null>(null)
+  useEffect(() => {
+    currentProfileId().then((id) => setBankMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
+  }, [members])
   // Petición real: la lista tiene que verse y editarse igual que
   // Movimientos (fecha, detalle, importe, categoría y etiqueta
   // editables) — no el texto suelto del banco. Cada movimiento del
@@ -1860,6 +1870,7 @@ function BankTab({
     <div>
       {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
+      <CashWalletsSection members={members} myMemberId={bankMyMemberId} bankExpenses={linkedExpenses} />
 
       {/* Petición real: "Esta parte de las cuentas quiero que la pongas
           en una página emergente accesible desde el menú arriba con
@@ -5079,6 +5090,14 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
 export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
+  // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0311 estas listas quedan vacías).
+  const [allExpenseList, setAllExpenseList] = useState<Expense[]>([])
+  const [refunds, setRefunds] = useState<PurchaseRefundRow[]>([])
+  const [payments, setPayments] = useState<PurchasePaymentRow[]>([])
+  const [cashLinkedIds, setCashLinkedIds] = useState<Set<string>>(new Set())
+  const [tabWallets, setTabWallets] = useState<CashWallet[]>([])
+  const [refundingId, setRefundingId] = useState<string | null>(null)
+  const [tabMyMemberId, setTabMyMemberId] = useState<string | null>(null)
   const [registeredStores, setKnownStores] = useState<string[]>([])
   const [storeEntries, setStoreEntries] = useState<ShoppingStoreEntry[]>([])
   const knownStores = useMemo(() => withReceiptStoreBases(registeredStores, receipts.map((r) => r.store)), [registeredStores, receipts])
@@ -5105,10 +5124,15 @@ export function ReceiptsTab() {
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
-    Promise.all([listReceipts(), listExpenses(), listBudgetCategories()])
-      .then(([r, allExpenses, cats]) => {
+    Promise.all([listReceipts(), listExpenses(), listBudgetCategories(), listPurchaseRefunds(), listPurchasePayments(), listCashLinkedExpenseIds(), listWalletsSafe()])
+      .then(([r, allExpenses, cats, refundRows, paymentRows, cashIds, walletRows]) => {
         setReceipts(r)
         setCategories(cats)
+        setAllExpenseList(allExpenses)
+        setRefunds(refundRows)
+        setPayments(paymentRows)
+        setCashLinkedIds(cashIds)
+        setTabWallets(walletRows)
         // Un gasto de alimentación con source='banco' nunca ha pasado
         // por la conciliación con ningún ticket (la propia sincronización
         // del banco lo marcaría 'ticket_banco' en cuanto encontrara uno
@@ -5132,6 +5156,10 @@ export function ReceiptsTab() {
       .catch(() => {})
     listFamilyMembers().then(setMembers).catch(() => {})
   }, [])
+  useEffect(() => {
+    if (members.length === 0) return
+    currentProfileId().then((id) => setTabMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
+  }, [members])
 
   async function handleDelete(receipt: Receipt) {
     try {
@@ -5189,6 +5217,12 @@ export function ReceiptsTab() {
       {/* Petición real: "el aparato para subir tickets... arriba del
           todo" — antes iba al final de la lista. */}
       <ReceiptForm mode="add" onDone={reload} knownStores={knownStores} existingFolders={storeNames} categories={categories} members={members} />
+      <PurchaseDuplicatesPanel
+        expenses={allExpenseList}
+        purchaseExpenseIds={new Set(receipts.map((x) => x.expenseId).filter((id): id is string => !!id))}
+        cashLinkedExpenseIds={cashLinkedIds}
+        onChanged={reload}
+      />
 
       {/* Petición real: "las estadísticas en Tickets... trasládalas a
           Estadísticas para que todo esté en el mismo sitio" — el reparto
@@ -5301,6 +5335,15 @@ export function ReceiptsTab() {
                         members={members}
                         onEdit={() => setEditingId(r.id)}
                         onAttach={() => setAttachingId(r.id)}
+                        refunds={refunds.filter((x) => x.receiptId === r.id)}
+                        payments={payments.filter((x) => x.receiptId === r.id)}
+                        wallets={usableWallets(tabWallets, tabMyMemberId)}
+                        refunding={refundingId === r.id}
+                        onToggleRefund={() => setRefundingId(refundingId === r.id ? null : r.id)}
+                        onRefunded={() => {
+                          setRefundingId(null)
+                          reload()
+                        }}
                         onDelete={() => handleDelete(r)}
                       />
                     ),
@@ -5781,12 +5824,24 @@ function ReceiptRow({
   onEdit,
   onAttach,
   onDelete,
+  refunds = [],
+  payments = [],
+  wallets = [],
+  refunding = false,
+  onToggleRefund,
+  onRefunded,
 }: {
   receipt: Receipt
   hasTicket: boolean
   members: FamilyMember[]
   onEdit: () => void
   onAttach?: () => void
+  refunds?: PurchaseRefundRow[]
+  payments?: PurchasePaymentRow[]
+  wallets?: CashWallet[]
+  refunding?: boolean
+  onToggleRefund?: () => void
+  onRefunded?: () => void
   onDelete: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -5796,6 +5851,8 @@ function ReceiptRow({
   const [sharing, setSharing] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
 
+  const refundInfo = receipt.totalAmount != null ? refundSummary(receipt.totalAmount, refunds) : null
+  const refundText = refundInfo ? refundLine(refundInfo) : null
   const purchaser = receipt.purchasedByMemberId ? members.find((m) => m.id === receipt.purchasedByMemberId) : null
 
   async function handleToggleExpand() {
@@ -5857,6 +5914,8 @@ function ReceiptRow({
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {isPaymentMethod(receipt.paymentMethod) && <span className="muted"> · {PAYMENT_METHOD_LABELS[receipt.paymentMethod]}</span>}
           {receipt.isManual && !receipt.storagePath && <span className="muted" title="Compra apuntada a mano, sin ticket"> · ✍️ sin ticket</span>}
+          {payments.length > 1 && <span className="muted"> · {payments.map((p) => `${(PAYMENT_METHOD_LABELS as Record<string, string>)[p.method]?.slice(0, 2) ?? ''} ${p.amount.toFixed(2)} €`).join(' + ')}</span>}
+          {refundText && <span className="muted"> · {refundText}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
               los que no se haya subido el ticket" — este gasto se sabe
               solo por el banco, nadie ha subido la foto del ticket
@@ -5881,6 +5940,11 @@ function ReceiptRow({
                   </button>
                 </>
               )}
+              {refundInfo && refundInfo.remaining > 0.005 && onToggleRefund && (
+                <button type="button" className="icon-button" onClick={onToggleRefund} aria-label="Registrar una devolución" title="Devolución">
+                  ↩️
+                </button>
+              )}
               {receipt.isManual && !receipt.storagePath && onAttach && (
                 <button type="button" className="icon-button" onClick={onAttach} aria-label="Añadir el ticket a esta compra" title="Añadir el ticket">
                   📎
@@ -5898,6 +5962,9 @@ function ReceiptRow({
           )}
         </div>
       </div>
+      {refunding && refundInfo && onRefunded && onToggleRefund && (
+        <RefundPanel receiptId={receipt.id} summary={refundInfo} purchaseStore={receipt.store} wallets={wallets} onDone={onRefunded} onCancel={onToggleRefund} />
+      )}
       {shareError && <p className="error" style={{ margin: '4px 0 0' }}>{shareError}</p>}
       {expanded && (
         <div className="receipt-row-detail">
@@ -6108,7 +6175,17 @@ function ReceiptForm({
   const [attachTo, setAttachTo] = useState<Receipt | null>(attachToProp ?? null)
   // Compra rápida SIN ticket (solo al crear): no hace falta foto; el justificante se puede añadir después.
   const [noTicket, setNoTicket] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState(receipt?.paymentMethod ?? '')
+  const [paymentMethod, setPaymentMethod] = useState(receipt?.paymentMethod && receipt.paymentMethod !== 'mixto' ? receipt.paymentMethod : '')
+  // Efectivo (opcional) y pagos mixtos: un solo medio por defecto; "varios medios" reparte el MISMO gasto total.
+  const [wallets, setWallets] = useState<CashWallet[]>([])
+  const [myMemberId, setMyMemberId] = useState<string | null>(null)
+  const [cashWalletId, setCashWalletId] = useState('')
+  const [multiLegs, setMultiLegs] = useState<PaymentLeg[] | null>(null)
+  const [paymentTouched, setPaymentTouched] = useState(false)
+  const [shortfall, setShortfall] = useState<{ notice: ShortfallNotice; walletName: string; resolve: (c: ShortfallChoice | { add: number }) => void } | null>(null)
+  const [economyMatches, setEconomyMatches] = useState<DupExpense[]>([])
+  const economyDecision = useRef<{ linkExpenseId: string | null } | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const [showDetail, setShowDetail] = useState(false)
   const [manualCandidates, setManualCandidates] = useState<Receipt[]>([])
   const [store, setStore] = useState(attachToProp?.store ?? receipt?.store ?? '')
@@ -6153,6 +6230,62 @@ function ReceiptForm({
     [lines, store],
   )
   const lineShared = useSharedClasses(lineSharedPairs, 350)
+
+  useEffect(() => {
+    listWalletsSafe().then(setWallets).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (members.length === 0) return
+    currentProfileId().then((id) => setMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
+  }, [members])
+  // Al editar una compra con varios pagos (o con cartera), se recuperan sus pagos.
+  useEffect(() => {
+    if (mode !== 'edit' || !receipt) return
+    listPurchasePayments()
+      .then((rows) => {
+        const mine = rows.filter((p) => p.receiptId === receipt.id)
+        if (mine.length > 1) setMultiLegs(mine.map((p) => ({ method: p.method as PaymentLeg['method'], amount: String(p.amount), walletId: p.walletId ?? '' })))
+        else if (mine.length === 1 && mine[0].walletId) setCashWalletId(mine[0].walletId)
+      })
+      .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, receipt?.id])
+
+  const totalNum = parseAmount(totalAmount)
+  // Los pagos que se van a guardar: varios medios, o el único medio elegido por el total.
+  function effectiveLegs(): PaymentLeg[] {
+    if (multiLegs) return multiLegs
+    if (!paymentMethod || totalNum == null) return []
+    return [{ method: paymentMethod as PaymentLeg['method'], amount: String(totalNum), walletId: paymentMethod === 'efectivo' ? cashWalletId : '' }]
+  }
+  // Aviso NO bloqueante si una cartera no tiene saldo para el pago en efectivo: se puede continuar (saldo negativo), añadir efectivo o cancelar.
+  async function cashCheckOk(legs: PaymentLeg[]): Promise<boolean> {
+    const need = new Map<string, number>()
+    for (const l of legs) if (l.method === 'efectivo' && l.walletId) need.set(l.walletId, (need.get(l.walletId) ?? 0) + (parseAmount(l.amount) ?? 0))
+    for (const [walletId, amount] of need) {
+      const w = wallets.find((x) => x.id === walletId)
+      const notice = w ? shortfallNotice(w.balance, amount) : null
+      if (!w || !notice) continue
+      const choice = await new Promise<ShortfallChoice | { add: number }>((resolve) => setShortfall({ notice, walletName: w.name, resolve }))
+      setShortfall(null)
+      if (choice === 'cancel') return false
+      if (typeof choice === 'object') {
+        await addMovement({ walletId, kind: 'in', delta: choice.add, note: 'Efectivo añadido', date: toDateStr(new Date()) })
+        setWallets(await listWalletsSafe())
+      }
+    }
+    return true
+  }
+  // ¿Esta compra manual ya está apuntada en Economía? Solo se ofrece vincularla (nunca se decide sola).
+  async function findEconomyMatches(): Promise<DupExpense[]> {
+    if (totalNum == null) return []
+    const [all, purchases] = await Promise.all([listExpenses(), listReceipts()])
+    const withPurchase = new Set(purchases.map((p) => p.expenseId).filter((x): x is string => !!x))
+    const dup: DupExpense[] = all
+      .filter((e) => e.kind === 'real')
+      .map((e) => ({ id: e.id, expenseDate: e.expenseDate, amount: e.amount, store: e.store, source: e.source, isIncome: e.isIncome, paymentMethod: e.paymentMethod ?? null, hasPurchase: withPurchase.has(e.id) }))
+    return findExistingEconomyExpense({ amount: totalNum, date: receiptDate, store, paymentMethod: multiLegs ? 'mixto' : paymentMethod || null }, dup)
+  }
 
   // Quién pagó, por defecto la persona que registra (no es lo mismo que el autor del registro: se puede cambiar).
   useEffect(() => {
@@ -6314,6 +6447,11 @@ function ReceiptForm({
     setFile(null)
     setAttachTo(null)
     setPaymentMethod('')
+    setCashWalletId('')
+    setMultiLegs(null)
+    setPaymentTouched(false)
+    setEconomyMatches([])
+    economyDecision.current = null
     setShowDetail(false)
     setManualCandidates([])
     setStore('')
@@ -6333,8 +6471,15 @@ function ReceiptForm({
       setError(attachTo ? 'Elige la foto o archivo del ticket' : 'Elige una foto o archivo del ticket, o usa «Sin ticket»')
       return
     }
+    if (multiLegs && (mode === 'add' || paymentTouched) && !attachTo) {
+      const legProblem = validateLegs(totalNum ?? 0, multiLegs)
+      if (legProblem) {
+        setError(legProblem)
+        return
+      }
+    }
     if (mode === 'add' && noTicket && !attachTo) {
-      const problem = validateManualPurchase({ store, date: receiptDate, total: totalAmount, paymentMethod })
+      const problem = validateManualPurchase({ store, date: receiptDate, total: totalAmount, paymentMethod: multiLegs ? 'otro' : paymentMethod })
       if (problem) {
         setError(problem)
         return
@@ -6362,10 +6507,19 @@ function ReceiptForm({
         if (receiptId) {
           await deleteProductPricesByReceipt(receiptId)
         } else {
+          if (!(await cashCheckOk(effectiveLegs()))) return
+          if (noTicket && !economyDecision.current) {
+            const matches = await findEconomyMatches()
+            if (matches.length > 0) {
+              setEconomyMatches(matches)
+              return
+            }
+          }
           receiptId = await uploadReceipt({
             file: noTicket ? null : file!,
             isManual: noTicket,
-            paymentMethod: paymentMethod || null,
+            linkExpenseId: economyDecision.current?.linkExpenseId ?? null,
+            paymentMethod: multiLegs ? 'mixto' : paymentMethod || null,
             store,
             receiptDate,
             totalAmount: totalAmount ? Number(totalAmount) : null,
@@ -6375,7 +6529,10 @@ function ReceiptForm({
           })
           uploadedReceiptId.current = receiptId
         }
+        // Varios medios de pago, o efectivo de una cartera: se guardan los pagos (la suma es el total y el gasto sigue siendo uno solo).
+        if (needsPaymentRecords(effectiveLegs())) await setPurchasePayments(receiptId, effectiveLegs(), purchasedByMemberId || null)
         await saveLines(receiptId)
+        economyDecision.current = null
         resetAddForm()
       } else if (receipt) {
         // La categoría de un ticket (y la de su gasto vinculado) se cambia SOLO con classify_purchase: atómica gasto ↔ ticket y sin pisar
@@ -6400,8 +6557,9 @@ function ReceiptForm({
           receiptDate,
           totalAmount: totalAmount ? Number(totalAmount) : null,
           purchasedByMemberId: purchasedByMemberId || null,
-          paymentMethod: paymentMethod || null,
+          paymentMethod: multiLegs ? 'mixto' : paymentMethod || null,
         })
+        if (paymentTouched && effectiveLegs().length > 0) await setPurchasePayments(receipt.id, effectiveLegs(), purchasedByMemberId || null)
         // Se sustituyen todas las líneas por las editadas, en vez de
         // intentar emparejar una a una con las que ya había.
         await deleteProductPricesByReceipt(receipt.id)
@@ -6416,7 +6574,7 @@ function ReceiptForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form ref={formRef} onSubmit={handleSubmit} className="card member-form">
       {mode === 'add' && (
         <>
           <h2>{attachTo ? 'Añadir el ticket a esta compra' : noTicket ? 'Compra sin ticket' : 'Subir ticket'}</h2>
@@ -6541,18 +6699,26 @@ function ReceiptForm({
         </label>
       </div>
 
-      {(noTicket || (mode === 'edit' && receipt?.isManual) || paymentMethod) && (
-        <label>
-          Forma de pago
-          <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-            <option value="">—</option>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m} value={m}>
-                {PAYMENT_METHOD_LABELS[m]}
-              </option>
-            ))}
-          </select>
-        </label>
+      {!attachTo && (
+        <PaymentSection
+          total={totalNum}
+          method={paymentMethod}
+          onMethod={(m) => {
+            setPaymentMethod(m)
+            setPaymentTouched(true)
+          }}
+          walletId={cashWalletId}
+          onWallet={(id) => {
+            setCashWalletId(id)
+            setPaymentTouched(true)
+          }}
+          legs={multiLegs}
+          onLegs={(l) => {
+            setMultiLegs(l)
+            setPaymentTouched(true)
+          }}
+          wallets={usableWallets(wallets, myMemberId)}
+        />
       )}
       {noTicket && !showDetail && lines.length === 0 && (
         <button type="button" className="link-button" onClick={() => { setShowDetail(true); addBlankLine() }}>
@@ -6674,6 +6840,39 @@ function ReceiptForm({
         </div>
       )}
 
+      {economyMatches.length > 0 && (
+        <div className="card" role="status">
+          <p style={{ margin: 0 }}>Ya tienes este gasto apuntado en Economía. Así no se cuenta dos veces:</p>
+          {economyMatches.slice(0, 3).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="link-button"
+              style={{ display: 'block', marginTop: 4 }}
+              onClick={() => {
+                economyDecision.current = { linkExpenseId: m.id }
+                setEconomyMatches([])
+                formRef.current?.requestSubmit()
+              }}
+            >
+              Sí, es este: {formatDate(m.expenseDate)}{m.store ? ` · ${m.store}` : ''} · {m.amount.toFixed(2)} € — usarlo para esta compra
+            </button>
+          ))}
+          <button
+            type="button"
+            className="link-button"
+            style={{ display: 'block', marginTop: 4 }}
+            onClick={() => {
+              economyDecision.current = { linkExpenseId: null }
+              setEconomyMatches([])
+              formRef.current?.requestSubmit()
+            }}
+          >
+            No, es otra compra: guardar como nueva
+          </button>
+        </div>
+      )}
+      {shortfall && createPortal(<ShortfallDialog notice={shortfall.notice} walletName={shortfall.walletName} onChoose={(c) => shortfall.resolve(c)} onAddCash={(add) => shortfall.resolve({ add })} />, document.body)}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving}>

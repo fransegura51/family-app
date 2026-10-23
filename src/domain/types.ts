@@ -315,6 +315,8 @@ export interface Expense {
   // independiente de la categoría, una por movimiento.
   tagId: string | null
   source: ExpenseSource
+  // Cómo se pagó (efectivo / tarjeta / bizum / transferencia / otro / mixto); null = no indicado. El efectivo y los pagos mixtos no se concilian con el banco.
+  paymentMethod?: string | null
   // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
   // fijo o es variable" — null = se calcula de la categoría como
   // siempre (resolveCategoryClassification); true/false = este

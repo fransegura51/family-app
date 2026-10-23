@@ -78,6 +78,8 @@ export async function uploadReceipt(input: {
   // Compra apuntada a mano: su gasto nace con source 'manual' (que el banco y los tickets posteriores ya concilian sin duplicar).
   isManual?: boolean
   paymentMethod?: string | null
+  // Compra manual que YA existe como gasto apuntado a mano en Economía (elegido por la familia): se enlaza a él y NO se crea otro gasto.
+  linkExpenseId?: string | null
 }): Promise<string> {
   const familyId = await currentFamilyId()
   const path = input.file ? await uploadReceiptFile(familyId, input.file) : null
@@ -85,10 +87,14 @@ export async function uploadReceipt(input: {
   let createdExpenseId: string | null = null
 
   let expenseId: string | null = null
-  // Un pago en efectivo no sale del banco: nunca se une a un apunte bancario. Una compra manual solo se une a un gasto del banco aún sin
+  // Un pago en efectivo (o repartido entre varios medios) no se une a un apunte bancario por el total. Una compra manual solo se une a un gasto del banco aún sin
   // compra propia (nunca a otra compra manual: dos panes iguales en la misma semana son dos compras).
-  const mayMatchExisting = !(input.isManual && input.paymentMethod === 'efectivo')
-  if (input.totalAmount != null) {
+  const mayMatchExisting = !(input.paymentMethod === 'efectivo' || input.paymentMethod === 'mixto')
+  if (input.linkExpenseId) {
+    expenseId = input.linkExpenseId
+    // El gasto ya existía: solo se le anota cómo se pagó (si no lo tenía), para que el efectivo no se concilie con el banco.
+    if (input.paymentMethod) await supabase.from('expenses').update({ payment_method: input.paymentMethod }).eq('id', expenseId).is('payment_method', null)
+  } else if (input.totalAmount != null) {
     // Bug real: "he mandado los tickets... pero no los ha conciliado
     // con las compras que ya estaban generadas, se han duplicado" — el
     // banco puede haber traído ya este mismo gasto antes de subir el
@@ -140,6 +146,7 @@ export async function uploadReceipt(input: {
           store: input.store || null,
           kind: 'real',
           source: input.isManual ? 'manual' : 'ticket',
+          payment_method: input.paymentMethod || null,
         })
         .select('id')
         .single()
@@ -266,6 +273,11 @@ export async function updateReceipt(
     const { error: deleteExpenseError } = await supabase.from('expenses').delete().eq('id', expenseId)
     if (deleteExpenseError) throw deleteExpenseError
     expenseId = null
+  }
+
+  if (expenseId && input.paymentMethod !== undefined) {
+    const { error: pmError } = await supabase.from('expenses').update({ payment_method: input.paymentMethod || null }).eq('id', expenseId)
+    if (pmError) throw pmError
   }
 
   const { error } = await supabase

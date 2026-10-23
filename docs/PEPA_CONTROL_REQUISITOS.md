@@ -796,7 +796,7 @@ Diseño (se reutiliza lo que había, sin módulos nuevos): una compra manual es 
 | COM-1e | Sin doble contabilización con Economía/banco | **Implementado y probado** | Pagada con tarjeta y el banco ya trajo el gasto → se une a ese gasto (`ticket_banco`); en **efectivo nunca** se une a un apunte bancario; dos compras manuales iguales son dos compras; si falla el guardado no queda gasto huérfano. `manualPurchases.test.ts` |
 | COM-1f | Aislamiento entre familias | **Probado en la base real** | Transacción REVERTIDA sobre producción (familias de prueba): pagador de otra familia rechazado (check_violation), forma de pago inválida rechazada, un usuario de otra familia no ve la compra ni el gasto y no puede insertar en la familia ajena (42501). Tras la prueba: 0 columnas nuevas, 114 tickets / 947 gastos / 460 productos intactos |
 
-**Pendiente de COM-1**: probar en iPhone Safari/Android reales (solo se ha probado el comportamiento en pruebas automáticas); la forma de pago es una sola por compra (los **pagos mixtos** son el Bloque 5.2, pendiente); detección de duplicados entre manual/ticket/banco más allá de la oferta «es esta compra» (Bloque 5.5, pendiente).
+**Pendiente de COM-1**: probar en iPhone Safari/Android reales (solo se ha probado el comportamiento en pruebas automáticas); los pagos mixtos, las devoluciones y la detección de duplicados están en ECO-1, y las carteras de efectivo en EFE-1 (la forma de pago de la compra rápida ya admite varios medios).
 
 ## Comparador inteligente de precios (COMP-1, 24/10/2026)
 
@@ -816,9 +816,43 @@ Arquitectura (sin segundo catálogo de categorías; reutiliza `productTextKey`, 
 
 **Pendiente de COMP-1**: marca/contenido del envase como dato estructurado (hoy se lee del nombre; mejoraría con una columna al guardar productos, decisión de diseño pendiente); pantalla para revisar equivalencias compartidas (hoy solo SQL); probar en móvil; arquitectura de «sugerencias de ahorro» preparada (`compareShoppingList` devuelve `savingVsNext`, cobertura y fechas) pero **sin interfaz** de sugerencias; validar con más familias reales (hoy solo 2 con datos).
 
-## Efectivo, pagos mixtos, devoluciones, traspasos y duplicados (Bloques 4 y 5)
+## Efectivo y carteras (EFE-1, 24/10/2026)
 
-**Pendiente de implementar** (no empezados): carteras de efectivo y traspasos (Bloque 4), pagos mixtos, devoluciones/reembolsos, traspasos familiares, detección de duplicados e integración completa Compras–Economía (Bloque 5.2-5.6).
+Encargo «AUDITORÍA Y MEJORAS DE COMPRAS Y ECONOMÍA», Bloque 4. **Estado: implementado y probado en local y contra la base real (transacción revertida); migración 0311 PREPARADA (`supabase/pending-migrations/`), NO aplicada; sincronizador y cliente NO desplegados; sin Aprobar.** Plan: `docs/PLAN_DESPLIEGUE_COMPRAS_EFECTIVO_COMPARADOR.md`.
+
+Diseño (reutiliza lo existente; sin módulo nuevo): las carteras viven en Economía → Banco → «💶 Efectivo (opcional)». No se reutiliza `bank_accounts` (exige una conexión bancaria); se copia su modelo de permisos (sección «dinero», modo de cuentas compartido/privado, dueña). Un traspaso con el banco reutiliza la categoría «Movimientos internos» que ya excluye de gastos e ingresos todo Economía (`isInternalTransferCategory`).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| EFE-1a | Carteras opcionales: personal (una por persona) y familiar; saldo inicial; entradas, salidas, ajustes de saldo; historial | **Implementado y probado** | `cash_wallets`/`cash_movements`/vista `cash_wallet_balances` (0311); `domain/cashWallet.ts`, `data/cash.ts`, `CashWalletsSection`; `cashAndPayments.test.ts`, `cashAndPaymentsUi.test.tsx` |
+| EFE-1b | Control opcional: se pueden registrar gastos en efectivo SIN cartera | **Implementado y probado** | El efectivo es una forma de pago más; la cartera solo se ofrece si existe. `PaymentSection` («Sin cartera»), `manualPurchases.test.ts` |
+| EFE-1c | Saldo cero o insuficiente: aviso NO bloqueante con «Registrar igualmente / Añadir efectivo / Cancelar»; el saldo puede quedar negativo y se presenta «por regularizar», no como deuda | **Implementado y probado** | `shortfallNotice` (texto exacto del encargo), `ShortfallDialog`; en base real: saldo −75,00 € permitido |
+| EFE-1d | Traspasos cartera personal ↔ familiar ↔ miembros: NO son ingreso ni gasto; trazabilidad por `transfer_id` | **Implementado y probado en base real** | `cash_transfer`: el traspaso no crea apuntes en `expenses`; los traspasos no se pueden borrar a mano |
+| EFE-1e | Traspasos banco ↔ cartera: una retirada de 100 € no es gasto; se puede deshacer | **Implementado y probado en base real** | `cash_link_bank_expense` / `cash_unlink_bank_expense`: el apunte pasa a «Transferencias entre cuentas propias» (Movimientos internos) y la cartera sube 100; deshacer restituye la categoría original |
+| EFE-1f | Permisos existentes | **Probado en base real** | Cartera personal: solo la escribe su dueña (un adulto no crea la de otra: 42501); modo privado: no se ve la ajena; acceso a «dinero» obligatorio (los niños con sección restringida no llegan); usuario de otra familia: no ve nada, no puede mover efectivo ni crear carteras en otra familia |
+| EFE-1g | El efectivo no se concilia con el banco | **Implementado y probado (parte del servidor sin desplegar)** | `expenses.payment_method`; `uploadReceipt` no busca cargo bancario si es efectivo/mixto; **sincronizador**: candidatos excluyen `efectivo`/`mixto` (`cashMigrationAndBankSyncGuards.test.ts`). **No ejecutado contra el banco real** hasta desplegar la función |
+
+**Pendiente / límites de EFE-1**: probar en iPhone Safari y Android reales; la retirada de cajero se elige a mano entre los movimientos del banco (no hay detección automática); sin interfaz para renombrar carteras; archivar una cartera personal no mueve su saldo (queda en su historial); el modo privado de cuentas solo se ha probado por política, no con dos adultos reales.
+
+## Integración económica: pagos mixtos, devoluciones, duplicados y vínculo Compras–Economía (ECO-1, 24/10/2026)
+
+Bloque 5. **Estado: implementado y probado; mismas condiciones de despliegue que EFE-1 (0311 preparada, sincronizador y cliente sin desplegar); sin Aprobar.**
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| ECO-1a | Quién pagó ≠ autor del registro | **Implementado y probado** | COM-1d (`purchased_by_member_id`, misma familia por trigger) + `paid_by_member_id` por pago |
+| ECO-1b | Pagos mixtos: una compra, **un solo gasto total**, dos o más movimientos de pago relacionados (60 € = 20 efectivo + 40 tarjeta) | **Implementado y probado en base real** | `purchase_payments` + `set_purchase_payments`: la suma debe ser el total (rechaza 50 ≠ 60); 1 gasto, 2 pagos; el efectivo de cartera descuenta; cambiar a tarjeta lo devuelve; `PaymentSection` («Cuadra con el total») |
+| ECO-1c | Devoluciones totales o parciales vinculadas a la compra; gasto neto, estadísticas, historial y saldo correctos; no es ingreso ordinario | **Implementado y probado en base real** | `purchase_refunds` + `register_purchase_refund`: categoría estándar «Devoluciones» (Modelo C: resta del bruto, `domain/refunds.ts`); parcial 15 € (cartera +15) y resto 45 € (total 60); más de lo pagado rechazado; ya devuelta del todo rechazada; el gasto original queda en 60; `refundSummary`/`refundLine` («Devueltos 15,00 € · neto 45,00 €») |
+| ECO-1d | Compra manual NO duplica un gasto manual ya existente en Economía | **Implementado y probado** | Al guardar, `findExistingEconomyExpense` (importe exacto, ±3 días, comercio compatible, forma de pago no contradictoria) OFRECE «usarlo para esta compra»; `uploadReceipt({ linkExpenseId })` no crea otro gasto. `duplicateDetection.test.ts`, `manualPurchases.test.ts` |
+| ECO-1e | Compra con tarjeta, vinculable después a su movimiento bancario | **Implementado y probado** | Automático (ya existía y se conserva): el sincronizador une gastos manuales/ticket no pagados en efectivo; explícito: `link_purchase_to_bank_expense` («Sí, vincular», un solo gasto, importes iguales al céntimo; probado en base real) |
+| ECO-1f | Compra en efectivo NO se concilia con el banco | **Implementado y probado** | EFE-1g; el panel de duplicados nunca sugiere efectivo↔banco |
+| ECO-1g | Pago mixto con parte de tarjeta: el cargo del banco (40 €) no crea otro gasto | **Vínculo manual probado en base real; automático solo por inspección** | `link_purchase_to_bank_expense(…, p_payment)` probado (1 gasto de la compra, origen `ticket_banco`, movimiento bancario → compra, pago enlazado); sincronizador `findPaymentLegMatch` (una sola candidata, ±7 días, importe exacto del pago) cubierto por pruebas estructurales, **no ejecutado contra el banco real** |
+| ECO-1h | Reembolsos: el abono bancario posterior se une a la devolución registrada y no se cuenta dos veces | **Implementado (sincronizador, sin desplegar)** | `findManualRefundMatch` (±14 días, importe exacto, una sola candidata, no efectivo); pruebas estructurales; la regla DEV-1 original queda intacta (su test sigue verde) |
+| ECO-1i | Detección de duplicados con importe, fecha, comercio y forma de pago; **sin fusionar automáticamente**; distingue duplicado de pago legítimo | **Implementado y probado** | `domain/duplicateDetection.ts` (`link_bank` frente a `duplicate`), `PurchaseDuplicatesPanel` (solo sugiere; quitar uno pide confirmación; «No, son distintas» se recuerda en `purchase_duplicate_decisions`); dos cargos iguales del banco no se marcan |
+| ECO-1j | Cambios de forma de pago, correcciones y borrados mantienen la consistencia | **Parcial** | Cambiar la forma de pago al editar actualiza gasto, compra, pagos y cartera (probado). **Borrar** una compra: sus pagos y los movimientos de cartera de esos pagos se borran en cascada, **pero los movimientos de cartera de una devolución se conservan** (su `expense_id` pasa a NULL): habría que ajustarlos a mano. Decisión pendiente |
+| ECO-1k | Aislamiento entre familias y permisos | **Probado en base real** | Ver EFE-1f; además un usuario de otra familia no puede cambiar pagos, devolver ni vincular apuntes de una compra ajena |
+
+**Pendiente de ECO-1**: ECO-1j; probar el sincronizador modificado contra el banco real tras desplegarlo; qué hacer cuando el abono del banco de una devolución llega por un importe distinto del registrado (hoy no se une y queda como ingreso de devolución aparte).
 
 ---
 

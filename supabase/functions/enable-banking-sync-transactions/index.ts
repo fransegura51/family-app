@@ -401,6 +401,58 @@ async function reclassifyAsCancelledChargePair(
   if (refundExpense) await admin.from("bank_transactions").update({ matched_expense_id: refundExpense.id }).eq("id", params.bt.id)
 }
 
+// Parte no efectiva de una compra con varios medios de pago que coincide con este cargo (importe exacto, ±7 días, sin movimiento bancario ya enlazado).
+async function findPaymentLegMatch(
+  admin: ReturnType<typeof createClient>,
+  familyId: string,
+  amount: number,
+  date: string,
+): Promise<{ paymentId: string; expenseId: string } | null> {
+  const { data: legs } = await admin
+    .from("purchase_payments")
+    .select("id, amount, receipt_id")
+    .eq("family_id", familyId)
+    .is("bank_transaction_id", null)
+    .in("method", ["tarjeta", "bizum", "transferencia", "otro"])
+  const sameAmount = (legs ?? []).filter((l) => Math.abs(Number(l.amount) - amount) < 0.01)
+  if (sameAmount.length === 0) return null
+  const { data: receipts } = await admin.from("receipts").select("id, receipt_date, expense_id").in("id", sameAmount.map((l) => l.receipt_id as string)).not("expense_id", "is", null)
+  const day = (d: string) => Math.round(new Date(d).getTime() / 86_400_000)
+  const inWindow = sameAmount.flatMap((l) => {
+    const rc = (receipts ?? []).find((x) => x.id === l.receipt_id)
+    return rc && Math.abs(day(rc.receipt_date as string) - day(date)) <= 7 ? [{ paymentId: l.id as string, expenseId: rc.expense_id as string }] : []
+  })
+  return inWindow.length === 1 ? inWindow[0] : null
+}
+
+// Devolución registrada a mano (categoría de devoluciones, sin cartera de efectivo) que coincide con este abono; null si no hay una o hay varias.
+async function findManualRefundMatch(
+  admin: ReturnType<typeof createClient>,
+  familyId: string,
+  refundCategoryName: string,
+  amount: number,
+  date: string,
+): Promise<string | null> {
+  const from = new Date(date)
+  from.setDate(from.getDate() - 14)
+  const to = new Date(date)
+  to.setDate(to.getDate() + 14)
+  const { data: candidates } = await admin
+    .from("expenses")
+    .select("id, amount")
+    .eq("family_id", familyId)
+    .eq("source", "manual")
+    .eq("is_income", true)
+    .eq("category", refundCategoryName)
+    .or("payment_method.is.null,payment_method.neq.efectivo")
+    .gte("expense_date", from.toISOString().slice(0, 10))
+    .lte("expense_date", to.toISOString().slice(0, 10))
+  const same = (candidates ?? []).filter((c) => Math.abs(Number(c.amount) - amount) < 0.01)
+  if (same.length !== 1) return null
+  const { data: linked } = await admin.from("bank_transactions").select("id").eq("matched_expense_id", same[0].id).maybeSingle()
+  return linked ? null : (same[0].id as string)
+}
+
 // Convierte cada movimiento del banco sin enlazar todavía en un gasto
 // real de Movimientos: o se une a un ticket ya existente (mismo
 // importe, ±7 días) o se crea un gasto nuevo con categoría adivinada.
@@ -516,6 +568,17 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
       }
     }
 
+    // DEVOLUCIONES (0311): si la familia ya registró esa devolución a mano (misma cantidad, ±14 días, no en efectivo, sin enlazar), el abono del banco
+    // es ESA devolución: se enlaza y no se crea otro ingreso. Con más de una candidata no se elige ninguna.
+    if (isIncome && refundCategoryName) {
+      const manualRefund = await findManualRefundMatch(admin, familyId, refundCategoryName, Number(bt.amount), bt.transaction_date as string)
+      if (manualRefund) {
+        await admin.from("expenses").update({ source: "ticket_banco", owner_member_id: account.owner_member_id }).eq("id", manualRefund)
+        await admin.from("bank_transactions").update({ matched_expense_id: manualRefund }).eq("id", bt.id)
+        continue
+      }
+    }
+
     // FASE DEV-1 — devolución bancaria explícita (ver isExplicitBankRefundDescription más arriba): solo
     // se intenta cuando ni "ANUL" ni la reversión de comisión de arriba han aplicado. A diferencia de
     // esas dos reglas, esta NO hace ninguna consulta ni busca la compra original — solo decide la
@@ -523,6 +586,15 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"
 
     if (!isIncome) {
+      // PAGOS MIXTOS (0311): ¿es este cargo la parte NO efectivo de una compra con varios medios de pago? Importe exacto del pago, sin enlazar a
+      // otro movimiento, compra de ±7 días. Se une a la compra (un solo gasto total) y NUNCA crea otro gasto. Si hay más de una candidata, no elige.
+      const legMatch = await findPaymentLegMatch(admin, familyId, Number(bt.amount), bt.transaction_date as string)
+      if (legMatch) {
+        await admin.from("purchase_payments").update({ bank_transaction_id: bt.id }).eq("id", legMatch.paymentId)
+        await admin.from("expenses").update({ source: "ticket_banco", owner_member_id: account.owner_member_id }).eq("id", legMatch.expenseId)
+        await admin.from("bank_transactions").update({ matched_expense_id: legMatch.expenseId }).eq("id", bt.id)
+        continue
+      }
       // ¿Ya existe un ticket O un gasto apuntado a mano con este mismo
       // importe en una fecha cercana, sin enlazar todavía a ningún
       // otro movimiento bancario? Si lo hay, es la misma compra pagada
@@ -547,6 +619,9 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         .eq("family_id", familyId)
         .in("source", ["ticket", "manual"])
         .eq("is_income", false)
+        // EFECTIVO (0311): un gasto pagado en efectivo NO sale del banco, y uno mixto solo coincide por la parte de tarjeta (más abajo): ninguno se
+        // une jamás a un cargo bancario del mismo importe (ocultaría el cargo real de otro comercio).
+        .or("payment_method.is.null,payment_method.not.in.(efectivo,mixto)")
         .gte("expense_date", from.toISOString().slice(0, 10))
         .lte("expense_date", to.toISOString().slice(0, 10))
 

@@ -47,7 +47,7 @@ El plugin original de ubicación apaga su servicio al cerrar la app (deslizarla 
 - Filtro de posiciones falsas (18/10/2026, APK 1.0.24): avisos de salida falsos con el móvil quieto en casa (17/10 21:44; 18/10 11:08 y 11:59). Los datos mostraron una posición de
   RED (wifi/antena) mal colocada a ~350 m que el móvil devolvía repetida (mismas coordenadas, sin velocidad). Regla en `NativeLocationReceiver.acceptAfterJumpCheck` (app cerrada) y en
   `domain/gpsJump.ts` + `services/locationSharing.ts` (app abierta, Android/iPhone/web): una lectura a más de 150 m del último punto (de hace < 1 día) se retiene y solo se envía con dos lecturas
-  seguidas con velocidad, o tres seguidas cada vez más lejos, o 30 min seguidos en el mismo sitio. El registro anota cada retenida (distancia, velocidad, precisión). **Sin probar con un salto real.**
+  seguidas con velocidad, o tres seguidas cada vez más lejos (la regla de «30 min seguidos en el mismo sitio» se QUITÓ el 23/10: una posición de red falsa y fija se repitió 102 veces seguidas, 22-23/10, y la habría aceptado). El registro anota cada retenida (distancia, velocidad, precisión). **Sin probar con un salto real.**
 - Envío nativo robusto (16/10/2026): un fallo real (Paco salió a las 17:45 y el Xiaomi no mandó nada hasta abrir la app, con «Permitir siempre» ya dado y la
   pausa de actividad apagada) mostró que depender de que el servicio siga vivo no basta (Android 12+ no deja poner en primer plano un servicio
   reiniciado desde segundo plano). Ahora las posiciones se piden a Play Services con un `PendingIntent` a

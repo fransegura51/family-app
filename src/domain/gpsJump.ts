@@ -9,8 +9,9 @@
 // iPhone y web—): una lectura a más de JUMP_DISTANCE_M del último punto aceptado (si ese punto es de hace menos de un día) se RETIENE. Se acepta
 // solo cuando hay pruebas de movimiento real:
 //   · dos lecturas seguidas CON velocidad (≥ MIN_MOVING_SPEED_MS; una posición de red no trae velocidad), o
-//   · tres lecturas seguidas, cada una MÁS lejos del último punto aceptado que la anterior (un camino de verdad se aleja; una posición que baila, no), o
-//   · llevar JUMP_PERSIST_MS (30 min) seguida en el mismo sitio (una mudanza real).
+//   · tres lecturas seguidas, cada una MÁS lejos del último punto aceptado que la anterior (un camino de verdad se aleja; una posición que baila, no).
+// NO se acepta por «llevar mucho rato en el mismo sitio»: el 22-23/10 una posición de red falsa y FIJA se repitió 102 veces seguidas (cada ~6 min, 273 m de
+// Casa, toda la noche) y una regla de «30 min seguidos» la habría dado por buena. Un movimiento real siempre trae velocidad o se va alejando.
 // Si la lectura vuelve a la zona de antes, la retenida se descarta. Sin último punto reciente no se filtra nada.
 import { distanceMeters } from '@/domain/geo'
 
@@ -21,7 +22,6 @@ export const JUMP_HOLD_GAP_MS = 10 * 60_000
 // El último punto aceptado puede ser de hace horas (quieto en casa no llegan lecturas): el filtro SIGUE valiendo. Solo con un último punto de más de un día se
 // deja de filtrar (el móvil estuvo apagado y puede estar en otra ciudad).
 export const JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000
-export const JUMP_PERSIST_MS = 30 * 60_000
 export const MIN_MOVING_SPEED_MS = 0.5
 export const JUMP_MIN_AWAY_STEP_M = 15
 export const JUMP_SPEED_READINGS = 2
@@ -87,7 +87,7 @@ export function createJumpFilter(): JumpFilter {
         speedReadings: moving ? held.speedReadings + 1 : 0,
         awayReadings: fromLast - previousFar >= JUMP_MIN_AWAY_STEP_M ? held.awayReadings + 1 : 0,
       }
-      if (held.speedReadings >= JUMP_SPEED_READINGS || held.awayReadings >= JUMP_AWAY_READINGS || reading.at - held.first.at >= JUMP_PERSIST_MS) return markAccepted(reading)
+      if (held.speedReadings >= JUMP_SPEED_READINGS || held.awayReadings >= JUMP_AWAY_READINGS) return markAccepted(reading)
       return false
     },
     reset() {

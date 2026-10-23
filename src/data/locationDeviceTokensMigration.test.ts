@@ -127,7 +127,7 @@ describe('servicio de Android que sigue con la app cerrada', () => {
   })
 
   it('una posición lejana sin pruebas de movimiento no se envía: se retiene (posición de red falsa a ~350 m, 17 y 18/10)', () => {
-    for (const constant of ['JUMP_DISTANCE_M = 150f', 'JUMP_STEP_RADIUS_M = 100f', 'JUMP_HOLD_GAP_MS = 10 * 60_000L', 'JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000L', 'JUMP_PERSIST_MS = 30 * 60_000L', 'MIN_MOVING_SPEED_MS = 0.5f', 'JUMP_SPEED_READINGS = 2', 'JUMP_AWAY_READINGS = 3']) {
+    for (const constant of ['JUMP_DISTANCE_M = 150f', 'JUMP_STEP_RADIUS_M = 100f', 'JUMP_HOLD_GAP_MS = 10 * 60_000L', 'JUMP_CHECK_WINDOW_MS = 24 * 60 * 60_000L', 'MIN_MOVING_SPEED_MS = 0.5f', 'JUMP_SPEED_READINGS = 2', 'JUMP_AWAY_READINGS = 3']) {
       expect(receiver).toContain(constant)
     }
     expect(receiver).toContain('if (!acceptAfterJumpCheck(context, prefs, location, now)) {')

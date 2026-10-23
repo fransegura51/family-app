@@ -102,14 +102,14 @@ describe('código nativo del iPhone: saltos de GPS y posiciones de red falsas', 
     expect(swift).toContain('heldJump = HeldJump(first: location, last: location, speedReadings: 0, awayReadings: 0)')
   })
 
-  it('se acepta con dos lecturas seguidas con velocidad ≥ 0,5 m/s, o tres seguidas cada vez más lejos, o 30 min en el mismo sitio (la misma regla que Android y la app abierta)', () => {
+  it('se acepta con dos lecturas seguidas con velocidad ≥ 0,5 m/s, o tres seguidas cada vez más lejos; NUNCA solo por llevar tiempo en el mismo sitio (una posición falsa fija duró 9 horas)', () => {
     expect(swift).toContain('minMovingSpeed: CLLocationSpeed = 0.5')
     expect(swift).toContain('jumpSpeedReadings = 2')
     expect(swift).toContain('jumpAwayReadings = 3')
-    expect(swift).toContain('jumpPersistSeconds: TimeInterval = 1_800')
     expect(swift).toContain('jumpMinAwayStep: CLLocationDistance = 15')
     expect(swift).toContain('location.speed >= PepaNativeLocation.minMovingSpeed')
-    expect(swift).toMatch(/next\.speedReadings >= PepaNativeLocation\.jumpSpeedReadings\s*\|\| next\.awayReadings >= PepaNativeLocation\.jumpAwayReadings\s*\|\| location\.timestamp\.timeIntervalSince\(next\.first\.timestamp\) >= PepaNativeLocation\.jumpPersistSeconds/)
+    expect(swift).toMatch(/if next\.speedReadings >= PepaNativeLocation\.jumpSpeedReadings\s*\|\| next\.awayReadings >= PepaNativeLocation\.jumpAwayReadings \{/)
+    expect(swift).not.toContain('jumpPersistSeconds')
   })
 
   it('solo lo que se envía actualiza la última posición y el reloj de envíos; una lectura retenida no cambia nada', () => {

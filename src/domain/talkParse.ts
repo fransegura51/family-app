@@ -177,8 +177,8 @@ export function prepareCalendarFromText(
     }
   }
   title = capitalize(restoreAccents(tidyTitle(title), orig)) || 'Cita'
-  // Los nombres que se quedan en el título (tareas) recuperan su mayúscula: restoreAccents devuelve todo en minúsculas.
-  if (options.keepMemberInTitle) {
+  // Los nombres que se quedan en el título (p. ej. «recoger a Eric del colegio») recuperan su mayúscula: restoreAccents devuelve todo en minúsculas.
+  {
     for (const m of members) {
       const nameRe = new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
       title = title.replace(nameRe, m.name)

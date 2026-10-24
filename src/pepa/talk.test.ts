@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { cardAccess, type HelpContext } from '@/help/access'
+import { HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '@/help/catalog'
+import { buildIndex, searchHelp } from '@/help/search/searchEngine'
+import type { TalkHelpApi } from '@/help/talkHelp'
 
 vi.mock('@/data/food', () => ({
   setMenuEntry: vi.fn(),
@@ -597,5 +601,42 @@ describe('runTalk: tareas con dos nombres y «que viene»', () => {
     if (outcome.kind !== 'proposal') throw new Error('debería proponer')
     expect(outcome.proposal.initialSelection.choices.member).toBe('m-jen')
     expect(outcome.proposal.preview(outcome.proposal.initialSelection).lines[0]).toBe('Título: Recoger a Eric del colegio')
+  })
+})
+
+// «Necesito ayuda con compras»: Pepa explica por voz lo que dice la Ayuda y lleva a esa pantalla (help/talkHelp.ts).
+describe('runTalk: pedir ayuda a Pepa por voz', () => {
+  const ctx: HelpContext = { role: 'admin', allowedSections: null, platform: 'web', community: 'ok' }
+  const index = buildIndex(HELP_CARDS, LEGACY_ENTRIES)
+  const helpApi = (): TalkHelpApi => ({
+    ctx,
+    search: (q) => searchHelp(index, q, { access: (d) => (d.kind === 'card' ? cardAccess(d.card, HELP_MODULE_BY_ID.get(d.module), ctx) : { status: 'allowed' as const }) }),
+    accessOfCard: (card) => cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctx),
+  })
+
+  it('«necesito ayuda con compras» lleva a Compras y lo explica', async () => {
+    const outcome = await runTalk('necesito ayuda con compras', makeDeps({ help: helpApi }))
+    if (outcome.kind !== 'help') throw new Error('debería ser una ayuda')
+    expect(outcome.go.path).toBe('/compras')
+    expect(outcome.text).toContain('Te llevo a Compras')
+  })
+
+  it('gana a la consulta de Economía cuando se pide ayuda desde la primera palabra', async () => {
+    const finance = vi.fn().mockResolvedValue('Has gastado 100 €.')
+    const outcome = await runTalk('explícame la economía', makeDeps({ help: helpApi, finance }))
+    expect(outcome.kind).toBe('help')
+    expect(finance).not.toHaveBeenCalled()
+  })
+
+  it('sin la Ayuda disponible la frase sigue el camino de siempre', async () => {
+    const outcome = await runTalk('necesito ayuda con compras', makeDeps())
+    expect(outcome.kind).not.toBe('help')
+  })
+
+  it('lo de siempre no se toca: apuntar a la compra, una tarea o un evento', async () => {
+    for (const text of ['añade leche a Mercadona', 'tarea sacar la basura', 'el viernes a las cinco dentista de Eric']) {
+      const outcome = await runTalk(text, makeDeps({ help: helpApi }))
+      expect(outcome.kind, text).toBe('proposal')
+    }
   })
 })

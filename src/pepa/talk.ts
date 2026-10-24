@@ -28,8 +28,12 @@ import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
 import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
 import type { CookIdeaData } from '@/domain/cookIdeas'
+import { answerHelpRequest, startsLikeHelpRequest, type TalkHelpAnswer, type TalkHelpApi } from '@/help/talkHelp'
+import type { HelpGo } from '@/help/types'
 
 export type TalkOutcome =
+  // «Necesito ayuda con compras»: Pepa explica por voz lo que dice la Ayuda y lleva a esa pantalla (help/talkHelp.ts).
+  | { kind: 'help'; text: string; go: HelpGo; title: string }
   // keepPending: la respuesta aclara algo sobre lo que hay abierto (p. ej. un importe dudoso ante la tarjeta de
   // presupuesto) y NO lo cierra.
   | { kind: 'answer'; text: string; keepPending?: boolean }
@@ -81,6 +85,8 @@ export interface TalkDeps {
   classifyWithAi(text: string, today: string): Promise<AiQuestion>
   answerFromAi(question: AiQuestion, text: string): Promise<string | null>
   splitWithAi(text: string): Promise<string[]>
+  // La Ayuda de PEPA («necesito ayuda con compras»): sus permisos y su buscador. null/ausente = sin Ayuda disponible; la frase sigue el camino de siempre.
+  help?(): TalkHelpApi | null
   // Preferencia «hacer directamente, sin tarjeta de confirmación» (ver services/pepaPreferences.ts y pepa/autoConfirm.ts). Si falta, siempre tarjeta.
   autoConfirm?(): boolean
 }
@@ -233,8 +239,19 @@ export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome
   return outcome
 }
 
+function helpOutcome(answer: TalkHelpAnswer): TalkOutcome {
+  return answer.kind === 'go' ? { kind: 'help', text: answer.text, go: answer.go, title: answer.title } : { kind: 'answer', text: answer.text }
+}
+
 async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> {
   const today = deps.today()
+
+  // Pedir ayuda desde la primera palabra gana a todo lo demás (ver startsLikeHelpRequest).
+  const helpApi = deps.help?.() ?? null
+  if (helpApi && startsLikeHelpRequest(text)) {
+    const answer = answerHelpRequest(text, helpApi)
+    if (answer) return helpOutcome(answer)
+  }
 
   // Presupuestos por voz (preparar, con confirmación) antes que las consultas: son órdenes, no preguntas.
   if (deps.financeAction) {
@@ -258,6 +275,12 @@ async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> 
   if (deps.location) {
     const location = await deps.location(text)
     if (location) return location
+  }
+
+  // «…necesito ayuda con compras» dicho en medio de la frase: se prueba después de las consultas de siempre.
+  if (helpApi) {
+    const answer = answerHelpRequest(text, helpApi)
+    if (answer) return helpOutcome(answer)
   }
 
   // Preguntas sencillas sin datos de la familia: la hora, el día de hoy, cuántos días faltan para Navidad… (domain/generalQuestions.ts).

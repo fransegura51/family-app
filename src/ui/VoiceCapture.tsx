@@ -1,5 +1,6 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useOptionalHelp } from '@/help/ui/helpContext'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { addShoppingItems, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -812,6 +813,14 @@ type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 // contesta hablando o por texto según lo que el usuario elija.
 export function VoiceCapture() {
   const navigate = useNavigate()
+  // La Ayuda de PEPA (si está montada): «necesito ayuda con compras» la usa para explicar y llevar (help/talkHelp.ts). Sin ella, esas frases siguen el camino de siempre.
+  const helpApi = useOptionalHelp()
+  const helpRef = useRef(helpApi)
+  helpRef.current = helpApi
+  const helpForTalk = () => {
+    const help = helpRef.current
+    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard } : null
+  }
   const [open, setOpen] = useState(false)
   const openRef = useRef(false)
   openRef.current = open
@@ -926,6 +935,12 @@ export function VoiceCapture() {
       closeTalkDialogs()
       setDialogKey((k) => k + 1)
       setPendingStore({ recipe: outcome.recipe, recipes: outcome.recipes, stores: outcome.stores })
+    } else if (outcome.kind === 'help') {
+      // «Necesito ayuda con compras»: se va a esa pantalla (y a su pestaña si la ficha la indica) con el mismo «Llévame» de la Ayuda; la explicación ya la dice Pepa.
+      closeTalkDialogs()
+      const help = helpRef.current
+      if (help) help.goToPlace(outcome.go, outcome.title)
+      else navigate(outcome.go.path)
     } else if (outcome.kind === 'focus-store') {
       navigate(DESTINATION_INFO.compras.path)
       window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
@@ -950,13 +965,13 @@ export function VoiceCapture() {
     if (reply.handled) return { spoken: reply.message ?? '', closedPending: false }
 
     const hadPending = pendingBlockingCount() > 0
-    const outcome = await runTalk(text, talkDeps)
+    const outcome = await runTalk(text, { ...talkDeps, help: helpForTalk })
     // Tarea nueva de verdad (una pregunta contestada, otra tarjeta...): lo que estaba pendiente
     // se cierra sin guardar, para que un "sí" posterior no confirme algo ya olvidado. Si Pepa
     // no ha entendido la frase, lo pendiente se queda como está.
     let spoken = outcome.text
     let closedPending = false
-    if (hadPending && outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD) {
+    if (hadPending && (outcome.kind === 'help' || (outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD))) {
       closeTalkDialogs()
       forgetRecentRecipes()
       forgetFoundPlace()

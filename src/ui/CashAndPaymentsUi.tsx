@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { addMovement, archiveWallet, cashErrorText, createWallet, deleteMovement, dismissDuplicate, linkBankExpenseToWallet, linkPurchaseToBank, listDuplicateDecisions, listMovements, listWallets, registerPurchaseRefund, removeDuplicateExpense, transferCash, unlinkBankMovement } from '@/data/cash'
-import { balanceText, eur, isManualMovement, MOVEMENT_LABELS, movementDelta, usableWallets, type CashMovement, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
+import { useEffect, useMemo, useState } from 'react'
+import { addMovement, archiveWallet, cashErrorText, createWallet, dismissDuplicate, linkBankExpenseToWallet, linkPurchaseToBank, listDuplicateDecisions, registerPurchaseRefund, removeDuplicateExpense, renameWallet, transferCash } from '@/data/cash'
+import { balanceText, eur, movementDelta, usableWallets, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
 import { findDuplicateSuggestions, type DupExpense, type DuplicateSuggestion } from '@/domain/duplicateDetection'
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS, parseAmount, type PaymentMethod } from '@/domain/manualPurchase'
 import { emptyLeg, remainingToAllocate, splitInTwo, type PaymentLeg } from '@/domain/purchasePayments'
@@ -288,55 +288,12 @@ export function UndoNotice({ text, onUndo, onDismiss }: { text: string; onUndo: 
 
 export { refundSummary }
 
-// ─── Carteras de efectivo (opcionales) ───
+// ─── Carteras de efectivo (opcionales): crear y herramientas ───
+// Las tarjetas y el listado de movimientos de cada cartera viven en Economía → Movimientos (FinanceScreen). Aquí solo están el formulario de
+// alta y las cinco herramientas (entrada, salida, ajuste, traspaso y retirada del banco) de la cartera elegida.
 
-export function CashWalletsSection({ members, myMemberId, bankExpenses }: { members: readonly FamilyMember[]; myMemberId: string | null; bankExpenses: readonly Expense[] }) {
-  const [open, setOpen] = useState(false)
-  const [wallets, setWallets] = useState<CashWallet[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [activeId, setActiveId] = useState<string | null>(null)
-
-  const reload = useCallback(() => {
-    listWallets()
-      .then(setWallets)
-      .catch((err) => setError(cashErrorText(err, 'No se pudieron cargar las carteras')))
-  }, [])
-  useEffect(() => {
-    if (open && wallets == null) reload()
-  }, [open, wallets, reload])
-
-  const visible = (wallets ?? []).filter((w) => w.archivedAt == null)
-  const active = visible.find((w) => w.id === activeId) ?? null
-
-  return (
-    <div style={{ margin: '12px 0' }}>
-      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        💶 Efectivo (opcional) {open ? '▾' : '▸'}
-      </button>
-      {open && (
-        <div className="card" style={{ marginTop: 6 }}>
-          <p className="muted" style={{ marginTop: 0 }}>
-            Controlar el efectivo es opcional: puedes apuntar gastos en efectivo sin tener ninguna cartera. Si quieres saber cuánto llevas, crea una.
-          </p>
-          {error && <p className="error">{error}</p>}
-          {visible.length === 0 && wallets != null && <p className="muted">Todavía no hay carteras.</p>}
-          {visible.map((w) => (
-            <button key={w.id} type="button" className="receipt-row-summary" style={{ width: '100%', textAlign: 'left' }} onClick={() => setActiveId(activeId === w.id ? null : w.id)}>
-              <strong>{w.name}</strong> <span className="muted">· {w.ownerMemberId ? `de ${members.find((m) => m.id === w.ownerMemberId)?.name ?? 'una persona'}` : 'familiar'}</span>
-              <br />
-              <span className={w.balance < 0 ? 'error' : undefined}>{balanceText(w.balance)}</span>
-            </button>
-          ))}
-          {active && <WalletDetail wallet={active} wallets={visible} myMemberId={myMemberId} bankExpenses={bankExpenses} onChanged={reload} />}
-          <NewWalletForm members={members} myMemberId={myMemberId} hasPersonal={visible.some((w) => w.ownerMemberId === myMemberId)} onCreated={reload} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-function NewWalletForm({ members, myMemberId, hasPersonal, onCreated }: { members: readonly FamilyMember[]; myMemberId: string | null; hasPersonal: boolean; onCreated: () => void }) {
-  const [adding, setAdding] = useState(false)
+export function NewWalletForm({ members, myMemberId, hasPersonal, onCreated, startOpen = false, onCancel }: { members: readonly FamilyMember[]; myMemberId: string | null; hasPersonal: boolean; onCreated: () => void; startOpen?: boolean; onCancel?: () => void }) {
+  const [adding, setAdding] = useState(startOpen)
   const [name, setName] = useState('')
   const [personal, setPersonal] = useState(!hasPersonal && myMemberId != null)
   const [opening, setOpening] = useState('0')
@@ -381,7 +338,7 @@ function NewWalletForm({ members, myMemberId, hasPersonal, onCreated }: { member
         <button type="button" onClick={save}>
           Crear cartera
         </button>
-        <button type="button" className="link-button" onClick={() => setAdding(false)}>
+        <button type="button" className="link-button" onClick={() => { setAdding(false); onCancel?.() }}>
           Cancelar
         </button>
       </div>
@@ -391,24 +348,22 @@ function NewWalletForm({ members, myMemberId, hasPersonal, onCreated }: { member
 
 type WalletAction = 'in' | 'out' | 'adjust' | 'transfer' | 'bank' | null
 
-function WalletDetail({ wallet, wallets, myMemberId, bankExpenses, onChanged }: { wallet: CashWallet; wallets: CashWallet[]; myMemberId: string | null; bankExpenses: readonly Expense[]; onChanged: () => void }) {
-  const [movements, setMovements] = useState<CashMovement[]>([])
+/**
+ * Las cinco herramientas del efectivo sobre la cartera elegida. Los movimientos de la cartera NO se repiten aquí: salen en el listado de Movimientos.
+ * Cada operación pasa por las mismas funciones y validaciones de siempre (permisos, aviso de saldo, trazabilidad).
+ */
+export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChanged, linkedExpenseIds }: { wallet: CashWallet; wallets: CashWallet[]; myMemberId: string | null; bankExpenses: readonly Expense[]; onChanged: () => void; linkedExpenseIds: ReadonlySet<string> }) {
   const [action, setAction] = useState<WalletAction>(null)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [target, setTarget] = useState('')
   const [bankId, setBankId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const writable = wallet.ownerMemberId == null || wallet.ownerMemberId === myMemberId
 
-  const load = useCallback(() => {
-    listMovements(wallet.id).then(setMovements).catch(() => setMovements([]))
-  }, [wallet.id])
-  useEffect(load, [load, wallet.balance])
-
   const others = wallets.filter((w) => w.id !== wallet.id)
-  const linkedBankIds = new Set(movements.map((m) => m.expenseId).filter(Boolean))
-  const bankCandidates = bankExpenses.filter((e) => (e.source === 'banco' || e.source === 'ticket_banco') && e.kind === 'real' && !linkedBankIds.has(e.id)).slice(0, 40)
+  const bankCandidates = bankExpenses.filter((e) => (e.source === 'banco' || e.source === 'ticket_banco') && e.kind === 'real' && !linkedExpenseIds.has(e.id)).slice(0, 40)
 
   async function run(fn: () => Promise<void>) {
     setError(null)
@@ -418,7 +373,7 @@ function WalletDetail({ wallet, wallets, myMemberId, bankExpenses, onChanged }: 
       setAmount('')
       setNote('')
       setBankId('')
-      load()
+      setRenaming(null)
       onChanged()
     } catch (err) {
       setError(cashErrorText(err, 'No se pudo guardar'))
@@ -442,7 +397,7 @@ function WalletDetail({ wallet, wallets, myMemberId, bankExpenses, onChanged }: 
   }
 
   return (
-    <div className="day-modal-group" style={{ marginTop: 6 }}>
+    <div className="day-modal-group" style={{ marginTop: 6 }} data-help-id="finance.cash-tools">
       <h3 className="section-title" style={{ margin: '0 0 4px' }}>
         {wallet.name}
       </h3>
@@ -498,23 +453,27 @@ function WalletDetail({ wallet, wallets, myMemberId, bankExpenses, onChanged }: 
           </button>
         </div>
       )}
-      <p className="muted" style={{ margin: '8px 0 2px' }}>Historial</p>
-      {movements.length === 0 && <p className="muted">Sin movimientos todavía (saldo inicial {eur(wallet.openingBalance)}).</p>}
-      {movements.map((m) => (
-        <p key={m.id} className="muted receipt-row-detail-line" style={{ margin: '2px 0' }}>
-          {shortDate(m.occurredOn)} · {MOVEMENT_LABELS[m.kind]} · <strong>{m.amount > 0 ? '+' : ''}{eur(m.amount)}</strong>
-          {m.note ? ` · ${m.note}` : ''}{' '}
-          {writable && isManualMovement(m.kind) && (
-            <button type="button" className="link-button" onClick={() => void run(() => deleteMovement(m.id))} aria-label="Borrar movimiento">✕</button>
-          )}
-          {writable && m.expenseId && (m.kind === 'transfer_in' || m.kind === 'transfer_out') && (
-            <button type="button" className="link-button" onClick={() => void run(() => unlinkBankMovement(m.id))}>Deshacer</button>
-          )}
-        </p>
-      ))}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+      {writable && renaming == null && (
+        <button type="button" className="link-button" onClick={() => setRenaming(wallet.name)}>
+          ✏️ Cambiar nombre
+        </button>
+      )}
+      {writable && renaming != null && (
+        <div className="inline-fields">
+          <input type="text" value={renaming} onChange={(e) => setRenaming(e.target.value)} aria-label="Nombre de la cartera" />
+          <button type="button" onClick={() => void run(() => renameWallet(wallet.id, renaming))}>
+            Guardar nombre
+          </button>
+          <button type="button" className="link-button" onClick={() => setRenaming(null)}>
+            Cancelar
+          </button>
+        </div>
+      )}
       {writable && wallet.ownerMemberId != null && (
         <button type="button" className="link-button" onClick={() => void run(() => archiveWallet(wallet.id))}>Archivar cartera</button>
       )}
+      </div>
     </div>
   )
 }

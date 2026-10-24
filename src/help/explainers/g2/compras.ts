@@ -51,7 +51,7 @@ export const expComprasLeerTicket: HelpExplainer = {
   ],
   ifWrong: [
     'Una línea mal leída: corrígela antes de «Guardar ticket». Con «+ Añadir línea» añades una que falte.',
-    'Ya lo guardaste: abre la carpeta de su tienda en Tickets guardados y toca ✏️ (Editar ticket); es el mismo formulario.',
+    'Ya lo guardaste: abre la carpeta de su tienda en Historial de compras y toca ✏️ (Editar ticket); es el mismo formulario.',
     'Que a veces lea mal es una limitación normal. Si «Leer ticket» da error siempre, con cualquier foto, ya no es normal: cuéntalo en Sugerencias (Ayuda) para que lo revise el equipo de PEPA.',
   ],
   verified: V,
@@ -69,7 +69,7 @@ export const expComprasLeerTicket: HelpExplainer = {
     'supabase/migrations/0056_purge_old_receipt_photos.sql',
   ],
   tour: 'tut-compras-subir-ticket',
-  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Tickets' },
+  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Compras registradas' },
   labels: ['📷 Leer ticket', 'Guardar ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea'],
   cardIds: ['com-ticket'],
   synonyms: ['leer ticket', 'ocr', 'foto del ticket', 'ia ticket', 'como lee el ticket', 'productos leidos', 'por que se equivoca el ticket', 'que envia a la ia', 'privacidad ticket'],
@@ -101,7 +101,7 @@ export const expComprasClasificarProductos: HelpExplainer = {
     {
       heading: '¿Aprende PEPA de tus correcciones?',
       paragraphs: [
-        'Sí, pero solo para ese producto: la próxima vez que llegue con el mismo nombre, saldrá con la clase que elegiste en la Lista, el Historial y los Tickets.',
+        'Sí, pero solo para ese producto: la próxima vez que llegue con el mismo nombre, saldrá con la clase que elegiste en la Lista, el Historial y las Compras registradas.',
         'No aprende patrones: «LECHE ENT.» y «LECHE ENTERA» son dos productos distintos. Tampoco enseña a otras familias ni cambia la lista compartida: esa solo la actualiza la administración de PEPA, a mano.',
       ],
       example:

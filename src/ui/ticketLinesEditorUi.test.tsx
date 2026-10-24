@@ -63,7 +63,7 @@ async function openForm() {
       <ReceiptsTab />
     </MemoryRouter>,
   )
-  await screen.findByText('Subir ticket')
+  await screen.findByText('Registrar compra')
 }
 
 function chooseFile() {

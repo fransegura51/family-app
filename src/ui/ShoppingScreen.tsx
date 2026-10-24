@@ -326,7 +326,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
   const shortcuts: { tab: SubTab; body: string; 'data-help-id': string }[] = [
     { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.', 'data-help-id': 'shopping.card-lista' },
     { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.', 'data-help-id': 'shopping.card-historial' },
-    { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
+    { tab: 'Tickets', body: 'Registra una compra con o sin ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
     { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.', 'data-help-id': 'shopping.card-estadistica' },
   ]
   // Petición real: extender el pastel también a estas tarjetas de
@@ -634,7 +634,7 @@ function PorQueHaCambiadoMiCompra({
                 type="button"
                 className="link-button"
                 style={{ marginTop: 6 }}
-                onClick={() => onViewMovements({ label: `Tickets — ${currentMonth}`, from: `${currentMonth}-01`, to: `${currentMonth}-31` })}
+                onClick={() => onViewMovements({ label: `Compras registradas — ${currentMonth}`, from: `${currentMonth}-01`, to: `${currentMonth}-31` })}
               >
                 Ver movimientos de este mes →
               </button>

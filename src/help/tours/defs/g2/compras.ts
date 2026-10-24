@@ -21,7 +21,7 @@ export const visitaCompras: TourDef = {
   steps: [
     {
       id: 'menu',
-      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Tickets y Estadística compras. Ahora solo miramos: no se guarda nada.',
+      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Compras registradas y Estadística compras. Ahora solo miramos: no se guarda nada.',
       target: 'shopping.menu',
       completeOn: [],
       manualNext: true,
@@ -42,7 +42,7 @@ export const visitaCompras: TourDef = {
     },
     {
       id: 'tickets',
-      text: '🧾 Tickets: aquí se sube la foto o el PDF de un ticket. PEPA puede leer sus productos con IA (solo personas adultas, si la IA está activa) y tú los revisas antes de guardar.',
+      text: '🧾 Compras registradas: aquí registras una compra, con ticket (foto o PDF) o sin él. PEPA puede leer sus productos con IA (solo personas adultas, si la IA está activa) y tú los revisas antes de guardar.',
       target: 'shopping.card-tickets',
       completeOn: [],
       manualNext: true,
@@ -190,7 +190,7 @@ export const tutComprasClaseHistorial: TourDef = {
     },
     {
       id: 'producto',
-      text: 'Toca el nombre de un producto para abrir su ficha. Si el historial está vacío, aún no hay compras con precio: se llena con los tickets, así que prueba antes «Subir un ticket».',
+      text: 'Toca el nombre de un producto para abrir su ficha. Si el historial está vacío, aún no hay compras con precio: se llena con los tickets, así que prueba antes «Registrar compra».',
       target: 'shopping.history-product',
       completeOn: [{ type: 'appear', target: 'shopping.product-class' }],
     },
@@ -213,12 +213,12 @@ export const tutComprasClaseHistorial: TourDef = {
   next: ['com-historial-precios', 'com-ticket'],
 }
 
-// Tickets → «Subir ticket»: foto, «📷 Leer ticket» (solo se explica), datos, productos leídos y «Guardar ticket».
+// Compras registradas → «Registrar compra»: foto, «📷 Leer ticket» (solo se explica), datos, productos leídos y «Guardar ticket».
 export const tutComprasSubirTicket: TourDef = {
   id: 'tut-compras-subir-ticket',
   module: 'compras',
-  group: 'Tickets',
-  title: 'Subir un ticket y revisar los productos',
+  group: 'Compras registradas',
+  title: 'Registrar una compra con ticket y revisar los productos',
   summary: 'Subir la foto de un ticket, revisar lo que se lee y guardarlo.',
   version: 1,
   cardId: 'com-ticket',
@@ -284,7 +284,7 @@ export const tutComprasSubirTicket: TourDef = {
       sensitive: true,
     },
   ],
-  finishText: '¡Ticket guardado! Lo encontrarás en la carpeta de su tienda, más abajo en Tickets guardados.',
+  finishText: '¡Ticket guardado! Lo encontrarás en la carpeta de su tienda, más abajo en Historial de compras.',
   next: ['com-historial-precios', 'com-anadir-producto'],
 }
 

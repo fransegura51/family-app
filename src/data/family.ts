@@ -114,7 +114,7 @@ export async function updateMemberCard(
 // Edición rápida solo de la fecha, para el botón "Editar" de la
 // pestaña Cumpleaños — sin pasar por el formulario completo de Familia.
 export async function updateMemberWeightGoal(id: string, goalKg: number | null): Promise<void> {
-  const { error } = await supabase.from('family_members').update({ weight_goal_kg: goalKg }).eq('id', id)
+  const { error } = await supabase.rpc('set_member_weight_goal', { p_member_id: id, p_goal_kg: goalKg })
   if (error) throw error
 }
 

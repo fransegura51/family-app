@@ -394,7 +394,7 @@ export const CARDS_DIA_A_DIA: HelpCard[] = [
     synonyms: ['peso', 'altura', 'percentil', 'crecimiento del bebe', 'imc', 'medidas del nino', 'pediatra'],
     quick: 'En Familia → «Peso y medidas» registras peso y medidas de cada persona: percentiles de la OMS para bebés, un medidor de altura ilustrado para niños y gráficas para adultos.',
     state: 'parcial',
-    limits: 'Los percentiles son orientativos y solo la administración de la familia puede fijar un peso objetivo.',
+    limits: 'Los percentiles son orientativos. El peso objetivo lo puede fijar la administración, la propia persona y cualquiera de la familia en las fichas sin cuenta propia (niños y bebés).',
     go: { path: '/familia', dest: 'familia.peso' },
     featureId: 'familia-peso-medidas',
     labels: ['Peso y medidas'],

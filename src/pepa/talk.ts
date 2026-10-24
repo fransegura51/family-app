@@ -17,6 +17,7 @@ import { splitEntries } from '@/domain/quickCapture'
 import { expandEntries, shouldAskAi } from '@/domain/productSplit'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
+import { detectCalendarEntryKind } from '@/domain/calendarVoiceParser'
 import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
 import { extractChain } from '@/domain/supermarketChains'
 import type { ScheduleEvent } from '@/domain/calendar'
@@ -161,15 +162,27 @@ async function fetchCalendarEventsSafely(deps: TalkDeps): Promise<ScheduleEvent[
   }
 }
 
+// «Tarea sacar la basura» es la tarea «Sacar la basura», no una llamada literalmente «Tarea sacar la basura».
+function stripTaskMarker(title: string): string {
+  const stripped = title.replace(/^(tarea:?\s+|tengo que\s+)/i, '').trim()
+  return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : title
+}
+
 async function calendarProposal(text: string, deps: TalkDeps, today: Date): Promise<TalkOutcome> {
   const members = await deps.members()
   const prepared = prepareCalendarFromText(text, today, members)
   const calendarEvents = await fetchCalendarEventsSafely(deps)
   const context = baseContext(today, members, calendarEvents)
+  // Tarea o evento: se decide por lo dicho («tarea…», «tengo que…» = tarea). Si lleva marcas de las dos cosas no se adivina: queda como evento y se avisa en la tarjeta, que deja elegir.
+  const entryKind = detectCalendarEntryKind(text)
+  const isTask = entryKind === 'task'
+  const title = isTask ? stripTaskMarker(prepared.title) : prepared.title
+  if (entryKind === 'ambiguous') prepared.notes.push('No sé si es una tarea o un evento: elige arriba «Guardar como».')
   const result = proposeAction(
     'calendar.create',
     {
-      title: prepared.title,
+      kind: isTask ? 'task' : 'event',
+      title,
       date: prepared.date,
       time: prepared.time,
       endTime: prepared.endTime,
@@ -187,7 +200,9 @@ async function calendarProposal(text: string, deps: TalkDeps, today: Date): Prom
   return {
     kind: 'proposal',
     proposal: result.proposal,
-    text: `Voy a apuntar en el calendario «${prepared.title}» ${kitchenDateLabel(prepared.date, today)}${when}${who}. Revísalo en la tarjeta y pulsa Guardar.${notes}`,
+    text: isTask
+      ? `Voy a apuntar la tarea «${title}» ${kitchenDateLabel(prepared.date, today)}${who}. Revísalo en la tarjeta y pulsa Guardar tarea.${notes}`
+      : `Voy a apuntar en el calendario «${prepared.title}» ${kitchenDateLabel(prepared.date, today)}${when}${who}. Revísalo en la tarjeta y pulsa Guardar.${notes}`,
   }
 }
 

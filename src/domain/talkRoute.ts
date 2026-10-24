@@ -56,5 +56,7 @@ export function routeTalk(text: string, knownStores: string[], today: Date): Tal
   // pregunta y leía la lista en vez de apuntar. Va DESPUÉS de fecha/hora: «recoger el pedido en Mercadona mañana a las cinco» sigue siendo calendario.
   if (mentionsChain(text)) return 'add_shopping'
   if (SHOPPING_VERBS.test(n)) return 'add_shopping'
+  // «Tarea sacar la basura» / «tengo que llamar al médico»: una tarea sin fecha ni hora también es un apunte del calendario (queda para hoy, con tarjeta para confirmar).
+  if (/\b(?:tarea|tengo que)\b/.test(n)) return 'add_calendar'
   return 'unknown'
 }

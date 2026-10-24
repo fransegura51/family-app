@@ -108,3 +108,14 @@ describe('routeTalk: añadir sin tienda dada de alta', () => {
     expect(routeTalk('apunta cosas raras', [], TODAY)).toBe('unknown')
   })
 })
+
+describe('routeTalk: tareas', () => {
+  it('«tarea …» y «tengo que …» sin fecha son un apunte del calendario', () => {
+    expect(route('tarea sacar la basura')).toBe('add_calendar')
+    expect(route('tengo que llamar al médico')).toBe('add_calendar')
+  })
+  it('lo de la compra sigue siendo la compra y las preguntas siguen siendo preguntas', () => {
+    expect(route('tengo que comprar pan')).toBe('add_shopping')
+    expect(route('qué tareas tengo mañana')).toBe('ask_calendar')
+  })
+})

@@ -374,7 +374,8 @@ describe('runTalk: el aviso de duplicado/conflicto se recalcula si cambia el des
     if (outcome.kind !== 'proposal') throw new Error('debería proponer')
     const view = outcome.proposal.preview(outcome.proposal.initialSelection)
     expect(view.fields).toBeUndefined()
-    expect(view.choices.map((c) => c.id)).toEqual(['member'])
+    // Fecha y hora siguen sin editarse; la tarjeta solo deja elegir «Para» y «Guardar como» (Evento/Tarea).
+    expect(view.choices.map((c) => c.id)).toEqual(['member', 'kind'])
   })
 })
 

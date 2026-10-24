@@ -1,4 +1,4 @@
--- Retira efectivo, pagos mixtos, devoluciones vinculadas y duplicados descartados (0311).
+-- Retira efectivo, pagos mixtos, devoluciones vinculadas y duplicados descartados (0312).
 -- NO borra gastos ni compras: las filas de Economía que crearon las devoluciones (categoría «Devoluciones») se conservan como ingresos-devolución.
 -- Los apuntes del banco que se marcaron como traspaso con una cartera SIGUEN en «Movimientos internos»: antes de revertir, deshacer cada vínculo
 -- con cash_unlink_bank_expense (o aceptar que se queden como movimiento interno). Los apuntes del banco retirados al vincularlas a una compra
@@ -28,6 +28,8 @@ drop function if exists public.cash_movements_guard();
 drop function if exists public.cash_wallets_guard();
 alter table public.expenses drop constraint if exists expenses_payment_method_check;
 alter table public.expenses drop column if exists payment_method;
+-- Las compras pagadas con varios medios ('mixto') pasan a «forma de pago sin indicar»: la restricción de 0310 no admite 'mixto'. Es lo único de esta reversión que toca datos existentes (solo esa columna nueva).
+update public.receipts set payment_method = null where payment_method = 'mixto';
 alter table public.receipts drop constraint if exists receipts_payment_method_check;
 alter table public.receipts add constraint receipts_payment_method_check
   check (payment_method is null or payment_method in ('efectivo', 'tarjeta', 'bizum', 'transferencia', 'otro'));

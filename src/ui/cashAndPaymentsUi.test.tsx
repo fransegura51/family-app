@@ -273,6 +273,14 @@ describe('borrar una compra (ECO-1j)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Borrar la compra' }))
     expect(onConfirm).toHaveBeenCalledTimes(1)
   })
+  it('sin foto promete deshacer; con foto avisa de que la foto NO se recupera', () => {
+    const { rerender } = render(<DeletePurchaseDialog title="x" lines={['a']} busy={false} onConfirm={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText('Podrás deshacerlo justo después.')).toBeTruthy()
+    expect(screen.queryByText(/foto/)).toBeNull()
+    rerender(<DeletePurchaseDialog title="x" lines={['a']} busy={false} hasPhoto onConfirm={vi.fn()} onCancel={vi.fn()} />)
+    expect(screen.getByText(/La foto del ticket se borra y NO se podrá recuperar/)).toBeTruthy()
+    expect(screen.queryByText('Podrás deshacerlo justo después.')).toBeNull()
+  })
   it('mientras borra, los botones se bloquean (no se puede borrar dos veces)', () => {
     render(<DeletePurchaseDialog title="x" lines={['a']} busy onConfirm={vi.fn()} onCancel={vi.fn()} />)
     expect((screen.getByRole('button', { name: 'Borrando…' }) as HTMLButtonElement).disabled).toBe(true)

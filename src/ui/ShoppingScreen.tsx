@@ -2216,8 +2216,8 @@ export function AddShoppingItemForm({
   // Al escribir "LE" ya aparece "Leche" (con su marca habitual) en el
   // desplegable nativo del input; al completarlo (a mano o eligiéndolo)
   // se rellenan cantidad/unidad/precio con lo último comprado (Skill 09)
-  // — el precio no se guarda aquí, solo se muestra como referencia hasta
-  // marcarlo comprado.
+  // — el precio no se guarda aquí, solo se muestra como referencia. Marcar «comprado» solo cambia el estado del producto en la lista:
+  // nunca crea compras, productos del historial, precios ni movimientos de Economía (el historial solo viene de tickets y compras con productos).
   function handleNameChange(value: string) {
     setName(value)
     const match = suggestions.find((s) => s.normalizedName === value.trim().toLowerCase())
@@ -3002,7 +3002,7 @@ function HistoryTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
+      <p className="muted">Se construye con los tickets que guardas (y con las compras sin ticket que lleven productos). Marcar «comprado» en la lista no guarda precios.</p>
 
       <div className="filter-row">
         <button
@@ -3082,7 +3082,7 @@ function HistoryTab() {
       </div>
 
       <p className="muted">
-        Todo lo que has comprado alguna vez, con su último precio — cuando también se compró el mes anterior, se ve
+        Todo lo que aparece en tus tickets, con su último precio — cuando también se compró el mes anterior, se ve
         la comparación (🔺 rojo si ha subido, 🔻 verde si ha bajado). Toca el nombre de un producto para ver cada
         cuánto lo compras y comparar precio entre tiendas.
       </p>
@@ -3142,7 +3142,7 @@ function HistoryTab() {
         <p className="muted">
           {query.trim()
             ? 'Ningún producto coincide con esa búsqueda.'
-            : 'Todavía no hay ningún producto con precio registrado (tickets o lista de la compra).'}
+            : 'Todavía no hay ningún producto con precio registrado. Se llena al guardar un ticket (o una compra sin ticket con productos); marcar «comprado» en la lista no guarda precios.'}
         </p>
       )}
 

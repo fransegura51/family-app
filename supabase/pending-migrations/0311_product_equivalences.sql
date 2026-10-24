@@ -8,7 +8,7 @@
 -- Lo compartido son SOLO nombres normalizados (text_key) + hash de familia; nunca precios, tiendas, fechas, tickets ni compras.
 -- Una asociación equivocada de una familia nunca cambia por sí sola las comparaciones de las demás (provisional = sugerencia).
 --
--- ROLLBACK: supabase/rollbacks/0310_product_equivalences_down.sql
+-- ROLLBACK: supabase/rollbacks/0311_product_equivalences_down.sql
 
 create table public.product_equivalences (
   id uuid primary key default gen_random_uuid(),
@@ -131,3 +131,8 @@ $$;
 revoke all on function public.product_equivalences_guard(), public.product_equivalences_vote() from public, anon, authenticated;
 revoke all on function public.resolve_shared_equivalences(text[]) from public, anon;
 grant execute on function public.resolve_shared_equivalences(text[]) to authenticated, service_role;
+
+-- Privilegios mínimos (en producción se aplicó aparte, el 24/10/2026, junto con «0312b_least_privilege_new_tables»): Supabase concede por defecto todos los privilegios a anon y
+-- authenticated en tablas nuevas; aquí se deja solo lo necesario. La tabla de votos compartidos no la toca ningún usuario.
+revoke all on public.product_equivalences from anon, authenticated;
+grant select, insert, update, delete on public.product_equivalences to authenticated;

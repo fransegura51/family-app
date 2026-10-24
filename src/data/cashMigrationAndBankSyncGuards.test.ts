@@ -1,14 +1,14 @@
-// Contrato de la migración PREPARADA 0311 (efectivo, pagos mixtos, devoluciones, vínculo con el banco) y de los cambios PREPARADOS (sin desplegar) del
+// Contrato de la migración PREPARADA 0312 (efectivo, pagos mixtos, devoluciones, vínculo con el banco) y de los cambios PREPARADOS (sin desplegar) del
 // sincronizador bancario. Su comportamiento real está probado contra la base de datos de producción dentro de una transacción REVERTIDA
 // (docs/PEPA_CONTROL_REQUISITOS.md, EFE-1 y ECO-1). Aquí se fijan las reglas de seguridad para que no se deshagan sin querer.
 import { describe, expect, it } from 'vitest'
 import sync from '../../supabase/functions/enable-banking-sync-transactions/index.ts?raw'
 
-const FILES = import.meta.glob(['/supabase/pending-migrations/0311_cash_wallets_payments_refunds.sql', '/supabase/rollbacks/0311_cash_wallets_payments_refunds_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const UP = FILES['/supabase/pending-migrations/0311_cash_wallets_payments_refunds.sql']
-const DOWN = FILES['/supabase/rollbacks/0311_cash_wallets_payments_refunds_down.sql']
+const FILES = import.meta.glob(['/supabase/pending-migrations/0312_cash_wallets_payments_refunds.sql', '/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const UP = FILES['/supabase/pending-migrations/0312_cash_wallets_payments_refunds.sql']
+const DOWN = FILES['/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql']
 
-describe('0311 — aditiva y reversible', () => {
+describe('0312 — aditiva y reversible', () => {
   it('no borra ni reescribe datos existentes por sí misma; los borrados solo ocurren dentro de las funciones de borrado seguro', () => {
     expect(UP).not.toMatch(/\btruncate\b/i)
     expect(UP).not.toMatch(/\bdrop table\b/i)
@@ -29,7 +29,7 @@ describe('0311 — aditiva y reversible', () => {
   })
 })
 
-describe('0311 — seguridad y aislamiento', () => {
+describe('0312 — seguridad y aislamiento', () => {
   it('RLS activada en todas las tablas nuevas', () => {
     for (const t of ['cash_wallets', 'cash_movements', 'purchase_payments', 'purchase_refunds', 'purchase_duplicate_decisions']) expect(UP).toContain(`alter table public.${t} enable row level security`)
   })
@@ -64,7 +64,7 @@ describe('0311 — seguridad y aislamiento', () => {
   })
 })
 
-describe('0311 — reglas económicas', () => {
+describe('0312 — reglas económicas', () => {
   it('un traspaso son dos movimientos emparejados y no crea ingresos ni gastos', () => {
     const body = UP.slice(UP.indexOf('function public.cash_transfer('), UP.indexOf('$$;', UP.indexOf('function public.cash_transfer(')))
     expect(body).toContain("'transfer_out'")
@@ -118,7 +118,7 @@ describe('sincronizador bancario (cambios preparados, sin desplegar)', () => {
     expect(sync).toContain('if (same.length !== 1) return null')
   })
   it('la regla de devolución explícita DEV-1 sigue sin hacer consultas (el vínculo va aparte, antes)', () => {
-    const start = sync.indexOf('// DEVOLUCIONES (0311)')
+    const start = sync.indexOf('// DEVOLUCIONES (0312)')
     const dev1 = sync.indexOf('// FASE DEV-1 — devolución bancaria explícita')
     expect(start).toBeGreaterThan(0)
     expect(start).toBeLessThan(dev1)

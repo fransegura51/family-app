@@ -8,7 +8,7 @@ import { refundSummary, validateRefund, type RefundSummary } from '@/domain/purc
 import type { Expense, FamilyMember } from '@/domain/types'
 
 // Efectivo opcional, pagos mixtos, devoluciones y duplicados. Todo lo que cambia datos pasa por las funciones del servidor de la
-// migración 0311 (permisos y consistencia se comprueban allí); aquí solo se pide y se enseña.
+// migración 0312 (permisos y consistencia se comprueban allí); aquí solo se pide y se enseña.
 
 const today = () => new Date().toISOString().slice(0, 10)
 const shortDate = (d: string) => d.split('-').reverse().join('/')
@@ -241,7 +241,7 @@ export function RefundPanel({ receiptId, summary, purchaseStore, wallets, onDone
 
 // ─── Borrar una compra: qué va a pasar y cómo deshacerlo ───
 
-export function DeletePurchaseDialog({ title, lines, onConfirm, onCancel, busy }: { title: string; lines: string[]; onConfirm: () => void; onCancel: () => void; busy: boolean }) {
+export function DeletePurchaseDialog({ title, lines, onConfirm, onCancel, busy, hasPhoto = false }: { title: string; lines: string[]; onConfirm: () => void; onCancel: () => void; busy: boolean; hasPhoto?: boolean }) {
   return (
     <div className="modal-overlay" role="alertdialog" aria-label="Borrar compra">
       <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
@@ -255,7 +255,9 @@ export function DeletePurchaseDialog({ title, lines, onConfirm, onCancel, busy }
           ))}
         </ul>
         <p className="muted" style={{ fontSize: 12 }}>
-          Podrás deshacerlo justo después. La foto del ticket, si la había, no se recupera.
+          {hasPhoto
+            ? 'La foto del ticket se borra y NO se podrá recuperar: si deshaces el borrado justo después, la compra vuelve sin la foto.'
+            : 'Podrás deshacerlo justo después.'}
         </p>
         <div className="form-actions">
           <button type="button" onClick={onConfirm} disabled={busy}>

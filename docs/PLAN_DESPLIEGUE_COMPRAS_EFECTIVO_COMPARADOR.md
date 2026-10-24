@@ -1,24 +1,31 @@
 # Plan de despliegue — Compras manuales, comparador, efectivo e integración económica
 
-Estado a 24/10/2026: **nada de esto está desplegado.** La migración 0308 (aprendizaje compartido) es la última aplicada en producción (proyecto `family-app`, ref `objhgjgrinbhyzscjlbw`). Las migraciones 0309, 0310 y 0311, el cambio del sincronizador bancario y el cliente están **solo en commits locales** (sin push). Este documento es el procedimiento exacto para cuando se autorice.
+## ESTADO ACTUAL (24/10/2026)
+
+- **Aplicadas en producción (family-app, `objhgjgrinbhyzscjlbw`)**: `0310_manual_purchases`, `0311_product_equivalences`, `0312_cash_wallets_payments_refunds` y `0312b_least_privilege_new_tables` (esta última solo recorta permisos; el mismo recorte está añadido al final de los archivos 0311 y 0312 para que una instalación nueva quede igual). Verificado tras cada una: huella (md5) idéntica de receipts, expenses, products, product_prices, bank_transactions, bank_accounts, budget_categories, family_food_types, family_members, shared_product_learning y point_grants; recuentos iguales; las 14 funciones de 0312 coinciden byte a byte con el archivo; reversión de cada una probada dentro de una transacción revertida.
+- **NO desplegados**: la función del banco `enable-banking-sync-transactions` (sigue la versión 18) y el cliente (no se ha hecho push).
+- Las migraciones se renumeraron a 0310, 0311 y 0312 porque otra sesión (rama `puntos-correcciones`) ya había aplicado en producción `0309_point_grant_corrections`. Siguen en `supabase/pending-migrations/` hasta el commit del push (§3.8).
+- Pasos que quedan: **§3.6 (función del banco), §3.7 (primera sincronización), §3.8 (mover archivos y subir candados), §3.9 (push)** y la validación en dispositivos (§5).
+
+Histórico: a la hora de redactar este plan, **nada de esto estaba desplegado.** La migración 0308 (aprendizaje compartido) es la última aplicada en producción (proyecto `family-app`, ref `objhgjgrinbhyzscjlbw`). Las migraciones 0310, 0311 y 0312, el cambio del sincronizador bancario y el cliente están **solo en commits locales** (sin push). Este documento es el procedimiento exacto para cuando se autorice.
 
 ## 0. Lo primero que hay que saber
 
 1. **Un `git push` a `master` publica el cliente**: `.github/workflows/deploy.yml` se dispara con cada push a `master`, ejecuta `typecheck`, `lint`, `test` y `build`, y publica en GitHub Pages. Las apps de Android e iPhone son una cáscara que abre esa misma web (`capacitor.config.ts`: `server.url = https://fransegura51.github.io/family-app/`), así que **no hay que recompilar APK ni iPhone**, pero el cliente llega a todos los móviles en cuanto GitHub Pages lo publica. Por eso el push es lo ÚLTIMO.
-2. El **orden es obligatorio**: migraciones → función del banco → push. Si el cliente llegara antes que las migraciones, Economía fallaría al listar gastos (pide `expenses.payment_method`). Si la función del banco se desplegara antes que 0311, su consulta fallaría y dejaría de traer movimientos.
+2. El **orden es obligatorio**: migraciones → función del banco → push. Si el cliente llegara antes que las migraciones, Economía fallaría al listar gastos (pide `expenses.payment_method`). Si la función del banco se desplegara antes que 0312, su consulta fallaría y dejaría de traer movimientos.
 3. Todo es aditivo (columnas nulas, tablas nuevas, funciones nuevas). Un cliente viejo con la base nueva sigue funcionando; un cliente nuevo con la base vieja, no.
 
 ## 1. Qué se despliega
 
 | Orden | Pieza | Archivo | Depende de | Cómo se revierte |
 |---|---|---|---|---|
-| 1 | Compras manuales | `supabase/pending-migrations/0309_manual_purchases.sql` | 0308 | `supabase/rollbacks/0309_manual_purchases_down.sql` (después de 0311) |
-| 2 | Equivalencias (comparador) | `.../0310_product_equivalences.sql` | 0308 (`shared_family_hash`, `shared_text_key_ok`) | `.../0310_product_equivalences_down.sql` |
-| 3 | Efectivo, pagos mixtos, devoluciones, duplicados, **registro de operaciones y borrado seguro** | `.../0311_cash_wallets_payments_refunds.sql` | **0309** | `.../0311_cash_wallets_payments_refunds_down.sql` (antes que 0309) |
-| 4 | Sincronizador bancario | `supabase/functions/enable-banking-sync-transactions/index.ts` | **0311** | volver a desplegar la versión previa (§6) |
-| 5 | Cliente web | todo `src/` | 0309, 0310, 0311 y función | desplegar el commit anterior |
+| 1 | Compras manuales | `supabase/pending-migrations/0310_manual_purchases.sql` | 0308 | `supabase/rollbacks/0310_manual_purchases_down.sql` (después de 0312) |
+| 2 | Equivalencias (comparador) | `.../0311_product_equivalences.sql` | 0308 (`shared_family_hash`, `shared_text_key_ok`) | `.../0311_product_equivalences_down.sql` |
+| 3 | Efectivo, pagos mixtos, devoluciones, duplicados, **registro de operaciones y borrado seguro** | `.../0312_cash_wallets_payments_refunds.sql` | **0310** | `.../0312_cash_wallets_payments_refunds_down.sql` (antes que 0310) |
+| 4 | Sincronizador bancario | `supabase/functions/enable-banking-sync-transactions/index.ts` | **0312** | volver a desplegar la versión previa (§6) |
+| 5 | Cliente web | todo `src/` | 0310, 0311, 0312 y función | desplegar el commit anterior |
 
-**Compatibilidad entre migraciones** (comprobada): `src/data/pendingMigrationsCompatibility.test.ts` verifica que ningún objeto (tabla, función, trigger, política, columna) se crea en dos migraciones, que 0311 sustituye la restricción `receipts_payment_method_check` creada en 0309 (para admitir «mixto») y que su reversión la deja exactamente como la dejó 0309, que 0310 solo usa funciones que 0308 ya dejó creadas y que cada reversión borra solo lo suyo. Además, 0309+0311 se ejecutaron juntas contra la base real dentro de una transacción revertida (carteras, pagos mixtos, devoluciones, borrado y deshacer, aislamiento) y 0310 aparte (equivalencias y aislamiento). 0311 se editó en su sitio (aún sin aplicar) para añadir el borrado seguro: **no hay 0312**.
+**Compatibilidad entre migraciones** (comprobada): `src/data/pendingMigrationsCompatibility.test.ts` verifica que ningún objeto (tabla, función, trigger, política, columna) se crea en dos migraciones, que 0312 sustituye la restricción `receipts_payment_method_check` creada en 0310 (para admitir «mixto») y que su reversión la deja exactamente como la dejó 0310, que 0311 solo usa funciones que 0308 ya dejó creadas y que cada reversión borra solo lo suyo. Además, 0310+0312 se ejecutaron juntas contra la base real dentro de una transacción revertida (carteras, pagos mixtos, devoluciones, borrado y deshacer, aislamiento) y 0311 aparte (equivalencias y aislamiento). 0312 se editó en su sitio (aún sin aplicar) para añadir el borrado seguro: **no hay 0313**. Las tres llevan los números 0310, 0311 y 0312 porque otra sesión (rama `puntos-correcciones`) ya aplicó en producción una migración propia llamada `0309_point_grant_corrections`; así la numeración sigue sin repetirse al fusionar las ramas.
 
 ## 2. Comprobaciones previas (el día del despliegue)
 
@@ -51,18 +58,18 @@ Estado a 24/10/2026: **nada de esto está desplegado.** La migración 0308 (apre
 
 Con el Supabase MCP (o el editor SQL del panel, pegando el contenido de cada archivo tal cual):
 
-1. **Aplicar 0309.** `apply_migration` con nombre `manual_purchases` y el contenido de `0309_manual_purchases.sql`. Verificar:
+1. **Aplicar 0310.** `apply_migration` con nombre `manual_purchases` y el contenido de `0310_manual_purchases.sql`. Verificar:
    ```sql
    select count(*) filter (where is_manual) manuales, count(*) filter (where payment_method is not null) con_pago from receipts;  -- 0, 0
    ```
    y los conteos de la foto previa sin cambios.
-2. **Aplicar 0310** (`product_equivalences`). Verificar: `select count(*) from product_equivalences` y `from shared_equivalence_votes` → 0; `select * from resolve_shared_equivalences(array['a','b'])` → vacío.
-3. **Aplicar 0311** (`cash_wallets_payments_refunds`). Verificar: `expenses.payment_method` existe y todo NULL; las 6 tablas nuevas (`cash_wallets`, `cash_movements`, `purchase_payments`, `purchase_refunds`, `purchase_duplicate_decisions`, `purchase_audit_log`) con 0 filas; `select count(*) from cash_wallet_balances` → 0; `select has_function_privilege('anon', 'public.delete_purchase(uuid)', 'execute')` → `false` y con `'authenticated'` → `true`.
+2. **Aplicar 0311** (`product_equivalences`). Verificar: `select count(*) from product_equivalences` y `from shared_equivalence_votes` → 0; `select * from resolve_shared_equivalences(array['a','b'])` → vacío.
+3. **Aplicar 0312** (`cash_wallets_payments_refunds`). Verificar: `expenses.payment_method` existe y todo NULL; las 6 tablas nuevas (`cash_wallets`, `cash_movements`, `purchase_payments`, `purchase_refunds`, `purchase_duplicate_decisions`, `purchase_audit_log`) con 0 filas; `select count(*) from cash_wallet_balances` → 0; `select has_function_privilege('anon', 'public.delete_purchase(uuid)', 'execute')` → `false` y con `'authenticated'` → `true`.
 4. **Prueba de humo en SQL** (opcional pero recomendada, en una transacción que termina en error para deshacerlo todo): repetir con una familia de prueba los guiones del 24/10 — carteras y traspaso, pago mixto 60 = 20 + 40, devolución parcial y total, borrar la compra y deshacer, vínculo con el banco y deshacer, usuario de otra familia sin acceso. Sus resultados exactos están en `docs/PEPA_CONTROL_REQUISITOS.md` (EFE-1, ECO-1).
-5. **Revisar los asesores de Supabase** (ver §2.8). Si hay algo inesperado, parar y revertir 0311 (§6).
+5. **Revisar los asesores de Supabase** (ver §2.8). Si hay algo inesperado, parar y revertir 0312 (§6).
 6. **Desplegar la función del banco** `enable-banking-sync-transactions` con **`verify_jwt = false`** (imprescindible: el cron la llama solo con `x-cron-secret`, ver el comentario de la propia función). Con el MCP: `deploy_edge_function` (nombre `enable-banking-sync-transactions`, archivo `index.ts`, `verify_jwt: false`); con la CLI: `supabase functions deploy enable-banking-sync-transactions --no-verify-jwt --project-ref objhgjgrinbhyzscjlbw`. Comprobar que la versión pasa a 19 y que `verify_jwt` sigue en `false`.
 7. **Primera sincronización bancaria** (ver §5.3). No continuar hasta que sea correcta.
-8. **Preparar el commit del push:** mover `0309`, `0310` y `0311` de `supabase/pending-migrations/` a `supabase/migrations/`; en los cuatro archivos de prueba que fijan la última migración cambiar `toBe(308)` por `toBe(311)` y su comentario (`src/ui/financeUiRefunds.test.ts`, `src/ui/eventGuestBreakdown14B.test.ts`, `src/data/refundsGuards.test.ts`, `src/data/eventDecisionsAndMomentsMigration.test.ts`); actualizar las rutas en `pendingMigrationsCompatibility.test.ts` y `cashMigrationAndBankSyncGuards.test.ts`; pasar `typecheck`, `lint`, `vitest run src`, `build`; commit.
+8. **Preparar el commit del push:** mover `0310`, `0311` y `0312` de `supabase/pending-migrations/` a `supabase/migrations/`; en los cuatro archivos de prueba que fijan la última migración cambiar `toBe(308)` por `toBe(312)` (o `toBe(313)` si antes se fusiona otra migración: comprobar la última que haya en `supabase/migrations/`) y su comentario (`src/ui/financeUiRefunds.test.ts`, `src/ui/eventGuestBreakdown14B.test.ts`, `src/data/refundsGuards.test.ts`, `src/data/eventDecisionsAndMomentsMigration.test.ts`); actualizar las rutas en `pendingMigrationsCompatibility.test.ts` y `cashMigrationAndBankSyncGuards.test.ts`; pasar `typecheck`, `lint`, `vitest run src`, `build`; commit.
 9. **`git push origin master`** → GitHub Actions publica (unos minutos). Seguirlo en la pestaña Actions; si falla un paso, no se publica nada.
 10. Comprobar en la web publicada que el trozo (chunk) propio de Compras/Economía ya trae la novedad, no solo `index-*.js` (la app está dividida por rutas): buscar en el código servido el texto `Sin ticket`.
 11. Pasar la lista de §5.
@@ -130,9 +137,9 @@ Si algo no cuadra: no borrar nada a mano; ir a §6.
 | Si falla… | Qué hacer | Se pierde |
 |---|---|---|
 | Una migración da error al aplicarse | Nada: cada una es una transacción, se aplica entera o no | nada |
-| Hay que quitar 0311 con datos de carteras ya creados | Primero, si se quiere conservar algo, deshacer con `restore_economy_log` las operaciones recientes y `cash_unlink_bank_expense` en cada retirada del banco (devuelve su categoría al apunte). Después `supabase/rollbacks/0311_..._down.sql` | carteras, movimientos, pagos mixtos, devoluciones vinculadas y el **registro de operaciones** (sin él ya no hay deshacer). Gastos y compras NO se borran; las filas «Devoluciones» quedan como ingresos de devolución |
-| 0310 | `0310_..._down.sql` | decisiones de equivalencia y votos compartidos. Productos y precios intactos |
-| 0309 | `0309_..._down.sql` (siempre después de 0311) | marca «compra manual» y forma de pago |
+| Hay que quitar 0312 con datos de carteras ya creados | Primero, si se quiere conservar algo, deshacer con `restore_economy_log` las operaciones recientes y `cash_unlink_bank_expense` en cada retirada del banco (devuelve su categoría al apunte). Después `supabase/rollbacks/0311_..._down.sql` | carteras, movimientos, pagos mixtos, devoluciones vinculadas y el **registro de operaciones** (sin él ya no hay deshacer). Gastos y compras NO se borran; las filas «Devoluciones» quedan como ingresos de devolución |
+| 0311 | `0310_..._down.sql` | decisiones de equivalencia y votos compartidos. Productos y precios intactos |
+| 0310 | `0309_..._down.sql` (siempre después de 0312) | marca «compra manual» y forma de pago |
 | Sincronizador con problemas | Redesplegar la versión anterior: `git show 3e5b1c6:supabase/functions/enable-banking-sync-transactions/index.ts` (con `verify_jwt = false`), o el código guardado de la versión 18 | nada. Los movimientos que no se hubieran enlazado quedan sin enlazar y se enlazan solos en la siguiente sincronización |
 | Cliente con problemas | `git revert` del commit publicado y push (o redesplegar el commit anterior desde Actions → Run workflow). Las migraciones son compatibles hacia atrás | nada |
 | Datos dañados | Restaurar la copia diaria de Supabase (último recurso) | lo registrado desde la copia |

@@ -3,7 +3,7 @@ import type { CashMovement, CashMovementKind, CashWallet } from '@/domain/cashWa
 import type { PaymentLeg } from '@/domain/purchasePayments'
 import { toRpcPayments } from '@/domain/purchasePayments'
 
-// Efectivo, pagos mixtos, devoluciones y vínculo con el banco (migración 0311). Todo pasa por RLS o por funciones del servidor que
+// Efectivo, pagos mixtos, devoluciones y vínculo con el banco (migración 0312). Todo pasa por RLS o por funciones del servidor que
 // comprueban permisos; este archivo solo traduce. Los errores del servidor llegan como objetos sin `instanceof Error`: usar errorMessage().
 
 export async function currentFamilyId(): Promise<string> {
@@ -40,7 +40,7 @@ export async function listWallets(): Promise<CashWallet[]> {
   }))
 }
 
-/** Lista sin lanzar: si 0311 aún no está aplicada o no hay acceso a «dinero», el efectivo simplemente no se ofrece. */
+/** Lista sin lanzar: si 0312 aún no está aplicada o no hay acceso a «dinero», el efectivo simplemente no se ofrece. */
 export async function listWalletsSafe(): Promise<CashWallet[]> {
   try {
     return await listWallets()
@@ -124,7 +124,7 @@ export interface PurchasePaymentRow {
   bankTransactionId: string | null
 }
 
-/** Pagos de las compras (sin lanzar: sin 0311 no hay pagos que enseñar). */
+/** Pagos de las compras (sin lanzar: sin 0312 no hay pagos que enseñar). */
 export async function listPurchasePayments(): Promise<PurchasePaymentRow[]> {
   try {
     const { data, error } = await supabase.from('purchase_payments').select('id, receipt_id, method, amount, wallet_id, bank_transaction_id')

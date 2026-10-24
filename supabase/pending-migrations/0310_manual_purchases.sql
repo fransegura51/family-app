@@ -9,7 +9,7 @@
 -- sin duplicar (→ 'ticket_banco' / 'ticket').
 -- Además: quien pagó debe ser miembro de LA MISMA familia que la compra (antes solo había una clave foránea sin comprobar la familia).
 --
--- ROLLBACK: supabase/rollbacks/0309_manual_purchases_down.sql
+-- ROLLBACK: supabase/rollbacks/0310_manual_purchases_down.sql
 
 alter table public.receipts add column is_manual boolean not null default false;
 alter table public.receipts add column payment_method text;

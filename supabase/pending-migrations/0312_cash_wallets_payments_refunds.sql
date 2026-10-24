@@ -1,5 +1,5 @@
 -- EFECTIVO, PAGOS MIXTOS, DEVOLUCIONES Y VINCULACIÓN COMPRAS–ECONOMÍA — aditiva; no modifica ni borra ningún dato existente.
--- Depende de 0309 (receipts.payment_method / is_manual) y de 0308 (shared_family_hash no se usa aquí). Orden de aplicación: 0309 → 0310 → 0311.
+-- Depende de 0310 (receipts.payment_method / is_manual) y de 0308 (shared_family_hash no se usa aquí). Orden de aplicación: 0310 → 0311 → 0312.
 --
 -- Piezas:
 --   * expenses.payment_method        — cómo se pagó ese gasto (efectivo / tarjeta / ... / mixto). El sincronizador del banco NO une nunca un
@@ -16,9 +16,9 @@
 -- Seguridad: RLS por familia en todas las tablas; las carteras respetan la sección «dinero» y el modo de cuentas (compartido / privado) igual
 -- que bank_accounts; las operaciones multi-fila son funciones que comprueban permisos explícitamente.
 --
--- ROLLBACK: supabase/rollbacks/0311_cash_wallets_payments_refunds_down.sql
+-- ROLLBACK: supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql
 
--- 0309 admite «mixto» en receipts.payment_method (se amplía la lista cerrada).
+-- 0310 admite «mixto» en receipts.payment_method (se amplía la lista cerrada).
 alter table public.receipts drop constraint if exists receipts_payment_method_check;
 alter table public.receipts add constraint receipts_payment_method_check
   check (payment_method is null or payment_method in ('efectivo', 'tarjeta', 'bizum', 'transferencia', 'otro', 'mixto'));
@@ -257,14 +257,14 @@ language sql
 stable
 security definer
 set search_path = public
-as $
+as $$
   select exists (
     select 1 from public.expenses e
     where e.id = p_expense and e.family_id = private.current_family_id()
       and (e.budget_group = 'alimentacion' or private.has_section_access('dinero'))
       and (private.current_accounts_mode() = 'compartido' or e.owner_member_id is null or e.owner_member_id = private.current_member_id() or e.shared)
   )
-$;
+$$;
 
 -- Traspaso entre carteras (personal ↔ familiar, entre miembros): dos movimientos emparejados. NO es ingreso ni gasto.
 -- Sale de una cartera que puedes escribir; entra en cualquier cartera de la familia que puedas ver. Puede dejar la de origen en negativo.
@@ -756,3 +756,18 @@ revoke all on function public.cash_transfer(uuid, uuid, numeric, date, text), pu
 grant execute on function public.cash_transfer(uuid, uuid, numeric, date, text), public.cash_link_bank_expense(uuid, uuid), public.cash_unlink_bank_expense(uuid),
   public.set_purchase_payments(uuid, jsonb), public.register_purchase_refund(uuid, numeric, date, text, uuid, text),
   public.link_purchase_to_bank_expense(uuid, uuid, uuid), public.remove_duplicate_expense(uuid, uuid), public.delete_purchase(uuid), public.restore_economy_log(uuid) to authenticated;
+
+-- ─── Privilegios mínimos (en producción se aplicó aparte, el 24/10/2026, como «0312b_least_privilege_new_tables»; aquí va para que una instalación nueva quede igual) ───
+-- Supabase concede por defecto TODOS los privilegios (también el de vaciar tablas) a anon y authenticated en tablas nuevas; la seguridad por filas (RLS) ya impide leer o
+-- escribir filas sin política, pero se deja además solo lo necesario (defensa en profundidad). Solo quita permisos; no toca datos.
+revoke all on public.cash_wallets, public.cash_movements, public.cash_wallet_balances, public.purchase_payments, public.purchase_refunds,
+  public.purchase_duplicate_decisions, public.purchase_audit_log from anon, authenticated;
+grant select, insert, update on public.cash_wallets to authenticated;
+grant select, insert, delete on public.cash_movements to authenticated;
+grant select on public.cash_wallet_balances to authenticated;
+grant select, insert, update, delete on public.purchase_payments to authenticated;
+grant select on public.purchase_refunds to authenticated;
+grant select, insert, delete on public.purchase_duplicate_decisions to authenticated;
+grant select on public.purchase_audit_log to authenticated;
+-- Los dos ayudantes privados solo los usan funciones SECURITY DEFINER (que se ejecutan con el dueño): los usuarios no necesitan ejecutarlos.
+revoke execute on function private.cash_wallet_writable(uuid), private.expense_touchable(uuid) from authenticated;

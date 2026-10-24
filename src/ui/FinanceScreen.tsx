@@ -170,6 +170,7 @@ import { shortfallNotice, usableWallets, type CashWallet, type ShortfallChoice, 
 import { findExistingEconomyExpense, type DupExpense } from '@/domain/duplicateDetection'
 import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/purchasePayments'
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
+import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
@@ -5091,7 +5092,7 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
 export function ReceiptsTab() {
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
-  // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0311 estas listas quedan vacías).
+  // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0312 estas listas quedan vacías).
   const [allExpenseList, setAllExpenseList] = useState<Expense[]>([])
   const [refunds, setRefunds] = useState<PurchaseRefundRow[]>([])
   const [payments, setPayments] = useState<PurchasePaymentRow[]>([])
@@ -5172,7 +5173,8 @@ export function ReceiptsTab() {
     setDeleting(true)
     try {
       const logId = await deletePurchaseSafely(receipt)
-      setUndo({ logId, text: 'Compra borrada.' })
+      // Honesto con la foto: se borra de verdad y deshacer NO la recupera (solo vuelve la compra, sin foto).
+      setUndo({ logId, text: receipt.storagePath ? 'Compra borrada. Si la deshaces, vuelve sin la foto del ticket (la foto ya se ha borrado).' : 'Compra borrada.' })
       setDeleteDialog(null)
       reload()
     } catch (err) {
@@ -5260,6 +5262,7 @@ export function ReceiptsTab() {
       {deleteDialog && (
         <DeletePurchaseDialog
           title={deleteDialog.receipt.store ?? 'Compra'}
+          hasPhoto={!!deleteDialog.receipt.storagePath}
           lines={deleteDialog.lines}
           busy={deleting}
           onConfirm={() => void runDelete(deleteDialog.receipt)}
@@ -6302,6 +6305,8 @@ function ReceiptForm({
   }, [mode, receipt?.id])
 
   const totalNum = parseAmount(totalAmount)
+  // Comprobar los importes antes de guardar: suma de líneas − descuentos frente al total del ticket (solo avisa, nunca bloquea).
+  const linesSummary = useMemo(() => summaryMessage(summarizeTicketLines(lines, totalAmount, discountTotal)), [lines, totalAmount, discountTotal])
   // Los pagos que se van a guardar: varios medios, o el único medio elegido por el total.
   function effectiveLegs(): PaymentLeg[] {
     if (multiLegs) return multiLegs
@@ -6450,7 +6455,7 @@ function ReceiptForm({
       lines
         // Una línea con precio negativo (abono, descuento) no se guarda en el historial de precios, que no la admite: antes hacía fallar el guardado
         // del ticket entero, ya subido (ver isCreditLine).
-        .filter((line) => line.name.trim() && !Number.isNaN(Number(line.unitPrice)) && !isCreditLine(Number(line.unitPrice)))
+        .filter((line) => isSavableLine(line))
         .map(async (line) => {
           // Corrección PESO — line.unitPrice YA es el precio por unidad, o por kg cuando line.unit==='kg'
           // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
@@ -6770,9 +6775,11 @@ function ReceiptForm({
           wallets={usableWallets(wallets, myMemberId)}
         />
       )}
-      {noTicket && !showDetail && lines.length === 0 && (
+      {/* Añadir productos A MANO: al subir un ticket nuevo (con o sin «Leer ticket», o si la lectura no reconoce nada o falla) y en una compra sin ticket.
+          Es el mismo editor de líneas de siempre; no hay un formulario aparte. */}
+      {mode === 'add' && !showDetail && lines.length === 0 && ocrStatus !== 'reading' && (noTicket || file !== null) && (
         <button type="button" className="link-button" onClick={() => { setShowDetail(true); addBlankLine() }}>
-          + Añadir productos (opcional)
+          {noTicket ? '+ Añadir productos (opcional)' : '+ Añadir productos a mano (opcional)'}
         </button>
       )}
 
@@ -6795,7 +6802,7 @@ function ReceiptForm({
         <div className="day-modal-group">
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <p className="muted" style={{ flex: 1, margin: 0 }}>
-              Productos leídos — revisa y corrige antes de guardar. El símbolo de la izquierda es la
+              {ocrStatus === 'done' || mode === 'edit' ? 'Productos leídos — revisa y corrige antes de guardar.' : 'Productos del ticket — añade los que quieras antes de guardar.'} El símbolo de la izquierda es la
               clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
               que repases si la ha adivinado bien. La cantidad es cuántas unidades se compraron, o el peso en
               kg si se vendió por peso (fruta, verdura, carne al corte...); el precio es siempre por unidad —o
@@ -6883,10 +6890,20 @@ function ReceiptForm({
               </div>
             )
           })}
-          {lines.length === 0 && <p className="muted">No se ha reconocido ningún producto.</p>}
+          {lines.length === 0 && <p className="muted">{ocrStatus === 'done' ? 'No se ha reconocido ningún producto: añádelos con «+ Añadir línea».' : 'Todavía no hay productos: pulsa «+ Añadir línea».'}</p>}
           <button type="button" className="link-button" onClick={addBlankLine}>
             + Añadir línea
           </button>
+          {linesSummary && (
+            <p
+              className={linesSummary.tone === 'warn' ? 'error' : 'muted'}
+              role="status"
+              data-testid="ticket-lines-summary"
+              style={{ margin: '6px 0 0' }}
+            >
+              {linesSummary.text}
+            </p>
+          )}
         </div>
       )}
 

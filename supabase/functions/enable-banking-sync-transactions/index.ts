@@ -568,7 +568,7 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
       }
     }
 
-    // DEVOLUCIONES (0311): si la familia ya registró esa devolución a mano (misma cantidad, ±14 días, no en efectivo, sin enlazar), el abono del banco
+    // DEVOLUCIONES (0312): si la familia ya registró esa devolución a mano (misma cantidad, ±14 días, no en efectivo, sin enlazar), el abono del banco
     // es ESA devolución: se enlaza y no se crea otro ingreso. Con más de una candidata no se elige ninguna.
     if (isIncome && refundCategoryName) {
       const manualRefund = await findManualRefundMatch(admin, familyId, refundCategoryName, Number(bt.amount), bt.transaction_date as string)
@@ -586,7 +586,7 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"
 
     if (!isIncome) {
-      // PAGOS MIXTOS (0311): ¿es este cargo la parte NO efectivo de una compra con varios medios de pago? Importe exacto del pago, sin enlazar a
+      // PAGOS MIXTOS (0312): ¿es este cargo la parte NO efectivo de una compra con varios medios de pago? Importe exacto del pago, sin enlazar a
       // otro movimiento, compra de ±7 días. Se une a la compra (un solo gasto total) y NUNCA crea otro gasto. Si hay más de una candidata, no elige.
       const legMatch = await findPaymentLegMatch(admin, familyId, Number(bt.amount), bt.transaction_date as string)
       if (legMatch) {
@@ -619,7 +619,7 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         .eq("family_id", familyId)
         .in("source", ["ticket", "manual"])
         .eq("is_income", false)
-        // EFECTIVO (0311): un gasto pagado en efectivo NO sale del banco, y uno mixto solo coincide por la parte de tarjeta (más abajo): ninguno se
+        // EFECTIVO (0312): un gasto pagado en efectivo NO sale del banco, y uno mixto solo coincide por la parte de tarjeta (más abajo): ninguno se
         // une jamás a un cargo bancario del mismo importe (ocultaría el cargo real de otro comercio).
         .or("payment_method.is.null,payment_method.not.in.(efectivo,mixto)")
         .gte("expense_date", from.toISOString().slice(0, 10))

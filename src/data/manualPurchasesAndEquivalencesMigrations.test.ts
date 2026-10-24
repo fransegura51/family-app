@@ -1,15 +1,15 @@
-// Contrato de las migraciones PREPARADAS 0310 (compras manuales) y 0311 (equivalencias de productos). Están en supabase/pending-migrations hasta
+// Contrato de las migraciones PREPARADAS 0310 (compras manuales) y 0311 (equivalencias de productos). Están en supabase/migrations (ya aplicadas el 24/10/2026) hasta
 // que se autorice aplicarlas. Su comportamiento real (con la base de datos de producción, dentro de una transacción revertida) está en
 // docs/PEPA_CONTROL_REQUISITOS.md (COM-1 y COMP-1); aquí se fijan sus reglas de seguridad para que no se deshagan sin querer.
 import { describe, expect, it } from 'vitest'
 import receiptsSource from '../ui/FinanceScreen.tsx?raw'
 
 const FILES = import.meta.glob(
-  ['/supabase/pending-migrations/0310_manual_purchases.sql', '/supabase/pending-migrations/0311_product_equivalences.sql', '/supabase/rollbacks/0310_manual_purchases_down.sql', '/supabase/rollbacks/0311_product_equivalences_down.sql'],
+  ['/supabase/migrations/0310_manual_purchases.sql', '/supabase/migrations/0311_product_equivalences.sql', '/supabase/rollbacks/0310_manual_purchases_down.sql', '/supabase/rollbacks/0311_product_equivalences_down.sql'],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
-const M0309 = FILES['/supabase/pending-migrations/0310_manual_purchases.sql']
-const M0310 = FILES['/supabase/pending-migrations/0311_product_equivalences.sql']
+const M0309 = FILES['/supabase/migrations/0310_manual_purchases.sql']
+const M0310 = FILES['/supabase/migrations/0311_product_equivalences.sql']
 const D0309 = FILES['/supabase/rollbacks/0310_manual_purchases_down.sql']
 const D0310 = FILES['/supabase/rollbacks/0311_product_equivalences_down.sql']
 

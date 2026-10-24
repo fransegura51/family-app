@@ -4,8 +4,8 @@
 import { describe, expect, it } from 'vitest'
 import sync from '../../supabase/functions/enable-banking-sync-transactions/index.ts?raw'
 
-const FILES = import.meta.glob(['/supabase/pending-migrations/0312_cash_wallets_payments_refunds.sql', '/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const UP = FILES['/supabase/pending-migrations/0312_cash_wallets_payments_refunds.sql']
+const FILES = import.meta.glob(['/supabase/migrations/0312_cash_wallets_payments_refunds.sql', '/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const UP = FILES['/supabase/migrations/0312_cash_wallets_payments_refunds.sql']
 const DOWN = FILES['/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql']
 
 describe('0312 — aditiva y reversible', () => {

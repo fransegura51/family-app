@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest'
 
 const ALL = import.meta.glob(
   [
-    '/supabase/pending-migrations/0310_manual_purchases.sql',
-    '/supabase/pending-migrations/0311_product_equivalences.sql',
-    '/supabase/pending-migrations/0312_cash_wallets_payments_refunds.sql',
+    '/supabase/migrations/0310_manual_purchases.sql',
+    '/supabase/migrations/0311_product_equivalences.sql',
+    '/supabase/migrations/0312_cash_wallets_payments_refunds.sql',
     '/supabase/rollbacks/0310_manual_purchases_down.sql',
     '/supabase/rollbacks/0311_product_equivalences_down.sql',
     '/supabase/rollbacks/0312_cash_wallets_payments_refunds_down.sql',

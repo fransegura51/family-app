@@ -2,7 +2,7 @@
 // (Motivo: el 24/10/2026 una edición automática dejó `$` en vez de `$$` en una función de 0312 y habría fallado al aplicarla.)
 import { describe, expect, it } from 'vitest'
 
-const FILES = import.meta.glob('/supabase/{pending-migrations,rollbacks}/03{10,11,12}_*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const FILES = import.meta.glob('/supabase/{migrations,rollbacks}/03{10,11,12}_*.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 describe('migraciones preparadas (0310, 0311, 0312) y sus reversiones', () => {
   it('hay seis archivos', () => {

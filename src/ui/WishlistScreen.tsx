@@ -19,6 +19,8 @@ import {
   reserveWishlistItem,
   saveWishlistItemPhoto,
   undoWishlistReservation,
+  updateWishlist,
+  updateWishlistItem,
 } from '@/data/wishlist'
 import { isOwnWishlist, looksLikeProductUrl, wishlistItemStatus, wishlistTitle, type WishlistItemStatus } from '@/domain/wishlist'
 import { errorMessage } from '@/domain/errorMessage'
@@ -77,6 +79,7 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
         viewerMemberId={myMemberId}
         isChild={profile.role === 'child'}
         onBack={() => setOpenWishlistId(null)}
+        onWishlistChanged={reload}
       />
     )
   }
@@ -210,13 +213,16 @@ function WishlistDetailScreen({
   viewerMemberId,
   isChild,
   onBack,
+  onWishlistChanged,
 }: {
   wishlist: Wishlist
   ownerName: string
   viewerMemberId: string | null
   isChild: boolean
   onBack: () => void
+  onWishlistChanged: () => void
 }) {
+  const [editingList, setEditingList] = useState(false)
   const [items, setItems] = useState<WishlistItem[]>([])
   const [reservations, setReservations] = useState<WishlistItemReservation[]>([])
   const [showAdd, setShowAdd] = useState(false)
@@ -292,6 +298,19 @@ function WishlistDetailScreen({
         {wishlistTitle(wishlist.occasion, wishlist.year)}
         {wishlist.celebrationDate ? ` · ${formatDate(wishlist.celebrationDate)}` : ''}
       </p>
+      <button type="button" className="link-button" data-help-id="pequenos.lista-editar" onClick={() => setEditingList(true)}>
+        ✏️ Editar lista
+      </button>
+      {editingList && (
+        <EditWishlistModal
+          wishlist={wishlist}
+          onClose={() => setEditingList(false)}
+          onSaved={() => {
+            setEditingList(false)
+            onWishlistChanged()
+          }}
+        />
+      )}
       {ownWishlist && (
         <p className="muted" style={{ fontSize: 13 }} data-help-id="pequenos.lista-secreto">
           🤫 Es tu propia lista — nunca verás aquí quién reserva cada regalo, para que siga siendo una sorpresa.
@@ -370,6 +389,7 @@ function WishlistItemRow({
   const [photoUrl, setPhotoUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState(false)
 
   useEffect(() => {
     if (item.photoStoragePath) getWishlistItemPhotoUrl(item.photoStoragePath).then(setPhotoUrl).catch(() => setPhotoUrl(null))
@@ -425,9 +445,22 @@ function WishlistItemRow({
           </span>
           {canSeeReservations && <span className="muted" style={{ fontSize: 12, display: 'block' }} data-help-id="pequenos.regalo-estado">{statusLabel(status)}</span>}
         </span>
+        <button type="button" className="icon-button" aria-label="Editar regalo" data-help-id="pequenos.regalo-editar" onClick={() => setEditing(true)}>
+          ✏️
+        </button>
         <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar regalo" onConfirm={() => deleteWishlistItem(item.id).then(onChanged)} />
       </div>
       {error && <p className="error" style={{ fontSize: 12 }}>{error}</p>}
+      {editing && (
+        <EditWishlistItemModal
+          item={item}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false)
+            onChanged()
+          }}
+        />
+      )}
       {canJoin && (
         <button type="button" className="link-button" data-help-id="pequenos.regalo-reservar" onClick={() => void handleReserve()} disabled={busy}>
           {busy ? 'Reservando…' : status.kind === 'conjunto' ? '+ Unirme a este regalo' : '🎁 Reservar este regalo'}
@@ -436,6 +469,131 @@ function WishlistItemRow({
       {myReservation && (
         <ConfirmButton label="Deshacer mi reserva" confirmMessage="¿Deshacer tu reserva de este regalo? Quedará disponible otra vez." onConfirm={() => void handleUndo()} />
       )}
+    </div>
+  )
+}
+
+// Editar una lista ya creada: celebración y fecha (para quién es y el año no cambian; para eso, crear otra).
+function EditWishlistModal({ wishlist, onClose, onSaved }: { wishlist: Wishlist; onClose: () => void; onSaved: () => void }) {
+  const [occasion, setOccasion] = useState(wishlist.occasion)
+  const [celebrationDate, setCelebrationDate] = useState(wishlist.celebrationDate ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!occasion.trim()) {
+      setError('Ponle una celebración (cumpleaños, Navidad...).')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateWishlist(wishlist.id, { occasion, celebrationDate: celebrationDate || null })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Editar lista de deseos" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Editar lista
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Celebración
+            <input type="text" value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Cumpleaños, Navidad, Reyes..." autoFocus />
+          </label>
+          <label>
+            Fecha de la celebración (opcional)
+            <DateField value={celebrationDate} onChange={setCelebrationDate} placeholder="Sin fecha" />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// Editar un regalo ya añadido: nombre, descripción, enlace y precio. La foto y «regalo conjunto» no se tocan aquí (las reservas ya hechas dependen de ello).
+function EditWishlistItemModal({ item, onClose, onSaved }: { item: WishlistItem; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(item.name)
+  const [description, setDescription] = useState(item.description ?? '')
+  const [link, setLink] = useState(item.link ?? '')
+  const [price, setPrice] = useState(item.price != null ? String(item.price) : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(ev: FormEvent) {
+    ev.preventDefault()
+    if (!name.trim()) {
+      setError('Ponle un nombre al regalo.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateWishlistItem(item.id, {
+        name,
+        description: description.trim() || null,
+        link: link.trim() || null,
+        price: price.trim() === '' ? null : Number(price),
+      })
+      onSaved()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Editar regalo" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Editar regalo
+          </h2>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+            ✕
+          </button>
+        </div>
+        <form className="card member-form" onSubmit={handleSubmit}>
+          {error && <p className="error">{error}</p>}
+          <label>
+            Nombre
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </label>
+          <label>
+            Descripción (opcional)
+            <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </label>
+          <label>
+            Enlace (opcional)
+            <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..." />
+          </label>
+          <label>
+            Precio (opcional)
+            <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
+          </label>
+          <button type="submit" disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        </form>
+      </div>
     </div>
   )
 }

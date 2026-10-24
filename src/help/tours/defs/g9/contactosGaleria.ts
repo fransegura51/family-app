@@ -140,4 +140,35 @@ export const tutGaleriaCompartir: TourDef = {
   next: ['gal-subir', 'ini-que-veo'],
 }
 
-export const TOURS_G9_CONTACTOS_GALERIA: TourDef[] = [tutContactosImportar, tutContactosCompartir, tutGaleriaCompartir]
+export const tutGaleriaAmpliar: TourDef = {
+  id: 'tut-galeria-ampliar',
+  module: 'galeria',
+  group: 'Fotos',
+  summary: 'Abre una foto en grande, pasa a la siguiente y cámbiale la descripción.',
+  version: 1,
+  title: 'Ampliar una foto y editar su descripción',
+  cardId: 'gal-ampliar',
+  durationSec: 60,
+  startPath: '/galeria',
+  steps: [
+    {
+      id: 'tocar',
+      text: 'Toca cualquier foto de la galería para verla en grande. Si todavía no hay fotos, pulsa «Siguiente».',
+      target: 'gallery.ampliar',
+      completeOn: [{ type: 'appear', target: 'gallery.descripcion' }],
+      manualNext: true,
+    },
+    {
+      id: 'descripcion',
+      text: 'Aquí puedes escribir o cambiar la descripción de la foto y pulsar «Guardar descripción». Con «‹ Anterior» y «Siguiente ›» pasas a otra foto sin cerrar. Yo no guardo nada.',
+      target: 'gallery.descripcion',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+  ],
+  finishText: 'Eso es todo. Para volver a la galería pulsa la ✕ de arriba a la derecha.',
+  next: ['gal-compartir', 'gal-subir'],
+}
+
+export const TOURS_G9_CONTACTOS_GALERIA: TourDef[] = [tutContactosImportar, tutContactosCompartir, tutGaleriaCompartir, tutGaleriaAmpliar]

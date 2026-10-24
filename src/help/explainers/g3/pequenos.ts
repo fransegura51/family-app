@@ -77,7 +77,7 @@ export const expPequenosDeseosReservas: HelpExplainer = {
       heading: 'Qué es una lista de deseos',
       paragraphs: [
         'Cada lista es para una persona, con una celebración, un año y, si quieres, una fecha. Dentro apuntas regalos con nombre, descripción, enlace, precio y foto. Si pegas un enlace de internet, PEPA intenta buscar sola la foto del producto.',
-        'La app no limita por rol quién crea listas o añade regalos dentro de la familia. De momento una lista o un regalo no se pueden editar: solo borrar y volver a crear.',
+        'La app no limita por rol quién crea listas o añade regalos dentro de la familia. Una lista (celebración y fecha) y cada regalo (nombre, descripción, enlace y precio) se pueden editar con el lápiz ✏️; la foto y «regalo conjunto» no se cambian: para eso, borra el regalo y créalo otra vez.',
       ],
     },
     {
@@ -105,7 +105,7 @@ export const expPequenosDeseosReservas: HelpExplainer = {
     },
   ],
   limits: [
-    'Una lista o un regalo no se pueden editar todavía: solo borrar y volver a crear.',
+    'De un regalo no se puede cambiar la foto ni si es conjunto, ni de una lista para quién es o el año: para eso, borra y vuelve a crear.',
     'Si borras una lista, desaparecen también sus regalos y reservas.',
     'Quien tenga el enlace de invitados puede ver la lista: trátalo como cualquier enlace que compartes.',
     'Con una cuenta de niño o niña la pantalla no enseña ninguna reserva, tampoco la propia: desde esa cuenta no aparece «Deshacer mi reserva».',

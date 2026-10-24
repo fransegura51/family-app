@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { deleteGalleryPhoto, getGalleryPhotoUrl, listGalleryPhotos, uploadGalleryPhoto } from '@/data/gallery'
+import { deleteGalleryPhoto, getGalleryPhotoUrl, listGalleryPhotos, updateGalleryCaption, uploadGalleryPhoto } from '@/data/gallery'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { GalleryPhoto } from '@/domain/types'
 import galeriaHeaderImg from '@/assets/galeria/galeria-header.jpg'
@@ -30,6 +30,29 @@ export function GalleryScreen() {
   const [error, setError] = useState<string | null>(null)
   const [selecting, setSelecting] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // Foto abierta en grande (índice dentro de `photos`) y su descripción en edición.
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+  const [captionDraft, setCaptionDraft] = useState('')
+  const [captionSaving, setCaptionSaving] = useState(false)
+  const openPhoto = openIndex === null ? null : (photos[openIndex] ?? null)
+
+  function openAt(index: number) {
+    setOpenIndex(index)
+    setCaptionDraft(photos[index]?.caption ?? '')
+  }
+
+  async function handleSaveCaption() {
+    if (!openPhoto) return
+    setCaptionSaving(true)
+    try {
+      await updateGalleryCaption(openPhoto.id, captionDraft)
+      setPhotos((prev) => prev.map((p) => (p.id === openPhoto.id ? { ...p, caption: captionDraft.trim() || null } : p)))
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar la descripción'))
+    } finally {
+      setCaptionSaving(false)
+    }
+  }
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -116,9 +139,16 @@ export function GalleryScreen() {
         </button>
       )}
       <div className="gallery-grid" data-help-id="gallery.grid">
-        {photos.map((p) => (
+        {photos.map((p, index) => (
           <div key={p.id} className="gallery-item">
-            {urls[p.id] && <img src={urls[p.id]} alt={p.caption ?? ''} />}
+            {urls[p.id] &&
+              (selecting ? (
+                <img src={urls[p.id]} alt={p.caption ?? ''} />
+              ) : (
+                <button type="button" className="link-button" style={{ padding: 0, display: 'block', width: '100%' }} aria-label="Ver foto grande" data-help-id="gallery.ampliar" onClick={() => openAt(index)}>
+                  <img src={urls[p.id]} alt={p.caption ?? ''} />
+                </button>
+              ))}
             {selecting ? (
               <input
                 type="checkbox"
@@ -151,6 +181,37 @@ export function GalleryScreen() {
         {photos.length === 0 && <p className="muted">No hay fotos todavía.</p>}
       </div>
       <AddPhotoForm onAdded={reload} />
+      {openPhoto && openIndex !== null && (
+        <div className="modal-overlay" onClick={() => setOpenIndex(null)}>
+          <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Foto" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Foto {openIndex + 1} de {photos.length}
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setOpenIndex(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            {urls[openPhoto.id] && <img src={urls[openPhoto.id]} alt={openPhoto.caption ?? ''} style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain', display: 'block' }} />}
+            <p className="muted">{formatDateFromTimestamp(openPhoto.createdAt)}</p>
+            <div className="inline-fields">
+              <button type="button" className="link-button" disabled={openIndex === 0} onClick={() => openAt(openIndex - 1)} aria-label="Foto anterior">
+                ‹ Anterior
+              </button>
+              <button type="button" className="link-button" disabled={openIndex >= photos.length - 1} onClick={() => openAt(openIndex + 1)} aria-label="Foto siguiente">
+                Siguiente ›
+              </button>
+            </div>
+            <label data-help-id="gallery.descripcion">
+              Descripción
+              <input type="text" value={captionDraft} onChange={(e) => setCaptionDraft(e.target.value)} placeholder="Escribe una descripción" maxLength={200} />
+            </label>
+            <button type="button" disabled={captionSaving || captionDraft.trim() === (openPhoto.caption ?? '')} onClick={handleSaveCaption}>
+              {captionSaving ? 'Guardando…' : 'Guardar descripción'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

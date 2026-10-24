@@ -69,6 +69,12 @@ export async function getGalleryPhotoUrls(storagePaths: string[]): Promise<Recor
   return out
 }
 
+// Cambia la descripción de una foto ya subida (vacía = sin descripción). Gallery_photos deja modificar a toda la familia (política «family crud»).
+export async function updateGalleryCaption(id: string, caption: string): Promise<void> {
+  const { error } = await supabase.from('gallery_photos').update({ caption: caption.trim() || null }).eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteGalleryPhoto(photo: GalleryPhoto): Promise<void> {
   await supabase.storage.from('gallery').remove([photo.storagePath])
   const { error } = await supabase.from('gallery_photos').delete().eq('id', photo.id)

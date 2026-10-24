@@ -15,6 +15,7 @@ vi.mock('npm:@supabase/supabase-js@2', () => {
   function builder(table: string) {
     let op: 'select' | 'insert' | 'update' | 'delete' | 'upsert' = 'select'
     let payload: Row | Row[] | null = null
+    let upsertOptions: { onConflict?: string; ignoreDuplicates?: boolean } | undefined
     const filters: Array<(r: Row) => boolean> = []
     let single = false
     let wantRows = false
@@ -35,7 +36,10 @@ vi.mock('npm:@supabase/supabase-js@2', () => {
       if (op === 'upsert') {
         db.log.push(`${table}.upsert`)
         const p = payload as Row
-        if (!rows().some((r) => r.event_id === p.event_id && r.member_id === p.member_id)) rows().push({ ...p })
+        const existing = rows().find((r) => r.event_id === p.event_id && r.member_id === p.member_id)
+        if (!existing) rows().push({ ...p })
+        // Como PostgREST: sin ignoreDuplicates un conflicto es ON CONFLICT DO UPDATE (reescribe la fila); con ignoreDuplicates es DO NOTHING (no escribe).
+        else if (!upsertOptions?.ignoreDuplicates) db.log.push(`${table}.upsert-rewrite`)
         return { data: null, error: null }
       }
       db.log.push(`${table}.insert`)
@@ -62,9 +66,10 @@ vi.mock('npm:@supabase/supabase-js@2', () => {
         op = 'delete'
         return api
       },
-      upsert: (p: Row) => {
+      upsert: (p: Row, options?: { onConflict?: string; ignoreDuplicates?: boolean }) => {
         op = 'upsert'
         payload = p
+        upsertOptions = options
         return api
       },
       eq: (k: string, v: unknown) => {
@@ -226,6 +231,34 @@ describe('lo que arregla: los eventos que NO han cambiado ya no se reescriben', 
     db.tables.calendar_events[0].reminders_marker = 'puesto en la app'
     await run()
     expect(db.tables.calendar_events[0].reminders_marker).toBe('puesto en la app')
+  })
+
+  it('calendar_event_members: una vuelta sin cambios NO reescribe las asignaciones existentes (ignoreDuplicates), sin perder ninguna', async () => {
+    googleItems = Array.from({ length: 49 }, (_, i) => item(`g${i}`))
+    await run()
+    expect(db.tables.calendar_event_members).toHaveLength(49)
+    db.log = []
+    await run()
+    expect(db.log.filter((l) => l === 'calendar_event_members.upsert')).toHaveLength(49) // se sigue «asegurando» cada asignación...
+    expect(writes('calendar_event_members', 'upsert-rewrite')).toBe(0) // ...pero ya no se reescribe ninguna fila
+    expect(db.tables.calendar_event_members).toHaveLength(49)
+    expect(writes('calendar_events', 'update')).toBe(0)
+  })
+
+  it('si a un evento importado le falta su asignación, la sincronización la vuelve a crear (comportamiento de siempre) y no duplica las demás', async () => {
+    googleItems = [item('g1'), item('g2')]
+    await run()
+    const removed = db.tables.calendar_event_members.shift()
+    expect(db.tables.calendar_event_members).toHaveLength(1)
+    await run()
+    expect(db.tables.calendar_event_members).toHaveLength(2)
+    expect(db.tables.calendar_event_members).toContainEqual(removed)
+  })
+
+  it('la función pide ON CONFLICT DO NOTHING en esa escritura (y en ninguna otra cosa cambia la lógica de asignación)', async () => {
+    const source = (await import('../../supabase/functions/sync-calendar-from-google-cron/index.ts?raw')).default as string
+    expect(source).toContain('.upsert({ event_id: eventId, member_id: memberId }, { onConflict: "event_id,member_id", ignoreDuplicates: true })')
+    expect(source.match(/\.upsert\(/g)).toHaveLength(1)
   })
 
   it('si la lectura de lo guardado no devuelve el evento, se escribe igual (nunca se queda sin actualizar por error)', async () => {

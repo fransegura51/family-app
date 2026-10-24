@@ -612,6 +612,7 @@ describe('runTalk: pedir ayuda a Pepa por voz', () => {
     ctx,
     search: (q) => searchHelp(index, q, { access: (d) => (d.kind === 'card' ? cardAccess(d.card, HELP_MODULE_BY_ID.get(d.module), ctx) : { status: 'allowed' as const }) }),
     accessOfCard: (card) => cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctx),
+    canDoTour: () => true,
   })
 
   it('«necesito ayuda con compras» lleva a Compras y lo explica', async () => {

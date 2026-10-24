@@ -3,6 +3,7 @@ import { moduleAccess, type HelpAccessResult, type HelpContext } from '@/help/ac
 import { cardsOfModule, HELP_MODULE_BY_ID } from '@/help/catalog'
 import type { SearchResponse } from '@/help/search/searchEngine'
 import type { HelpCard, HelpGo, HelpModuleId } from '@/help/types'
+import { TOURS } from '@/help/tours/registry'
 
 // «Necesito ayuda con compras» en «Hablar con PEPA»: Pepa lleva a esa pantalla y EXPLICA por voz lo que cuenta la Ayuda («Pepa te acompaña»). Nada se inventa: el texto sale
 // de las fichas y del resumen del módulo del catálogo de la Ayuda (src/help/catalog), con los mismos permisos que la Ayuda (src/help/access.ts).
@@ -12,11 +13,13 @@ export interface TalkHelpApi {
   ctx: HelpContext
   search(query: string): SearchResponse
   accessOfCard(card: HelpCard): HelpAccessResult
+  /** ¿Puede esta cuenta hacer ese recorrido «Enséñame» / «Conoce esta sección»? */
+  canDoTour(tourId: string): boolean
 }
 
 export type TalkHelpAnswer =
-  /** Explicar de palabra y llevar a la pantalla. */
-  | { kind: 'go'; text: string; go: HelpGo; title: string; moduleId: HelpModuleId }
+  /** Explicar de palabra y llevar a la pantalla. Con `tourId`, además se arranca el recorrido guiado (marca en pantalla dónde pulsar, cambia de pantalla y habla cada paso). */
+  | { kind: 'go'; text: string; go: HelpGo; title: string; moduleId: HelpModuleId; tourId?: string }
   /** Solo explicar (no hay pantalla a la que llevar, o la cuenta no tiene acceso). */
   | { kind: 'say'; text: string }
 
@@ -117,6 +120,17 @@ function usableCards(moduleId: HelpModuleId, api: TalkHelpApi): HelpCard[] {
   return cardsOfModule(moduleId).filter((c) => c.state !== 'desactivada' && api.accessOfCard(c).status === 'allowed')
 }
 
+// Recorrido guiado de una ficha («Enséñame»: cardId o card.tour) o de una sección («Conoce esta sección»), si existe y la cuenta puede hacerlo.
+function tutorialFor(card: HelpCard, api: TalkHelpApi): string | null {
+  const tour = TOURS.find((t) => t.kind !== 'visit' && (t.cardId === card.id || t.id === card.tour))
+  return tour && api.canDoTour(tour.id) ? tour.id : null
+}
+
+function visitFor(moduleId: HelpModuleId, api: TalkHelpApi): string | null {
+  const tour = TOURS.find((t) => t.kind === 'visit' && t.module === moduleId)
+  return tour && api.canDoTour(tour.id) ? tour.id : null
+}
+
 function overview(moduleId: HelpModuleId, api: TalkHelpApi): TalkHelpAnswer | null {
   const mod = HELP_MODULE_BY_ID.get(moduleId)
   if (!mod) return null
@@ -127,6 +141,17 @@ function overview(moduleId: HelpModuleId, api: TalkHelpApi): TalkHelpAnswer | nu
   const ordered = [...cards.filter((c) => c.frequent), ...cards.filter((c) => !c.frequent)].slice(0, 4)
   const can = ordered.length > 0 ? ` Con ${mod.label} puedes, por ejemplo: ${ordered.map((c) => plainTitle(c.title)).join('; ')}.` : ''
   const ask = ordered.length > 0 ? ` Dime, por ejemplo, «${helpExample(ordered[0].title)}» y te lo explico paso a paso.` : ''
+  const tourId = visitFor(moduleId, api)
+  if (tourId) {
+    return {
+      kind: 'go',
+      text: `Te llevo a ${mod.label} y te la enseño en pantalla, paso a paso: yo te voy marcando cada parte.${ask}`,
+      go: { path: mod.path },
+      title: mod.label,
+      moduleId,
+      tourId,
+    }
+  }
   return {
     kind: 'go',
     text: `Te llevo a ${mod.label}. ${sentence(mod.summary)}${can}${ask}`,
@@ -136,9 +161,20 @@ function overview(moduleId: HelpModuleId, api: TalkHelpApi): TalkHelpAnswer | nu
   }
 }
 
-function fromCard(card: HelpCard): TalkHelpAnswer {
+function fromCard(card: HelpCard, api: TalkHelpApi): TalkHelpAnswer {
   const mod = HELP_MODULE_BY_ID.get(card.module)
   const go: HelpGo = card.go ?? { path: mod?.path ?? '/' }
+  const tourId = tutorialFor(card, api)
+  if (tourId) {
+    return {
+      kind: 'go',
+      text: `${mod ? `En ${mod.label}. ` : ''}${sentence(card.title)} Te lo enseño en pantalla, paso a paso: yo te marco dónde pulsar y tú lo vas haciendo.`,
+      go,
+      title: card.title,
+      moduleId: card.module,
+      tourId,
+    }
+  }
   return { kind: 'go', text: `${mod ? `En ${mod.label}. ` : ''}${spokenCard(card)}`, go, title: card.title, moduleId: card.module }
 }
 
@@ -154,7 +190,7 @@ export function answerHelpRequest(text: string, api: TalkHelpApi): TalkHelpAnswe
   if (topic.length >= 3) {
     const response = api.search(topic)
     const hit = response.hits.find((h) => h.doc.kind === 'card' && (!moduleId || h.doc.module === moduleId) && api.accessOfCard(h.doc.card).status === 'allowed')
-    if (hit && hit.doc.kind === 'card' && (response.confidence === 'clear' || moduleId)) return fromCard(hit.doc.card)
+    if (hit && hit.doc.kind === 'card' && (response.confidence === 'clear' || moduleId)) return fromCard(hit.doc.card, api)
   }
 
   if (moduleId) {

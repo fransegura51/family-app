@@ -3,6 +3,7 @@ import { cardAccess, type HelpContext } from '@/help/access'
 import { HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '@/help/catalog'
 import { buildIndex, searchHelp } from '@/help/search/searchEngine'
 import { ruleResult, moduleAccess } from '@/help/access'
+import { TOURS } from '@/help/tours/registry'
 import { answerHelpRequest, looksLikeHelpRequest, moduleMentioned, spokenCard, type TalkHelpApi } from '@/help/talkHelp'
 
 const index = buildIndex(HELP_CARDS, LEGACY_ENTRIES)
@@ -17,6 +18,7 @@ function apiFor(ctx: HelpContext): TalkHelpApi {
     ctx,
     search: (q) => searchHelp(index, q, { access: (doc) => accessOf(doc as never) }),
     accessOfCard: (card) => cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctx),
+    canDoTour: () => true,
   }
 }
 
@@ -48,14 +50,31 @@ describe('pedir ayuda a Pepa por voz', () => {
     expect(answer.go.path).toBe('/compras')
     expect(answer.moduleId).toBe('compras')
     expect(answer.text).toContain('Te llevo a Compras')
+    // Hay visita guiada de la sección: se arranca «Conoce Compras» en pantalla, marcando cada parte.
+    expect(answer.tourId).toBe('visita-compras')
+    expect(answer.text).toContain('te la enseño en pantalla')
+  })
+
+  it('si la cuenta no puede hacer la visita guiada, se explica de palabra (sin recorrido)', () => {
+    const answer = answerHelpRequest('necesito ayuda con compras', { ...apiFor(ADMIN), canDoTour: () => false })
+    if (!answer || answer.kind !== 'go') throw new Error('debería llevar a Compras')
+    expect(answer.tourId).toBeUndefined()
     expect(answer.text).toContain('Con Compras puedes')
   })
 
-  it('con algo concreto explica la ficha: paso a paso y yendo a su pantalla', () => {
+  it('con algo concreto enseña esa función en pantalla: crear un evento arranca su recorrido', () => {
     const answer = answerHelpRequest('necesito ayuda con el calendario para crear un evento', apiFor(ADMIN))
     if (!answer || answer.kind !== 'go') throw new Error('debería explicar una ficha')
     expect(answer.moduleId).toBe('calendario')
     expect(answer.go.path).toBe('/calendario')
+    expect(answer.tourId).toBe('cal-crear-evento')
+  })
+
+  it('una función sin recorrido propio se explica de palabra, paso a paso', () => {
+    const withoutTour = HELP_CARDS.find((c) => c.module === 'compras' && c.state === 'disponible' && c.steps && c.steps.length > 1 && !TOURS.some((t) => t.cardId === c.id))
+    if (!withoutTour) return // todas las funciones de Compras ya tienen recorrido
+    const answer = answerHelpRequest(`necesito ayuda con compras para ${withoutTour.title.toLowerCase()}`, apiFor(ADMIN))
+    expect(answer?.kind).toBe('go')
   })
 
   it('hay una explicación por cada sección del catálogo que se puede nombrar', () => {

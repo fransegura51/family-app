@@ -33,7 +33,8 @@ import type { HelpGo } from '@/help/types'
 
 export type TalkOutcome =
   // «Necesito ayuda con compras»: Pepa explica por voz lo que dice la Ayuda y lleva a esa pantalla (help/talkHelp.ts).
-  | { kind: 'help'; text: string; go: HelpGo; title: string }
+  // Con `tourId`, además se arranca el recorrido guiado «Enséñame» / «Conoce esta sección» (marca en pantalla dónde pulsar y cambia de pantalla).
+  | { kind: 'help'; text: string; go: HelpGo; title: string; tourId?: string }
   // keepPending: la respuesta aclara algo sobre lo que hay abierto (p. ej. un importe dudoso ante la tarjeta de
   // presupuesto) y NO lo cierra.
   | { kind: 'answer'; text: string; keepPending?: boolean }
@@ -240,7 +241,7 @@ export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome
 }
 
 function helpOutcome(answer: TalkHelpAnswer): TalkOutcome {
-  return answer.kind === 'go' ? { kind: 'help', text: answer.text, go: answer.go, title: answer.title } : { kind: 'answer', text: answer.text }
+  return answer.kind === 'go' ? { kind: 'help', text: answer.text, go: answer.go, title: answer.title, tourId: answer.tourId } : { kind: 'answer', text: answer.text }
 }
 
 async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> {

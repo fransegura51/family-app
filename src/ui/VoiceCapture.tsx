@@ -819,7 +819,14 @@ export function VoiceCapture() {
   helpRef.current = helpApi
   const helpForTalk = () => {
     const help = helpRef.current
-    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard } : null
+    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard, canDoTour: help.canDoTour } : null
+  }
+  // Lo que se hace cuando Pepa termina de hablar (p. ej. empezar el recorrido «Enséñame» que ha pedido la persona).
+  const afterSpeechRef = useRef<(() => void) | null>(null)
+  function runAfterSpeech() {
+    const next = afterSpeechRef.current
+    afterSpeechRef.current = null
+    next?.()
   }
   const [open, setOpen] = useState(false)
   const openRef = useRef(false)
@@ -939,7 +946,15 @@ export function VoiceCapture() {
       // «Necesito ayuda con compras»: se va a esa pantalla (y a su pestaña si la ficha la indica) con el mismo «Llévame» de la Ayuda; la explicación ya la dice Pepa.
       closeTalkDialogs()
       const help = helpRef.current
-      if (help) help.goToPlace(outcome.go, outcome.title)
+      const tourId = outcome.tourId
+      if (help && tourId) {
+        // Con recorrido guiado: primero Pepa dice su frase corta y, al terminar, empieza el «Enséñame» (si arrancara antes, cortaría la voz). El recorrido lleva solo a su pantalla de partida.
+        afterSpeechRef.current = () => {
+          // Si se está hablando con Pepa por voz, cada paso del recorrido también se dice en voz alta.
+          if (modeRef.current === 'voice' && help.voiceMode !== 'voice') help.setVoiceMode('voice')
+          help.startTourById(tourId)
+        }
+      } else if (help) help.goToPlace(outcome.go, outcome.title)
       else navigate(outcome.go.path)
     } else if (outcome.kind === 'focus-store') {
       navigate(DESTINATION_INFO.compras.path)
@@ -989,7 +1004,7 @@ export function VoiceCapture() {
       setMessage(spoken)
       showToast(spoken, 6000)
     }
-    void output.speakOnly(spoken ?? '')
+    void Promise.resolve(output.speakOnly(spoken ?? '')).finally(runAfterSpeech)
     return spoken
   }
 
@@ -1017,6 +1032,7 @@ export function VoiceCapture() {
         const { spoken } = await talkTurn(text)
         setStatus('done')
         await respond(spoken)
+        runAfterSpeech()
         return
       }
 

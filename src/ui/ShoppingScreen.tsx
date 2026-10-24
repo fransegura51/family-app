@@ -1378,6 +1378,7 @@ function ShoppingListTab() {
             <button
               type="button"
               className="icon-button-share"
+              data-help-id="shopping.store-share"
               style={{ marginLeft: 'auto' }}
               aria-label={`Compartir lista de ${store}`}
               onClick={(e) => {
@@ -1638,6 +1639,7 @@ function StoreManager({
     setError(null)
     try {
       await createShoppingStore(newName.trim())
+      emitHelpEvent('shopping.store-added') // para los tutoriales «Enséñame»: la tienda YA está guardada
       setNewName('')
       onChanged()
     } catch (err) {
@@ -1687,6 +1689,7 @@ function StoreManager({
     setError(null)
     try {
       await createShoppingStoreFromChain(chain.key, chain.name)
+      emitHelpEvent('shopping.store-added') // para los tutoriales «Enséñame»: la tienda YA está guardada
       onChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir la cadena'))
@@ -1711,7 +1714,7 @@ function StoreManager({
           desplegable que ponga tiendas" — antes la tarjeta se veía
           siempre abierta, ocupando sitio aunque no se tocase casi nunca. */}
       <details className="store-manager-details">
-        <summary>🏬 Tiendas</summary>
+        <summary data-help-id="shopping.stores">🏬 Tiendas</summary>
         {/* Petición real: "que explique cómo se mandan productos a la
             lista de supermercados... Mercadona, patatas, cómo decirlo,
             igual que están las otras cosas explicadas" — mismo patrón de
@@ -1723,7 +1726,7 @@ function StoreManager({
         </p>
         {error && <p className="error">{error}</p>}
         {unlinkedChains.length > 0 && (
-          <div className="store-chain-catalog">
+          <div className="store-chain-catalog" data-help-id="shopping.store-chains">
             <p className="muted" style={{ fontSize: 13, margin: '8px 0 4px' }}>
               Cadenas conocidas de PEPA:
             </p>
@@ -1822,10 +1825,11 @@ function StoreManager({
           <input
             type="text"
             value={newName}
+            data-help-id="shopping.store-new"
             onChange={(e) => setNewName(e.target.value)}
             placeholder="+ Añadir otra tienda (p. ej. Carnicería Manolo)"
           />
-          <button type="submit" disabled={saving || !newName.trim()}>
+          <button type="submit" disabled={saving || !newName.trim()} data-help-id="shopping.store-add">
             Añadir
           </button>
         </form>

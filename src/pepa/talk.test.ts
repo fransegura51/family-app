@@ -582,3 +582,20 @@ describe('runTalk: la misma tarea dicha dos veces', () => {
     expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual([])
   })
 })
+
+describe('runTalk: tareas con dos nombres y «que viene»', () => {
+  it('«recoger a Eric del colegio el viernes que viene Jennifer»: se asigna a Jennifer, Eric se queda en el título y «que viene» es la fecha', async () => {
+    const outcome = await runTalk('tarea recoger a Eric del colegio el viernes que viene Jennifer', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.lines[0]).toBe('Título: Recoger a Eric del colegio')
+    expect(outcome.proposal.initialSelection.choices.member).toBe('m-jen')
+  })
+
+  it('el nombre al principio también asigna: «tarea Jennifer recoger a Eric del colegio»', async () => {
+    const outcome = await runTalk('tarea Jennifer recoger a Eric del colegio', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.initialSelection.choices.member).toBe('m-jen')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).lines[0]).toBe('Título: Recoger a Eric del colegio')
+  })
+})

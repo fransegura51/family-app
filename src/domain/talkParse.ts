@@ -91,12 +91,25 @@ const ASSIGN_VERBS = new Set(['toca', 'encarga', 'encargas', 'encargar', 'pide',
 
 // ¿Ese nombre es QUIEN hace la tarea («tarea Paco saca la basura», «que Eric saque la basura», «le toca a Jennifer…»)? Si va tras una preposición es el
 // complemento de la frase («recoger a Eric del colegio», «llamar con Eric»), salvo «le toca a / encarga a / dile a …».
-function isAssigneeMention(title: string, name: string): boolean {
-  const words = normalize(title).split(/\s+/).filter(Boolean)
-  const idx = words.indexOf(normalize(name))
+function isAssigneeAt(words: string[], idx: number): boolean {
   if (idx <= 0) return true
   if (!OBJECT_PREPOSITIONS.has(words[idx - 1])) return true
   return words[idx - 1] === 'a' && idx >= 2 && ASSIGN_VERBS.has(words[idx - 2])
+}
+
+// Con varios nombres en la frase («recoger a Eric del colegio el viernes Paco») se busca el que SÍ es quien hace la tarea (Paco), no el primero que aparece
+// (Eric, a quien se recoge). Devuelve la persona y la posición de esa palabra en el título para quitar solo esa.
+function findTaskAssignee(title: string, members: { id: string; name: string }[]): { member: { id: string; name: string }; wordIndex: number } | null {
+  const words = title.split(/\s+/).filter(Boolean)
+  const normalized = words.map((w) => normalize(w))
+  let best: { member: { id: string; name: string }; wordIndex: number } | null = null
+  for (const member of members) {
+    const target = normalize(member.name)
+    normalized.forEach((w, i) => {
+      if (w === target && isAssigneeAt(normalized, i) && (best === null || i < best.wordIndex)) best = { member, wordIndex: i }
+    })
+  }
+  return best
 }
 
 // `keepMemberInTitle` (tareas): un nombre solo se toma como destinatario si es quien hace la tarea (ver isAssigneeMention); si no, se queda en el
@@ -121,7 +134,10 @@ export function prepareCalendarFromText(
     const ref = findDateInText(n, today, true)
     if (ref) {
       relativeDate = ref.date
-      workText = `${orig.slice(0, ref.start)} ${orig.slice(ref.end)}`
+      // «el viernes QUE VIENE» / «el viernes PRÓXIMO»: la coletilla forma parte de la fecha, no del título.
+      const tail = /^\s+(?:que viene|proxim[oa])\b/.exec(n.slice(ref.end))
+      const end = ref.end + (tail ? tail[0].length : 0)
+      workText = `${orig.slice(0, ref.start)} ${orig.slice(end)}`
     }
   }
 
@@ -142,10 +158,19 @@ export function prepareCalendarFromText(
 
   let title = parsed.title
   let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
-  if (!member) {
-    const found = findMemberInText(title, members)
+  if (!member && options.keepMemberInTitle) {
     // En una tarea, un nombre es la persona a quien se asigna solo si no es el complemento de una preposición («recoger A ERIC del colegio»).
-    if (found && (!options.keepMemberInTitle || isAssigneeMention(title, found.name))) {
+    const assignee = findTaskAssignee(title, members)
+    if (assignee) {
+      member = assignee.member
+      title = title
+        .split(/\s+/)
+        .filter((_, i) => i !== assignee.wordIndex)
+        .join(' ')
+    }
+  } else if (!member) {
+    const found = findMemberInText(title, members)
+    if (found) {
       member = found
       const nameRe = new RegExp(`\\b${found.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
       title = title.replace(nameRe, '')

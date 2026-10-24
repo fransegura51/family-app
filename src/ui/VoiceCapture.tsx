@@ -32,6 +32,7 @@ import {
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { detectCalendarEntryKind, parseCalendarEntry } from '@/domain/calendarVoiceParser'
+import { isRepeatedUtterance, type LastUtterance } from '@/domain/repeatedUtterance'
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
@@ -985,10 +986,14 @@ export function VoiceCapture() {
     return outcome.text
   }
 
+  const lastUtteranceRef = useRef<LastUtterance | null>(null)
+
   async function processText(rawText: string) {
+    const text = stripWakeWord(rawText)
+    // La misma frase llegada dos veces seguidas (el reconocimiento a veces la entrega repetida) abría dos tarjetas y la leía dos veces: la segunda se ignora.
+    if (isRepeatedUtterance(lastUtteranceRef, text, Date.now())) return
     setStatus('saving')
     try {
-      const text = stripWakeWord(rawText)
 
       // "Hablar con PEPA": botón general, con su propio camino — no toca el de
       // los botones de siempre. Consultar responde; escribir siempre sale como
@@ -1140,6 +1145,7 @@ export function VoiceCapture() {
       const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''
       await respond(`Apuntado en ${DESTINATION_INFO.compras.label}${storeSuffix}: ${entries.join(', ')}`)
     } catch (err) {
+      lastUtteranceRef.current = null // si falló, repetir la frase es un reintento legítimo
       setStatus('error')
       const detail = errorMessage(err, String(err))
       await respond(`No he podido hacerlo: ${detail}`)

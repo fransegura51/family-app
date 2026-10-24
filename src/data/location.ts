@@ -158,10 +158,15 @@ export async function addPlace(input: {
 // nombre/categoría/radio de un lugar ya guardado, sin tocar dónde está (para eso, borrar y volver a
 // crearlo con el buscador). El aviso de llegada/salida es aparte (setPlaceNotifyArrivals): tiene que
 // gestionar las reglas ocultas, así que no se puede colar aquí como un campo más.
-export async function updatePlace(id: string, input: { name: string; category: string | null; radiusM: number }): Promise<void> {
+export async function updatePlace(
+  id: string,
+  input: { name: string; category: string | null; radiusM: number; latitude?: number; longitude?: number },
+): Promise<void> {
+  // Las coordenadas solo se tocan si llegan las dos (24/10/2026: «Mover aquí» en la edición del lugar).
+  const moved = input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : {}
   const { error } = await supabase
     .from('location_places')
-    .update({ name: input.name, category: input.category, radius_m: input.radiusM })
+    .update({ name: input.name, category: input.category, radius_m: input.radiusM, ...moved })
     .eq('id', id)
   if (error) throw error
   void resyncNativeRegions()

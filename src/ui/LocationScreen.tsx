@@ -1001,6 +1001,9 @@ function PlaceRow({
   const [editName, setEditName] = useState(place.name)
   const [editCategory, setEditCategory] = useState(place.category ?? '')
   const [editRadius, setEditRadius] = useState(place.radiusM)
+  // Nueva posición del lugar (botón «Mover aquí»): null = no se mueve.
+  const [editMoveTo, setEditMoveTo] = useState<{ latitude: number; longitude: number } | null>(null)
+  const [editLocating, setEditLocating] = useState(false)
   // «Avisarme cuando alguien llegue o se vaya» va VISIBLE en la tarjeta (petición real, 17/10/2026: sin entrar a «Editar»): se guarda al marcarlo o desmarcarlo.
   const [notifyOn, setNotifyOn] = useState(place.notifyArrivals)
   // Ref y no estado: la casilla NO se desactiva mientras guarda (al desactivarse un campo con el foco, el móvil puede saltar de sitio).
@@ -1016,6 +1019,7 @@ function PlaceRow({
     setEditName(place.name)
     setEditCategory(place.category ?? '')
     setEditRadius(place.radiusM)
+    setEditMoveTo(null)
     setEditError(null)
     setEditing(true)
   }
@@ -1041,12 +1045,24 @@ function PlaceRow({
     }
   }
 
+  async function handleMoveHere() {
+    setEditLocating(true)
+    setEditError(null)
+    try {
+      setEditMoveTo(await getCurrentPosition())
+    } catch (err) {
+      setEditError(errorMessage(err, 'No se pudo leer tu posición'))
+    } finally {
+      setEditLocating(false)
+    }
+  }
+
   async function handleSaveEdit(e: FormEvent) {
     e.preventDefault()
     setEditSaving(true)
     setEditError(null)
     try {
-      await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius })
+      await updatePlace(place.id, { name: editName.trim(), category: editCategory.trim() || null, radiusM: editRadius, ...(editMoveTo ?? {}) })
       setEditing(false)
       onChanged()
     } catch (err) {
@@ -1115,6 +1131,12 @@ function PlaceRow({
           Radio (m)
           <input type="number" value={editRadius} onChange={(e) => setEditRadius(Number(e.target.value))} />
         </label>
+        <div className="inline-fields">
+          <button type="button" className="link-button" onClick={handleMoveHere} disabled={editLocating} data-help-id="ubicacion.lugar-mover-aqui">
+            {editLocating ? 'Buscando tu posición…' : '📍 Mover el lugar a donde estoy ahora'}
+          </button>
+        </div>
+        {editMoveTo && <p className="muted">El lugar se moverá a tu posición actual cuando pulses «Guardar cambios».</p>}
         {editError && <p className="error">{editError}</p>}
         <div className="inline-fields">
           <button type="submit" disabled={editSaving}>

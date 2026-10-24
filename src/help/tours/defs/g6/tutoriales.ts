@@ -99,8 +99,15 @@ export const tutNotificacionesCampana: TourDef = {
       optional: true,
     },
     {
+      id: 'marcar-leida',
+      text: 'Junto a cada aviso sin leer tienes el botón «Marcar leída» (y, si ya está leído, «Marcar como no leída» para recordarlo). Es aparte de la lectura automática a los 3 segundos. Aquí solo te lo enseño: yo no lo pulso por ti.',
+      target: 'notificaciones.marcar-leida',
+      ...pending,
+      optional: true,
+    },
+    {
       id: 'marcar-leidas',
-      text: 'Además de que se marquen solos a los 3 segundos, con «Marcar todas como leídas» los dejas todos leídos de golpe. Aquí solo te lo enseño: yo no lo pulso por ti.',
+      text: 'Y con «Marcar todas como leídas» los dejas todos leídos de golpe. Aquí solo te lo enseño: yo no lo pulso por ti.',
       target: 'notificaciones.marcar-leidas',
       ...pending,
       optional: true,

@@ -96,7 +96,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     module: 'Notificaciones',
     name: 'Campana, panel de avisos y notificaciones push',
     state: 'operativa',
-    works: 'Campana con contador, avisos leídos al abrir o al verse 3 s, «Marcar todas como leídas» y «Marcar todas como no leídas» (más «Marcar como no leída» por aviso; lo dejado como no leído a mano no se vuelve a leer solo mientras el panel está abierto), borrar uno/varios/todos, activar o desactivar push con aviso de prueba y resumen diario de tareas (2 avisos independientes).',
+    works: 'Campana con contador, avisos leídos al abrir o al verse 3 s, botón visible junto a cada aviso para marcarlo como leído o no leído, «Marcar todas como leídas» y «Marcar todas como no leídas» ( lo dejado como no leído a mano no se vuelve a leer solo mientras el panel está abierto), borrar uno/varios/todos, activar o desactivar push con aviso de prueba y resumen diario de tareas (2 avisos independientes).',
     limits: 'En iPhone web hace falta instalar PEPA en la pantalla de inicio. La entrega real del push depende de Edge Functions, secretos y del móvil.',
     verification: 'no_verificable',
     verificationNote: 'El panel tiene pruebas de comportamiento (marcar todas, no releer solo lo dejado como no leído); que el aviso llegue de verdad al móvil depende de producción y no se puede comprobar desde el código.',

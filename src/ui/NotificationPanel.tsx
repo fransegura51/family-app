@@ -333,10 +333,31 @@ export function NotificationPanel({
           {n.body && <span className="notification-item-body">{n.body}</span>}
           <span className="notification-item-time muted">{relativeTime(n.createdAt)}</span>
         </button>
+        {/* Botón VISIBLE junto a cada aviso para marcarlo como leído o devolverlo a no leído (además de la lectura automática a los 3 s). */}
+        {!selecting && isUnread && (
+          <button
+            type="button"
+            className="notification-toggle-read notification-toggle-read-mark"
+            data-help-id="notificaciones.marcar-leida"
+            disabled={busy}
+            aria-label={`Marcar como leída: ${n.title}`}
+            onClick={() => {
+              keepUnread.current.delete(n.id)
+              setItems((prev) => (prev ? prev.map((x) => (x.id === n.id && x.readAt === null ? { ...x, readAt: new Date().toISOString() } : x)) : prev))
+              void markNotificationsRead([n.id]).then(
+                () => setStatus('Aviso marcado como leído.'),
+                () => void load(),
+              )
+            }}
+          >
+            <span aria-hidden="true">✓ </span>Marcar leída
+          </button>
+        )}
         {!selecting && !isUnread && (
           <button
             type="button"
-            className="link-button notification-mark-unread"
+            className="notification-toggle-read notification-toggle-read-unmark"
+            data-help-id="notificaciones.marcar-no-leida"
             disabled={busy}
             aria-label={`Marcar como no leída: ${n.title}`}
             onClick={() => {
@@ -348,7 +369,7 @@ export function NotificationPanel({
               )
             }}
           >
-            Marcar como no leída
+            <span aria-hidden="true">↺ </span>Marcar como no leída
           </button>
         )}
       </li>

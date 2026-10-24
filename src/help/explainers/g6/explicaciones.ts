@@ -125,7 +125,7 @@ export const expNotificacionesCampana: HelpExplainer = {
       heading: 'Leídos y no leídos',
       paragraphs: [
         'El número de la campana cuenta los avisos sin leer. Se pide al abrir Inicio y al volver a la aplicación; no se actualiza solo cada poco.',
-        'Abrir el panel no marca nada. Un aviso pasa a leído cuando lo abres, o cuando lleva unos 3 segundos a la vista dentro del panel. Los leídos tienen «Marcar como no leída» para que lo recuerdes más tarde. Arriba tienes también «Marcar todas como leídas» y «Marcar todas como no leídas», que cambian todos los avisos de golpe; lo que dejas como no leído a mano no se vuelve a marcar solo mientras tengas el panel abierto.',
+        'Abrir el panel no marca nada. Un aviso pasa a leído cuando lo abres, o cuando lleva unos 3 segundos a la vista dentro del panel. Los leídos tienen «Marcar como no leída» para que lo recuerdes más tarde. Junto a cada aviso tienes un botón visible para marcarlo como leído o como no leído, y arriba «Marcar todas como leídas» y «Marcar todas como no leídas», que cambian todos de golpe; lo que dejas como no leído a mano no se vuelve a marcar solo mientras tengas el panel abierto.',
       ],
     },
     {

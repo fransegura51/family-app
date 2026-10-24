@@ -145,3 +145,25 @@ describe('Marcar todas como leídas / como no leídas', () => {
     expect(observed.filter((el) => el.dataset.unread === 'true').map((el) => el.dataset.notificationId)).not.toContain('3')
   })
 })
+
+describe('botón visible junto a cada aviso para marcar leído / no leído', () => {
+  it('cada aviso sin leer tiene «Marcar como leída» y cada leído «Marcar como no leída», y cada uno cambia solo ese aviso', async () => {
+    setup()
+    const markOne = await screen.findByRole('button', { name: 'Marcar como leída: Aviso 1' })
+    expect(screen.getByRole('button', { name: 'Marcar como leída: Aviso 2' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Marcar como no leída: Aviso 3' })).toBeTruthy()
+    // El texto que se ve (no solo el nombre accesible) también es claro.
+    expect(markOne.textContent).toContain('Marcar leída')
+
+    fireEvent.click(markOne)
+    await waitFor(() => expect(api.markNotificationsRead).toHaveBeenCalledWith(['1']))
+    await waitFor(() => expect(screen.getByText('1 nueva · 2 leídas')).toBeTruthy())
+    // Ese aviso ahora ofrece volver a dejarlo sin leer.
+    expect(screen.getByRole('button', { name: 'Marcar como no leída: Aviso 1' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Marcar como leída: Aviso 1' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar como no leída: Aviso 1' }))
+    await waitFor(() => expect(api.markNotificationUnread).toHaveBeenCalledWith('1'))
+    await waitFor(() => expect(screen.getByText('2 nuevas · 1 leída')).toBeTruthy())
+  })
+})

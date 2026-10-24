@@ -1432,6 +1432,7 @@ export function VoiceCapture() {
               left: pos.left + (isDragging ? buttonDragOffset.x : 0),
             }}
             aria-label={PANEL_INFO[m].title}
+            {...(m === 'talk' ? { 'data-help-id': 'pepa.boton' } : {})}
             onClick={() => handleButtonClick(m)}
             onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
             onPointerMove={handleButtonDragMove}
@@ -1461,7 +1462,7 @@ export function VoiceCapture() {
 
       {open && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="pepa.panel" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {panel.title}
@@ -1475,6 +1476,7 @@ export function VoiceCapture() {
               <button
                 type="button"
                 className={'voice-mic-button' + (listening ? ' voice-mic-listening' : '')}
+                data-help-id="pepa.microfono"
                 onClick={() => {
                   output.prime()
                   if (listening) stopListening()
@@ -1509,7 +1511,7 @@ export function VoiceCapture() {
               <p className="muted" style={{ marginBottom: 4 }}>
                 Ejemplos — dilo así siempre y Pepa lo entenderá seguro (toca uno para usarlo):
               </p>
-              <div className="voice-examples">
+              <div className="voice-examples" data-help-id="pepa.ejemplos">
                 {panel.examples.map((example) => (
                   <button
                     key={example}
@@ -1525,12 +1527,13 @@ export function VoiceCapture() {
 
             <form onSubmit={handleTypedSubmit} className="voice-text-form">
               <input
+                data-help-id="pepa.texto"
                 type="text"
                 value={typedText}
                 onChange={(e) => setTypedText(e.target.value)}
                 placeholder="O escribe aquí…"
               />
-              <button type="submit" disabled={status === 'saving' || !typedText.trim()}>
+              <button type="submit" data-help-id="pepa.enviar" disabled={status === 'saving' || !typedText.trim()}>
                 {panel.submitLabel}
               </button>
             </form>
@@ -1543,7 +1546,7 @@ export function VoiceCapture() {
 
             <div className="day-modal-group">
               <p className="muted">¿Cómo prefieres que responda la app?</p>
-              <div className="filter-row">
+              <div className="filter-row" data-help-id="pepa.modo">
                 <button
                   type="button"
                   className={'chip' + (mode === 'voice' ? ' chip-active' : '')}

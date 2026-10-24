@@ -1,4 +1,4 @@
--- 0312_location_confirm_pending_arrivals.sql
+-- 0313_location_confirm_pending_arrivals.sql
 --
 -- «Las ubicaciones van con unos minutos de retraso» (24/10/2026). Desde 0297 un cambio de estado (cerca <-> lejos) solo avisa con una SEGUNDA lectura al menos 60 s después de la
 -- primera. Al LLEGAR y quedarse quieto (casa, trabajo, colegio) el móvil no manda más lecturas (filtro de 25 m), así que la llegada se quedaba «pendiente» hasta la siguiente

@@ -57,7 +57,7 @@ describe('enchufado mínimo en las pantallas existentes', () => {
     expect(k).toMatch(/<DietaryWarnings ingredients=\{pickedRecipe\.ingredients\}/)
     // El aviso va ANTES de los ingredientes dentro del visor (el primer «Ingredientes» de después del aviso es el de ese visor).
     const at = k.indexOf('<DietaryWarnings ingredients={viewing.ingredients} />')
-    const next = k.indexOf('<h3>Ingredientes</h3>', at)
+    const next = k.indexOf('<ScaledIngredients key={viewing.id}', at) // el bloque «Ingredientes» (con sus raciones − / +) del visor
     expect(next).toBeGreaterThan(at)
     expect(next - at).toBeLessThan(600)
   })

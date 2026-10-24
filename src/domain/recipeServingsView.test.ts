@@ -41,7 +41,7 @@ describe('la ficha muestra las raciones antes de «Ingredientes» y solo si hay 
 
   it('el bloque de raciones aparece antes del bloque de ingredientes del visor', () => {
     const raciones = ALIM.indexOf('recipeServingsView(viewing.servings')
-    const ingredientes = ALIM.indexOf('{viewing.ingredients.length > 0 && (')
+    const ingredientes = ALIM.indexOf('<ScaledIngredients key={viewing.id}')
     expect(raciones).toBeGreaterThan(-1)
     expect(ingredientes).toBeGreaterThan(raciones)
   })

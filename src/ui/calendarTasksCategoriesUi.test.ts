@@ -212,7 +212,7 @@ describe('Categoría — opcional para Evento y Tarea, "Sin categoría" explíci
 
 describe('Emoji de categoría — nunca depende del modo de color (Parte 6), visible donde hay texto, NUNCA en los puntitos de Inicio', () => {
   it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) antepone el emoji de categoría al título', () => {
-    const fn = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
+    const fn = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function toggleCalendarPinnedItem(')
     expect(fn).toContain("const titleWithCategory = category ? `${category.emoji} ${ev.title}` : ev.title")
   })
 
@@ -321,7 +321,7 @@ describe('RETOQUE (PRUEBAS MANUALES REALES EN IPHONE) — "Configuración person
 })
 
 describe('Paridad de vistas (Parte 10/30) — ninguna vista filtra por kind, salvo Externos (ajeno) y Personal (filtra por miembro, no por tipo)', () => {
-  const BUILD_ENTRIES = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
+  const BUILD_ENTRIES = slice(CALENDAR_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function toggleCalendarPinnedItem(')
   const TIME_GRID = slice(CALENDAR_SRC, 'function TimeGridView({', 'function AgendaListView(')
   const FAMILY_VIEW = slice(CALENDAR_SRC, 'function FamilyDayView({', 'function PersonalView(')
 

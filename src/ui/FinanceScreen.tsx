@@ -144,7 +144,6 @@ import {
   economiaMenuEntryMeta,
   isCustomEconomiaMenuKey,
   loadEconomiaMenuLayout,
-  saveEconomiaMenuLayout,
   type EconomiaMenuEntry,
   type EconomiaMenuGroup,
   type EconomiaMenuItemKey,
@@ -540,11 +539,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function persistMenuLayout(next: EconomiaMenuGroup[]) {
-    setMenuLayout(next)
-    saveEconomiaMenuLayout(next)
-  }
-
   function togglePinnedItem(key: EconomiaMenuItemKey) {
     setPinnedItems((prev) => {
       const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -639,7 +633,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         <EconomiaMenuDropdown
           activeTab={tab}
           layout={menuLayout}
-          onLayoutChange={persistMenuLayout}
           pinnedItems={pinnedItems}
           onTogglePin={togglePinnedItem}
           onActivate={handleEconomiaAction}
@@ -776,7 +769,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
 function EconomiaMenuDropdown({
   activeTab,
   layout,
-  onLayoutChange,
   pinnedItems,
   onTogglePin,
   onActivate,
@@ -784,255 +776,42 @@ function EconomiaMenuDropdown({
 }: {
   activeTab: SubTab
   layout: EconomiaMenuGroup[]
-  onLayoutChange: (next: EconomiaMenuGroup[]) => void
   pinnedItems: EconomiaMenuItemKey[]
   onTogglePin: (key: EconomiaMenuItemKey) => void
   onActivate: (key: EconomiaMenuItemKey) => void
   onClose: () => void
 }) {
-  const [editMode, setEditMode] = useState(false)
-  const [addingGroup, setAddingGroup] = useState(false)
-  const [addingGroupName, setAddingGroupName] = useState('')
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  // Petición real: "¿cómo puedo crear un acceso nuevo, con su propio
-  // nombre e icono, no solo una carpeta para agrupar los que ya hay?"
-  const [addingCustomItem, setAddingCustomItem] = useState(false)
-  const [newItemIcon, setNewItemIcon] = useState('📌')
-  const [newItemLabel, setNewItemLabel] = useState('')
-  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
-  const [editItemIcon, setEditItemIcon] = useState('')
-  const [editItemLabel, setEditItemLabel] = useState('')
-  const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function moveItem(groupId: string, index: number, direction: -1 | 1) {
-    const group = layout.find((g) => g.id === groupId)
-    if (!group) return
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.items.length) return
-    const items = [...group.items]
-    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
-  }
-
-  function moveItemToGroup(itemKey: EconomiaMenuItemKey, fromGroupId: string, toGroupId: string) {
-    if (fromGroupId === toGroupId) return
-    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
-    if (!moved) return
-    onLayoutChange(
-      layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
-        return g
-      }),
-    )
-  }
-
-  function handleAddGroup(e: FormEvent) {
-    e.preventDefault()
-    if (!addingGroupName.trim()) return
-    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
-    setAddingGroupName('')
-    setAddingGroup(false)
-  }
-
-  function handleRenameGroup(id: string) {
-    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
-    setRenamingGroupId(null)
-  }
-
-  // El primer grupo nunca desaparece (es el que recoge los accesos de
-  // cualquier categoría que se borre), así que siempre queda un sitio
-  // donde vivir para todos los accesos.
-  function deleteGroup(id: string) {
-    const group = layout.find((g) => g.id === id)
-    const rest = layout.filter((g) => g.id !== id)
-    if (!group || rest.length === 0) return
-    const [first, ...others] = rest
-    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
-  }
-
-  function handleAddCustomItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItemLabel.trim()) return
-    const entry: EconomiaMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
-    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
-    setNewItemIcon('📌')
-    setNewItemLabel('')
-    setAddingCustomItem(false)
-  }
-
-  function handleSaveItem(groupId: string, key: EconomiaMenuItemKey) {
-    onLayoutChange(
-      layout.map((g) =>
-        g.id === groupId
-          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
-          : g,
-      ),
-    )
-    setEditingItemKey(null)
-  }
-
-  function deleteItem(groupId: string, key: EconomiaMenuItemKey) {
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
-  }
-
   function handleItemActivate(entry: EconomiaMenuEntry) {
-    if (isCustomEconomiaMenuKey(entry.key)) {
-      // Petición real (antes, para el ☰ global, ahora aquí): un acceso
-      // personalizado no lleva a ningún sitio todavía — se avisa sin
-      // cerrar el desplegable, en vez de un toque que no hace nada.
-      setPlaceholderNotice(true)
-      setTimeout(() => setPlaceholderNotice(false), 2500)
-      return
-    }
     onActivate(entry.key)
     onClose()
   }
 
+  // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
+  // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
     <div className="economia-menu-dropdown">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? '✓ Listo' : '✏️ Editar'}
-      </button>
-
-      {layout.map((group) => (
-        <div key={group.id} className="economia-menu-group">
-          {(group.name || editMode) &&
-            (renamingGroupId === group.id ? (
-              <form
-                className="inline-fields"
-                style={{ margin: '4px 4px 6px' }}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleRenameGroup(group.id)
-                }}
-              >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
-                <button type="submit">Guardar</button>
-              </form>
-            ) : (
+      {layout.map((group) => {
+        const items = group.items.filter((entry) => !isCustomEconomiaMenuKey(entry.key))
+        if (items.length === 0) return null
+        return (
+          <div key={group.id} className="economia-menu-group">
+            {group.name && (
               <div className="economia-menu-group-title">
-                <span>{group.name ?? 'Sin categoría'}</span>
-                {editMode && (
-                  <span style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => {
-                        setRenamingGroupId(group.id)
-                        setRenameValue(group.name ?? '')
-                      }}
-                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
-                    >
-                      ✎
-                    </button>
-                    {layout.length > 1 && (
-                      <ConfirmIconButton
-                        icon="✕"
-                        className="link-button"
-                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
-                        onConfirm={() => deleteGroup(group.id)}
-                      />
-                    )}
-                  </span>
-                )}
+                <span>{group.name}</span>
               </div>
-            ))}
+            )}
 
-          {group.items.map((entry, i) => {
-            const meta = economiaMenuEntryMeta(entry)
-            const isTab = isEconomiaSubTab(entry.key)
-            const isCustom = isCustomEconomiaMenuKey(entry.key)
+            {items.map((entry) => {
+              const meta = economiaMenuEntryMeta(entry)
+              const isTab = isEconomiaSubTab(entry.key)
 
-            if (editMode && editingItemKey === entry.key) {
               return (
-                <form
-                  key={entry.key}
-                  className="inline-fields"
-                  style={{ margin: '2px 4px' }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSaveItem(group.id, entry.key)
-                  }}
-                >
-                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
-                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
-                  <button type="submit">Guardar</button>
-                </form>
-              )
-            }
-
-            return (
-              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
-                {editMode ? (
-                  <span className="economia-menu-item">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label}
-                  </span>
-                ) : (
+                <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
                   <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </button>
-                )}
 
-                {editMode ? (
-                  <span className="economia-menu-edit-controls">
-                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      disabled={i === group.items.length - 1}
-                      onClick={() => moveItem(group.id, i, 1)}
-                      aria-label={`Bajar ${meta.label}`}
-                    >
-                      ↓
-                    </button>
-                    <select
-                      value={group.id}
-                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
-                      aria-label={`Mover ${meta.label} a otra categoría`}
-                    >
-                      {layout.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name ?? 'Sin categoría'}
-                        </option>
-                      ))}
-                    </select>
-                    {/* Petición real: "¿cómo la puedo... editar, quitar?"
-                        — solo los accesos personalizados se pueden
-                        renombrar/borrar, los 9 fijos son secciones
-                        reales de la app. */}
-                    {isCustom && (
-                      <>
-                        <button
-                          type="button"
-                          className="link-button"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingItemKey(entry.key)
-                            setEditItemIcon(meta.icon)
-                            setEditItemLabel(meta.label)
-                          }}
-                          aria-label={`Renombrar ${meta.label}`}
-                        >
-                          ✎
-                        </button>
-                        <ConfirmIconButton
-                          icon="✕"
-                          className="link-button"
-                          ariaLabel={`Eliminar ${meta.label}`}
-                          onConfirm={() => deleteItem(group.id, entry.key)}
-                        />
-                      </>
-                    )}
-                  </span>
-                ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
@@ -1041,68 +820,12 @@ function EconomiaMenuDropdown({
                   >
                     {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
-
-      {placeholderNotice && (
-        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
-          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
-        </p>
-      )}
-
-      {editMode && (
-        <>
-          {addingCustomItem ? (
-            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={newItemIcon}
-                onChange={(e) => setNewItemIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                aria-label="Icono"
-              />
-              <input
-                type="text"
-                value={newItemLabel}
-                onChange={(e) => setNewItemLabel(e.target.value)}
-                placeholder="Nombre del acceso"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
-              <span aria-hidden="true">📌</span>
-              Nuevo acceso
-            </button>
-          )}
-
-          {addingGroup ? (
-            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={addingGroupName}
-                onChange={(e) => setAddingGroupName(e.target.value)}
-                placeholder="Nombre de la categoría"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-              <span aria-hidden="true">➕</span>
-              Nueva categoría
-            </button>
-          )}
-        </>
-      )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
     </div>
   )
 }

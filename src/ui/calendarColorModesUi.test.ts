@@ -101,7 +101,7 @@ describe('Regla exacta de resolución de color — eventColors, fuente única pa
 
 describe('K — el modo activo se aplica de forma consistente en TODAS las vistas internas, nunca una regla distinta en cada una', () => {
   it('buildEntriesForDate (Mes/Agenda/DayModal/Personal) resuelve con calendarPrefs.colorMode', () => {
-    const fn = slice(CALENDAR_SCREEN_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function persistCalendarMenuLayout(')
+    const fn = slice(CALENDAR_SCREEN_SRC, 'function buildEntriesForDate(dateStr: string): AgendaEntry[] {', 'function toggleCalendarPinnedItem(')
     // RETOQUE — el color base sigue resolviéndose con eventColors()/calendarPrefs.colorMode tal cual;
     // ahora se envuelve con effectiveEntryColors() para que una Tarea completada con "color al completar"
     // (preferencia nueva) pueda sustituirlo como capa final, sin tocar la resolución del modo de color.

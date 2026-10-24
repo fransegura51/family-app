@@ -150,15 +150,14 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
   {
     id: 'accesos-personalizados',
     module: 'Menús ☰',
-    name: 'Accesos personalizados («Nuevo acceso») en los menús',
-    state: 'parcial',
-    works: 'Se pueden crear, renombrar y borrar accesos en los menús ☰ de Calendario, Compras, Economía y otros.',
-    missing: 'Al pulsarlos solo sale «Todavía no hay nada aquí…»: no abren ninguna pantalla.',
+    name: 'Sacar y quitar accesos de los menús ☰ (sin modo «Editar»)',
+    state: 'operativa',
+    works: 'Cada menú ☰ (Calendario, Compras, La cocina, Economía y Ubicación) lista sus accesos; «📌 Sacar» los pone como botón en la pantalla y «📍 Quitar» los devuelve al menú. Desde el 24/10/2026 ya no hay modo «Editar» ni «Nuevo acceso» (los accesos personalizados no abrían ninguna pantalla y se retiraron; los que ya existían dejan de verse). El orden y las categorías que cada persona ya tenía guardados se respetan.',
     verification: 'revisada',
-    verificationNote: 'Comprobado en el código de cada menú (marcador sin destino).',
-    reviewed: '2026-10-21',
-    evidence: ['src/data/customMenu.ts', 'src/state/calendarioMenu.ts', 'src/state/comprasMenu.ts'],
-    help: { module: 'configuracion', terms: ['nuevo acceso'] },
+    verificationNote: 'Comprobado en el código de los cinco menús y con pruebas de que el modo Editar y los accesos personalizados ya no existen.',
+    reviewed: '2026-10-24',
+    evidence: ['src/ui/CalendarScreen.tsx', 'src/ui/ShoppingScreen.tsx', 'src/ui/AlimentacionScreen.tsx', 'src/ui/FinanceScreen.tsx', 'src/ui/LocationScreen.tsx'],
+    help: { module: 'configuracion', terms: ['sacar un acceso'] },
   },
 
   // ───────────────────────── Compras y Cocina

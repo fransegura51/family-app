@@ -1,6 +1,6 @@
 import type { TourDef } from '@/help/tours/types'
 import {
-  tutConfiguracionAccesosNuevos,
+  tutConfiguracionSacarAccesos,
   tutConfiguracionNombreFamilia,
   tutConfiguracionSincronizacion,
   tutEconomiaModoCuentas,
@@ -30,7 +30,7 @@ export const TOURS_G10: TourDef[] = [
   tutEconomiaMesContable,
   tutEconomiaModoCuentas,
   tutConfiguracionNombreFamilia,
-  tutConfiguracionAccesosNuevos,
+  tutConfiguracionSacarAccesos,
   tutConfiguracionSincronizacion,
   tutNotificacionesActivar,
   tutCuentasPin,

@@ -198,15 +198,15 @@ export const tutConfiguracionNombreFamilia: TourDef = {
   next: ['cfg-que-hay', 'cfg-colores'],
 }
 
-export const tutConfiguracionAccesosNuevos: TourDef = {
-  id: 'tut-configuracion-accesos-nuevos',
+export const tutConfiguracionSacarAccesos: TourDef = {
+  id: 'tut-configuracion-sacar-accesos',
   module: 'configuracion',
   group: 'Configuración',
-  summary: 'Dónde está «Nuevo acceso» en los menús ☰ y qué hace hoy.',
+  summary: 'Pon un acceso de un menú ☰ como botón en la pantalla, y quítalo cuando quieras.',
   version: 1,
-  title: 'Dónde crear un «Nuevo acceso» en los menús',
-  cardId: 'cfg-accesos-nuevos',
-  durationSec: 60,
+  title: 'Sacar un acceso del menú ☰ a la pantalla',
+  cardId: 'cfg-sacar-accesos',
+  durationSec: 45,
   startPath: '/calendario',
   steps: [
     {
@@ -220,32 +220,21 @@ export const tutConfiguracionAccesosNuevos: TourDef = {
       skipIf: [{ type: 'appear', target: 'calendar.menu-panel' }],
     },
     {
-      id: 'editar',
-      text: 'Pulsa «✏️ Editar»: es el modo en el que se pueden crear, renombrar y borrar accesos del menú.',
-      target: 'calendar.menu-edit',
-      completeOn: [
-        { type: 'click', target: 'calendar.menu-edit' },
-        { type: 'appear', target: 'calendar.menu-new-access' },
-      ],
-      skipIf: [{ type: 'appear', target: 'calendar.menu-new-access' }],
-      optional: true,
-    },
-    {
-      id: 'nuevo',
-      text: 'Aquí está «📌 Nuevo acceso»: te pide un icono y un nombre. Aviso: de momento los accesos nuevos no abren ninguna pantalla, solo sale «Todavía no hay nada aquí». Por eso no te pido crear uno.',
-      target: 'calendar.menu-new-access',
+      id: 'sacar',
+      text: 'Cada acceso tiene a la derecha «📌 Sacar»: lo pone como botón en la pantalla, para tenerlo siempre a mano. Cuando ya está fuera, el botón pasa a «📍 Quitar» y lo devuelve al menú. Aquí solo te lo enseño: yo no lo pulso por ti.',
+      target: 'calendar.menu-pin',
       ...info,
       optional: true,
     },
     {
-      id: 'listo',
-      text: 'Para salir del modo edición pulsa «✓ Listo». Los otros menús ☰ (Compras, Economía, Cocina, Ubicación) funcionan igual.',
-      target: 'calendar.menu-edit',
+      id: 'otros',
+      text: 'Los demás menús ☰ (Compras, Cocina, Economía y Ubicación) funcionan igual.',
+      target: 'calendar.menu-panel',
       ...info,
       optional: true,
     },
   ],
-  finishText: 'No se ha creado nada. Cuando los accesos nuevos abran pantallas, se crearán desde este mismo sitio.',
+  finishText: 'No se ha cambiado nada. Cuando quieras, pulsa «📌 Sacar» en el acceso que uses más.',
   next: ['cfg-que-hay', 'cal-vistas'],
 }
 

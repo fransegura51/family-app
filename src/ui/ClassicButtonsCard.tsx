@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { getShowClassicButtons, setShowClassicButtons } from '@/services/pepaPreferences'
 
 // «Mostrar botones clásicos» en Configuración → Pepa: ticado se ven los cinco botones redondos de siempre; destickado solo queda el 💬 «Hablar con PEPA».
@@ -9,13 +10,14 @@ export function ClassicButtonsCard() {
   return (
     <div className="card event-card" style={{ marginBottom: 16 }}>
       <strong>🔘 Botones de Pepa</strong>
-      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }} data-help-id="pepa.classic-buttons">
         <input
           type="checkbox"
           checked={show}
           onChange={(e) => {
             setShowClassicButtons(e.target.checked)
             setShow(e.target.checked)
+            emitHelpEvent('pepa.classic-buttons-changed') // para los tutoriales «Enséñame»: la preferencia YA está guardada
           }}
           style={{ marginTop: 4 }}
         />

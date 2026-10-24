@@ -95,6 +95,7 @@ export const CARDS_OTROS: HelpCard[] = [
     go: { path: '/menu-organizar', dest: 'config.economia' },
     featureId: 'economia-movimientos',
     labels: ['Modo de cuentas'],
+    tour: 'tut-economia-modo-cuentas',
     verified: V,
   },
   {
@@ -106,6 +107,7 @@ export const CARDS_OTROS: HelpCard[] = [
     state: 'disponible',
     go: { path: '/menu-organizar', dest: 'config.economia' },
     labels: ['Mes contable'],
+    tour: 'tut-economia-mes-contable',
     verified: V,
   },
 

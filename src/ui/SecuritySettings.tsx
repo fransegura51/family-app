@@ -60,7 +60,7 @@ function MyAccountCard() {
   useEffect(reload, [])
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="seguridad.correo-contrasena">
       <Heading>🔐 Correo y contraseña</Heading>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Con este correo y tu contraseña entras en PEPA desde cualquier móvil u ordenador.
@@ -80,7 +80,7 @@ function MyAccountCard() {
             {changingPassword ? (
               <ChangePasswordPanel email={account.email} onClose={() => setChangingPassword(false)} />
             ) : (
-              <button type="button" className="link-button" onClick={() => setChangingPassword(true)}>
+              <button type="button" className="link-button" onClick={() => setChangingPassword(true)} data-help-id="seguridad.cambiar-contrasena">
                 🔑 Cambiar contraseña
               </button>
             )}
@@ -383,7 +383,7 @@ function PersonalLockCard() {
   )
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="seguridad.bloqueo">
       <Heading>🔒 Bloqueo personal</Heading>
       <p className="muted" style={{ marginTop: 4 }}>
         {enabled
@@ -451,7 +451,7 @@ function PersonalLockCard() {
       )}
 
       {mode === 'idle' && (
-        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }} data-help-id="seguridad.pin-acciones">
           {enabled ? (
             <>
               <button type="button" className="link-button" onClick={() => open('change')}>
@@ -473,7 +473,7 @@ function PersonalLockCard() {
       )}
 
       {enabled && (
-        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }}>
+        <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border-color, #eee)' }} data-help-id="seguridad.huella">
           <strong style={{ fontSize: 14 }}>👆 Huella / Face ID</strong>
           <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
             Capa opcional además del PIN — si falla o la quitas, siempre puedes seguir usando el PIN.

@@ -42,6 +42,7 @@ import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult 
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
 import { parseWikibooksRecipe, type ParsedRecipe } from '@/domain/wikibooksRecipeParser'
 import { isValidServings, servingsFromSource } from '@/domain/recipeServings'
+import { ScaledIngredients } from '@/ui/ScaledIngredients'
 import { servingsSourceNote } from '@/domain/servingsSourceNote'
 import { recipeServingsView } from '@/domain/recipeServingsView'
 import { fetchImageFromUrl, importRecipeFromUrl } from '@/services/recipeUrlImport'
@@ -354,9 +355,21 @@ function AlimentacionMenuDropdown({
 // ---------------------------------------------------------------------
 
 function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void }) {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const from = searchParams.get('desde')
   const dates = useMemo(() => weekDates(from), [from])
+  // Semana anterior / siguiente (de 7 en 7 días desde el primer día que se está viendo) y «Volver a hoy» (24/10/2026: «el menú no tiene botones de semana anterior/siguiente»).
+  function goWeek(offsetDays: number | null) {
+    const next = new URLSearchParams(searchParams)
+    if (offsetDays === null) next.delete('desde')
+    else {
+      const base = new Date(dates[0] + 'T00:00')
+      base.setDate(base.getDate() + offsetDays)
+      next.set('desde', toDateStr(base))
+    }
+    setSearchParams(next, { replace: true })
+  }
+  const shortDay = (d: string) => new Date(d + 'T00:00').toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })
   const [entries, setEntries] = useState<MenuEntry[]>([])
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [loading, setLoading] = useState(true)
@@ -385,7 +398,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(reload, [dates]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pepa (VoiceCapture) puede apuntar un plato desde cualquier pantalla.
   useEffect(() => {
@@ -400,6 +413,22 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      <div className="menu-week-nav" role="group" aria-label="Cambiar de semana" data-help-id="cocina.menu-semana-nav">
+        <button type="button" onClick={() => goWeek(-7)} aria-label="Semana anterior">
+          ‹ Anterior
+        </button>
+        <span className="menu-week-range" aria-live="polite">
+          {shortDay(dates[0])} – {shortDay(dates[6])}
+        </span>
+        <button type="button" onClick={() => goWeek(7)} aria-label="Semana siguiente">
+          Siguiente ›
+        </button>
+        {from && (
+          <button type="button" className="link-button" onClick={() => goWeek(null)}>
+            Volver a hoy
+          </button>
+        )}
+      </div>
       {communityVisible === true && (
         <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)} data-help-id="cocina.menu-importar">
           📥 Importar menú de Comunidad
@@ -434,7 +463,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
               </button>
             )}
           </div>
-          {MEAL_TYPES.filter((m) => m.value !== 'snack').map((meal) => {
+          {MEAL_TYPES.map((meal) => {
             const slotEntries = entries.filter((e) => e.entryDate === date && e.mealType === meal.value)
             const entry = slotEntries[0]
             // Platos de más en el mismo hueco (p. ej. el acompañamiento de un menú importado de Comunidad): se enseñan debajo del primero.
@@ -598,19 +627,7 @@ function RecipeQuickViewModal({ recipe, onClose, onOpenFull }: { recipe: Recipe;
           </p>
         ) : null}
         <DietaryWarnings ingredients={recipe.ingredients} />
-        {recipe.ingredients.length > 0 && (
-          <div className="day-modal-group">
-            <h3>Ingredientes</h3>
-            <ul className="ingredient-list">
-              {recipe.ingredients.map((i) => (
-                <li key={i.id}>
-                  {i.name}
-                  {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {recipe.ingredients.length > 0 && <ScaledIngredients key={recipe.id} servings={recipe.servings} ingredients={recipe.ingredients} />}
         {recipe.notes && (
           <div className="day-modal-group">
             <h3>Preparación / notas</h3>
@@ -1098,19 +1115,7 @@ function RecipesTab() {
             })()}
             {/* Aviso de alergias e intolerancias (solo lo ven administradores y adultos con datos anotados; no bloquea ni cambia la receta). */}
             <DietaryWarnings ingredients={viewing.ingredients} />
-            {viewing.ingredients.length > 0 && (
-              <div className="day-modal-group">
-                <h3>Ingredientes</h3>
-                <ul className="ingredient-list">
-                  {viewing.ingredients.map((i) => (
-                    <li key={i.id}>
-                      {i.name}
-                      {i.quantity && ` — ${i.quantity}${i.unit ? ' ' + i.unit : ''}`}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {viewing.ingredients.length > 0 && <ScaledIngredients key={viewing.id} servings={viewing.servings} ingredients={viewing.ingredients} />}
             {viewing.notes && (
               <div className="day-modal-group">
                 <h3>Preparación / notas</h3>

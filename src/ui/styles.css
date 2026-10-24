@@ -7924,6 +7924,32 @@ textarea {
   font-weight: 700;
 }
 
+/* Cocina · menú semanal: semana anterior / siguiente y «Volver a hoy» (24/10/2026). Botones de al menos 44 px de alto. */
+.menu-week-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.menu-week-nav button:not(.link-button) {
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 2px solid var(--primary);
+  background: var(--card-bg);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.menu-week-range {
+  flex: 1 1 auto;
+  text-align: center;
+  font-weight: 700;
+}
+
 .menu-day .menu-picker {
   flex: 1 1 auto;
   min-width: 0;

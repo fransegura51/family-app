@@ -9,11 +9,15 @@ const UP = FILES['/supabase/pending-migrations/0311_cash_wallets_payments_refund
 const DOWN = FILES['/supabase/rollbacks/0311_cash_wallets_payments_refunds_down.sql']
 
 describe('0311 — aditiva y reversible', () => {
-  it('no borra ni reescribe datos existentes', () => {
+  it('no borra ni reescribe datos existentes por sí misma; los borrados solo ocurren dentro de las funciones de borrado seguro', () => {
     expect(UP).not.toMatch(/\btruncate\b/i)
     expect(UP).not.toMatch(/\bdrop table\b/i)
     expect(UP).not.toMatch(/\bupdate\s+public\.(products|product_prices|bank_accounts|budgets)\b/i)
-    expect(UP).not.toMatch(/\bdelete from\s+public\.(products|product_prices|receipts|bank_transactions|bank_accounts)\b/i)
+    // Los movimientos bancarios importados y las cuentas NO se borran en ningún sitio de la migración.
+    expect(UP).not.toMatch(/\bdelete from\s+public\.(bank_transactions|bank_accounts|bank_connections|products|product_prices)\b/i)
+    // Fuera de delete_purchase, remove_duplicate_expense, set_purchase_payments y link_purchase_to_bank_expense no se borran compras.
+    const outside = UP.replace(/create or replace function public\.(delete_purchase|restore_economy_log|remove_duplicate_expense|set_purchase_payments|link_purchase_to_bank_expense|cash_unlink_bank_expense)[\s\S]*?\n\$\$;/g, '')
+    expect(outside).not.toMatch(/\bdelete from\s+public\.(receipts|expenses)\b/i)
   })
   it('añade una columna nullable a expenses y no cambia ninguna otra', () => {
     expect(UP).toContain('alter table public.expenses add column payment_method text;')
@@ -122,5 +126,74 @@ describe('sincronizador bancario (cambios preparados, sin desplegar)', () => {
   it('la lógica antigua de unir tickets y gastos a mano con el cargo del banco sigue intacta para lo no pagado en efectivo', () => {
     expect(sync).toContain('.in("source", ["ticket", "manual"])')
     expect(sync).toContain('source: "ticket_banco"')
+  })
+})
+
+describe('ECO-1j — borrar una compra sin dejar movimientos huérfanos', () => {
+  const fn = (name: string) => UP.slice(UP.indexOf(`function public.${name}(`), UP.indexOf('$$;', UP.indexOf(`function public.${name}(`)))
+
+  it('anota una foto ANTES de borrar nada y la guarda en un registro que los usuarios solo pueden leer', () => {
+    const body = fn('delete_purchase')
+    expect(body.indexOf('insert into public.purchase_audit_log')).toBeGreaterThan(0)
+    expect(body.indexOf('insert into public.purchase_audit_log')).toBeLessThan(body.indexOf('delete from public.cash_movements'))
+    expect(body.indexOf('insert into public.purchase_audit_log')).toBeLessThan(body.indexOf('delete from public.receipts'))
+    expect(UP).toContain('alter table public.purchase_audit_log enable row level security')
+    expect(UP).not.toMatch(/create policy "purchase_audit_log: (insert|update|delete)/)
+    expect(UP).toContain('grant select on public.purchase_audit_log to authenticated')
+    expect(UP).not.toMatch(/grant (insert|update|delete)[^;]*purchase_audit_log/)
+  })
+
+  it('las carteras quedan coherentes: se retiran los movimientos de pago y de devolución de esa compra, y solo esos', () => {
+    const body = fn('delete_purchase')
+    expect(body).toContain('m.payment_id in (select p.id from public.purchase_payments p where p.receipt_id = p_receipt) or m.expense_id = any (v_refund_exp_ids)')
+    expect(body).toContain('delete from public.cash_movements where id = any (v_cash_ids)')
+    expect(body).toContain('delete from public.expenses where id = any (v_refund_exp_ids)')
+  })
+
+  it('protege a las carteras de otras personas: exige poder escribir cada cartera afectada', () => {
+    expect(fn('delete_purchase')).toContain('private.cash_wallet_writable(v_w)')
+  })
+
+  it('los movimientos bancarios originales NUNCA se borran: se re-apuntan a un apunte económico del banco recreado', () => {
+    const body = fn('delete_purchase')
+    expect(body).not.toMatch(/delete from public\.bank_transactions/)
+    expect(body).toContain('update public.bank_transactions set matched_expense_id = v_new')
+    expect(body).toContain("'banco'")
+    expect(body).toContain('esta compra está enlazada al banco; hace falta acceso a Economía')
+  })
+
+  it('el saldo de una cartera nunca bloquea el borrado: no hay ninguna comprobación de saldo mínimo', () => {
+    expect(fn('delete_purchase')).not.toMatch(/balance|saldo insuficiente/i)
+  })
+
+  it('se puede deshacer una sola vez, restaurando compra, gasto, pagos, devoluciones, carteras, líneas y vínculos bancarios', () => {
+    const body = fn('restore_economy_log')
+    expect(body).toContain("if v_l.restored_at is not null then raise exception 'restore_economy_log: ya se deshizo'")
+    expect(body).toContain('for update')
+    for (const t of ['expenses', 'receipts', 'purchase_payments', 'purchase_refunds', 'cash_movements', 'product_prices']) expect(body).toContain(`insert into public.${t} select * from jsonb_populate_record(null::public.${t}`)
+    expect(body).toContain("(v_s -> 'receipt') || jsonb_build_object('storage_path', null)") // la foto no se recupera
+    expect(body).toContain('w.archived_at is null') // una cartera archivada se omite y se cuenta
+  })
+
+  it('un registro solo lo puede deshacer su familia', () => {
+    expect(fn('restore_economy_log')).toContain('l.family_id = v_family')
+  })
+})
+
+describe('vincular y retirar duplicados: solo el registro económico, con anotación y deshacer', () => {
+  const fn = (name: string) => UP.slice(UP.indexOf(`function public.${name}(`), UP.indexOf('$$;', UP.indexOf(`function public.${name}(`)))
+  it('vincular con el banco devuelve el id de la anotación, conserva el movimiento bancario y solo retira el apunte económico duplicado', () => {
+    const body = fn('link_purchase_to_bank_expense')
+    expect(UP).toContain('returns uuid')
+    expect(body).toContain("'bank_expense_merged'")
+    expect(body).toContain('insert into public.purchase_audit_log')
+    expect(body).not.toMatch(/delete from public\.bank_transactions/)
+    expect(body).toContain('delete from public.expenses where id = p_bank_expense')
+  })
+  it('retirar un duplicado: nunca un apunte del banco ni uno con datos enlazados', () => {
+    const body = fn('remove_duplicate_expense')
+    expect(body).toContain("v_rm.source not in ('manual', 'ticket')")
+    expect(body).toContain('select 1 from public.bank_transactions bt where bt.matched_expense_id = p_remove')
+    expect(body).toContain("'duplicate_removed'")
   })
 })

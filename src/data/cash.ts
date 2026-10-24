@@ -154,14 +154,15 @@ export interface PurchaseRefundRow {
   receiptId: string
   amount: number
   destination: string
+  walletId: string | null
   createdAt: string
 }
 
 export async function listPurchaseRefunds(): Promise<PurchaseRefundRow[]> {
   try {
-    const { data, error } = await supabase.from('purchase_refunds').select('id, receipt_id, amount, destination, created_at')
+    const { data, error } = await supabase.from('purchase_refunds').select('id, receipt_id, amount, destination, wallet_id, created_at')
     if (error) return []
-    return (data ?? []).map((r) => ({ id: r.id, receiptId: r.receipt_id, amount: Number(r.amount), destination: r.destination, createdAt: r.created_at }))
+    return (data ?? []).map((r) => ({ id: r.id, receiptId: r.receipt_id, amount: Number(r.amount), destination: r.destination, walletId: r.wallet_id, createdAt: r.created_at }))
   } catch {
     return []
   }
@@ -180,9 +181,32 @@ export async function listCashLinkedExpenseIds(): Promise<Set<string>> {
 
 // ─── Vínculo con el banco y duplicados ───
 
-export async function linkPurchaseToBank(purchaseExpenseId: string, bankExpenseId: string, paymentId: string | null = null): Promise<void> {
-  const { error } = await supabase.rpc('link_purchase_to_bank_expense', { p_purchase_expense: purchaseExpenseId, p_bank_expense: bankExpenseId, p_payment: paymentId })
+/** Vincula la compra con su pago del banco. Devuelve el id del registro para poder deshacerlo (restoreEconomyLog). El movimiento bancario original se conserva. */
+export async function linkPurchaseToBank(purchaseExpenseId: string, bankExpenseId: string, paymentId: string | null = null): Promise<string> {
+  const { data, error } = await supabase.rpc('link_purchase_to_bank_expense', { p_purchase_expense: purchaseExpenseId, p_bank_expense: bankExpenseId, p_payment: paymentId })
   if (error) throw error
+  return data as string
+}
+
+/** Retira un gasto duplicado propio (nunca un apunte del banco). Devuelve el id del registro para poder deshacerlo. */
+export async function removeDuplicateExpense(keepExpenseId: string, removeExpenseId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('remove_duplicate_expense', { p_keep: keepExpenseId, p_remove: removeExpenseId })
+  if (error) throw error
+  return data as string
+}
+
+/** Borrado seguro de una compra (carteras coherentes, movimientos bancarios originales conservados). Devuelve el id del registro para poder deshacerlo. */
+export async function deletePurchase(receiptId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('delete_purchase', { p_receipt: receiptId })
+  if (error) throw error
+  return data as string
+}
+
+/** Deshace un borrado de compra, una retirada de duplicado o un vínculo con el banco. Solo se puede deshacer una vez. */
+export async function restoreEconomyLog(logId: string): Promise<{ skipped: number }> {
+  const { data, error } = await supabase.rpc('restore_economy_log', { p_log: logId })
+  if (error) throw error
+  return { skipped: Number((data as { skipped?: number } | null)?.skipped ?? 0) }
 }
 
 export async function listDuplicateDecisions(): Promise<[string, string][]> {

@@ -1,3 +1,4 @@
+import { deletePurchase } from '@/data/cash'
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
@@ -309,6 +310,15 @@ export async function getReceiptUrl(storagePath: string): Promise<string> {
 // se borran solos por el ON DELETE CASCADE de la base de datos — así
 // una lectura de OCR equivocada no se queda para siempre en el
 // Historial tras borrar y volver a subir el ticket bien.
+// Borrado SEGURO (migración 0311, delete_purchase): una sola operación en el servidor que deja las carteras coherentes, conserva siempre los
+// movimientos bancarios originales y anota una foto para poder deshacerlo. La foto del ticket se borra DESPUÉS, solo si el servidor lo ha aceptado.
+// Devuelve el id del registro para deshacer.
+export async function deletePurchaseSafely(receipt: Receipt): Promise<string> {
+  const logId = await deletePurchase(receipt.id)
+  if (receipt.storagePath) await supabase.storage.from('receipts').remove([receipt.storagePath])
+  return logId
+}
+
 export async function deleteReceipt(receipt: Receipt): Promise<void> {
   if (receipt.storagePath) await supabase.storage.from('receipts').remove([receipt.storagePath])
   const { error } = await supabase.from('receipts').delete().eq('id', receipt.id)

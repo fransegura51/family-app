@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { addMovement, archiveWallet, cashErrorText, createWallet, deleteMovement, dismissDuplicate, linkBankExpenseToWallet, linkPurchaseToBank, listDuplicateDecisions, listMovements, listWallets, registerPurchaseRefund, transferCash, unlinkBankMovement } from '@/data/cash'
-import { deleteExpense } from '@/data/finance'
+import { addMovement, archiveWallet, cashErrorText, createWallet, deleteMovement, dismissDuplicate, linkBankExpenseToWallet, linkPurchaseToBank, listDuplicateDecisions, listMovements, listWallets, registerPurchaseRefund, removeDuplicateExpense, transferCash, unlinkBankMovement } from '@/data/cash'
 import { balanceText, eur, isManualMovement, MOVEMENT_LABELS, movementDelta, usableWallets, type CashMovement, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
 import { findDuplicateSuggestions, type DupExpense, type DuplicateSuggestion } from '@/domain/duplicateDetection'
 import { PAYMENT_METHOD_LABELS, PAYMENT_METHODS, parseAmount, type PaymentMethod } from '@/domain/manualPurchase'
@@ -240,6 +239,51 @@ export function RefundPanel({ receiptId, summary, purchaseStore, wallets, onDone
   )
 }
 
+// ─── Borrar una compra: qué va a pasar y cómo deshacerlo ───
+
+export function DeletePurchaseDialog({ title, lines, onConfirm, onCancel, busy }: { title: string; lines: string[]; onConfirm: () => void; onCancel: () => void; busy: boolean }) {
+  return (
+    <div className="modal-overlay" role="alertdialog" aria-label="Borrar compra">
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <h2 className="section-title" style={{ margin: 0 }}>
+          Borrar «{title}»
+        </h2>
+        <p>Antes de borrarla, esto es lo que pasará:</p>
+        <ul>
+          {lines.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+        <p className="muted" style={{ fontSize: 12 }}>
+          Podrás deshacerlo justo después. La foto del ticket, si la había, no se recupera.
+        </p>
+        <div className="form-actions">
+          <button type="button" onClick={onConfirm} disabled={busy}>
+            {busy ? 'Borrando…' : 'Borrar la compra'}
+          </button>
+          <button type="button" className="link-button" onClick={onCancel} disabled={busy}>
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function UndoNotice({ text, onUndo, onDismiss }: { text: string; onUndo: () => void; onDismiss: () => void }) {
+  return (
+    <div className="card" role="status" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <span style={{ flex: 1 }}>{text}</span>
+      <button type="button" className="link-button" onClick={onUndo}>
+        Deshacer
+      </button>
+      <button type="button" className="link-button" onClick={onDismiss} aria-label="Cerrar aviso">
+        ✕
+      </button>
+    </div>
+  )
+}
+
 export { refundSummary }
 
 // ─── Carteras de efectivo (opcionales) ───
@@ -475,7 +519,20 @@ function WalletDetail({ wallet, wallets, myMemberId, bankExpenses, onChanged }: 
 
 // ─── Posibles duplicados / pagos por vincular ───
 
-export function PurchaseDuplicatesPanel({ expenses, purchaseExpenseIds, cashLinkedExpenseIds, onChanged }: { expenses: readonly Expense[]; purchaseExpenseIds: ReadonlySet<string>; cashLinkedExpenseIds: ReadonlySet<string>; onChanged: () => void }) {
+export function PurchaseDuplicatesPanel({
+  expenses,
+  purchaseExpenseIds,
+  cashLinkedExpenseIds,
+  onChanged,
+  onLogged,
+}: {
+  expenses: readonly Expense[]
+  purchaseExpenseIds: ReadonlySet<string>
+  cashLinkedExpenseIds: ReadonlySet<string>
+  onChanged: () => void
+  /** Se llama con el id de la anotación cuando una acción se puede deshacer (vincular con el banco, retirar un duplicado). */
+  onLogged?: (logId: string, text: string) => void
+}) {
   const [open, setOpen] = useState(false)
   const [dismissed, setDismissed] = useState<[string, string][]>([])
   const [error, setError] = useState<string | null>(null)
@@ -537,11 +594,11 @@ export function PurchaseDuplicatesPanel({ expenses, purchaseExpenseIds, cashLink
               <p className="muted" style={{ margin: '2px 0' }}>{s.kind === 'link_bank' ? 'Banco' : 'Sobraría'}: {line(s.b)}</p>
               <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>Coinciden: {s.reasons.join(', ')}</p>
               {s.kind === 'link_bank' ? (
-                <button type="button" className="link-button" onClick={() => void act(() => linkPurchaseToBank(s.a.id, s.b.id))}>
+                <button type="button" className="link-button" onClick={() => void act(async () => onLogged?.(await linkPurchaseToBank(s.a.id, s.b.id), 'Vinculado con el banco: un solo gasto.'))}>
                   Sí, vincular (un solo gasto)
                 </button>
               ) : (
-                <button type="button" className="link-button" onClick={() => { if (window.confirm('¿Quitar el apunte que sobra? La compra que se conserva no cambia.')) void act(() => deleteExpense(s.b.id)) }}>
+                <button type="button" className="link-button" onClick={() => { if (window.confirm('¿Quitar el apunte que sobra? La compra que se conserva no cambia.')) void act(async () => onLogged?.(await removeDuplicateExpense(s.a.id, s.b.id), 'Duplicado retirado.')) }}>
                   Sí, quitar el que sobra
                 </button>
               )}{' '}

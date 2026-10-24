@@ -455,11 +455,34 @@ begin
 end;
 $$;
 
+-- ─── Registro de operaciones que retiran registros económicos (trazabilidad + deshacer) ───
+-- Cada borrado de una compra, cada retirada de un apunte duplicado y cada vínculo con el banco que retira un apunte guarda aquí una foto de lo que
+-- había, para poder DESHACERLO (restore_economy_log). Los movimientos bancarios originales (bank_transactions) NUNCA se borran.
+-- No tiene políticas de escritura: solo lo rellenan las funciones de más abajo. Lectura: familia con acceso a «dinero».
+create table public.purchase_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  family_id uuid not null references public.families (id) on delete cascade,
+  kind text not null check (kind in ('purchase_deleted', 'duplicate_removed', 'bank_expense_merged')),
+  created_by uuid references public.profiles (id) on delete set null default auth.uid(),
+  created_at timestamptz not null default now(),
+  restored_at timestamptz,
+  restored_by uuid references public.profiles (id) on delete set null,
+  -- Resumen legible (tienda, importe, fecha, efecto en carteras...), sin nada que no se vea ya en la app.
+  summary jsonb not null default '{}'::jsonb,
+  snapshot jsonb not null
+);
+create index purchase_audit_log_family_idx on public.purchase_audit_log (family_id, created_at desc);
+alter table public.purchase_audit_log enable row level security;
+create policy "purchase_audit_log: select" on public.purchase_audit_log for select to authenticated
+  using (family_id = (select private.current_family_id()) and (select private.has_section_access('dinero')));
+grant select on public.purchase_audit_log to authenticated;
+
 -- Vincula una compra con el apunte del banco que la pagó (decisión EXPLÍCITA de la familia; nunca automática por coincidencia aproximada).
--- Mueve el movimiento bancario al gasto de la compra y retira el apunte duplicado del banco (el movimiento bancario original se conserva).
+-- Mueve el movimiento bancario al gasto de la compra y retira SOLO el apunte económico duplicado (nunca el movimiento bancario importado, que se
+-- conserva). Queda anotado en purchase_audit_log y se puede deshacer. Devuelve el id de esa anotación.
 -- Con p_payment, solo un pago concreto (p. ej. la parte de tarjeta de un pago mixto): el importe debe ser el de ese pago.
 create or replace function public.link_purchase_to_bank_expense(p_purchase_expense uuid, p_bank_expense uuid, p_payment uuid default null)
-returns void
+returns uuid
 language plpgsql
 security definer
 set search_path = public
@@ -471,6 +494,7 @@ declare
   v_pay public.purchase_payments;
   v_expected numeric;
   v_bt uuid;
+  v_log uuid;
 begin
   if v_family is null or not private.has_section_access('dinero') then raise exception 'link_purchase_to_bank_expense: sin acceso' using errcode = '42501'; end if;
   select * into v_keep from public.expenses e where e.id = p_purchase_expense and e.family_id = v_family;
@@ -495,10 +519,231 @@ begin
      or exists (select 1 from public.purchase_refunds f where f.expense_id = p_bank_expense) then
     raise exception 'link_purchase_to_bank_expense: ese apunte tiene otros datos vinculados; no se puede retirar' using errcode = '22023';
   end if;
+  insert into public.purchase_audit_log (family_id, kind, summary, snapshot)
+  values (v_family, 'bank_expense_merged',
+          jsonb_build_object('store', coalesce(v_keep.store, v_bank.store), 'amount', v_bank.amount, 'date', v_bank.expense_date),
+          jsonb_build_object('retired_expense', to_jsonb(v_bank), 'bank_transaction_id', v_bt, 'kept_expense_id', p_purchase_expense,
+                             'kept_prev_source', v_keep.source, 'kept_prev_owner', v_keep.owner_member_id, 'payment_id', v_pay.id))
+  returning id into v_log;
   update public.bank_transactions set matched_expense_id = p_purchase_expense where id = v_bt;
   if v_pay.id is not null then update public.purchase_payments set bank_transaction_id = v_bt where id = v_pay.id; end if;
   update public.expenses set source = 'ticket_banco', owner_member_id = coalesce(v_bank.owner_member_id, v_keep.owner_member_id) where id = p_purchase_expense;
   delete from public.expenses where id = p_bank_expense;
+  return v_log;
+end;
+$$;
+
+-- Retira un apunte duplicado (la misma compra apuntada dos veces). SOLO apuntes propios (manual/ticket) sin compra, cartera, devolución ni movimiento
+-- bancario enlazados; nunca un apunte del banco. Anotado y reversible. Devuelve el id de la anotación.
+create or replace function public.remove_duplicate_expense(p_keep uuid, p_remove uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_family uuid := private.current_family_id();
+  v_keep public.expenses;
+  v_rm public.expenses;
+  v_log uuid;
+begin
+  select * into v_keep from public.expenses e where e.id = p_keep and e.family_id = v_family;
+  select * into v_rm from public.expenses e where e.id = p_remove and e.family_id = v_family;
+  if v_keep.id is null or v_rm.id is null or v_keep.id = v_rm.id or not private.expense_touchable(p_keep) or not private.expense_touchable(p_remove) then
+    raise exception 'remove_duplicate_expense: apuntes no válidos' using errcode = '42501';
+  end if;
+  if v_rm.source not in ('manual', 'ticket') or v_rm.is_income or v_keep.is_income or abs(v_rm.amount - v_keep.amount) > 0.01 then
+    raise exception 'remove_duplicate_expense: solo se retira un gasto propio del mismo importe, nunca un apunte del banco' using errcode = '22023';
+  end if;
+  if exists (select 1 from public.bank_transactions bt where bt.matched_expense_id = p_remove)
+     or exists (select 1 from public.receipts r where r.expense_id = p_remove)
+     or exists (select 1 from public.cash_movements m where m.expense_id = p_remove)
+     or exists (select 1 from public.purchase_refunds f where f.expense_id = p_remove) then
+    raise exception 'remove_duplicate_expense: ese apunte tiene datos vinculados; no se puede retirar' using errcode = '22023';
+  end if;
+  insert into public.purchase_audit_log (family_id, kind, summary, snapshot)
+  values (v_family, 'duplicate_removed', jsonb_build_object('store', v_rm.store, 'amount', v_rm.amount, 'date', v_rm.expense_date),
+          jsonb_build_object('expense', to_jsonb(v_rm), 'kept_expense_id', p_keep))
+  returning id into v_log;
+  delete from public.expenses where id = p_remove;
+  return v_log;
+end;
+$$;
+
+-- Borrado seguro de una compra (ECO-1j). Deja todo coherente y anota una foto para poder deshacerlo:
+--   · el dinero de las carteras vuelve a donde estaba: los pagos en efectivo de la compra se anulan (la cartera los recupera) y las devoluciones
+--     que entraron en una cartera se anulan (la cartera los pierde); ningún movimiento queda huérfano; el saldo puede quedar negativo (no se bloquea);
+--   · las devoluciones de esa compra se retiran con ella (su fila de «Devoluciones» y su vínculo);
+--   · los movimientos bancarios originales NUNCA se borran: lo que el banco ya cobró o abonó vuelve a ser un apunte económico del banco
+--     (con la categoría que tenía la compra), para que Economía siga reflejando el dinero real.
+-- Si la compra toca carteras de otra persona o el banco hace falta acceso a «dinero» y poder escribir en esas carteras.
+create or replace function public.delete_purchase(p_receipt uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_family uuid := private.current_family_id();
+  v_r public.receipts;
+  v_exp public.expenses;
+  v_refund_exp_ids uuid[];
+  v_cash jsonb;
+  v_cash_ids uuid[];
+  v_links jsonb := '[]'::jsonb;
+  v_tx record;
+  v_new uuid;
+  v_wallets jsonb;
+  v_w uuid;
+  v_log uuid;
+  v_refund_cat text;
+begin
+  select * into v_r from public.receipts r where r.id = p_receipt and r.family_id = v_family;
+  if not found then raise exception 'delete_purchase: la compra no existe' using errcode = '42501'; end if;
+  if v_r.expense_id is not null then
+    select * into v_exp from public.expenses e where e.id = v_r.expense_id and e.family_id = v_family;
+    if v_exp.id is not null and not private.expense_touchable(v_exp.id) then raise exception 'delete_purchase: no puedes borrar esta compra' using errcode = '42501'; end if;
+  end if;
+  select coalesce(array_agg(f.expense_id) filter (where f.expense_id is not null), '{}') into v_refund_exp_ids from public.purchase_refunds f where f.receipt_id = p_receipt;
+  select coalesce(jsonb_agg(to_jsonb(m)), '[]'::jsonb), coalesce(array_agg(m.id), '{}') into v_cash, v_cash_ids
+    from public.cash_movements m
+   where m.payment_id in (select p.id from public.purchase_payments p where p.receipt_id = p_receipt) or m.expense_id = any (v_refund_exp_ids);
+  -- Efecto en carteras (para el resumen) y permisos: cada cartera afectada debe poder escribirla quien borra.
+  select coalesce(jsonb_agg(jsonb_build_object('wallet_id', t.wallet_id, 'delta', t.delta)), '[]'::jsonb) into v_wallets
+    from (select m.wallet_id, -sum(m.amount) as delta from public.cash_movements m where m.id = any (v_cash_ids) group by m.wallet_id) t;
+  for v_w in select (x ->> 'wallet_id')::uuid from jsonb_array_elements(v_wallets) x loop
+    if not private.cash_wallet_writable(v_w) then raise exception 'delete_purchase: la compra mueve efectivo de una cartera que no puedes modificar' using errcode = '42501'; end if;
+  end loop;
+  -- Movimientos bancarios enlazados: se conservan; el apunte económico pasa a ser el del banco.
+  for v_tx in
+    select bt.id, bt.amount, bt.transaction_date, bt.description, bt.credit_debit, bt.matched_expense_id
+      from public.bank_transactions bt
+     where bt.matched_expense_id = v_r.expense_id or bt.matched_expense_id = any (v_refund_exp_ids)
+  loop
+    if not private.has_section_access('dinero') then raise exception 'delete_purchase: esta compra está enlazada al banco; hace falta acceso a Economía' using errcode = '42501'; end if;
+    if v_tx.matched_expense_id = v_r.expense_id then
+      insert into public.expenses (family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, source, owner_member_id, shared)
+      values (v_family, v_tx.transaction_date, v_tx.amount, v_exp.category, coalesce(v_r.store, v_exp.store), 'real', v_tx.description, v_tx.credit_debit = 'CRDT',
+              v_exp.budget_group, 'banco', v_exp.owner_member_id, v_exp.shared)
+      returning id into v_new;
+    else
+      select c.name into v_refund_cat from public.budget_categories c where c.family_id = v_family and c.catalog_key = 'i.ingreso.devoluciones';
+      insert into public.expenses (family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, source, owner_member_id, shared)
+      values (v_family, v_tx.transaction_date, v_tx.amount, coalesce(v_refund_cat, 'Ingreso'), v_r.store, 'real', v_tx.description, true, 'ingresos', 'banco',
+              (select e.owner_member_id from public.expenses e where e.id = v_tx.matched_expense_id), false)
+      returning id into v_new;
+    end if;
+    update public.bank_transactions set matched_expense_id = v_new where id = v_tx.id;
+    v_links := v_links || jsonb_build_array(jsonb_build_object('bank_transaction_id', v_tx.id, 'original_expense_id', v_tx.matched_expense_id, 'created_expense_id', v_new));
+  end loop;
+  insert into public.purchase_audit_log (family_id, kind, summary, snapshot)
+  values (v_family, 'purchase_deleted',
+          jsonb_build_object('store', v_r.store, 'amount', coalesce(v_exp.amount, v_r.total_amount), 'date', v_r.receipt_date,
+                             'wallet_effects', v_wallets, 'refunds', cardinality(v_refund_exp_ids), 'bank_originals_kept', jsonb_array_length(v_links)),
+          jsonb_build_object(
+            'receipt', to_jsonb(v_r),
+            'expense', case when v_exp.id is null then null else to_jsonb(v_exp) end,
+            'payments', coalesce((select jsonb_agg(to_jsonb(p)) from public.purchase_payments p where p.receipt_id = p_receipt), '[]'::jsonb),
+            'refunds', coalesce((select jsonb_agg(to_jsonb(f)) from public.purchase_refunds f where f.receipt_id = p_receipt), '[]'::jsonb),
+            'refund_expenses', coalesce((select jsonb_agg(to_jsonb(e)) from public.expenses e where e.id = any (v_refund_exp_ids)), '[]'::jsonb),
+            'cash_movements', v_cash,
+            'prices', coalesce((select jsonb_agg(to_jsonb(pp)) from public.product_prices pp where pp.receipt_id = p_receipt), '[]'::jsonb),
+            'bank_links', v_links))
+  returning id into v_log;
+  delete from public.cash_movements where id = any (v_cash_ids);
+  delete from public.receipts where id = p_receipt;                       -- también borra sus pagos, devoluciones y líneas de producto
+  delete from public.expenses where id = any (v_refund_exp_ids);
+  if v_exp.id is not null then delete from public.expenses where id = v_exp.id; end if;
+  return v_log;
+end;
+$$;
+
+-- Deshace una anotación de purchase_audit_log (borrado de compra, apunte duplicado retirado o vínculo con el banco). La foto del ticket, si la hubo, no
+-- se recupera (se borra al eliminar la compra, como siempre). Lo que ya no se puede restaurar (cartera archivada o borrada, producto desaparecido) se
+-- omite y se cuenta en la respuesta. Solo se puede deshacer una vez.
+create or replace function public.restore_economy_log(p_log uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_family uuid := private.current_family_id();
+  v_l public.purchase_audit_log;
+  v_s jsonb;
+  v_item jsonb;
+  v_skipped integer := 0;
+  v_wallet uuid;
+  v_bt uuid;
+  v_cur uuid;
+begin
+  select * into v_l from public.purchase_audit_log l where l.id = p_log and l.family_id = v_family for update;
+  if not found then raise exception 'restore_economy_log: no existe' using errcode = '42501'; end if;
+  if v_l.restored_at is not null then raise exception 'restore_economy_log: ya se deshizo' using errcode = '22023'; end if;
+  v_s := v_l.snapshot;
+
+  if v_l.kind = 'duplicate_removed' then
+    insert into public.expenses select * from jsonb_populate_record(null::public.expenses, v_s -> 'expense');
+
+  elsif v_l.kind = 'bank_expense_merged' then
+    select bt.matched_expense_id into v_cur from public.bank_transactions bt where bt.id = (v_s ->> 'bank_transaction_id')::uuid;
+    if v_cur is distinct from (v_s ->> 'kept_expense_id')::uuid then raise exception 'restore_economy_log: el movimiento bancario ya cambió desde entonces' using errcode = '22023'; end if;
+    insert into public.expenses select * from jsonb_populate_record(null::public.expenses, v_s -> 'retired_expense');
+    update public.bank_transactions set matched_expense_id = (v_s -> 'retired_expense' ->> 'id')::uuid where id = (v_s ->> 'bank_transaction_id')::uuid;
+    update public.expenses set source = v_s ->> 'kept_prev_source', owner_member_id = nullif(v_s ->> 'kept_prev_owner', '')::uuid where id = (v_s ->> 'kept_expense_id')::uuid;
+    if v_s ->> 'payment_id' is not null then update public.purchase_payments set bank_transaction_id = null where id = (v_s ->> 'payment_id')::uuid; end if;
+
+  elsif v_l.kind = 'purchase_deleted' then
+    if (jsonb_array_length(v_s -> 'cash_movements') > 0 or jsonb_array_length(v_s -> 'bank_links') > 0) and not private.has_section_access('dinero') then
+      raise exception 'restore_economy_log: hace falta acceso a Economía' using errcode = '42501';
+    end if;
+    -- 1. Los movimientos bancarios vuelven a su apunte original; se retiran los apuntes del banco que se crearon al borrar.
+    for v_item in select * from jsonb_array_elements(v_s -> 'bank_links') loop
+      update public.bank_transactions set matched_expense_id = null where id = (v_item ->> 'bank_transaction_id')::uuid;
+      delete from public.expenses where id = (v_item ->> 'created_expense_id')::uuid and source = 'banco';
+    end loop;
+    -- 2. Gastos (compra y devoluciones), compra, pagos, devoluciones.
+    if jsonb_typeof(v_s -> 'expense') = 'object' then
+      insert into public.expenses select * from jsonb_populate_record(null::public.expenses, v_s -> 'expense');
+    end if;
+    for v_item in select * from jsonb_array_elements(v_s -> 'refund_expenses') loop
+      insert into public.expenses select * from jsonb_populate_record(null::public.expenses, v_item);
+    end loop;
+    insert into public.receipts select * from jsonb_populate_record(null::public.receipts, (v_s -> 'receipt') || jsonb_build_object('storage_path', null));
+    for v_item in select * from jsonb_array_elements(v_s -> 'payments') loop
+      v_bt := nullif(v_item ->> 'bank_transaction_id', '')::uuid;
+      insert into public.purchase_payments select * from jsonb_populate_record(null::public.purchase_payments,
+        v_item || jsonb_build_object('bank_transaction_id', case when v_bt is not null and exists (select 1 from public.bank_transactions where id = v_bt) then v_bt else null end,
+                                     'wallet_id', case when exists (select 1 from public.cash_wallets w where w.id = nullif(v_item ->> 'wallet_id', '')::uuid) then v_item -> 'wallet_id' else null end));
+    end loop;
+    for v_item in select * from jsonb_array_elements(v_s -> 'refunds') loop
+      insert into public.purchase_refunds select * from jsonb_populate_record(null::public.purchase_refunds,
+        v_item || jsonb_build_object('wallet_id', case when exists (select 1 from public.cash_wallets w where w.id = nullif(v_item ->> 'wallet_id', '')::uuid) then v_item -> 'wallet_id' else null end));
+    end loop;
+    -- 3. Movimientos de cartera (si la cartera sigue existiendo y activa) y líneas de producto (si el producto sigue existiendo).
+    for v_item in select * from jsonb_array_elements(v_s -> 'cash_movements') loop
+      v_wallet := (v_item ->> 'wallet_id')::uuid;
+      if exists (select 1 from public.cash_wallets w where w.id = v_wallet and w.archived_at is null) then
+        insert into public.cash_movements select * from jsonb_populate_record(null::public.cash_movements, v_item);
+      else
+        v_skipped := v_skipped + 1;
+      end if;
+    end loop;
+    for v_item in select * from jsonb_array_elements(v_s -> 'prices') loop
+      if exists (select 1 from public.products p where p.id = (v_item ->> 'product_id')::uuid) then
+        insert into public.product_prices select * from jsonb_populate_record(null::public.product_prices, v_item);
+      else
+        v_skipped := v_skipped + 1;
+      end if;
+    end loop;
+    -- 4. Los movimientos bancarios vuelven a apuntar a la compra / devolución restauradas.
+    for v_item in select * from jsonb_array_elements(v_s -> 'bank_links') loop
+      update public.bank_transactions set matched_expense_id = (v_item ->> 'original_expense_id')::uuid where id = (v_item ->> 'bank_transaction_id')::uuid;
+    end loop;
+  end if;
+
+  update public.purchase_audit_log set restored_at = now(), restored_by = auth.uid() where id = p_log;
+  return jsonb_build_object('restored', true, 'skipped', v_skipped);
 end;
 $$;
 
@@ -507,7 +752,7 @@ grant execute on function private.cash_wallet_writable(uuid), private.expense_to
 revoke all on function public.cash_wallets_guard(), public.cash_movements_guard(), public.purchase_payments_guard() from public, anon, authenticated;
 revoke all on function public.cash_transfer(uuid, uuid, numeric, date, text), public.cash_link_bank_expense(uuid, uuid), public.cash_unlink_bank_expense(uuid),
   public.set_purchase_payments(uuid, jsonb), public.register_purchase_refund(uuid, numeric, date, text, uuid, text),
-  public.link_purchase_to_bank_expense(uuid, uuid, uuid) from public, anon;
+  public.link_purchase_to_bank_expense(uuid, uuid, uuid), public.remove_duplicate_expense(uuid, uuid), public.delete_purchase(uuid), public.restore_economy_log(uuid) from public, anon;
 grant execute on function public.cash_transfer(uuid, uuid, numeric, date, text), public.cash_link_bank_expense(uuid, uuid), public.cash_unlink_bank_expense(uuid),
   public.set_purchase_payments(uuid, jsonb), public.register_purchase_refund(uuid, numeric, date, text, uuid, text),
-  public.link_purchase_to_bank_expense(uuid, uuid, uuid) to authenticated;
+  public.link_purchase_to_bank_expense(uuid, uuid, uuid), public.remove_duplicate_expense(uuid, uuid), public.delete_purchase(uuid), public.restore_economy_log(uuid) to authenticated;

@@ -162,9 +162,10 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
-import { attachReceiptFile, currentProfileId, deleteReceipt, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { CashWalletsSection, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog } from '@/ui/CashAndPaymentsUi'
-import { addMovement, listCashLinkedExpenseIds, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { CashWalletsSection, DeletePurchaseDialog, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
+import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
+import { addMovement, cashErrorText, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
 import { shortfallNotice, usableWallets, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
 import { findExistingEconomyExpense, type DupExpense } from '@/domain/duplicateDetection'
 import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/purchasePayments'
@@ -5161,12 +5162,50 @@ export function ReceiptsTab() {
     currentProfileId().then((id) => setTabMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
   }, [members])
 
-  async function handleDelete(receipt: Receipt) {
+  // Borrado SEGURO (ECO-1j): si la compra mueve efectivo de carteras, tiene devoluciones o está enlazada al banco, antes se enseña qué pasará.
+  // El servidor deja las carteras coherentes, conserva siempre los movimientos bancarios originales y anota una foto para poder deshacerlo.
+  const [deleteDialog, setDeleteDialog] = useState<{ receipt: Receipt; lines: string[] } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const [undo, setUndo] = useState<{ logId: string; text: string } | null>(null)
+
+  async function runDelete(receipt: Receipt) {
+    setDeleting(true)
     try {
-      await deleteReceipt(receipt)
+      const logId = await deletePurchaseSafely(receipt)
+      setUndo({ logId, text: 'Compra borrada.' })
+      setDeleteDialog(null)
       reload()
     } catch (err) {
-      setError(errorMessage(err, 'No se pudo borrar'))
+      setError(cashErrorText(err, errorMessage(err, 'No se pudo borrar')))
+      setDeleteDialog(null)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  function handleDelete(receipt: Receipt) {
+    const myPayments = payments.filter((p) => p.receiptId === receipt.id)
+    const myRefunds = refunds.filter((r) => r.receiptId === receipt.id)
+    const expenseSource = allExpenseList.find((e) => e.id === receipt.expenseId)?.source ?? null
+    const impact = purchaseDeletionImpact({
+      payments: myPayments.map((p) => ({ method: p.method, amount: p.amount, walletId: p.walletId, bankTransactionId: p.bankTransactionId })),
+      refunds: myRefunds.map((r) => ({ amount: r.amount, destination: r.destination, walletId: r.walletId })),
+      expenseSource,
+      total: receipt.totalAmount,
+      walletName: (id) => tabWallets.find((w) => w.id === id)?.name ?? 'cartera',
+    })
+    if (impact.lines.length === 0) void runDelete(receipt)
+    else setDeleteDialog({ receipt, lines: impact.lines })
+  }
+
+  async function handleUndo(logId: string) {
+    try {
+      const r = await restoreEconomyLog(logId)
+      setUndo(null)
+      if (r.skipped > 0) setError(`Deshecho. ${r.skipped} movimiento(s) no se pudieron restaurar (cartera archivada o producto desaparecido).`)
+      reload()
+    } catch (err) {
+      setError(cashErrorText(err, 'No se pudo deshacer'))
     }
   }
 
@@ -5217,7 +5256,18 @@ export function ReceiptsTab() {
       {/* Petición real: "el aparato para subir tickets... arriba del
           todo" — antes iba al final de la lista. */}
       <ReceiptForm mode="add" onDone={reload} knownStores={knownStores} existingFolders={storeNames} categories={categories} members={members} />
+      {undo && <UndoNotice text={undo.text} onUndo={() => void handleUndo(undo.logId)} onDismiss={() => setUndo(null)} />}
+      {deleteDialog && (
+        <DeletePurchaseDialog
+          title={deleteDialog.receipt.store ?? 'Compra'}
+          lines={deleteDialog.lines}
+          busy={deleting}
+          onConfirm={() => void runDelete(deleteDialog.receipt)}
+          onCancel={() => setDeleteDialog(null)}
+        />
+      )}
       <PurchaseDuplicatesPanel
+        onLogged={(logId, text) => setUndo({ logId, text })}
         expenses={allExpenseList}
         purchaseExpenseIds={new Set(receipts.map((x) => x.expenseId).filter((id): id is string => !!id))}
         cashLinkedExpenseIds={cashLinkedIds}

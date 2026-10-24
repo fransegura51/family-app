@@ -3,6 +3,11 @@
 -- Los apuntes del banco que se marcaron como traspaso con una cartera SIGUEN en «Movimientos internos»: antes de revertir, deshacer cada vínculo
 -- con cash_unlink_bank_expense (o aceptar que se queden como movimiento interno). Los apuntes del banco retirados al vincularlas a una compra
 -- se pueden volver a generar desde bank_transactions.
+-- Antes de borrar el registro de operaciones, deshacer (restore_economy_log) las que se quieran conservar: sin él ya no hay vuelta atrás.
+drop function if exists public.restore_economy_log(uuid);
+drop function if exists public.delete_purchase(uuid);
+drop function if exists public.remove_duplicate_expense(uuid, uuid);
+drop table if exists public.purchase_audit_log;
 drop function if exists public.link_purchase_to_bank_expense(uuid, uuid, uuid);
 drop function if exists public.register_purchase_refund(uuid, numeric, date, text, uuid, text);
 drop function if exists public.set_purchase_payments(uuid, jsonb);

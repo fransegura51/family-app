@@ -11,9 +11,9 @@ import type { Expense } from '@/domain/types'
 
 const calls = {
   registerPurchaseRefund: vi.fn(async (..._a: unknown[]) => undefined),
-  linkPurchaseToBank: vi.fn(async (..._a: unknown[]) => undefined),
+  linkPurchaseToBank: vi.fn(async (..._a: unknown[]) => 'log-merge'),
   dismissDuplicate: vi.fn(async (..._a: unknown[]) => undefined),
-  deleteExpense: vi.fn(async (..._a: unknown[]) => undefined),
+  removeDuplicateExpense: vi.fn(async (..._a: unknown[]) => 'log-dup'),
   createWallet: vi.fn(async (..._a: unknown[]) => undefined),
   transferCash: vi.fn(async (..._a: unknown[]) => undefined),
   linkBank: vi.fn(async (..._a: unknown[]) => undefined),
@@ -33,12 +33,12 @@ vi.mock('@/data/cash', () => ({
   listMovements: async () => [],
   listWallets: async () => walletRows,
   registerPurchaseRefund: (...a: unknown[]) => calls.registerPurchaseRefund(...a),
+  removeDuplicateExpense: (...a: unknown[]) => calls.removeDuplicateExpense(...a),
   transferCash: (...a: unknown[]) => calls.transferCash(...a),
   unlinkBankMovement: vi.fn(async () => undefined),
 }))
-vi.mock('@/data/finance', () => ({ deleteExpense: (...a: unknown[]) => calls.deleteExpense(...a) }))
 
-const { PaymentSection, ShortfallDialog, RefundPanel, CashWalletsSection, PurchaseDuplicatesPanel } = await import('@/ui/CashAndPaymentsUi')
+const { PaymentSection, ShortfallDialog, RefundPanel, CashWalletsSection, PurchaseDuplicatesPanel, DeletePurchaseDialog, UndoNotice } = await import('@/ui/CashAndPaymentsUi')
 
 const wallet = (o: Partial<CashWallet> = {}): CashWallet => ({ id: 'w1', name: 'Cartera familiar', ownerMemberId: null, openingBalance: 0, archivedAt: null, balance: 0, ...o })
 const expense = (o: Partial<Expense>): Expense => ({ id: 'x', familyId: 'f', expenseDate: '2026-10-20', amount: 8, category: null, store: 'Panadería', kind: 'real', notes: null, isIncome: false, budgetGroup: 'generales', tagId: null, source: 'manual', isFixedOverride: null, ownerMemberId: null, shared: false, sharedFromExpenseId: null, productClassification: null, ...o } as Expense)
@@ -212,8 +212,10 @@ describe('duplicados y pagos por vincular', () => {
   })
   it('compra con tarjeta y su cargo bancario: se ofrece vincular y se hace solo al aceptar', async () => {
     const onChanged = vi.fn()
+    const onLogged = vi.fn()
     render(
       <PurchaseDuplicatesPanel
+        onLogged={onLogged}
         expenses={[expense({ id: 'a', paymentMethod: 'tarjeta' }), expense({ id: 'b', source: 'banco', store: 'PANADERIA', expenseDate: '2026-10-21' })]}
         purchaseExpenseIds={new Set(['a'])}
         cashLinkedExpenseIds={new Set()}
@@ -226,6 +228,8 @@ describe('duplicados y pagos por vincular', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sí, vincular (un solo gasto)' }))
     await waitFor(() => expect(calls.linkPurchaseToBank).toHaveBeenCalledWith('a', 'b'))
     expect(onChanged).toHaveBeenCalled()
+    // se puede deshacer: el panel entrega el id de la anotación
+    expect(onLogged).toHaveBeenCalledWith('log-merge', expect.stringMatching(/Vinculado/))
   })
   it('en efectivo no se ofrece unir con el banco', async () => {
     const { container } = render(
@@ -240,13 +244,47 @@ describe('duplicados y pagos por vincular', () => {
   })
   it('«No, son distintas» se recuerda; quitar el que sobra pide confirmación', async () => {
     vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
-    render(<PurchaseDuplicatesPanel expenses={[expense({ id: 'a' }), expense({ id: 'b' })]} purchaseExpenseIds={new Set(['a'])} cashLinkedExpenseIds={new Set()} onChanged={vi.fn()} />)
+    const onLogged = vi.fn()
+    render(<PurchaseDuplicatesPanel onLogged={onLogged} expenses={[expense({ id: 'a' }), expense({ id: 'b' })]} purchaseExpenseIds={new Set(['a'])} cashLinkedExpenseIds={new Set()} onChanged={vi.fn()} />)
     fireEvent.click(await screen.findByRole('button', { name: /posible duplicado/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sí, quitar el que sobra' }))
-    expect(calls.deleteExpense).not.toHaveBeenCalled() // el primer confirm dijo que no
+    expect(calls.removeDuplicateExpense).not.toHaveBeenCalled() // el primer confirm dijo que no
     fireEvent.click(screen.getByRole('button', { name: 'Sí, quitar el que sobra' }))
-    await waitFor(() => expect(calls.deleteExpense).toHaveBeenCalledWith('b'))
+    // se retira con la función segura (que nunca toca un apunte del banco) y queda anotado para poder deshacerlo
+    await waitFor(() => expect(calls.removeDuplicateExpense).toHaveBeenCalledWith('a', 'b'))
+    expect(onLogged).toHaveBeenCalledWith('log-dup', 'Duplicado retirado.')
     fireEvent.click(screen.getByRole('button', { name: 'No, son distintas' }))
     await waitFor(() => expect(calls.dismissDuplicate).toHaveBeenCalledWith('a', 'b'))
+  })
+})
+
+describe('borrar una compra (ECO-1j)', () => {
+  it('enseña qué pasará con carteras, devoluciones y banco y no borra hasta confirmar', () => {
+    const onConfirm = vi.fn()
+    const onCancel = vi.fn()
+    render(<DeletePurchaseDialog title="Ferretería" lines={['La cartera «Mi cartera» recupera 5,00 €.', 'Los movimientos del banco se conservan: 40,00 € seguirán contando como gasto del banco, sin esta compra.']} busy={false} onConfirm={onConfirm} onCancel={onCancel} />)
+    expect(screen.getByText('Borrar «Ferretería»')).toBeTruthy()
+    expect(screen.getByText(/La cartera «Mi cartera» recupera 5,00 €/)).toBeTruthy()
+    expect(screen.getByText(/Los movimientos del banco se conservan/)).toBeTruthy()
+    expect(screen.getByText(/Podrás deshacerlo justo después/)).toBeTruthy()
+    expect(onConfirm).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(onCancel).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Borrar la compra' }))
+    expect(onConfirm).toHaveBeenCalledTimes(1)
+  })
+  it('mientras borra, los botones se bloquean (no se puede borrar dos veces)', () => {
+    render(<DeletePurchaseDialog title="x" lines={['a']} busy onConfirm={vi.fn()} onCancel={vi.fn()} />)
+    expect((screen.getByRole('button', { name: 'Borrando…' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Cancelar' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+  it('el aviso de deshacer se puede usar o cerrar', () => {
+    const onUndo = vi.fn()
+    const onDismiss = vi.fn()
+    render(<UndoNotice text="Compra borrada." onUndo={onUndo} onDismiss={onDismiss} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Deshacer' }))
+    expect(onUndo).toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar aviso' }))
+    expect(onDismiss).toHaveBeenCalled()
   })
 })

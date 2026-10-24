@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { verifyOAuthState, readVerifiedAppFlag } from "../_shared/oauthState.ts"
 
 // Enable Banking redirige aquí el navegador tras la autorización en la
 // web del banco, con ?code=&state=. Sin sesión (el navegador sigue un
@@ -29,15 +30,6 @@ const APP_RETURN_URL = "https://fransegura51.github.io/family-app/"
 // Conexión iniciada desde la APP NATIVA (el cliente manda native y viaja en el state): al terminar se vuelve por la página puente de PEPA
 // (public/volver-app.html), que abre la app con es.pepafamilyapp.app://open/…; desde el navegador se vuelve a la web como siempre.
 const APP_BRIDGE_URL = "https://fransegura51.github.io/family-app/volver-app.html"
-
-function readAppFlag(stateRaw: string | null): boolean {
-  if (!stateRaw) return false
-  try {
-    return JSON.parse(atob(stateRaw)).app === true
-  } catch {
-    return false
-  }
-}
 
 function redirectTo(status: "connected" | "error", detail?: string, fromApp = false): Response {
   const url = new URL(APP_RETURN_URL)
@@ -140,22 +132,27 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const authError = url.searchParams.get("error")
-    fromApp = readAppFlag(stateRaw)
+    const stateSecret = Deno.env.get("OAUTH_STATE_SECRET")
+    fromApp = await readVerifiedAppFlag(stateRaw, "bank", stateSecret)
     if (authError) return back("error", authError)
     if (!code || !stateRaw) return back("error", "missing_code")
 
     let familyId: string
     let profileId: string | null = null
-    try {
-      const state = JSON.parse(atob(stateRaw))
-      familyId = state.familyId
-      profileId = typeof state.profileId === "string" ? state.profileId : null
-      if (!familyId) throw new Error("bad state")
-    } catch {
+    // El state debe llevar firma válida del servidor, no estar caducado y ser del banco. Cualquier otra cosa (incluido el formato antiguo sin firma) se rechaza.
+    const verified = await verifyOAuthState(stateRaw, "bank", stateSecret)
+    if (!verified.ok) {
+      console.warn("enablebanking_bad_state", verified.reason)
       return back("error", "bad_state")
     }
+    familyId = verified.payload.familyId
+    profileId = verified.payload.profileId
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+    // Defensa en profundidad: quien inició el flujo debe pertenecer (todavía) a esa familia.
+    const { data: initiator } = await admin.from("profiles").select("family_id").eq("id", profileId).maybeSingle()
+    if (!initiator || initiator.family_id !== familyId) return back("error", "bad_state")
 
     // Petición real, tras encontrar el fallo de seguridad de
     // reasignación de dueño: "cuando un usuario en cuentas separadas
@@ -171,6 +168,7 @@ Deno.serve(async (req) => {
         .from("family_members")
         .select("id")
         .eq("linked_profile_id", profileId)
+        .eq("family_id", familyId)
         .maybeSingle()
       connectingMemberId = connectingMember?.id ?? null
     }

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { verifyOAuthState, readVerifiedAppFlag } from "../_shared/oauthState.ts"
 
 // Google redirige aquí el navegador tras el consentimiento, con ?code=
 // y el ?state= que se mandó en google-calendar-oauth-start. Sin sesión
@@ -20,15 +21,6 @@ const APP_RETURN_URL = "https://fransegura51.github.io/family-app/calendario"
 // Conexión iniciada desde la APP NATIVA (el cliente manda native y viaja en el state): al terminar se vuelve por la página puente de PEPA
 // (public/volver-app.html), que abre la app con es.pepafamilyapp.app://open/…; desde el navegador se vuelve a la web como siempre.
 const APP_BRIDGE_URL = "https://fransegura51.github.io/family-app/volver-app.html"
-
-function readAppFlag(stateRaw: string | null): boolean {
-  if (!stateRaw) return false
-  try {
-    return JSON.parse(atob(stateRaw)).app === true
-  } catch {
-    return false
-  }
-}
 
 function redirectTo(status: "connected" | "error", detail?: string, fromApp = false): Response {
   const url = new URL(APP_RETURN_URL)
@@ -51,24 +43,35 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const oauthError = url.searchParams.get("error")
-    fromApp = readAppFlag(stateRaw)
+    const stateSecret = Deno.env.get("OAUTH_STATE_SECRET")
+    fromApp = await readVerifiedAppFlag(stateRaw, "google", stateSecret)
     if (oauthError) return back("error", oauthError)
     if (!code || !stateRaw) return back("error", "missing_code")
 
     let familyId: string
     let memberId: string
     let profileId: string
-    try {
-      const state = JSON.parse(atob(stateRaw))
-      familyId = state.familyId
-      memberId = state.memberId
-      profileId = state.profileId
-      if (!familyId || !memberId || !profileId) throw new Error("bad state")
-    } catch {
+    // El state debe llevar firma válida del servidor, no estar caducado y ser de Google. Cualquier otra cosa (incluido el formato antiguo sin firma) se rechaza.
+    const verified = await verifyOAuthState(stateRaw, "google", stateSecret)
+    if (!verified.ok || !verified.payload.memberId) {
+      console.warn("google_oauth_bad_state", verified.ok ? "no_member" : verified.reason)
       return back("error", "bad_state")
     }
+    familyId = verified.payload.familyId
+    memberId = verified.payload.memberId
+    profileId = verified.payload.profileId
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+
+    // Defensa en profundidad: el miembro debe ser la ficha de quien inició el flujo y de esa familia.
+    const { data: ownMember } = await admin
+      .from("family_members")
+      .select("id")
+      .eq("id", memberId)
+      .eq("family_id", familyId)
+      .eq("linked_profile_id", profileId)
+      .maybeSingle()
+    if (!ownMember) return back("error", "bad_state")
     const { data: clientId } = await admin.rpc("get_app_secret", { p_name: "google_oauth_client_id" })
     const { data: clientSecret } = await admin.rpc("get_app_secret", { p_name: "google_oauth_client_secret" })
     if (!clientId || !clientSecret) return back("error", "not_configured")

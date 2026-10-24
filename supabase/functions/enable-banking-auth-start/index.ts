@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { signOAuthState } from "../_shared/oauthState.ts"
 
 // Primer paso de "Conectar banco": el cliente llama con su sesión, aquí
 // se arma la URL de autorización de Enable Banking (con el family_id
@@ -97,7 +98,16 @@ Deno.serve(async (req) => {
 
     const jwt = await signEnableBankingJWT(applicationId, privateKey)
     // native: conexión iniciada desde la app nativa (ver enable-banking-auth-callback).
-    const state = btoa(JSON.stringify({ familyId: profile.family_id, profileId: userData.user.id, ...(native === true ? { app: true } : {}) }))
+    // state FIRMADO (HMAC-SHA256, caduca en 10 min, ligado a usuario y familia). Ver _shared/oauthState.ts.
+    let state: string
+    try {
+      state = await signOAuthState(
+        { purpose: "bank", familyId: profile.family_id, profileId: userData.user.id, ...(native === true ? { app: true } : {}) },
+        Deno.env.get("OAUTH_STATE_SECRET"),
+      )
+    } catch {
+      return json({ error: "not_configured" }, 500)
+    }
     const redirectUrl = `${SUPABASE_URL}/functions/v1/enable-banking-auth-callback`
     const validUntil = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString()
 

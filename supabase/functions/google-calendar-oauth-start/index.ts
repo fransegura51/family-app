@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { signOAuthState } from "../_shared/oauthState.ts"
 
 // Primer paso de "Conectar con Google": el cliente llama esto con su
 // sesión, aquí se arma la URL de consentimiento de Google (con el
@@ -62,7 +63,19 @@ Deno.serve(async (req) => {
 
     // native=1: conexión iniciada desde la app nativa (ver google-calendar-oauth-callback).
     const fromApp = new URL(req.url).searchParams.get("native") === "1"
-    const state = btoa(JSON.stringify({ familyId: profile.family_id, memberId: member.id, profileId: userData.user.id, ...(fromApp ? { app: true } : {}) }))
+    // state FIRMADO (HMAC-SHA256, caduca en 10 min, ligado a usuario, miembro y familia). Ver _shared/oauthState.ts.
+    let state: string
+    try {
+      state = await signOAuthState(
+        { purpose: "google", familyId: profile.family_id, memberId: member.id, profileId: userData.user.id, ...(fromApp ? { app: true } : {}) },
+        Deno.env.get("OAUTH_STATE_SECRET"),
+      )
+    } catch {
+      return new Response(JSON.stringify({ error: "not_configured" }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+      })
+    }
     const redirectUri = `${SUPABASE_URL}/functions/v1/google-calendar-oauth-callback`
 
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth")

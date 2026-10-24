@@ -21,6 +21,7 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { analyzeDocumentExpiry } from '@/services/documentExpiry'
 import { formatDate } from '@/domain/dateFormat'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { DocumentVisibilityPicker, FAMILY_AUDIENCE, audienceToIds, describeAudience, idsToAudience, type DocumentAudience } from '@/ui/DocumentVisibilityPicker'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -295,7 +296,7 @@ function MemberFolders({
               {isOpen && (
                 <div className="event-list store-folder-contents">
                   {memberDocs.map((doc) => (
-                    <DocumentRow key={doc.id} doc={doc} onDelete={() => onDelete(doc)} onReload={onReload} />
+                    <DocumentRow key={doc.id} doc={doc} members={members} onDelete={() => onDelete(doc)} onReload={onReload} />
                   ))}
                   {memberDocs.length === 0 && <p className="muted">Sin documentos todavía.</p>}
                 </div>
@@ -327,12 +328,16 @@ function MemberFolders({
 // una X, además un lápiz para poder editar el nombre del documento y
 // la fecha de vencimiento" — mismo patrón de iconos ya usado en la
 // ficha de contacto (📞✏️✕, ver ContactsScreen.tsx).
-function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelete: () => void; onReload: () => void }) {
+function DocumentRow({ doc, members, onDelete, onReload }: { doc: MemberDocument; members: FamilyMember[]; onDelete: () => void; onReload: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState(doc.title)
   const [expiryDraft, setExpiryDraft] = useState(doc.expiryDate ?? '')
+  const [audienceDraft, setAudienceDraft] = useState<DocumentAudience>(idsToAudience(doc.visibleToMemberIds))
   const [saving, setSaving] = useState(false)
+  // Un documento restringido solo lo cambia o borra quien lo subió (el servidor también lo exige).
+  const canManage = doc.visibleToMemberIds === null || doc.isMine
+  const audienceText = describeAudience(doc.visibleToMemberIds, members)
   const [shareError, setShareError] = useState<string | null>(null)
 
   // Petición real: "Documentos: compartir un documento como la foto del
@@ -356,7 +361,11 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
     if (!titleDraft.trim()) return
     setSaving(true)
     try {
-      await updateMemberDocument(doc, { title: titleDraft.trim(), expiryDate: expiryDraft || null })
+      await updateMemberDocument(doc, {
+        title: titleDraft.trim(),
+        expiryDate: expiryDraft || null,
+        ...(doc.isMine ? { visibleToMemberIds: audienceToIds(audienceDraft) } : {}),
+      })
       setEditing(false)
       onReload()
     } finally {
@@ -381,6 +390,7 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
           Fecha de vencimiento
           <DateField value={expiryDraft} onChange={setExpiryDraft} placeholder="Sin vencimiento" />
         </label>
+        {doc.isMine && <DocumentVisibilityPicker members={members} value={audienceDraft} onChange={setAudienceDraft} />}
         <div className="inline-fields">
           <button type="submit" disabled={saving || !titleDraft.trim()}>
             {saving ? 'Guardando…' : 'Guardar'}
@@ -400,6 +410,11 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
         <p className="muted" style={{ margin: '2px 0 0' }}>
           {doc.expiryDate ? `📅 Vence el ${formatDate(doc.expiryDate)}` : 'Sin fecha de vencimiento'}
         </p>
+        {audienceText && (
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }} data-help-id="documentos.candado">
+            {audienceText}
+          </p>
+        )}
       </div>
       {shareError && <p className="error">{shareError}</p>}
       <div className="task-card-actions" data-help-id="documentos.acciones">
@@ -420,10 +435,12 @@ function DocumentRow({ doc, onDelete, onReload }: { doc: MemberDocument; onDelet
         <button type="button" className="icon-button-share" onClick={handleShare} aria-label="Compartir documento">
           📤
         </button>
-        <button type="button" className="link-button" onClick={() => setEditing(true)} aria-label="Editar">
-          ✏️
-        </button>
-        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={onDelete} />
+        {canManage && (
+          <button type="button" className="link-button" onClick={() => setEditing(true)} aria-label="Editar">
+            ✏️
+          </button>
+        )}
+        {canManage && <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={onDelete} />}
       </div>
     </div>
   )
@@ -480,6 +497,7 @@ function AddDocumentForm({
   const [category, setCategory] = useState(defaultCategory)
   const [memberId, setMemberId] = useState(defaultMemberId)
   const [expiryDate, setExpiryDate] = useState('')
+  const [audience, setAudience] = useState<DocumentAudience>(FAMILY_AUDIENCE)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   // Petición real: "que Pepa detecte automáticamente la fecha de
@@ -518,11 +536,12 @@ function AddDocumentForm({
     setSaving(true)
     setError(null)
     try {
-      await uploadMemberDocument({ memberId: memberId || null, file, title, category, expiryDate: expiryDate || null })
+      await uploadMemberDocument({ memberId: memberId || null, file, title, category, expiryDate: expiryDate || null, visibleToMemberIds: audienceToIds(audience) })
       emitHelpEvent('documents.document-added') // para los tutoriales «Enséñame»: el documento YA está guardado
       setFile(null)
       setTitle('')
       setExpiryDate('')
+      setAudience(FAMILY_AUDIENCE)
       setScanStatus('idle')
       onAdded()
     } catch (err) {
@@ -583,9 +602,10 @@ function AddDocumentForm({
       </label>
       {expiryDate && (
         <p className="muted" data-help-id="documentos.aviso-vencimiento">
-          Se apuntará en el Calendario y avisará 30, 7 y 1 día antes de que venza.
+          {audience.mode === 'family' ? 'Se apuntará en el Calendario y avisará 30, 7 y 1 día antes de que venza.' : 'Se apuntará en tu Calendario (solo tú lo verás) y te avisará 30, 7 y 1 día antes de que venza.'}
         </p>
       )}
+      <DocumentVisibilityPicker members={members} value={audience} onChange={setAudience} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving} data-help-id="documentos.guardar">
         {saving ? 'Subiendo…' : 'Guardar'}

@@ -250,6 +250,14 @@ export const tutDocumentosSubirVencimiento: TourDef = {
       optional: true,
     },
     {
+      id: 'quien-ve',
+      text: '«¿Quién puede ver este documento?»: «Toda la familia», «Solo yo» o «Elegir personas» (marcas quién sí). Quien no figura no lo ve en ningún dispositivo, y el aviso de vencimiento de un documento restringido es solo para ti. Yo no cambio nada.',
+      target: 'documentos.quien-ve',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'guardar',
       text: 'Cuando lo tengas, pulsa «Guardar». Yo no lo pulso por ti.',
       target: 'documentos.guardar',

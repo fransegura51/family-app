@@ -625,6 +625,11 @@ export interface MemberDocument {
   // recordatorios de renovación (calendarEventId lo enlaza).
   expiryDate: string | null
   calendarEventId: string | null
+  // Quién la subió y quién puede verla (migración 0317): null = toda la familia; lista = solo esas fichas y quien la subió ([] = solo quien la subió).
+  uploadedBy: string | null
+  visibleToMemberIds: string[] | null
+  // Es mía (la subí yo): solo quien sube un documento restringido puede cambiarlo o borrarlo.
+  isMine: boolean
 }
 
 export interface CalendarEvent {

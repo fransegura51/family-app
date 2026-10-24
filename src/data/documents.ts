@@ -12,6 +12,8 @@ async function syncExpiryEvent(input: {
   title: string
   memberId: string | null
   expiryDate: string | null
+  // Un documento restringido no debe filtrar su título a la familia por el evento de vencimiento: ese evento es solo de quien lo sube.
+  restricted: boolean
 }): Promise<string | null> {
   if (!input.expiryDate) {
     if (input.existingEventId) await deleteEvent(input.existingEventId)
@@ -26,6 +28,7 @@ async function syncExpiryEvent(input: {
     recurrenceRule: null,
     reminders: EXPIRY_REMINDERS,
     memberIds: input.memberId ? [input.memberId] : [],
+    visibility: input.restricted ? ('private' as const) : ('shared' as const),
   }
   if (input.existingEventId) {
     await updateEvent(input.existingEventId, eventInput)
@@ -47,12 +50,17 @@ async function currentFamilyId(): Promise<string> {
 }
 
 export async function listMemberDocuments(): Promise<MemberDocument[]> {
+  const { data: userResult } = await supabase.auth.getUser()
+  const myId = userResult.user?.id ?? null
   const { data, error } = await supabase
     .from('member_documents')
-    .select('id, family_id, member_id, storage_path, title, category, expiry_date, calendar_event_id')
+    .select('id, family_id, member_id, storage_path, title, category, expiry_date, calendar_event_id, uploaded_by, visible_to_member_ids')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data.map((r) => ({
+    uploadedBy: r.uploaded_by,
+    visibleToMemberIds: r.visible_to_member_ids,
+    isMine: r.uploaded_by === null || r.uploaded_by === myId,
     id: r.id,
     familyId: r.family_id,
     memberId: r.member_id,
@@ -70,6 +78,8 @@ export async function uploadMemberDocument(input: {
   title: string
   category: string
   expiryDate?: string | null
+  // null o sin indicar = toda la familia; lista = solo esas fichas (y quien lo sube); [] = solo quien lo sube.
+  visibleToMemberIds?: string[] | null
 }): Promise<void> {
   const familyId = await currentFamilyId()
   const file = await compressImageFile(input.file)
@@ -84,9 +94,11 @@ export async function uploadMemberDocument(input: {
     title: input.title,
     memberId: input.memberId,
     expiryDate: input.expiryDate ?? null,
+    restricted: !!input.visibleToMemberIds,
   })
 
   const { error } = await supabase.from('member_documents').insert({
+    visible_to_member_ids: input.visibleToMemberIds ?? null,
     family_id: familyId,
     member_id: input.memberId,
     storage_path: path,
@@ -103,16 +115,22 @@ export async function uploadMemberDocument(input: {
 // haga falta (con el título nuevo si ha cambiado), sin tocar el
 // archivo. Petición real: "un lápiz para poder editar el nombre del
 // documento y la fecha de vencimiento".
-export async function updateMemberDocument(doc: MemberDocument, input: { title: string; expiryDate: string | null }): Promise<void> {
+export async function updateMemberDocument(
+  doc: MemberDocument,
+  input: { title: string; expiryDate: string | null; visibleToMemberIds?: string[] | null },
+): Promise<void> {
+  // Sin indicar, la visibilidad queda como estaba.
+  const visible = input.visibleToMemberIds === undefined ? doc.visibleToMemberIds : input.visibleToMemberIds
   const calendarEventId = await syncExpiryEvent({
     existingEventId: doc.calendarEventId,
     title: input.title,
     memberId: doc.memberId,
     expiryDate: input.expiryDate,
+    restricted: !!visible,
   })
   const { error } = await supabase
     .from('member_documents')
-    .update({ title: input.title, expiry_date: input.expiryDate, calendar_event_id: calendarEventId })
+    .update({ title: input.title, expiry_date: input.expiryDate, calendar_event_id: calendarEventId, visible_to_member_ids: visible })
     .eq('id', doc.id)
   if (error) throw error
 }

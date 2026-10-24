@@ -1,6 +1,7 @@
 import type { AdminAreaId } from '@/admin/adminAreas'
 import type { AdminTabId, ModerationSection } from '@/domain/communityAdmin'
 import { normalizeHelpText } from '@/admin/features/featureHelp'
+import { SUPPORT_ENABLED } from '@/support/flags'
 
 // Registro de TODAS las herramientas administrativas del Centro, para el buscador global: cada una dice en qué área está, en qué bloque plegable (grupo) y, si es de Comunidad,
 // en qué pestaña (y sección de Moderación). Al elegir un resultado se abre el área, se despliega el bloque y se trae a la vista.
@@ -24,7 +25,8 @@ export const ADMIN_GROUP_IDS: Record<Exclude<AdminAreaId, 'funcionalidades' | 'c
   resumen: ['areas', 'funcionalidades', 'vivo', 'invitar'],
   usuarios: ['invitar-amigos', 'codigos', 'actividad', 'familias'],
   ayuda: ['cobertura', 'modulos', 'fichas', 'tutoriales', 'rutas', 'valoraciones', 'prioridades'],
-  sistema: ['errores', 'automatizaciones', 'vistas'],
+  // «soporte» solo se pinta con el Soporte técnico encendido (src/support/flags.ts); el identificador del bloque existe siempre.
+  sistema: ['errores', 'automatizaciones', 'soporte', 'vistas'],
 }
 
 export const ADMIN_TOOLS: AdminTool[] = [
@@ -69,6 +71,9 @@ export const ADMIN_TOOLS: AdminTool[] = [
   { id: 'sistema-diagnostico', label: 'Diagnóstico temporal de sincronización', area: 'sistema', group: 'errores', keywords: 'diagnostico sincronizacion prefs-diag preferencias temporal' },
   { id: 'sistema-amazon', label: 'Automatizaciones: Amazon, Mercadona y correo de eventos (webhooks)', area: 'sistema', group: 'automatizaciones', keywords: 'automatizaciones webhook amazon mercadona tickets eventos correo pipedream' },
   { id: 'sistema-token', label: 'Regenerar token de automatizaciones', area: 'sistema', group: 'automatizaciones', keywords: 'token regenerar copiar url secreto' },
+  ...(SUPPORT_ENABLED
+    ? [{ id: 'sistema-soporte', label: 'Soporte técnico: incidencias de las personas usuarias', area: 'sistema' as const, group: 'soporte', keywords: 'soporte tecnico incidencias ayuda tickets responder asignar notas internas estadisticas' }]
+    : []),
   { id: 'sistema-sugerencias', label: 'Sugerencias de todas las familias', area: 'sistema', group: 'vistas', keywords: 'sugerencias buzon ideas familias' },
   { id: 'sistema-resenas', label: 'Reseñas y opiniones de todas las familias', area: 'sistema', group: 'vistas', keywords: 'resenas opiniones valoraciones estrellas' },
 ]

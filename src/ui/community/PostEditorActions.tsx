@@ -27,7 +27,7 @@ export function PostEditorActions({
         {mode === 'create' ? CREATE_ACTION_LABELS[0] : EDIT_ACTION_LABELS[0]}
       </button>
       {mode === 'create' && (
-        <button type="button" className="ce-btn ce-btn-secondary" disabled={busy} onClick={onSaveDraft}>
+        <button type="button" className="ce-btn ce-btn-secondary" disabled={busy} data-help-id="comunidad.editor-save-draft" onClick={onSaveDraft}>
           {CREATE_ACTION_LABELS[1]}
         </button>
       )}

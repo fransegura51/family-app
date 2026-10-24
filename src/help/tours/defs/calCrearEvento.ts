@@ -6,6 +6,9 @@ import type { TourDef } from '@/help/tours/types'
 // la familia») se omiten solos. Orden = orden de la pantalla, para no saltar arriba y abajo.
 export const calCrearEvento: TourDef = {
   id: 'cal-crear-evento',
+  module: 'calendario',
+  summary: 'Crear un evento con fecha, hora, personas, repetición y recordatorio.',
+  group: 'Eventos y tareas',
   version: 3,
   title: 'Crear un evento en el calendario',
   cardId: 'cal-crear-evento',

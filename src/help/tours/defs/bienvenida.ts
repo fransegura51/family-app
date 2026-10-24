@@ -4,6 +4,9 @@ import type { TourDef } from '@/help/tours/types'
 // ningún dato se crea ni se guarda. Los pasos de secciones a las que la cuenta no tiene acceso se omiten solos (`optional`).
 export const bienvenida: TourDef = {
   id: 'bienvenida',
+  module: 'inicio',
+  summary: 'Un repaso de 1 o 2 minutos por PEPA: Inicio, el menú, Calendario, Compras y la Ayuda.',
+  group: 'Primeros pasos',
   version: 1,
   title: 'Recorrido de bienvenida',
   cardId: 'ayu-usar',

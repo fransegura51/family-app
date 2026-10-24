@@ -59,7 +59,7 @@ export function AccessInvitePanel({ member, inviterName, autoStart = false, onCl
   if (!invite) {
     return (
       <div className="member-card-actions">
-        <button type="button" className="link-button" onClick={() => generate(false)} disabled={busy}>
+        <button type="button" className="link-button" onClick={() => generate(false)} disabled={busy} data-help-id="family.give-access">
           {busy ? 'Generando…' : '🔑 Dar acceso a PEPA'}
         </button>
         {error && <p className="error">{error}</p>}
@@ -73,7 +73,7 @@ export function AccessInvitePanel({ member, inviterName, autoStart = false, onCl
   }
 
   return (
-    <div className="card" style={{ marginTop: 8, padding: 12 }}>
+    <div className="card" style={{ marginTop: 8, padding: 12 }} data-help-id="family.access-code">
       <p className="muted" style={{ margin: 0 }}>
         Invitación para que {member.name} cree su cuenta en PEPA:
       </p>

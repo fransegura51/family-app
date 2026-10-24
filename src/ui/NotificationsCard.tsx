@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { disablePushNotifications, enablePushNotifications, reportPushProblem, sendTestPush } from '@/data/push'
 import { errorMessage } from '@/domain/errorMessage'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { StepsList } from '@/ui/notificationHelp'
 import { getPermissionState, hasPushSubscription, isNotificationsDisabledByUser, type NotificationPermissionState } from '@/services/notifications'
 
@@ -48,7 +49,7 @@ export function NotificationsCard() {
   const active = permission === 'granted' && !disabled && subscribed === true
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="notifications.device-card">
       <h2>🔔 Avisos en este móvil</h2>
 
       {permission === 'unsupported' && (
@@ -88,15 +89,17 @@ export function NotificationsCard() {
           <div className="inline-fields">
             {active ? (
               <>
-                <button type="button" onClick={() => run(disablePushNotifications)} disabled={busy}>
+                <button type="button" onClick={() => run(disablePushNotifications)} disabled={busy} data-help-id="notifications.disable">
                   Desactivar avisos
                 </button>
                 <button
                   type="button"
                   className="link-button"
+                  data-help-id="notifications.test"
                   onClick={() =>
                     run(async () => {
                       await sendTestPush()
+                      emitHelpEvent('notifications.test-sent') // para los tutoriales «Enséñame»: el aviso de prueba YA se ha enviado
                       setNotice('Aviso de prueba enviado. Debería llegarte en unos segundos.')
                     })
                   }
@@ -108,10 +111,12 @@ export function NotificationsCard() {
             ) : (
               <button
                 type="button"
+                data-help-id="notifications.enable"
                 onClick={() =>
                   run(async () => {
                     const result = await enablePushNotifications()
                     if (result !== 'granted') void reportPushProblem(`activar terminó con permiso=${result}`)
+                    else emitHelpEvent('notifications.push-enabled') // para los tutoriales «Enséñame»: los avisos de este móvil YA están activados
                     setBlockedByBrowser(result === 'denied' && getPermissionState() !== 'denied')
                     if (result === 'default') {
                       setNotice('No has contestado a la pregunta del móvil. Toca otra vez el botón y elige "Permitir".')

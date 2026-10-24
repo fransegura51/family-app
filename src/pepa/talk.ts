@@ -17,6 +17,7 @@ import { splitEntries } from '@/domain/quickCapture'
 import { expandEntries, shouldAskAi } from '@/domain/productSplit'
 import { isoDate, kitchenDateLabel } from '@/domain/kitchenQuery'
 import { routeTalk } from '@/domain/talkRoute'
+import { detectCalendarEntryKind } from '@/domain/calendarVoiceParser'
 import { cleanShoppingText, extractTrailingStore, prepareCalendarFromText } from '@/domain/talkParse'
 import { extractChain } from '@/domain/supermarketChains'
 import type { ScheduleEvent } from '@/domain/calendar'
@@ -27,8 +28,13 @@ import type { ActionContext, ActionProposal } from '@/pepa/actions/types'
 import type { Recipe } from '@/domain/types'
 import type { RecipeRequest } from '@/pepa/recentContext'
 import type { CookIdeaData } from '@/domain/cookIdeas'
+import { answerHelpRequest, startsLikeHelpRequest, type TalkHelpAnswer, type TalkHelpApi } from '@/help/talkHelp'
+import type { HelpGo } from '@/help/types'
 
 export type TalkOutcome =
+  // «Necesito ayuda con compras»: Pepa explica por voz lo que dice la Ayuda y lleva a esa pantalla (help/talkHelp.ts).
+  // Con `tourId`, además se arranca el recorrido guiado «Enséñame» / «Conoce esta sección» (marca en pantalla dónde pulsar y cambia de pantalla).
+  | { kind: 'help'; text: string; go: HelpGo; title: string; tourId?: string }
   // keepPending: la respuesta aclara algo sobre lo que hay abierto (p. ej. un importe dudoso ante la tarjeta de
   // presupuesto) y NO lo cierra.
   | { kind: 'answer'; text: string; keepPending?: boolean }
@@ -80,6 +86,8 @@ export interface TalkDeps {
   classifyWithAi(text: string, today: string): Promise<AiQuestion>
   answerFromAi(question: AiQuestion, text: string): Promise<string | null>
   splitWithAi(text: string): Promise<string[]>
+  // La Ayuda de PEPA («necesito ayuda con compras»): sus permisos y su buscador. null/ausente = sin Ayuda disponible; la frase sigue el camino de siempre.
+  help?(): TalkHelpApi | null
   // Preferencia «hacer directamente, sin tarjeta de confirmación» (ver services/pepaPreferences.ts y pepa/autoConfirm.ts). Si falta, siempre tarjeta.
   autoConfirm?(): boolean
 }
@@ -161,15 +169,29 @@ async function fetchCalendarEventsSafely(deps: TalkDeps): Promise<ScheduleEvent[
   }
 }
 
+// «Tarea sacar la basura» es la tarea «Sacar la basura», no una llamada literalmente «Tarea sacar la basura».
+// El analizador de fechas se come «tengo» de «tengo que llamar al médico» y deja «Que llamar al médico»: ese «Que» también se quita.
+function stripTaskMarker(title: string, text: string): string {
+  let stripped = title.replace(/^(tarea:?\s+|tengo que\s+)/i, '').trim()
+  if (/^\s*tengo que\b/i.test(text)) stripped = stripped.replace(/^que\s+/i, '').trim()
+  return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : title
+}
+
 async function calendarProposal(text: string, deps: TalkDeps, today: Date): Promise<TalkOutcome> {
   const members = await deps.members()
-  const prepared = prepareCalendarFromText(text, today, members)
+  // Tarea o evento: se decide por lo dicho («tarea…», «tengo que…» = tarea). Si lleva marcas de las dos cosas no se adivina: queda como evento y se avisa en la tarjeta, que deja elegir.
+  const entryKind = detectCalendarEntryKind(text)
+  const isTask = entryKind === 'task'
+  const prepared = prepareCalendarFromText(text, today, members, { keepMemberInTitle: isTask })
   const calendarEvents = await fetchCalendarEventsSafely(deps)
   const context = baseContext(today, members, calendarEvents)
+  const title = isTask ? stripTaskMarker(prepared.title, text) : prepared.title
+  if (entryKind === 'ambiguous') prepared.notes.push('No sé si es una tarea o un evento: elige arriba «Guardar como».')
   const result = proposeAction(
     'calendar.create',
     {
-      title: prepared.title,
+      kind: isTask ? 'task' : 'event',
+      title,
       date: prepared.date,
       time: prepared.time,
       endTime: prepared.endTime,
@@ -187,7 +209,9 @@ async function calendarProposal(text: string, deps: TalkDeps, today: Date): Prom
   return {
     kind: 'proposal',
     proposal: result.proposal,
-    text: `Voy a apuntar en el calendario «${prepared.title}» ${kitchenDateLabel(prepared.date, today)}${when}${who}. Revísalo en la tarjeta y pulsa Guardar.${notes}`,
+    text: isTask
+      ? `Voy a apuntar la tarea «${title}» ${kitchenDateLabel(prepared.date, today)}${who}. Revísalo en la tarjeta y pulsa Guardar tarea.${notes}`
+      : `Voy a apuntar en el calendario «${prepared.title}» ${kitchenDateLabel(prepared.date, today)}${when}${who}. Revísalo en la tarjeta y pulsa Guardar.${notes}`,
   }
 }
 
@@ -216,8 +240,19 @@ export async function runTalk(text: string, deps: TalkDeps): Promise<TalkOutcome
   return outcome
 }
 
+function helpOutcome(answer: TalkHelpAnswer): TalkOutcome {
+  return answer.kind === 'go' ? { kind: 'help', text: answer.text, go: answer.go, title: answer.title, tourId: answer.tourId } : { kind: 'answer', text: answer.text }
+}
+
 async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> {
   const today = deps.today()
+
+  // Pedir ayuda desde la primera palabra gana a todo lo demás (ver startsLikeHelpRequest).
+  const helpApi = deps.help?.() ?? null
+  if (helpApi && startsLikeHelpRequest(text)) {
+    const answer = answerHelpRequest(text, helpApi)
+    if (answer) return helpOutcome(answer)
+  }
 
   // Presupuestos por voz (preparar, con confirmación) antes que las consultas: son órdenes, no preguntas.
   if (deps.financeAction) {
@@ -241,6 +276,12 @@ async function runTalkRules(text: string, deps: TalkDeps): Promise<TalkOutcome> 
   if (deps.location) {
     const location = await deps.location(text)
     if (location) return location
+  }
+
+  // «…necesito ayuda con compras» dicho en medio de la frase: se prueba después de las consultas de siempre.
+  if (helpApi) {
+    const answer = answerHelpRequest(text, helpApi)
+    if (answer) return helpOutcome(answer)
   }
 
   // Preguntas sencillas sin datos de la familia: la hora, el día de hoy, cuántos días faltan para Navidad… (domain/generalQuestions.ts).

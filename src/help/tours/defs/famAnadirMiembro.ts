@@ -6,6 +6,9 @@ import type { TourDef } from '@/help/tours/types'
 // Lo que se dice de cada tipo está comprobado contra el código de Familia (qué hace cada rol y qué secciones se pueden limitar); no se inventa nada.
 export const famAnadirMiembro: TourDef = {
   id: 'fam-anadir-miembro',
+  module: 'familia',
+  summary: 'Crear la ficha de una persona de la familia (sin enviar ninguna invitación).',
+  group: 'Miembros',
   version: 2,
   title: 'Añadir un miembro a la familia',
   cardId: 'fam-anadir-miembro',

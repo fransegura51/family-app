@@ -24,7 +24,7 @@ export function distinctDishes(line: ShoppingPlanLine): string[] {
   return [...new Set(line.sources.map((s) => s.dishName))]
 }
 
-export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: ReactNode; lines: ShoppingPlanLine[]; onClose: () => void; note?: ReactNode }) {
+export function ShoppingLinesSheet({ intro, lines, onClose, note, onAdded }: { intro: ReactNode; lines: ShoppingPlanLine[]; onClose: () => void; note?: ReactNode; onAdded?: (count: number) => void }) {
   const uid = useId()
   const dialogRef = useDialogFocus<HTMLDivElement>()
   const [load, setLoad] = useState<LoadState>({ status: 'loading' })
@@ -107,6 +107,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
         ),
       )
       setAdded(chosen.length)
+      onAdded?.(chosen.length)
       showToast(`Añadidos ${chosen.length} a Compras`)
     } catch (e) {
       setError(errorMessage(e, 'No se han podido añadir los productos.') + ' No se ha añadido nada a Compras; puedes volver a intentarlo. Si tu cuenta no tiene acceso a Compras, pídeselo a quien administra tu familia.')
@@ -206,7 +207,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
   const titleId = `${uid}-title`
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()} onKeyDown={(e) => e.key === 'Escape' && !saving && onClose()}>
-      <div ref={dialogRef} className="modal-sheet community-menu-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-sheet community-menu-sheet" data-help-id="lineas-compra.hoja" role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(e) => e.stopPropagation()}>
         <div className="community-menu-sheet-head">
           <h2 id={titleId}>🛒 Añadir a Compras</h2>
           <button type="button" className="modal-close" onClick={onClose} disabled={saving} aria-label="Cerrar">
@@ -254,7 +255,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                     </p>
                   )}
                   {rows.length > 0 && (
-                    <div className="community-menu-selectall">
+                    <div className="community-menu-selectall" data-help-id="lineas-compra.marcar">
                       <button type="button" className="link-button" onClick={() => setChecked(new Set(rows.map((r) => r.line.key)))}>
                         Marcar todo
                       </button>
@@ -267,7 +268,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                   {recipeRows.length > 0 && (
                     <>
                       {manualRows.length > 0 && <h3 className="community-menu-shop-heading">Ingredientes de recetas</h3>}
-                      <ul className="community-menu-shop-list community-menu-shop-compact">{recipeRows.map(renderRecipeRow)}</ul>
+                      <ul className="community-menu-shop-list community-menu-shop-compact" data-help-id="lineas-compra.lista">{recipeRows.map(renderRecipeRow)}</ul>
                     </>
                   )}
                   {manualRows.length > 0 && (
@@ -286,7 +287,7 @@ export function ShoppingLinesSheet({ intro, lines, onClose, note }: { intro: Rea
                 </p>
               )}
               <div className="community-menu-sheet-actions community-menu-sticky">
-                <button type="button" className="primary" onClick={() => void confirm()} disabled={saving || selectedCount === 0 || state.status !== 'ok'}>
+                <button type="button" className="primary" data-help-id="lineas-compra.confirmar" onClick={() => void confirm()} disabled={saving || selectedCount === 0 || state.status !== 'ok'}>
                   {saving ? 'Añadiendo…' : `Añadir ${selectedCount} a Compras`}
                 </button>
                 <button type="button" className="link-button" onClick={onClose} disabled={saving}>

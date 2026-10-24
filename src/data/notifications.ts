@@ -83,6 +83,12 @@ export async function markAllNotificationsRead(): Promise<void> {
   if (error) throw error
 }
 
+// «Marcar todas como no leídas»: deja todos los avisos pendientes para recordarlos (solo los propios, por RLS). Pareja de markAllNotificationsRead.
+export async function markAllNotificationsUnread(): Promise<void> {
+  const { error } = await supabase.from('user_notifications').update({ read_at: null }).not('read_at', 'is', null)
+  if (error) throw error
+}
+
 // Borrar un aviso NO borra la tarea, el pago, el evento o la publicación a la que apuntaba.
 export async function deleteNotifications(ids: string[]): Promise<void> {
   if (ids.length === 0) return

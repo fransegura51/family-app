@@ -4,6 +4,9 @@ import type { TourDef } from '@/help/tours/types'
 // propio; el resto son opciones que se pueden saltar. Una tarea nunca lleva hora ni recordatorio. Nunca guarda por la persona.
 export const calCrearTarea: TourDef = {
   id: 'cal-crear-tarea',
+  module: 'calendario',
+  summary: 'Crear una tarea para una persona o para toda la familia, con puntos si quieres.',
+  group: 'Eventos y tareas',
   version: 1,
   title: 'Crear una tarea',
   cardId: 'cal-crear-tarea',

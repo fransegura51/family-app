@@ -8,6 +8,7 @@ import type { Contact, FamilyMember } from '@/domain/types'
 import cumpleanosHeaderImg from '@/assets/cumpleanos/cumpleanos-header.jpg'
 import { errorMessage } from '@/domain/errorMessage'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 interface UpcomingItem extends UpcomingBirthday {
   name: string
@@ -58,6 +59,7 @@ export function BirthdaysScreen() {
     try {
       if (item.member) await setFamilyMemberBirthdayFavorite(item.member.id, !item.favorite)
       else if (item.contact) await setContactBirthdayFavorite(item.contact.id, !item.favorite)
+      emitHelpEvent('birthdays.favorite-saved') // para los tutoriales «Enséñame»: el cambio de favorito YA está guardado
       await reload()
     } catch (e) {
       setError(errorMessage(e, 'No se pudo actualizar'))
@@ -68,6 +70,7 @@ export function BirthdaysScreen() {
     try {
       if (item.member) await updateFamilyMemberBirthDate(item.member.id, newDate)
       else if (item.contact) await updateContactBirthDate(item.contact.id, newDate)
+      if (newDate) emitHelpEvent('birthdays.date-saved') // para los tutoriales «Enséñame»: la fecha nueva YA está guardada (sin fecha sería quitar el cumpleaños)
       setEditingId(null)
       await reload()
     } catch (e) {
@@ -103,7 +106,7 @@ export function BirthdaysScreen() {
       <SectionBreadcrumb subsection="Inicio" />
       {error && <p className="error">{error}</p>}
 
-      <div className="filter-row">
+      <div className="filter-row" data-help-id="cumpleanos.filtros">
         {TABS.map((t) => (
           <button key={t} type="button" className={'chip' + (tab === t ? ' chip-active' : '')} onClick={() => setTab(t)}>
             {t}
@@ -111,7 +114,7 @@ export function BirthdaysScreen() {
         ))}
       </div>
 
-      <div className="event-list">
+      <div className="event-list" data-help-id="cumpleanos.lista">
         {visible.map((b) => {
           const label = b.daysUntil === 0 ? '¡Hoy!' : b.daysUntil === 1 ? 'Mañana' : `En ${b.daysUntil} días`
           const isEditing = editingId === b.memberId
@@ -144,11 +147,11 @@ export function BirthdaysScreen() {
                 )}
               </div>
               {!isEditing && (
-                <div className="task-card-actions">
-                  <button type="button" className="link-button" onClick={() => handleToggleFavorite(b)} aria-label="Favorito">
+                <div className="task-card-actions" data-help-id="cumpleanos.acciones">
+                  <button type="button" className="link-button" data-help-id="cumpleanos.favorito" onClick={() => handleToggleFavorite(b)} aria-label="Favorito">
                     {b.favorite ? '⭐' : '☆'}
                   </button>
-                  <button type="button" className="link-button" onClick={() => setEditingId(b.memberId)} aria-label="Editar">
+                  <button type="button" className="link-button" data-help-id="cumpleanos.editar" onClick={() => setEditingId(b.memberId)} aria-label="Editar">
                     ✏️
                   </button>
                   <button type="button" className="link-button" onClick={() => handleRemove(b)} aria-label="Quitar">
@@ -183,9 +186,9 @@ function BirthdayDateEditor({
 }) {
   const [value, setValue] = useState(initialValue)
   return (
-    <div className="inline-form-row">
+    <div className="inline-form-row" data-help-id="cumpleanos.fecha">
       <DateField value={value} onChange={setValue} placeholder="Sin cumpleaños" />
-      <button type="button" onClick={() => onSave(value)}>
+      <button type="button" data-help-id="cumpleanos.fecha-guardar" onClick={() => onSave(value)}>
         Guardar
       </button>
       <button type="button" className="link-button" onClick={onCancel}>

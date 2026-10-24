@@ -29,7 +29,7 @@ export function BackgroundLocationCard() {
 
   if (!applicable || granted !== false) return null
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="config.background-location">
       <h2>📍 Falta un permiso para los avisos con la app cerrada</h2>
       <p className="muted">
         Para que los avisos de llegada y salida lleguen con PEPA cerrada, la ubicación tiene que estar en «Permitir todo el tiempo». Ahora mismo, si Android
@@ -41,7 +41,7 @@ export function BackgroundLocationCard() {
         <li>Elige «Permitir todo el tiempo» (y deja activada «Usar ubicación precisa»).</li>
         <li>Vuelve a PEPA: este aviso desaparece solo.</li>
       </ol>
-      <button type="button" className="btn" onClick={() => void import('@/services/nativeLocation').then((m) => m.openLocationSettings()).catch(() => undefined)}>
+      <button type="button" className="btn" data-help-id="config.background-location-open" onClick={() => void import('@/services/nativeLocation').then((m) => m.openLocationSettings()).catch(() => undefined)}>
         Abrir ajustes de PEPA
       </button>
     </div>

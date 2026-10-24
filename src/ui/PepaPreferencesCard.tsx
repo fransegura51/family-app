@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { getAutoConfirm, setAutoConfirm } from '@/services/pepaPreferences'
 
 // Preferencias de Pepa para ESTE aparato. Por ahora una: si lo que Pepa prepara (compra, calendario, menú, lugares…) se hace directamente o se enseña
@@ -9,13 +10,14 @@ export function PepaPreferencesCard() {
   return (
     <div className="card member-form">
       <h2>🗣️ Pepa: tarjeta de confirmación</h2>
-      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }} data-help-id="pepa.auto-confirm">
         <input
           type="checkbox"
           checked={auto}
           onChange={(e) => {
             setAutoConfirm(e.target.checked)
             setAuto(e.target.checked)
+            emitHelpEvent('pepa.auto-confirm-changed') // para los tutoriales «Enséñame»: la preferencia YA está guardada
           }}
           style={{ marginTop: 4 }}
         />

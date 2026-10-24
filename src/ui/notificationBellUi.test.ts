@@ -51,7 +51,7 @@ describe('el panel', () => {
     expect(css).toMatch(/@media \(min-width: 640px\)\s*\{\s*\.notification-panel\s*\{[^}]*max-width:\s*420px/)
   })
 
-  it('abrir el panel NO marca nada de golpe: un aviso se da por leído al abrirlo o tras 3 s a la vista; no hay «marcar todas» y cada leído tiene «Marcar como no leída»', () => {
+  it('abrir el panel NO marca nada de golpe: un aviso se da por leído al abrirlo o tras 3 s a la vista; «Marcar todas…» solo actúa al pulsarlo y cada leído tiene «Marcar como no leída»', () => {
     const loadEffect = panel.slice(panel.indexOf('useEffect(() => {'), panel.indexOf('// El contador de la campana'))
     expect(loadEffect).not.toContain('markNotificationsRead')
     expect(loadEffect).not.toContain('markAllNotificationsRead')
@@ -60,8 +60,11 @@ describe('el panel', () => {
     expect(panel).toContain('IntersectionObserver')
     expect(panel).toContain('threshold: 0.6')
     expect(panel).toContain('!tabVisible')
-    expect(panel).not.toContain('Marcar todas como leídas')
-    expect(panel).not.toContain('markAllNotificationsRead')
+    // 24/10/2026: además de la lectura automática hay «Marcar todas como leídas / no leídas», pero solo al pulsarlos (nunca al abrir el panel; ver el efecto de carga arriba).
+    expect(panel).toContain('Marcar todas como leídas')
+    expect(panel).toContain('Marcar todas como no leídas')
+    expect(panel).toContain('markAll(true)')
+    expect(panel).toContain('markAll(false)')
     expect(panel).toContain('Marcar como no leída')
     expect(panel).toContain('markNotificationUnread(n.id)')
     expect(DWELL_READ_MS).toBe(3000)

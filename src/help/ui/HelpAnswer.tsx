@@ -9,6 +9,8 @@ import { helpSpeechSupported } from '@/help/voice'
 import { HELP_FEEDBACK_ENABLED } from '@/help/feedback'
 import { HelpFeedback } from '@/help/ui/HelpFeedback'
 import { HelpVideo } from '@/help/ui/HelpVideo'
+import { explainersForCard } from '@/help/ui/HelpAreas'
+import { TOURS } from '@/help/tours/registry'
 import { useHelp } from '@/help/ui/helpContext'
 import '@/help/ui/help.css'
 
@@ -57,6 +59,10 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
   // Lo que se lee en voz alta es lo que ve cualquier persona: la limitación solo si afecta al uso (nunca el estado interno).
   const publicLimit = card.state === 'parcial' && card.limits && !card.limitsInternal ? card.limits : null
   const spoken = publicLimit ? `${card.quick} Ten en cuenta: ${publicLimit}` : card.quick
+  // «¿Cómo funciona?»: explicaciones de comportamiento (área «Cómo funciona PEPA») que citan esta ficha y que esta persona puede ver.
+  const explainers = restricted ? [] : explainersForCard(card.id).filter((e) => help.canExplain(e.id))
+  // Otros tutoriales «Enséñame» que cuelgan de esta ficha (además del suyo propio): solo si esta persona puede hacerlos.
+  const moreTours = restricted || !actions ? [] : TOURS.filter((t) => t.kind !== 'visit' && t.cardId === card.id && t.id !== card.tour && help.canDoTour(t.id)).slice(0, 3)
 
   return (
     <article className={`help-answer${compact ? ' help-answer-compact' : ''}`} aria-label={card.title}>
@@ -113,6 +119,17 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
             {card.tour && getTourProgress(card.tour)?.status === 'completed' ? ' ✓' : ''}
           </button>
         )}
+        {moreTours.map((t) => (
+          <button key={t.id} type="button" className="help-btn" onClick={() => help.startTourById(t.id)}>
+            Enséñame: {t.title}
+            {getTourProgress(t.id)?.status === 'completed' ? ' ✓' : ''}
+          </button>
+        ))}
+        {explainers.map((e) => (
+          <button key={e.id} type="button" className="help-btn" onClick={() => help.openExplainer(e.id)}>
+            ¿Cómo funciona?
+          </button>
+        ))}
       </div>
       {HELP_FEEDBACK_ENABLED && !restricted && <HelpFeedback cardId={card.id} />}
     </article>

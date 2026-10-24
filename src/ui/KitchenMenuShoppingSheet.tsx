@@ -3,6 +3,7 @@ import { listFamilyMembers } from '@/data/family'
 import { defaultDiners, kitchenMenuShopping, type KitchenShoppingScope } from '@/domain/kitchenMenuShopping'
 import type { MenuEntry, Recipe } from '@/domain/types'
 import { ShoppingLinesSheet } from '@/ui/ShoppingLinesSheet'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const DINER_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12]
 
@@ -40,9 +41,10 @@ export function KitchenMenuShoppingSheet({
     <ShoppingLinesSheet
       lines={lines}
       onClose={onClose}
+      onAdded={() => emitHelpEvent('cocina.menu-added-to-shopping')}
       intro={<>{title}. Revisa qué quieres añadir: no se guarda nada hasta que lo confirmes. Los platos con receta aportan sus ingredientes; los escritos a mano se añaden tal cual, como un producto.</>}
       note={
-        <label className="community-menu-diners">
+        <label className="community-menu-diners" data-help-id="cocina.compras-personas">
           Personas
           <select value={diners} onChange={(e) => setDiners(Number(e.target.value))}>
             {options.map((n) => (

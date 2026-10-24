@@ -1,0 +1,81 @@
+import type { TourDef } from '@/help/tours/types'
+
+// Calendario → «Conoce esta sección». Visita SOLO informativa: señala los controles reales de la pantalla (marcas `data-help-id` en CalendarScreen.tsx) y los explica. Ningún paso guarda,
+// crea ni borra nada, y ninguno espera una acción de la persona. Lo que depende de la vista que esté abierta (mes, filtro, día, apuntes) es `optional`: si ese control no está en pantalla
+// (otra vista, el calendario está vacío), el paso se omite solo. El primer paso (el menú ☰) se ve siempre, incluso con el calendario vacío.
+export const visitaCalendario: TourDef = {
+  id: 'visita-calendario',
+  kind: 'visit',
+  module: 'calendario',
+  version: 1,
+  title: 'Conoce el Calendario',
+  summary: 'Las vistas, el filtro por persona, el día elegido y los botones para crear eventos y tareas.',
+  cardId: 'cal-vistas',
+  durationSec: 110,
+  startPath: '/calendario',
+  steps: [
+    {
+      id: 'menu',
+      text: 'Este es el Calendario de toda la familia. Con «☰ Menú» cambias de vista: Inicio, Mes, Semana, 3 días, Día, Familiar, Agenda y Personal (tus notas privadas).',
+      target: 'calendar.menu',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'filtro',
+      text: '«Filtrar por» deja ver solo lo de una o varias personas. Con «Todos» se ve a toda la familia. Esta opción no sale en la vista Personal.',
+      target: 'calendar.filter',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'mes',
+      text: 'En Inicio y Mes, ‹ y › cambian de mes y «Hoy» te devuelve al día de hoy. También puedes arrastrar el dedo a izquierda o derecha sobre el mes.',
+      target: 'calendar.month-nav',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'dia',
+      text: 'Aquí ves los eventos y tareas del día elegido. Toca otro día del mes para cambiarlo, o toca la fecha para saltar a un día concreto. Si no hay nada, dice «Nada este día.»',
+      target: 'calendar.day-panel',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'hecho',
+      text: 'El círculo de cada evento o tarea lo marca como hecho (✓); si lo tocas otra vez, vuelve a quedar pendiente. Ahora no hace falta tocarlo: es solo para que lo reconozcas.',
+      target: 'calendar.entry-complete',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'editar',
+      text: 'Toca un evento o una tarea para cambiarlo. Si lo deslizas hacia la izquierda aparece «Eliminar»: eso lo decides tú, yo nunca borro nada por mi cuenta.',
+      target: 'calendar.entry-edit',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'nuevo-evento',
+      text: '«+ Nuevo evento» crea una cita con fecha, hora, repetición, recordatorio y para quién es. No se guarda nada hasta que pulses «Crear evento».',
+      target: 'calendar.new-event',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'nueva-tarea',
+      text: '«+ Nueva tarea» sirve para cosas por hacer. Solo piden título y fecha; pueden repetirse y dar puntos, pero no llevan hora ni recordatorio.',
+      target: 'calendar.new-task',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Eso es el Calendario. Cuando quieras, te enseño paso a paso a crear un evento, una tarea o a cambiar de vista.',
+  next: ['cal-crear-evento', 'cal-crear-tarea', 'cal-hecho'],
+}

@@ -42,7 +42,7 @@ export function canEnterPath(path: string, ctx: Pick<HelpContext, 'allowedSectio
   return ctx.allowedSections.includes(navSectionId(tab))
 }
 
-function ruleResult(rule: HelpAccessRule | undefined, ctx: HelpContext): HelpAccessResult {
+export function ruleResult(rule: HelpAccessRule | undefined, ctx: HelpContext): HelpAccessResult {
   if (!rule) return { status: 'allowed' }
   if (rule.platforms && !rule.platforms.includes(ctx.platform)) return { status: 'hidden' }
   if (rule.community && ctx.community !== 'ok') return { status: 'hidden' }

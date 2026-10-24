@@ -90,11 +90,13 @@ export interface CalendarCreateParams {
   memberId: string | null
   recurrenceRule: string | null
   reminders: { minutesBefore: number; anchor: 'start' | 'end' }[]
+  // «Hablar con PEPA» también crea TAREAS (kind 'task' de calendar_events): sin hora, sin repetición, sin avisos y sin Google Calendar, igual que el formulario de tarea. Ausente = evento.
+  kind?: 'event' | 'task'
   // Avisos solo para enseñar en la tarjeta (p. ej. "entendido como las 17:00"); no se guardan.
   notes: string[]
 }
 
-const CALENDAR_KEYS = ['title', 'date', 'time', 'endTime', 'memberId', 'recurrenceRule', 'reminders', 'notes'] as const
+const CALENDAR_KEYS = ['title', 'date', 'time', 'endTime', 'memberId', 'recurrenceRule', 'reminders', 'notes', 'kind'] as const
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 const DAY = '(?:MO|TU|WE|TH|FR|SA|SU)'
 const RECURRENCE_RE = new RegExp(`^FREQ=WEEKLY;BYDAY=${DAY}(?:,${DAY})*$`)
@@ -183,6 +185,7 @@ export const calendarCreateAction = defineAction<CalendarCreateParams>({
         else reminders.push({ minutesBefore: item.minutesBefore as number, anchor: item.anchor as 'start' | 'end' })
       }
     }
+    if (rec.kind !== undefined && rec.kind !== 'event' && rec.kind !== 'task') errors.push('El tipo no es válido')
     const rawNotes = rec.notes === undefined ? [] : rec.notes
     const notes: string[] = []
     if (!Array.isArray(rawNotes) || rawNotes.length > 3 || !rawNotes.every((n) => typeof n === 'string' && n.length <= 200)) errors.push('Las notas no son válidas')
@@ -199,35 +202,76 @@ export const calendarCreateAction = defineAction<CalendarCreateParams>({
         recurrenceRule: rec.recurrenceRule as string | null,
         reminders,
         notes,
+        kind: rec.kind === 'task' ? 'task' : 'event',
       },
     }
   },
 
   initialSelection(params) {
-    return { choices: { member: params.memberId ?? 'none' }, checked: [] }
+    return { choices: { member: params.memberId ?? 'none', kind: params.kind === 'task' ? 'task' : 'event' }, checked: [] }
   },
 
   applySelection(params, selection) {
     const member = selection.choices.member
-    return { ...params, memberId: member === undefined ? params.memberId : member === 'none' ? null : member }
+    const kind = selection.choices.kind
+    return { ...params, memberId: member === undefined ? params.memberId : member === 'none' ? null : member, kind: kind === 'task' ? 'task' : kind === 'event' ? 'event' : params.kind }
   },
 
   present(params, ctx) {
-    const timeLabel = params.time ? (params.endTime ? `${params.time} – ${params.endTime}` : params.time) : 'Todo el día'
+    const isTask = params.kind === 'task'
+    const timeLabel = isTask ? 'Sin hora (las tareas no llevan hora)' : params.time ? (params.endTime ? `${params.time} – ${params.endTime}` : params.time) : 'Todo el día'
     const lines = [`Título: ${params.title}`, `Día: ${kitchenDateLabel(params.date, ctx.today)}`, `Hora: ${timeLabel}`]
-    if (params.recurrenceRule) lines.push(`Repite: ${recurrenceLabel(params.recurrenceRule)}`)
-    if (params.reminders.length > 0) lines.push(`Aviso: ${params.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`)
+    if (!isTask && params.recurrenceRule) lines.push(`Repite: ${recurrenceLabel(params.recurrenceRule)}`)
+    if (!isTask && params.reminders.length > 0) lines.push(`Aviso: ${params.reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}`)
     const choices: Choice[] = [
       {
         id: 'member',
         label: 'Para',
         options: [{ key: 'none', label: 'Toda la familia' }, ...ctx.members.map((m) => ({ key: m.id, label: m.name }))],
       },
+      {
+        id: 'kind',
+        label: 'Guardar como',
+        options: [
+          { key: 'event', label: 'Evento' },
+          { key: 'task', label: 'Tarea' },
+        ],
+      },
     ]
-    return { title: '📅 Apuntar en el calendario', lines, warnings: [...params.notes, ...scheduleWarningsFor(params, ctx)], choices, checks: [], confirmLabel: 'Guardar en el calendario' }
+    return {
+      title: isTask ? '✅ Apuntar como tarea' : '📅 Apuntar en el calendario',
+      lines,
+      // Una tarea no tiene hora, así que no hay «choque de horario»; el aviso de DUPLICADO sí se mantiene (y con él la tarjeta aunque se guarde directo): protege de apuntar la misma tarea dos veces.
+      warnings: [
+        ...params.notes,
+        ...(isTask
+          ? scheduleWarningsFor({ ...params, time: null, endTime: null }, ctx).filter((line) => line.startsWith('Parece que ya tienes'))
+          : scheduleWarningsFor(params, ctx)),
+      ],
+      choices,
+      checks: [],
+      confirmLabel: isTask ? 'Guardar tarea' : 'Guardar en el calendario',
+    }
   },
 
   async execute(params, ctx) {
+    if (params.kind === 'task') {
+      // Una Tarea nunca lleva hora, fin, repetición ni avisos, y no se sincroniza con Google Calendar (mismo criterio que handleCalendarEntry y AddTaskForm).
+      await createEvent({
+        title: params.title,
+        startAt: new Date(`${params.date}T00:00`).toISOString(),
+        endAt: null,
+        allDay: true,
+        recurrenceRule: null,
+        reminders: [],
+        memberIds: params.memberId ? [params.memberId] : [],
+        kind: 'task',
+        syncToGoogle: false,
+      })
+      window.dispatchEvent(new CustomEvent('family-app:calendar-changed', { detail: { date: params.date } }))
+      const taskMember = params.memberId ? ctx.members.find((m) => m.id === params.memberId) : null
+      return `Apuntada como tarea: ${params.title} — ${kitchenDateLabel(params.date, ctx.today)}${taskMember ? ` · para ${taskMember.name}` : ''}.`
+    }
     await createEvent({
       title: params.title,
       startAt: new Date(`${params.date}T${params.time ?? '09:00'}`).toISOString(),

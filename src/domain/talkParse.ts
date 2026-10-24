@@ -86,7 +86,40 @@ function capitalize(text: string): string {
 
 const RECURRENCE_PHRASE = /\b(?:todos los|todas las semanas el|cada)\s+(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)/
 
-export function prepareCalendarFromText(text: string, today: Date, members: { id: string; name: string }[]): PreparedCalendarEntry {
+const OBJECT_PREPOSITIONS = new Set(['a', 'al', 'con', 'de', 'del', 'en', 'por', 'sin', 'hacia'])
+const ASSIGN_VERBS = new Set(['toca', 'encarga', 'encargas', 'encargar', 'pide', 'pidele', 'dile', 'dale'])
+
+// ¿Ese nombre es QUIEN hace la tarea («tarea Paco saca la basura», «que Eric saque la basura», «le toca a Jennifer…»)? Si va tras una preposición es el
+// complemento de la frase («recoger a Eric del colegio», «llamar con Eric»), salvo «le toca a / encarga a / dile a …».
+function isAssigneeAt(words: string[], idx: number): boolean {
+  if (idx <= 0) return true
+  if (!OBJECT_PREPOSITIONS.has(words[idx - 1])) return true
+  return words[idx - 1] === 'a' && idx >= 2 && ASSIGN_VERBS.has(words[idx - 2])
+}
+
+// Con varios nombres en la frase («recoger a Eric del colegio el viernes Paco») se busca el que SÍ es quien hace la tarea (Paco), no el primero que aparece
+// (Eric, a quien se recoge). Devuelve la persona y la posición de esa palabra en el título para quitar solo esa.
+function findTaskAssignee(title: string, members: { id: string; name: string }[]): { member: { id: string; name: string }; wordIndex: number } | null {
+  const words = title.split(/\s+/).filter(Boolean)
+  const normalized = words.map((w) => normalize(w))
+  let best: { member: { id: string; name: string }; wordIndex: number } | null = null
+  for (const member of members) {
+    const target = normalize(member.name)
+    normalized.forEach((w, i) => {
+      if (w === target && isAssigneeAt(normalized, i) && (best === null || i < best.wordIndex)) best = { member, wordIndex: i }
+    })
+  }
+  return best
+}
+
+// `keepMemberInTitle` (tareas): un nombre solo se toma como destinatario si es quien hace la tarea (ver isAssigneeMention); si no, se queda en el
+// título — en «recoger a Eric del colegio» Eric es a quien se recoge, y quitarlo dejaba «recoger a del colegio». «para …» siempre asigna.
+export function prepareCalendarFromText(
+  text: string,
+  today: Date,
+  members: { id: string; name: string }[],
+  options: { keepMemberInTitle?: boolean } = {},
+): PreparedCalendarEntry {
   const orig = text.normalize('NFC').trim()
   const n = normalize(orig)
   const notes: string[] = []
@@ -101,7 +134,10 @@ export function prepareCalendarFromText(text: string, today: Date, members: { id
     const ref = findDateInText(n, today, true)
     if (ref) {
       relativeDate = ref.date
-      workText = `${orig.slice(0, ref.start)} ${orig.slice(ref.end)}`
+      // «el viernes QUE VIENE» / «el viernes PRÓXIMO»: la coletilla forma parte de la fecha, no del título.
+      const tail = /^\s+(?:que viene|proxim[oa])\b/.exec(n.slice(ref.end))
+      const end = ref.end + (tail ? tail[0].length : 0)
+      workText = `${orig.slice(0, ref.start)} ${orig.slice(end)}`
     }
   }
 
@@ -122,7 +158,17 @@ export function prepareCalendarFromText(text: string, today: Date, members: { id
 
   let title = parsed.title
   let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
-  if (!member) {
+  if (!member && options.keepMemberInTitle) {
+    // En una tarea, un nombre es la persona a quien se asigna solo si no es el complemento de una preposición («recoger A ERIC del colegio»).
+    const assignee = findTaskAssignee(title, members)
+    if (assignee) {
+      member = assignee.member
+      title = title
+        .split(/\s+/)
+        .filter((_, i) => i !== assignee.wordIndex)
+        .join(' ')
+    }
+  } else if (!member) {
     const found = findMemberInText(title, members)
     if (found) {
       member = found
@@ -131,6 +177,13 @@ export function prepareCalendarFromText(text: string, today: Date, members: { id
     }
   }
   title = capitalize(restoreAccents(tidyTitle(title), orig)) || 'Cita'
+  // Los nombres que se quedan en el título (p. ej. «recoger a Eric del colegio») recuperan su mayúscula: restoreAccents devuelve todo en minúsculas.
+  {
+    for (const m of members) {
+      const nameRe = new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
+      title = title.replace(nameRe, m.name)
+    }
+  }
 
   // Un recordatorio "al terminar" no tiene sentido sin hora de fin (mismo
   // criterio que el apunte de siempre).

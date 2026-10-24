@@ -12,6 +12,7 @@ import { useCommunityAccess } from '@/ui/community/useCommunityAccess'
 import { paths } from '@/ui/community/communityNav'
 import { buildShareText, getShareUrl, shareCommunityPost } from '@/ui/community/communityShare'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import '@/ui/community/communityPost.css'
 
 const FOLLOW_MODE_LABELS: Record<FollowMode, string> = {
@@ -97,6 +98,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
       try {
         const r = await toggleSave(detail.id)
         onPatch({ savedByMe: r.saved, saveCount: r.saveCount })
+        if (r.saved) emitHelpEvent('comunidad.post-saved') // para los tutoriales «Enséñame»: la publicación YA está guardada
       } catch (e) {
         onPatch({ savedByMe: before.saved, saveCount: before.count })
         throw e
@@ -108,7 +110,9 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
       const before = detail.followingConversation
       onPatch({ followingConversation: !before })
       try {
-        onPatch({ followingConversation: await toggleFollowConversation(detail.id) })
+        const nowFollowing = await toggleFollowConversation(detail.id)
+        onPatch({ followingConversation: nowFollowing })
+        if (nowFollowing) emitHelpEvent('comunidad.conversation-followed') // para los tutoriales «Enséñame»: ya sigues la conversación
       } catch (e) {
         onPatch({ followingConversation: before })
         throw e
@@ -204,6 +208,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
             className={'community-action' + (detail.savedByMe ? ' active' : '')}
             aria-pressed={detail.savedByMe}
             aria-label={detail.savedByMe ? 'Quitar de mis guardados' : 'Guardar esta publicación'}
+            data-help-id="comunidad.post-save"
             onClick={() => void save()}
           >
             <span aria-hidden="true">{detail.savedByMe ? '🔖' : '📑'}</span> {detail.savedByMe ? 'Guardada' : 'Guardar'}
@@ -214,6 +219,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
             type="button"
             className={'community-action' + (detail.followingConversation ? ' active' : '')}
             aria-pressed={detail.followingConversation}
+            data-help-id="comunidad.post-follow-conversation"
             onClick={() => void followConversation()}
           >
             <span aria-hidden="true">{detail.followingConversation ? '🔔' : '🔕'}</span> {detail.followingConversation ? 'Siguiendo la conversación' : 'Seguir la conversación'}
@@ -223,7 +229,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
           <span aria-hidden="true">📤</span> Compartir
         </button>
         {(interactive || (detail.isMine && canParticipate) || (!detail.isMine && !canParticipate)) && (
-          <ContentMenu label="Más opciones de la publicación">
+          <ContentMenu label="Más opciones de la publicación" helpId="comunidad.post-menu">
             {(close) =>
               detail.isMine ? (
                 <>
@@ -242,6 +248,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
                 <>
                   <button
                     type="button"
+                    data-help-id="comunidad.post-report"
                     onClick={() => {
                       close()
                       void startReport()
@@ -252,6 +259,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
                   {canBlockAuthor && canParticipate && (
                     <button
                       type="button"
+                      data-help-id="comunidad.post-block"
                       onClick={() => {
                         close()
                         void startBlock()
@@ -273,6 +281,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
             type="button"
             className={'community-action' + (detail.followingAuthor ? ' active' : '')}
             aria-pressed={detail.followingAuthor}
+            data-help-id="comunidad.post-follow-author"
             onClick={() => void followAuthor()}
           >
             <span aria-hidden="true">{detail.followingAuthor ? '✔️' : '➕'}</span> {detail.followingAuthor ? `Siguiendo a ${authorAlias}` : `Seguir a ${authorAlias}`}

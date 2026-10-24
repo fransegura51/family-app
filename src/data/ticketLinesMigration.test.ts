@@ -16,7 +16,8 @@ const ROLLBACK = FILES['/supabase/rollbacks/0145_non_product_lines_down.sql']
 const MERCADONA = FILES['/supabase/functions/mercadona-ticket-webhook/index.ts']
 const AMAZON = FILES['/supabase/functions/amazon-order-webhook/index.ts']
 const OCR = FILES['/supabase/functions/analyze-receipt-photo/index.ts']
-const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+// Las explicaciones de la Ayuda (src/help/explainers) citan estos archivos solo como DOCUMENTACIÓN (`basedOn`): no son código que los use.
+const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*', '!/src/help/explainers/**'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const ALL_FUNCTIONS = import.meta.glob('/supabase/functions/**/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')

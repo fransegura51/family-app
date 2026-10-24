@@ -7,6 +7,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { formatDateFromTimestamp } from '@/domain/dateFormat'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Petición real: "Galería: compartir una o varias fotos" — cada foto ya
 // tiene su URL firmada cargada (reload la pide de golpe para toda la
@@ -100,6 +101,7 @@ export function GalleryScreen() {
       <button
         type="button"
         className="link-button"
+        data-help-id="gallery.share-many"
         style={{ marginBottom: 8 }}
         onClick={() => {
           setSelecting((v) => !v)
@@ -109,11 +111,11 @@ export function GalleryScreen() {
         {selecting ? 'Cancelar selección' : '📤 Compartir varias'}
       </button>
       {selecting && selectedIds.size > 0 && (
-        <button type="button" onClick={handleShareSelected} style={{ marginBottom: 8, marginLeft: 8 }}>
+        <button type="button" data-help-id="gallery.mandar-seleccion" onClick={handleShareSelected} style={{ marginBottom: 8, marginLeft: 8 }}>
           📤 Compartir {selectedIds.size} foto{selectedIds.size === 1 ? '' : 's'}
         </button>
       )}
-      <div className="gallery-grid">
+      <div className="gallery-grid" data-help-id="gallery.grid">
         {photos.map((p) => (
           <div key={p.id} className="gallery-item">
             {urls[p.id] && <img src={urls[p.id]} alt={p.caption ?? ''} />}
@@ -123,6 +125,7 @@ export function GalleryScreen() {
                 checked={selectedIds.has(p.id)}
                 onChange={() => toggleSelected(p.id)}
                 aria-label="Seleccionar foto"
+                data-help-id="gallery.casilla"
                 className="gallery-item-select"
               />
             ) : (
@@ -130,6 +133,7 @@ export function GalleryScreen() {
                 <button
                   type="button"
                   className="gallery-item-share"
+                  data-help-id="gallery.share-one"
                   aria-label="Compartir foto"
                   onClick={() => handleShareOne(p)}
                 >
@@ -167,6 +171,7 @@ function AddPhotoForm({ onAdded }: { onAdded: () => void }) {
     setError(null)
     try {
       await uploadGalleryPhoto(file, caption)
+      emitHelpEvent('gallery.photo-uploaded') // para los tutoriales «Enséñame»: la foto YA está guardada
       setFile(null)
       setCaption('')
       onAdded()
@@ -178,18 +183,18 @@ function AddPhotoForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="gallery.upload-form">
       <h2>Subir foto</h2>
       <label>
         Foto
-        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required />
+        <input type="file" accept="image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} required data-help-id="gallery.photo-file" />
       </label>
       <label>
         Descripción (opcional)
-        <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} />
+        <input type="text" value={caption} onChange={(e) => setCaption(e.target.value)} data-help-id="gallery.photo-caption" />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="gallery.upload-save">
         {saving ? 'Subiendo…' : 'Subir'}
       </button>
     </form>

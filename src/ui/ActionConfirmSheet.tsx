@@ -78,7 +78,7 @@ export function ActionConfirmSheet({
 
   return (
     <div className="modal-overlay action-confirm-overlay" onClick={busy ? undefined : onCancel}>
-      <div className="modal-sheet" role="dialog" aria-label={view.title} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" role="dialog" aria-label={view.title} data-help-id="pepa.tarjeta" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 8px' }}>{view.title}</h3>
         {view.lines.map((line) => (
           <p key={line} style={{ margin: '2px 0' }}>
@@ -86,8 +86,8 @@ export function ActionConfirmSheet({
           </p>
         ))}
 
-        {view.choices.map((choice) => (
-          <div key={choice.id} className="action-confirm-choice">
+        {view.choices.map((choice, choiceIndex) => (
+          <div key={choice.id} className="action-confirm-choice" {...(choiceIndex === 0 ? { 'data-help-id': 'pepa.tarjeta-opciones' } : {})}>
             <span className="muted">{choice.label}</span>
             <div className="filter-row" role="radiogroup" aria-label={choice.label}>
               {choice.options.map((option) => (
@@ -141,10 +141,10 @@ export function ActionConfirmSheet({
         {error && <p className="error">{error}</p>}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-          <button type="button" onClick={() => void confirmNow()} disabled={busy} style={{ flex: 1 }}>
+          <button type="button" data-help-id="pepa.tarjeta-confirmar" onClick={() => void confirmNow()} disabled={busy} style={{ flex: 1 }}>
             {busy ? 'Guardando…' : view.confirmLabel}
           </button>
-          <button type="button" className="link-button" onClick={onCancel} disabled={busy}>
+          <button type="button" className="link-button" data-help-id="pepa.tarjeta-cancelar" onClick={onCancel} disabled={busy}>
             Cancelar
           </button>
         </div>

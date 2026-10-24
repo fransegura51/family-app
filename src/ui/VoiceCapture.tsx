@@ -1,5 +1,6 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useOptionalHelp } from '@/help/ui/helpContext'
 import pepaAvatar from '@/assets/pepa/pepa-avatar.jpg'
 import { addShoppingItems, listShoppingItems } from '@/data/shopping'
 import { listShoppingStores } from '@/data/shoppingStores'
@@ -32,6 +33,7 @@ import {
   stripWakeWord,
 } from '@/domain/voiceQuery'
 import { detectCalendarEntryKind, parseCalendarEntry } from '@/domain/calendarVoiceParser'
+import { isRepeatedUtterance, type LastUtterance } from '@/domain/repeatedUtterance'
 import { isDictationSupported, isSpeechSupported, listenContinuous, primeSpeech, speakAsync } from '@/services/voice'
 import { createPepaOutput, type ResponseMode, type SpeechEngine } from '@/pepa/output'
 import { getCurrentPosition, isGeolocationSupported } from '@/services/geolocation'
@@ -811,6 +813,21 @@ type Status = 'idle' | 'listening' | 'saving' | 'done' | 'error'
 // contesta hablando o por texto según lo que el usuario elija.
 export function VoiceCapture() {
   const navigate = useNavigate()
+  // La Ayuda de PEPA (si está montada): «necesito ayuda con compras» la usa para explicar y llevar (help/talkHelp.ts). Sin ella, esas frases siguen el camino de siempre.
+  const helpApi = useOptionalHelp()
+  const helpRef = useRef(helpApi)
+  helpRef.current = helpApi
+  const helpForTalk = () => {
+    const help = helpRef.current
+    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard, canDoTour: help.canDoTour } : null
+  }
+  // Lo que se hace cuando Pepa termina de hablar (p. ej. empezar el recorrido «Enséñame» que ha pedido la persona).
+  const afterSpeechRef = useRef<(() => void) | null>(null)
+  function runAfterSpeech() {
+    const next = afterSpeechRef.current
+    afterSpeechRef.current = null
+    next?.()
+  }
   const [open, setOpen] = useState(false)
   const openRef = useRef(false)
   openRef.current = open
@@ -925,6 +942,20 @@ export function VoiceCapture() {
       closeTalkDialogs()
       setDialogKey((k) => k + 1)
       setPendingStore({ recipe: outcome.recipe, recipes: outcome.recipes, stores: outcome.stores })
+    } else if (outcome.kind === 'help') {
+      // «Necesito ayuda con compras»: se va a esa pantalla (y a su pestaña si la ficha la indica) con el mismo «Llévame» de la Ayuda; la explicación ya la dice Pepa.
+      closeTalkDialogs()
+      const help = helpRef.current
+      const tourId = outcome.tourId
+      if (help && tourId) {
+        // Con recorrido guiado: primero Pepa dice su frase corta y, al terminar, empieza el «Enséñame» (si arrancara antes, cortaría la voz). El recorrido lleva solo a su pantalla de partida.
+        afterSpeechRef.current = () => {
+          // Si se está hablando con Pepa por voz, cada paso del recorrido también se dice en voz alta.
+          if (modeRef.current === 'voice' && help.voiceMode !== 'voice') help.setVoiceMode('voice')
+          help.startTourById(tourId)
+        }
+      } else if (help) help.goToPlace(outcome.go, outcome.title)
+      else navigate(outcome.go.path)
     } else if (outcome.kind === 'focus-store') {
       navigate(DESTINATION_INFO.compras.path)
       window.dispatchEvent(new CustomEvent('family-app:focus-store', { detail: { store: outcome.store } }))
@@ -949,13 +980,13 @@ export function VoiceCapture() {
     if (reply.handled) return { spoken: reply.message ?? '', closedPending: false }
 
     const hadPending = pendingBlockingCount() > 0
-    const outcome = await runTalk(text, talkDeps)
+    const outcome = await runTalk(text, { ...talkDeps, help: helpForTalk })
     // Tarea nueva de verdad (una pregunta contestada, otra tarjeta...): lo que estaba pendiente
     // se cierra sin guardar, para que un "sí" posterior no confirme algo ya olvidado. Si Pepa
     // no ha entendido la frase, lo pendiente se queda como está.
     let spoken = outcome.text
     let closedPending = false
-    if (hadPending && outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD) {
+    if (hadPending && (outcome.kind === 'help' || (outcome.kind === 'answer' && !outcome.keepPending && outcome.text !== NOT_UNDERSTOOD))) {
       closeTalkDialogs()
       forgetRecentRecipes()
       forgetFoundPlace()
@@ -973,7 +1004,7 @@ export function VoiceCapture() {
       setMessage(spoken)
       showToast(spoken, 6000)
     }
-    void output.speakOnly(spoken ?? '')
+    void Promise.resolve(output.speakOnly(spoken ?? '')).finally(runAfterSpeech)
     return spoken
   }
 
@@ -985,10 +1016,14 @@ export function VoiceCapture() {
     return outcome.text
   }
 
+  const lastUtteranceRef = useRef<LastUtterance | null>(null)
+
   async function processText(rawText: string) {
+    const text = stripWakeWord(rawText)
+    // La misma frase llegada dos veces seguidas (el reconocimiento a veces la entrega repetida) abría dos tarjetas y la leía dos veces: la segunda se ignora.
+    if (isRepeatedUtterance(lastUtteranceRef, text, Date.now())) return
     setStatus('saving')
     try {
-      const text = stripWakeWord(rawText)
 
       // "Hablar con PEPA": botón general, con su propio camino — no toca el de
       // los botones de siempre. Consultar responde; escribir siempre sale como
@@ -997,6 +1032,7 @@ export function VoiceCapture() {
         const { spoken } = await talkTurn(text)
         setStatus('done')
         await respond(spoken)
+        runAfterSpeech()
         return
       }
 
@@ -1140,6 +1176,7 @@ export function VoiceCapture() {
       const storeSuffix = shoppingStore ? ` (${shoppingStore})` : ''
       await respond(`Apuntado en ${DESTINATION_INFO.compras.label}${storeSuffix}: ${entries.join(', ')}`)
     } catch (err) {
+      lastUtteranceRef.current = null // si falló, repetir la frase es un reintento legítimo
       setStatus('error')
       const detail = errorMessage(err, String(err))
       await respond(`No he podido hacerlo: ${detail}`)
@@ -1395,6 +1432,7 @@ export function VoiceCapture() {
               left: pos.left + (isDragging ? buttonDragOffset.x : 0),
             }}
             aria-label={PANEL_INFO[m].title}
+            {...(m === 'talk' ? { 'data-help-id': 'pepa.boton' } : {})}
             onClick={() => handleButtonClick(m)}
             onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
             onPointerMove={handleButtonDragMove}
@@ -1424,7 +1462,7 @@ export function VoiceCapture() {
 
       {open && (
         <div className="modal-overlay" onClick={handleOverlayClick}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="pepa.panel" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {panel.title}
@@ -1438,6 +1476,7 @@ export function VoiceCapture() {
               <button
                 type="button"
                 className={'voice-mic-button' + (listening ? ' voice-mic-listening' : '')}
+                data-help-id="pepa.microfono"
                 onClick={() => {
                   output.prime()
                   if (listening) stopListening()
@@ -1472,7 +1511,7 @@ export function VoiceCapture() {
               <p className="muted" style={{ marginBottom: 4 }}>
                 Ejemplos — dilo así siempre y Pepa lo entenderá seguro (toca uno para usarlo):
               </p>
-              <div className="voice-examples">
+              <div className="voice-examples" data-help-id="pepa.ejemplos">
                 {panel.examples.map((example) => (
                   <button
                     key={example}
@@ -1488,12 +1527,13 @@ export function VoiceCapture() {
 
             <form onSubmit={handleTypedSubmit} className="voice-text-form">
               <input
+                data-help-id="pepa.texto"
                 type="text"
                 value={typedText}
                 onChange={(e) => setTypedText(e.target.value)}
                 placeholder="O escribe aquí…"
               />
-              <button type="submit" disabled={status === 'saving' || !typedText.trim()}>
+              <button type="submit" data-help-id="pepa.enviar" disabled={status === 'saving' || !typedText.trim()}>
                 {panel.submitLabel}
               </button>
             </form>
@@ -1506,7 +1546,7 @@ export function VoiceCapture() {
 
             <div className="day-modal-group">
               <p className="muted">¿Cómo prefieres que responda la app?</p>
-              <div className="filter-row">
+              <div className="filter-row" data-help-id="pepa.modo">
                 <button
                   type="button"
                   className={'chip' + (mode === 'voice' ? ' chip-active' : '')}

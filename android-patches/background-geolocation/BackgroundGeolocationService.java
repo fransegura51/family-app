@@ -261,12 +261,47 @@ public class BackgroundGeolocationService extends Service {
         return PendingIntent.getBroadcast(this, 0, receiverIntent, flags);
     }
 
+    // LATIDO (24/10/2026, «las ubicaciones van con unos minutos de retraso»): con el filtro de 25 m, un móvil parado en casa o en el trabajo no manda NADA, y el mapa enseña una
+    // posición de hace 15-50 min; una llegada se confirma en el servidor con una segunda lectura y, sin ella, tardaba hasta 22 min en avisar. Este segundo aviso, de bajo consumo
+    // y SIN filtro de distancia, entrega una posición cada pocos minutos aunque no se mueva. Es otro PendingIntent (otro código de petición): con el mismo, Play Services
+    // sustituiría el aviso principal. Lo recibe el mismo receptor, que aplica los mismos filtros (precisión, saltos de GPS, pausa mínima entre envíos).
+    private static final long HEARTBEAT_INTERVAL_MS = 5 * 60_000L;
+    private static final long HEARTBEAT_FASTEST_MS = 3 * 60_000L;
+
+    private PendingIntent nativeHeartbeatPendingIntent() {
+        Intent receiverIntent = new Intent(RECEIVER_ACTION).setClassName(getPackageName(), RECEIVER_CLASS);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            flags |= PendingIntent.FLAG_MUTABLE;
+        }
+        return PendingIntent.getBroadcast(this, 1, receiverIntent, flags);
+    }
+
     // Quita el aviso al receptor registrado en Play Services, lo haya registrado esta instancia del servicio o una anterior (proceso muerto y vuelto a abrir).
     private void removeNativeRegistration() {
+        try {
+            LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(nativeHeartbeatPendingIntent());
+        } catch (Exception e) {
+            diag("error al quitar el latido: " + e.getClass().getSimpleName());
+        }
         try {
             LocationServices.getFusedLocationProviderClient(this).removeLocationUpdates(nativePendingIntent());
         } catch (Exception e) {
             diag("error al quitar el aviso al receptor: " + e.getClass().getSimpleName());
+        }
+    }
+
+    // Registra el latido (ver nativeHeartbeatPendingIntent). Si falla no pasa nada grave: queda el aviso principal por movimiento, como antes.
+    private void registerHeartbeat(FusedLocationProviderClient client) {
+        try {
+            LocationRequest heartbeat = new LocationRequest();
+            heartbeat.setInterval(HEARTBEAT_INTERVAL_MS);
+            heartbeat.setFastestInterval(HEARTBEAT_FASTEST_MS);
+            heartbeat.setPriority(LocationRequest.PRIORITY_BALANCED_POWER_ACCURACY);
+            client.requestLocationUpdates(heartbeat, nativeHeartbeatPendingIntent());
+            diag("latido registrado (una posición cada pocos minutos aunque esté parado)");
+        } catch (Exception e) {
+            diag("no se pudo registrar el latido: " + e.getClass().getSimpleName());
         }
     }
 
@@ -294,6 +329,7 @@ public class BackgroundGeolocationService extends Service {
         try {
             client.requestLocationUpdates(locationRequest, pendingIntent);
             diag("envío nativo registrado (aviso al receptor)");
+            registerHeartbeat(client);
         } catch (SecurityException e) {
             Logger.error("Sin permiso de ubicación para el envío nativo", e);
             diag("SIN PERMISO de ubicación para el envío nativo");

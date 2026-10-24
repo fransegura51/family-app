@@ -28,6 +28,9 @@ import { detectWishlistItemImage } from '@/services/wishlistItemImage'
 import type { FamilyMember, Profile, Wishlist, WishlistItem, WishlistItemReservation } from '@/domain/types'
 import deseosHeaderImg from '@/assets/puntos/deseos-header.jpg'
 import { formatDate } from '@/domain/dateFormat'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // "Lista de deseos" (Pequeños Grandes, Fases 12-16 del prompt maestro consolidado, autorización directa
 // del usuario 2026-10-10) — por persona/año/celebración. El secreto de una reserva es REAL (RLS,
@@ -54,6 +57,8 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
       .catch(() => setMembers([]))
   }
   useEffect(reload, [profile.id])
+  // «Llévame» / tutoriales de la Ayuda: volver a la lista de listas aunque haya una abierta.
+  useHelpDestinations({ 'pequenos.deseos': () => setOpenWishlistId(null) })
 
   function memberName(id: string): string {
     return members.find((m) => m.id === id)?.name ?? 'Alguien'
@@ -78,6 +83,7 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
 
   return (
     <div className="screen">
+      <HelpDestMark id="pequenos.deseos" />
       <div className="kitchen-header kitchen-header-wide">
         <img src={deseosHeaderImg} alt="Lista de deseos" className="kitchen-header-img" />
       </div>
@@ -88,7 +94,7 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
       {error && <p className="error">{error}</p>}
       <div className="event-list" style={{ marginTop: 8 }}>
         {wishlists.map((w) => (
-          <div key={w.id} className="card task-card inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} onClick={() => setOpenWishlistId(w.id)}>
+          <div key={w.id} className="card task-card inline-fields" style={{ alignItems: 'center', cursor: 'pointer' }} data-help-id="pequenos.lista-tarjeta" onClick={() => setOpenWishlistId(w.id)}>
             {members.find((m) => m.id === w.ownerMemberId) && <MemberAvatar member={members.find((m) => m.id === w.ownerMemberId)!} size={32} />}
             <span style={{ flex: 1 }}>
               <strong>{memberName(w.ownerMemberId)}</strong>
@@ -104,7 +110,7 @@ export function WishlistScreen({ profile, onBack }: { profile: Profile; onBack: 
         ))}
         {wishlists.length === 0 && <p className="muted">Todavía no hay ninguna lista de deseos.</p>}
       </div>
-      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+      <button type="button" className="link-button" data-help-id="pequenos.lista-nueva" onClick={() => setShowAdd(true)}>
         + Nueva lista
       </button>
       {showAdd && (
@@ -143,6 +149,7 @@ function AddWishlistModal({ members, onClose, onAdded }: { members: FamilyMember
     setError(null)
     try {
       await addWishlist({ ownerMemberId, year: Number(year) || new Date().getFullYear(), occasion, celebrationDate: celebrationDate || null })
+      emitHelpEvent('pequenos.wishlist-created')
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear'))
@@ -166,7 +173,7 @@ function AddWishlistModal({ members, onClose, onAdded }: { members: FamilyMember
           {error && <p className="error">{error}</p>}
           <label>
             Para quién
-            <select value={ownerMemberId} onChange={(e) => setOwnerMemberId(e.target.value)}>
+            <select value={ownerMemberId} onChange={(e) => setOwnerMemberId(e.target.value)} data-help-id="pequenos.lista-quien">
               {members.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -177,18 +184,18 @@ function AddWishlistModal({ members, onClose, onAdded }: { members: FamilyMember
           <div className="inline-fields">
             <label style={{ flex: 1 }}>
               Celebración
-              <input type="text" value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Cumpleaños, Navidad, Reyes..." autoFocus />
+              <input type="text" value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Cumpleaños, Navidad, Reyes..." autoFocus data-help-id="pequenos.lista-celebracion" />
             </label>
             <label style={{ width: 90 }}>
               Año
               <input type="number" value={year} onChange={(e) => setYear(e.target.value)} />
             </label>
           </div>
-          <label>
+          <label data-help-id="pequenos.lista-fecha">
             Fecha de la celebración (opcional)
             <DateField value={celebrationDate} onChange={setCelebrationDate} placeholder="Sin fecha" />
           </label>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="pequenos.lista-crear">
             {saving ? 'Creando…' : 'Crear lista'}
           </button>
         </form>
@@ -286,12 +293,12 @@ function WishlistDetailScreen({
         {wishlist.celebrationDate ? ` · ${formatDate(wishlist.celebrationDate)}` : ''}
       </p>
       {ownWishlist && (
-        <p className="muted" style={{ fontSize: 13 }}>
+        <p className="muted" style={{ fontSize: 13 }} data-help-id="pequenos.lista-secreto">
           🤫 Es tu propia lista — nunca verás aquí quién reserva cada regalo, para que siga siendo una sorpresa.
         </p>
       )}
       {isChild && !ownWishlist && (
-        <p className="muted" style={{ fontSize: 13 }}>
+        <p className="muted" style={{ fontSize: 13 }} data-help-id="pequenos.lista-secreto">
           🤫 Puedes reservar un regalo, pero no ver quién ha reservado los demás.
         </p>
       )}
@@ -322,7 +329,7 @@ function WishlistDetailScreen({
         ))}
         {items.length === 0 && <p className="muted">Todavía no hay regalos en esta lista.</p>}
       </div>
-      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+      <button type="button" className="link-button" data-help-id="pequenos.regalo-anadir" onClick={() => setShowAdd(true)}>
         + Añadir regalo
       </button>
       {showAdd && (
@@ -378,6 +385,7 @@ function WishlistItemRow({
     setError(null)
     try {
       await reserveWishlistItem(item.id, item.allowJoint)
+      emitHelpEvent('pequenos.gift-reserved')
       onChanged()
     } catch (err) {
       setError(errorMessage(err, 'Ya se ha reservado justo ahora'))
@@ -415,13 +423,13 @@ function WishlistItemRow({
               </a>
             )}
           </span>
-          {canSeeReservations && <span className="muted" style={{ fontSize: 12, display: 'block' }}>{statusLabel(status)}</span>}
+          {canSeeReservations && <span className="muted" style={{ fontSize: 12, display: 'block' }} data-help-id="pequenos.regalo-estado">{statusLabel(status)}</span>}
         </span>
         <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar regalo" onConfirm={() => deleteWishlistItem(item.id).then(onChanged)} />
       </div>
       {error && <p className="error" style={{ fontSize: 12 }}>{error}</p>}
       {canJoin && (
-        <button type="button" className="link-button" onClick={() => void handleReserve()} disabled={busy}>
+        <button type="button" className="link-button" data-help-id="pequenos.regalo-reservar" onClick={() => void handleReserve()} disabled={busy}>
           {busy ? 'Reservando…' : status.kind === 'conjunto' ? '+ Unirme a este regalo' : '🎁 Reservar este regalo'}
         </button>
       )}
@@ -497,6 +505,7 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
       } else if (detectedPath) {
         await attachWishlistItemDetectedPhoto(id, detectedPath, detectedMimeType ?? 'image/jpeg')
       }
+      emitHelpEvent('pequenos.wishlist-item-added')
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -520,7 +529,7 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
           {error && <p className="error">{error}</p>}
           <label>
             Nombre
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bicicleta, libro, LEGO..." autoFocus />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bicicleta, libro, LEGO..." autoFocus data-help-id="pequenos.regalo-nombre" />
           </label>
           <label>
             Descripción (opcional)
@@ -528,7 +537,7 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
           </label>
           <label>
             Enlace (opcional)
-            <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..." />
+            <input type="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://..." data-help-id="pequenos.regalo-enlace" />
           </label>
           {detecting && <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>🔎 Buscando la foto del producto…</p>}
           {!detecting && detectedPreviewUrl && (
@@ -570,11 +579,11 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
               }}
             />
           </label>
-          <label className="inline-fields" style={{ alignItems: 'center' }}>
+          <label className="inline-fields" style={{ alignItems: 'center' }} data-help-id="pequenos.regalo-conjunto">
             <input type="checkbox" checked={allowJoint} onChange={(e) => setAllowJoint(e.target.checked)} style={{ width: 'auto' }} />
             Es un regalo conjunto (varias personas pueden apuntarse)
           </label>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="pequenos.regalo-guardar">
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
         </form>

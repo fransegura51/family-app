@@ -7416,13 +7416,33 @@ textarea {
   font-size: 14px;
 }
 
-.notification-mark-unread {
+/* Botón VISIBLE junto a cada aviso para marcarlo como leído / no leído (borde y color propios; objetivo táctil de al menos 44 px de alto). */
+.notification-toggle-read {
   flex: none;
   align-self: center;
+  min-height: 44px;
+  min-width: 84px;
+  max-width: 108px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 2px solid var(--primary);
+  background: var(--card-bg);
+  color: var(--primary);
   font-size: 12px;
-  max-width: 96px;
-  text-align: center;
+  font-weight: 600;
   line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+}
+
+.notification-toggle-read-mark {
+  background: var(--primary);
+  color: #fff;
+}
+
+.notification-toggle-read:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .notification-item-body {

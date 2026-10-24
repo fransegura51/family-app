@@ -17,7 +17,6 @@ import {
   isCustomComprasMenuKey,
   loadComprasMenuLayout,
   loadComprasPinnedItems,
-  saveComprasMenuLayout,
   saveComprasPinnedItems,
   type ComprasMenuEntry,
   type ComprasMenuGroup,
@@ -222,11 +221,6 @@ export function ShoppingScreen() {
   usePrefChange('familyapp:compras-menu-layout', () => setMenuLayout(loadComprasMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
-  function persistMenuLayout(next: ComprasMenuGroup[]) {
-    setMenuLayout(next)
-    saveComprasMenuLayout(next)
-  }
-
   function togglePinnedItem(key: ComprasMenuItemKey) {
     setPinnedItems((prev) => {
       const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -258,6 +252,7 @@ export function ShoppingScreen() {
       <KitchenHeaderWithMenu
         imgSrc={comprasHeaderImg}
         alt="Compras"
+        helpId="shopping.menu"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Compras' : 'Abrir menú de Compras'}
         onToggle={() => {
@@ -272,7 +267,6 @@ export function ShoppingScreen() {
         <ComprasMenuDropdown
           activeTab={tab}
           layout={menuLayout}
-          onLayoutChange={persistMenuLayout}
           pinnedItems={pinnedItems}
           onTogglePin={togglePinnedItem}
           onActivate={handleAction}
@@ -329,11 +323,11 @@ export function ShoppingScreen() {
 }
 
 function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void }) {
-  const shortcuts: { tab: SubTab; body: string }[] = [
-    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.' },
-    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.' },
-    { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.' },
-    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.' },
+  const shortcuts: { tab: SubTab; body: string; 'data-help-id': string }[] = [
+    { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.', 'data-help-id': 'shopping.card-lista' },
+    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.', 'data-help-id': 'shopping.card-historial' },
+    { tab: 'Tickets', body: 'Sube la foto del ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
+    { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.', 'data-help-id': 'shopping.card-estadistica' },
   ]
   // Petición real: extender el pastel también a estas tarjetas de
   // acceso rápido, igual que Inicio/Eventos — un color por tarjeta.
@@ -398,6 +392,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
               key={s.tab}
               type="button"
               className="section-shortcut-card"
+              data-help-id={s['data-help-id']}
               style={{ background: cardColors[i] }}
               onClick={() => onNavigate(s.tab)}
             >
@@ -432,7 +427,7 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
               (Economía → Resumen, FinanceScreen.tsx): imagen + bocadillo + swipe + puntos, selección
               inicial aleatoria solo al montar. */}
           <PepaComprasWidget insights={insights} onNavigateToHistory={() => onNavigate('Historial')} />
-          <div className="card event-card">
+          <div className="card event-card" data-help-id="shopping.basket">
             <p style={{ margin: 0 }}>
               Este mes llevas {currentBasket.toFixed(2)} € registrados en la cesta de tickets de alimentación
               {receiptsThisMonth > 0 ? ` (${receiptsThisMonth} ticket${receiptsThisMonth === 1 ? '' : 's'})` : ''}.
@@ -494,7 +489,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
 
   if (insights.length === 0) {
     return (
-      <div className="pepa-compras-banner">
+      <div className="pepa-compras-banner" data-help-id="shopping.insights">
         <div className="pepa-compras-note">
           <img src={pepaComprasImg} alt="" className="pepa-compras-note-img" />
           <div className="pepa-compras-bubble-content">
@@ -526,7 +521,7 @@ function PepaComprasWidget({ insights, onNavigateToHistory }: { insights: Shoppi
   }
 
   return (
-    <div className="pepa-compras-banner">
+    <div className="pepa-compras-banner" data-help-id="shopping.insights">
       <div
         className="pepa-compras-note"
         onTouchStart={handleTouchStart}
@@ -588,7 +583,7 @@ function PorQueHaCambiadoMiCompra({
   const hasPrevious = purchases.some((p) => p.recordedDate.startsWith(previousMonth))
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="shopping.why-changed">
       <strong>¿Por qué ha cambiado mi compra?</strong>
       {!hasCurrent || !hasPrevious ? (
         <p className="muted" style={{ marginTop: 6 }}>
@@ -656,7 +651,6 @@ function PorQueHaCambiadoMiCompra({
 function ComprasMenuDropdown({
   activeTab,
   layout,
-  onLayoutChange,
   pinnedItems,
   onTogglePin,
   onActivate,
@@ -664,243 +658,42 @@ function ComprasMenuDropdown({
 }: {
   activeTab: SubTab
   layout: ComprasMenuGroup[]
-  onLayoutChange: (next: ComprasMenuGroup[]) => void
   pinnedItems: ComprasMenuItemKey[]
   onTogglePin: (key: ComprasMenuItemKey) => void
   onActivate: (key: ComprasMenuItemKey) => void
   onClose: () => void
 }) {
-  const [editMode, setEditMode] = useState(false)
-  const [addingGroup, setAddingGroup] = useState(false)
-  const [addingGroupName, setAddingGroupName] = useState('')
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [addingCustomItem, setAddingCustomItem] = useState(false)
-  const [newItemIcon, setNewItemIcon] = useState('📌')
-  const [newItemLabel, setNewItemLabel] = useState('')
-  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
-  const [editItemIcon, setEditItemIcon] = useState('')
-  const [editItemLabel, setEditItemLabel] = useState('')
-  const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function moveItem(groupId: string, index: number, direction: -1 | 1) {
-    const group = layout.find((g) => g.id === groupId)
-    if (!group) return
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.items.length) return
-    const items = [...group.items]
-    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
-  }
-
-  function moveItemToGroup(itemKey: ComprasMenuItemKey, fromGroupId: string, toGroupId: string) {
-    if (fromGroupId === toGroupId) return
-    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
-    if (!moved) return
-    onLayoutChange(
-      layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
-        return g
-      }),
-    )
-  }
-
-  function handleAddGroup(e: FormEvent) {
-    e.preventDefault()
-    if (!addingGroupName.trim()) return
-    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
-    setAddingGroupName('')
-    setAddingGroup(false)
-  }
-
-  function handleRenameGroup(id: string) {
-    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
-    setRenamingGroupId(null)
-  }
-
-  function deleteGroup(id: string) {
-    const group = layout.find((g) => g.id === id)
-    const rest = layout.filter((g) => g.id !== id)
-    if (!group || rest.length === 0) return
-    const [first, ...others] = rest
-    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
-  }
-
-  function handleAddCustomItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItemLabel.trim()) return
-    const entry: ComprasMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
-    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
-    setNewItemIcon('📌')
-    setNewItemLabel('')
-    setAddingCustomItem(false)
-  }
-
-  function handleSaveItem(groupId: string, key: ComprasMenuItemKey) {
-    onLayoutChange(
-      layout.map((g) =>
-        g.id === groupId
-          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
-          : g,
-      ),
-    )
-    setEditingItemKey(null)
-  }
-
-  function deleteItem(groupId: string, key: ComprasMenuItemKey) {
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
-  }
-
   function handleItemActivate(entry: ComprasMenuEntry) {
-    if (isCustomComprasMenuKey(entry.key)) {
-      setPlaceholderNotice(true)
-      setTimeout(() => setPlaceholderNotice(false), 2500)
-      return
-    }
     onActivate(entry.key)
     onClose()
   }
 
+  // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
+  // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
     <div className="economia-menu-dropdown">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? '✓ Listo' : '✏️ Editar'}
-      </button>
-
-      {layout.map((group) => (
-        <div key={group.id} className="economia-menu-group">
-          {(group.name || editMode) &&
-            (renamingGroupId === group.id ? (
-              <form
-                className="inline-fields"
-                style={{ margin: '4px 4px 6px' }}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleRenameGroup(group.id)
-                }}
-              >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
-                <button type="submit">Guardar</button>
-              </form>
-            ) : (
+      {layout.map((group) => {
+        const items = group.items.filter((entry) => !isCustomComprasMenuKey(entry.key))
+        if (items.length === 0) return null
+        return (
+          <div key={group.id} className="economia-menu-group">
+            {group.name && (
               <div className="economia-menu-group-title">
-                <span>{group.name ?? 'Sin categoría'}</span>
-                {editMode && (
-                  <span style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => {
-                        setRenamingGroupId(group.id)
-                        setRenameValue(group.name ?? '')
-                      }}
-                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
-                    >
-                      ✎
-                    </button>
-                    {layout.length > 1 && (
-                      <ConfirmIconButton
-                        icon="✕"
-                        className="link-button"
-                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
-                        onConfirm={() => deleteGroup(group.id)}
-                      />
-                    )}
-                  </span>
-                )}
+                <span>{group.name}</span>
               </div>
-            ))}
+            )}
 
-          {group.items.map((entry, i) => {
-            const meta = comprasMenuEntryMeta(entry)
-            const isTab = isComprasSubTab(entry.key)
-            const isCustom = isCustomComprasMenuKey(entry.key)
+            {items.map((entry) => {
+              const meta = comprasMenuEntryMeta(entry)
+              const isTab = isComprasSubTab(entry.key)
 
-            if (editMode && editingItemKey === entry.key) {
               return (
-                <form
-                  key={entry.key}
-                  className="inline-fields"
-                  style={{ margin: '2px 4px' }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSaveItem(group.id, entry.key)
-                  }}
-                >
-                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
-                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
-                  <button type="submit">Guardar</button>
-                </form>
-              )
-            }
-
-            return (
-              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
-                {editMode ? (
-                  <span className="economia-menu-item">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label}
-                  </span>
-                ) : (
+                <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
                   <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </button>
-                )}
 
-                {editMode ? (
-                  <span className="economia-menu-edit-controls">
-                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      disabled={i === group.items.length - 1}
-                      onClick={() => moveItem(group.id, i, 1)}
-                      aria-label={`Bajar ${meta.label}`}
-                    >
-                      ↓
-                    </button>
-                    <select
-                      value={group.id}
-                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
-                      aria-label={`Mover ${meta.label} a otra categoría`}
-                    >
-                      {layout.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name ?? 'Sin categoría'}
-                        </option>
-                      ))}
-                    </select>
-                    {isCustom && (
-                      <>
-                        <button
-                          type="button"
-                          className="link-button"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingItemKey(entry.key)
-                            setEditItemIcon(meta.icon)
-                            setEditItemLabel(meta.label)
-                          }}
-                          aria-label={`Renombrar ${meta.label}`}
-                        >
-                          ✎
-                        </button>
-                        <ConfirmIconButton
-                          icon="✕"
-                          className="link-button"
-                          ariaLabel={`Eliminar ${meta.label}`}
-                          onConfirm={() => deleteItem(group.id, entry.key)}
-                        />
-                      </>
-                    )}
-                  </span>
-                ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
@@ -909,68 +702,12 @@ function ComprasMenuDropdown({
                   >
                     {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
-
-      {placeholderNotice && (
-        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
-          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
-        </p>
-      )}
-
-      {editMode && (
-        <>
-          {addingCustomItem ? (
-            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={newItemIcon}
-                onChange={(e) => setNewItemIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                aria-label="Icono"
-              />
-              <input
-                type="text"
-                value={newItemLabel}
-                onChange={(e) => setNewItemLabel(e.target.value)}
-                placeholder="Nombre del acceso"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
-              <span aria-hidden="true">📌</span>
-              Nuevo acceso
-            </button>
-          )}
-
-          {addingGroup ? (
-            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={addingGroupName}
-                onChange={(e) => setAddingGroupName(e.target.value)}
-                placeholder="Nombre de la categoría"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-              <span aria-hidden="true">➕</span>
-              Nueva categoría
-            </button>
-          )}
-        </>
-      )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -1301,6 +1038,7 @@ function ShoppingListTab() {
   async function setStatus(id: string, status: ShoppingItemStatus) {
     try {
       await updateShoppingItemStatus(id, status)
+      emitHelpEvent('shopping.item-status-changed') // para los tutoriales «Enséñame»: el cambio YA está guardado
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo actualizar'))
@@ -1326,7 +1064,7 @@ function ShoppingListTab() {
     <div>
       {error && <p className="error">{error}</p>}
       <div className="shopping-toolbar">
-        <p className="points-badge">
+        <p className="points-badge" data-help-id="shopping.counter">
           {bought.length}/{total || 0} comprados
         </p>
         {shoppingMode && bought.length > 0 && (
@@ -1336,11 +1074,11 @@ function ShoppingListTab() {
               ` (${boughtWithoutPrice} sin precio conocido)`}
           </p>
         )}
-        <button type="button" className="link-button" onClick={() => setShoppingMode(!shoppingMode)}>
+        <button type="button" className="link-button" data-help-id="shopping.shopping-mode" onClick={() => setShoppingMode(!shoppingMode)}>
           {shoppingMode ? 'Salir de modo compra' : '🛒 Modo compra'}
         </button>
         {pending.length > 0 && (
-          <button type="button" className="link-button" onClick={handleShareAll}>
+          <button type="button" className="link-button" data-help-id="shopping.share-all" onClick={handleShareAll}>
             📤 Compartir todo
           </button>
         )}
@@ -1363,6 +1101,7 @@ function ShoppingListTab() {
         <div key={store} id={`shopping-store-${normalize(store)}`}>
           <h3
             className="shopping-store-heading shopping-store-heading-toggle"
+            data-help-id="shopping.store-heading"
             role="button"
             tabIndex={0}
             onClick={() => toggleStoreCollapsed(store)}
@@ -1376,6 +1115,7 @@ function ShoppingListTab() {
             <button
               type="button"
               className="icon-button-share"
+              data-help-id="shopping.store-share"
               style={{ marginLeft: 'auto' }}
               aria-label={`Compartir lista de ${store}`}
               onClick={(e) => {
@@ -1440,7 +1180,7 @@ function ShoppingListTab() {
           tocar el nombre se ven como acciones a la primera, así que se
           explican aquí en vez de dejarlos por descubrir. */}
       {visible.length > 0 && (
-        <p className="muted" style={{ fontSize: 12 }}>
+        <p className="muted" style={{ fontSize: 12 }} data-help-id="shopping.list-hint">
           Toca un producto para editarlo, desliza hacia la izquierda para borrarlo.
         </p>
       )}
@@ -1449,7 +1189,7 @@ function ShoppingListTab() {
           debajo de la lista de pendientes" — antes iba justo encima,
           delante de lo que de verdad se mira primero al entrar. */}
       {!shoppingMode && (
-        <button type="button" className="link-button" style={{ fontSize: 13 }} onClick={() => openManager('clases')}>
+        <button type="button" className="link-button" style={{ fontSize: 13 }} data-help-id="shopping.manage-classes" onClick={() => openManager('clases')}>
           ⚙️ Gestionar clases de productos
         </button>
       )}
@@ -1636,6 +1376,7 @@ function StoreManager({
     setError(null)
     try {
       await createShoppingStore(newName.trim())
+      emitHelpEvent('shopping.store-added') // para los tutoriales «Enséñame»: la tienda YA está guardada
       setNewName('')
       onChanged()
     } catch (err) {
@@ -1685,6 +1426,7 @@ function StoreManager({
     setError(null)
     try {
       await createShoppingStoreFromChain(chain.key, chain.name)
+      emitHelpEvent('shopping.store-added') // para los tutoriales «Enséñame»: la tienda YA está guardada
       onChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir la cadena'))
@@ -1709,7 +1451,7 @@ function StoreManager({
           desplegable que ponga tiendas" — antes la tarjeta se veía
           siempre abierta, ocupando sitio aunque no se tocase casi nunca. */}
       <details className="store-manager-details">
-        <summary>🏬 Tiendas</summary>
+        <summary data-help-id="shopping.stores">🏬 Tiendas</summary>
         {/* Petición real: "que explique cómo se mandan productos a la
             lista de supermercados... Mercadona, patatas, cómo decirlo,
             igual que están las otras cosas explicadas" — mismo patrón de
@@ -1721,7 +1463,7 @@ function StoreManager({
         </p>
         {error && <p className="error">{error}</p>}
         {unlinkedChains.length > 0 && (
-          <div className="store-chain-catalog">
+          <div className="store-chain-catalog" data-help-id="shopping.store-chains">
             <p className="muted" style={{ fontSize: 13, margin: '8px 0 4px' }}>
               Cadenas conocidas de PEPA:
             </p>
@@ -1820,10 +1562,11 @@ function StoreManager({
           <input
             type="text"
             value={newName}
+            data-help-id="shopping.store-new"
             onChange={(e) => setNewName(e.target.value)}
             placeholder="+ Añadir otra tienda (p. ej. Carnicería Manolo)"
           />
-          <button type="submit" disabled={saving || !newName.trim()}>
+          <button type="submit" disabled={saving || !newName.trim()} data-help-id="shopping.store-add">
             Añadir
           </button>
         </form>
@@ -2150,6 +1893,7 @@ function ShoppingItemRow({
         <button
           type="button"
           className="price-row-name price-row-name-button"
+          data-help-id="shopping.item-name"
           onClick={() => {
             if (openX !== 0) {
               setOpenX(0)
@@ -2171,6 +1915,7 @@ function ShoppingItemRow({
         <button
           type="button"
           className={'shopping-check' + (done ? ' shopping-check-checked' : '')}
+          data-help-id="shopping.item-check"
           onClick={() => onSetStatus(item.id, done ? 'pendiente' : 'comprado')}
           aria-label={done ? 'Marcar como pendiente' : 'Comprado'}
         >
@@ -2439,6 +2184,7 @@ function EditShoppingItemForm({
     setError(null)
     try {
       await updateShoppingItem(item.id, { name, quantity, unit, priority, store: store || null })
+      emitHelpEvent('shopping.product-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -2451,7 +2197,7 @@ function EditShoppingItemForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Nombre
-        <input type="text" list="product-suggestions-edit" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input type="text" list="product-suggestions-edit" data-help-id="shopping.edit-name" value={name} onChange={(e) => setName(e.target.value)} required />
         <datalist id="product-suggestions-edit">
           {suggestions.map((s) => (
             <option key={s.normalizedName} value={s.displayName} />
@@ -2468,7 +2214,7 @@ function EditShoppingItemForm({
           <input type="text" value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="kg" />
         </label>
       </div>
-      <label>
+      <label data-help-id="shopping.edit-store">
         Tienda
         <input type="text" list="known-stores-edit" value={store} onChange={(e) => setStore(e.target.value)} placeholder="Mercadona" />
         <datalist id="known-stores-edit">
@@ -2512,7 +2258,7 @@ function EditShoppingItemForm({
         <input type="file" accept="image/*" ref={photoInputRef} onChange={handlePhotoSelected} style={{ display: 'none' }} />
       </div>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="shopping.edit-save">
         {saving ? 'Guardando…' : 'Guardar'}
       </button>
     </form>
@@ -2908,6 +2654,7 @@ function HistoryTab() {
       // actualiza en la misma escritura (Fase 6C). Nunca depende de la tienda.
       const chosen = nextType ? foodTypes.find((t) => t.name === nextType) : undefined
       await setProductFoodType(detail.productId, nextType || null, chosen?.kind)
+      emitHelpEvent('shopping.product-class-changed') // para los tutoriales «Enséñame»: la clase YA está guardada
       setProducts((prev) =>
         prev.map((p) =>
           p.id === detail.productId
@@ -3004,7 +2751,7 @@ function HistoryTab() {
       {error && <p className="error">{error}</p>}
       <p className="muted">Se construye con los tickets que guardas (y con las compras sin ticket que lleven productos). Marcar «comprado» en la lista no guarda precios.</p>
 
-      <div className="filter-row">
+      <div className="filter-row" data-help-id="shopping.history-mode">
         <button
           type="button"
           className={'chip' + (mode === 'alimentacion' ? ' chip-active' : '')}
@@ -3021,7 +2768,7 @@ function HistoryTab() {
         </button>
       </div>
 
-      <h2 className="section-title">Sugerencias para la próxima compra</h2>
+      <h2 className="section-title" data-help-id="shopping.history-suggestions">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
           <div
@@ -3059,6 +2806,7 @@ function HistoryTab() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar un producto para añadirlo a la lista…"
+          data-help-id="shopping.history-search"
           style={{ flex: 1 }}
         />
         <button
@@ -3067,12 +2815,13 @@ function HistoryTab() {
           onClick={() => setShowFoodTypesModal(true)}
           title="Clasificaciones de productos"
           aria-label="Clasificaciones de productos"
+          data-help-id="shopping.history-classes"
         >
           ⚙️
         </button>
       </div>
 
-      <div className="card event-card">
+      <div className="card event-card" data-help-id="shopping.history-total">
         <strong>Total de la compra</strong>
         <p>
           {currentBasket.toFixed(2)} €
@@ -3115,6 +2864,7 @@ function HistoryTab() {
                 <button
                   type="button"
                   className="price-row-name price-row-name-button"
+                  data-help-id="shopping.history-product"
                   onClick={() => openDetail(c.productId, c.name)}
                 >
                   {c.name}
@@ -3148,7 +2898,7 @@ function HistoryTab() {
 
       {detail && (
         <div className="modal-overlay" onClick={() => setDetail(null)}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="shopping.product-detail" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {detail.name}
@@ -3181,7 +2931,7 @@ function HistoryTab() {
                   classifyFoodType habría elegido); en Otros no hay
                   adivinador, así que vacío es simplemente "sin
                   clasificar". */}
-              <select value={detail.foodType} onChange={(e) => handleChangeFoodType(e.target.value)}>
+              <select value={detail.foodType} data-help-id="shopping.product-class" onChange={(e) => handleChangeFoodType(e.target.value)}>
                 <option value="">
                   {autoLabelFor(detail.productId, detail.name)
                     ? `Automático (${autoLabelFor(detail.productId, detail.name)})`

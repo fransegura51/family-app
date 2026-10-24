@@ -16,7 +16,7 @@ export function AttentionCard({ items, maxItems = 3 }: { items: AttentionItem[];
   const rest = items.length - visible.length
 
   return (
-    <div className="card attention-card" style={{ marginBottom: 12, background: '#fff7ed', borderColor: '#fdba74' }}>
+    <div className="card attention-card" data-help-id="inicio.pepa-te-avisa" style={{ marginBottom: 12, background: '#fff7ed', borderColor: '#fdba74' }}>
       <strong>🔔 PEPA te avisa</strong>
       <div className="event-list" style={{ marginTop: 6 }}>
         {visible.map((item) => (

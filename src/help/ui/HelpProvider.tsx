@@ -2,8 +2,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { useLocation, useNavigate } from 'react-router-dom'
 import { communityStatusCache } from '@/data/communityStatusCache'
 import type { Profile } from '@/domain/types'
-import { cardAccess, canOfferActions, type HelpAccessResult, type HelpCommunityState, type HelpContext } from '@/help/access'
+import { cardAccess, canOfferActions, moduleAccess, ruleResult, type HelpAccessResult, type HelpCommunityState, type HelpContext } from '@/help/access'
 import { HELP_CARD_BY_ID, HELP_CARDS, HELP_MODULE_BY_ID, LEGACY_ENTRIES } from '@/help/catalog'
+import { EXPLAINER_BY_ID } from '@/help/explainers'
 import { buildHelpContext, communityStateFrom, moduleForPath } from '@/help/context'
 import { getHelpVoiceMode, HELP_VOICE_KEY, setHelpVoiceMode, setWelcomeState, type HelpVoiceMode } from '@/help/prefs'
 import { buildIndex, searchHelp, suggestHelp, type SearchDoc, type SearchHit, type SearchResponse } from '@/help/search/searchEngine'
@@ -14,7 +15,7 @@ import { clearDestination, closeOpenMenus, requestDestination, revealDestination
 import { HelpNudges } from '@/help/ui/HelpNudges'
 import { getTour, hasTour } from '@/help/tours/registry'
 import type { TourNextOption } from '@/help/tours/TourRunner'
-import type { HelpCard, HelpModuleId } from '@/help/types'
+import type { HelpCard, HelpGo, HelpModuleId } from '@/help/types'
 import { primeHelpVoice, speakHelp, stopHelpSpeech } from '@/help/voice'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { peekAppOwner } from '@/state/useAppOwner'
@@ -31,10 +32,16 @@ function helpIndex() {
   return cachedIndex
 }
 
+// Las cuatro áreas de «Pepa te acompaña», integradas en el mismo panel: la conversación de siempre ('chat'), «Conoce esta sección» ('section'), «Enséñame» ('learn'),
+// «Cómo funciona PEPA» ('how') y «Soporte técnico» ('support', solo si está activado).
+export type HelpArea = 'chat' | 'section' | 'learn' | 'how' | 'support'
+
 interface OpenOptions {
   query?: string
   cardId?: string
   moduleId?: HelpModuleId
+  area?: HelpArea
+  explainerId?: string
 }
 
 export interface HelpApi {
@@ -49,6 +56,16 @@ export interface HelpApi {
   currentModule: HelpModuleId | null
   /** Módulo pedido al abrir la ayuda contextual (el «?» de una pantalla o formulario). */
   focusModule: HelpModuleId | null
+  /** Área que se está viendo dentro de la Ayuda (conversación, Conoce esta sección, Enséñame, Cómo funciona, Soporte). */
+  area: HelpArea
+  setArea: (a: HelpArea) => void
+  /** Explicación «Cómo funciona PEPA» abierta (null = la lista). */
+  explainerId: string | null
+  openExplainer: (id: string | null) => void
+  /** ¿Puede esta persona hacer este tutorial/visita (acceso al módulo y a la acción)? */
+  canDoTour: (tourId: string) => boolean
+  /** ¿Puede esta persona ver esta explicación «Cómo funciona PEPA»? */
+  canExplain: (explainerId: string) => boolean
   accessOf: (doc: SearchDoc) => HelpAccessResult
   accessOfCard: (card: HelpCard) => HelpAccessResult
   /** Sugerencias mientras se escribe (fichas verificadas, ordenadas por relevancia, pocas). */
@@ -63,6 +80,8 @@ export interface HelpApi {
   /** Cierra del todo: borra la conversación y para la voz. */
   closeHelp: () => void
   goTo: (card: HelpCard) => void
+  /** Como `goTo`, pero para cualquier destino (p. ej. el de una explicación «Cómo funciona PEPA»). */
+  goToPlace: (go: HelpGo, title: string) => void
   startTour: (card: HelpCard) => void
   /** Empieza un tutorial por su identificador (recorrido de bienvenida, sugerencias al terminar otro). */
   startTourById: (tourId: string) => void
@@ -83,6 +102,8 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
   const [panelOpen, setPanelOpen] = useState(false)
   const [session, setSession] = useState<HelpSession>(() => emptySession())
   const [focusModule, setFocusModule] = useState<HelpModuleId | null>(null)
+  const [area, setAreaState] = useState<HelpArea>('chat')
+  const [explainerId, setExplainerId] = useState<string | null>(null)
   const [speakingText, setSpeakingText] = useState<string | null>(null)
   // Tutorial «Enséñame» en marcha (null = ninguno) y un contador para reiniciar el mismo si se elige otra vez.
   const [activeTour, setActiveTour] = useState<string | null>(null)
@@ -211,6 +232,8 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       ensureCommunity()
       setPanelOpen(true)
       setFocusModule(opts?.moduleId ?? null)
+      setAreaState(opts?.area ?? 'chat')
+      setExplainerId(opts?.explainerId ?? null)
       if (opts?.cardId) showCard(opts.cardId)
       else if (opts?.query) ask(opts.query)
     },
@@ -224,20 +247,46 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
     setPanelOpen(false)
     setSession(emptySession())
     setFocusModule(null)
+    setAreaState('chat')
+    setExplainerId(null)
+  }, [])
+
+  const setArea = useCallback((a: HelpArea) => {
+    setAreaState(a)
+    if (a !== 'how') setExplainerId(null)
+  }, [])
+  const openExplainer = useCallback((id: string | null) => {
+    setExplainerId(id)
+    if (id) setAreaState('how')
+  }, [])
+  // Acceso a un tutorial o visita: el del módulo (rol, secciones permitidas, Comunidad 18+, plataforma) y el propio de la acción.
+  const canDoTour = useCallback((tourId: string) => {
+    const t = getTour(tourId)
+    if (!t) return false
+    const mod = t.module ? HELP_MODULE_BY_ID.get(t.module) : undefined
+    if (mod && moduleAccess(mod, ctxRef.current).status !== 'allowed') return false
+    return ruleResult(t.access, ctxRef.current).status === 'allowed'
+  }, [])
+
+  const canExplain = useCallback((id: string) => {
+    const e = EXPLAINER_BY_ID.get(id)
+    if (!e) return false
+    const mod = HELP_MODULE_BY_ID.get(e.module)
+    if (mod && moduleAccess(mod, ctxRef.current).status !== 'allowed') return false
+    return ruleResult(e.access, ctxRef.current).status === 'allowed'
   }, [])
 
   // «Llévame»: va al destino EXACTO (pestaña, tema, formulario…), no solo a la portada del módulo. Cierra los menús abiertos, pide el destino a la pantalla, navega y COMPRUEBA en
   // pantalla que ha llegado (sin temporizadores de cortesía). Si no llega (cuenta sin acceso, pantalla que no carga), lo dice y vuelve a abrir la Ayuda; nunca finge haber llegado.
   const pathRef = useRef(location.pathname)
   pathRef.current = location.pathname
-  const goTo = useCallback(
-    (card: HelpCard) => {
-      if (!card.go) return
+  const goToPlace = useCallback(
+    (go: HelpGo, title: string) => {
       setPanelOpen(false)
       closeOpenMenus()
-      const dest = card.go.dest
+      const dest = go.dest
       const intent = dest ? requestDestination(dest) : null
-      navigate(card.go.path, { replace: pathRef.current === card.go.path })
+      navigate(go.path, { replace: pathRef.current === go.path })
       if (!dest || !intent) return
       void waitForDestination(dest).then((r) => {
         clearDestination(intent)
@@ -245,14 +294,20 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
           revealDestination(dest)
           return
         }
-        setSession((s) => addPepaText(s, `No he podido llegar a «${card.title}». Puede que tu cuenta no tenga acceso a esa parte o que la pantalla aún se esté cargando. Prueba otra vez o búscalo en el menú.`))
+        setSession((s) => addPepaText(s, `No he podido llegar a «${title}». Puede que tu cuenta no tenga acceso a esa parte o que la pantalla aún se esté cargando. Prueba otra vez o búscalo en el menú.`))
         setPanelOpen(true)
       })
     },
     [navigate],
   )
+  const goTo = useCallback(
+    (card: HelpCard) => {
+      if (card.go) goToPlace(card.go, card.title)
+    },
+    [goToPlace],
+  )
 
-  const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [])
+  const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canDoTour(card.tour!) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [canDoTour])
   const startTourById = useCallback((tourId: string) => {
     if (!getTour(tourId)) return
     setPanelOpen(false)
@@ -300,6 +355,12 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       session,
       currentModule: moduleForPath(location.pathname),
       focusModule,
+      area,
+      setArea,
+      explainerId,
+      openExplainer,
+      canDoTour,
+      canExplain,
       accessOf,
       accessOfCard,
       search,
@@ -310,6 +371,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       minimize,
       closeHelp,
       goTo,
+      goToPlace,
       startTour,
       startTourById,
       activeTour,
@@ -319,7 +381,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       speakingText,
       ensureCommunity,
     }),
-    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, accessOf, accessOfCard, search, suggest, ask, showCard, openHelp, minimize, closeHelp, goTo, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
+    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, area, setArea, explainerId, openExplainer, canDoTour, canExplain, accessOf, accessOfCard, search, suggest, ask, showCard, openHelp, minimize, closeHelp, goTo, goToPlace, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
   )
 
   const runningTour = activeTour ? getTour(activeTour) : undefined

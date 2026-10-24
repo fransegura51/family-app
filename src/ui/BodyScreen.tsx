@@ -157,7 +157,7 @@ export function BodyTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div className="filter-row">
+      <div className="filter-row" data-help-id="body.members">
         {members.map((m) => (
           <button
             key={m.id}
@@ -456,7 +456,7 @@ function MeasurementForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className={initial ? 'member-form' : 'card member-form'}>
+    <form onSubmit={handleSubmit} className={initial ? 'member-form' : 'card member-form'} {...(initial ? {} : { 'data-help-id': 'body.measurement-form' })}>
       {!initial && <h2>Registrar {mode === 'baby' || mode === 'kid' ? 'una medida' : 'peso y medidas'}</h2>}
       <label>
         Fecha

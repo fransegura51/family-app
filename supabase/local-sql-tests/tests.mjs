@@ -895,7 +895,7 @@ console.log('\n0307 · Actividad reciente: un UPDATE que no cambia nada no se an
     assert.equal(await n(), before + 1)
   })
 
-  await db.exec(read('supabase/pending-migrations/0307_activity_log_skip_noop_updates.sql'))
+  await db.exec(read('supabase/migrations/0307_activity_log_skip_noop_updates.sql'))
 
   await t('tras 0307: 49 updates idénticos seguidos (la sincronización horaria de Google) no anotan NADA', async () => {
     const ids = []

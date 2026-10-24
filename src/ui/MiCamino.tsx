@@ -168,7 +168,7 @@ export function MiCamino({ runners }: { runners: MiCaminoRunner[] }) {
   const facts = planet ? PLANET_FACTS[planet] : undefined
 
   return (
-    <section className="mi-camino" aria-label="Mi Camino">
+    <section className="mi-camino" aria-label="Mi Camino" data-help-id="pequenos.camino">
       <div className="mi-camino-top">
         <strong>{MI_CAMINO_WORLD_TITLES[shownWorld] ?? MI_CAMINO_WORLD_TITLES[0]}</strong>
         <span className="mi-camino-tag">{MI_CAMINO_WORLD_TAGS[shownWorld] ?? MI_CAMINO_WORLD_TAGS[0]}</span>
@@ -188,7 +188,7 @@ export function MiCamino({ runners }: { runners: MiCaminoRunner[] }) {
           ))}
         </div>
       )}
-      <div className="mi-camino-stats">
+      <div className="mi-camino-stats" data-help-id="pequenos.camino-ninos">
         {shown.map((r) => {
           const pos = miCaminoPosition(r.points)
           const isSelected = r.member.id === selected.member.id

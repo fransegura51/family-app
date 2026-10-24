@@ -9,6 +9,8 @@ export default defineConfig(({ command }) => ({
   // Supabase al importarse falla también aquí, en vez de pasar solo porque la máquina de desarrollo tiene claves.
   envDir: process.env.VITEST ? './.no-env-in-tests' : undefined,
   base: command === 'build' ? '/family-app/' : '/',
+  // Versión de la web (primeros 7 caracteres del commit en el despliegue de GitHub): la usa el Soporte técnico como contexto mínimo de una incidencia (src/support/context.ts).
+  define: { __APP_VERSION__: JSON.stringify((process.env.GITHUB_SHA ?? 'local').slice(0, 7)) },
   plugins: [
     react(),
     VitePWA({

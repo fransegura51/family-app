@@ -8,7 +8,8 @@ const FILES = import.meta.glob(['/supabase/migrations/0142_store_chains.sql', '/
 }) as Record<string, string>
 const MIGRATION = FILES['/supabase/migrations/0142_store_chains.sql']
 const ROLLBACK = FILES['/supabase/rollbacks/0142_store_chains_down.sql']
-const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+// Las explicaciones de la Ayuda (src/help/explainers) citan estos archivos solo como DOCUMENTACIÓN (`basedOn`): no son código que los use.
+const APP = import.meta.glob(['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.*', '!/src/help/explainers/**'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 // Solo el código SQL (sin comentarios de línea) para que las frases explicativas no cuenten como sentencias.
 const SQL = MIGRATION.replace(/--[^\n]*/g, '')

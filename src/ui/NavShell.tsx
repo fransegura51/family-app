@@ -189,11 +189,11 @@ export function NavShell({ profile }: { profile: Profile }) {
             <span className="nav-item-icon">💡</span>
             Sugerencias
           </button>
-          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('sugerencias') }} onClick={() => go('/resenas')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('sugerencias') }} data-help-id="nav.resenas" onClick={() => go('/resenas')}>
             <span className="nav-item-icon">⭐</span>
             Reseñas y opiniones
           </button>
-          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('menu-organizar') }} onClick={() => go('/menu-organizar')}>
+          <button type="button" className="nav-menu-item nav-menu-settings" style={{ background: NAV_SECTION_COLORS.get('menu-organizar') }} data-help-id="nav.config" onClick={() => go('/menu-organizar')}>
             <span className="nav-item-icon">⚙️</span>
             Configuración
           </button>

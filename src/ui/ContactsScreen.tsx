@@ -13,6 +13,7 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { paletteByName } from '@/domain/colors'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -143,11 +144,13 @@ export function ContactsScreen() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="🔍 Buscar por nombre…"
+        data-help-id="contactos.buscar"
         style={{ marginBottom: 8 }}
       />
       <button
         type="button"
         className="link-button"
+        data-help-id="contactos.compartir-varios"
         style={{ marginBottom: 8 }}
         onClick={() => {
           setSelecting((v) => !v)
@@ -156,7 +159,7 @@ export function ContactsScreen() {
       >
         {selecting ? 'Cancelar selección' : '📤 Compartir varios'}
       </button>
-      <div className="filter-row">
+      <div className="filter-row" data-help-id="contactos.categorias">
         <button
           type="button"
           className={'chip' + (categoryFilter === 'Todas' ? ' chip-active' : '')}
@@ -177,12 +180,12 @@ export function ContactsScreen() {
       </div>
 
       {selecting && selectedIds.size > 0 && (
-        <button type="button" onClick={handleShareSelected} style={{ marginBottom: 8 }}>
+        <button type="button" data-help-id="contactos.mandar-seleccion" onClick={handleShareSelected} style={{ marginBottom: 8 }}>
           📤 Compartir {selectedIds.size} contacto{selectedIds.size === 1 ? '' : 's'}
         </button>
       )}
 
-      <div className="event-list">
+      <div className="event-list" data-help-id="contactos.lista">
         {filteredContacts.map((c) => (
           <ContactCard
             key={c.id}
@@ -203,7 +206,7 @@ export function ContactsScreen() {
       <ImportVcfContactsForm existingContacts={contacts} onAdded={reload} />
       <ImportIcsBirthdaysForm existingContacts={contacts} onAdded={reload} />
 
-      <button type="button" className="screen-fab" onClick={() => setAddingContact(true)}>
+      <button type="button" className="screen-fab" data-help-id="contactos.nuevo" onClick={() => setAddingContact(true)}>
         + Nuevo contacto
       </button>
 
@@ -345,6 +348,7 @@ function ContactCard({
           checked={selected}
           onChange={onToggleSelect}
           aria-label={`Seleccionar ${c.name}`}
+          data-help-id="contactos.casilla"
           style={{ marginRight: 4 }}
         />
       )}
@@ -378,7 +382,7 @@ function ContactCard({
           como iconos, en vez de repartidos en texto (petición real:
           "los tres botones de comandos que sustituiría el texto por
           los símbolos habituales"). */}
-      <div className="task-card-actions">
+      <div className="task-card-actions" data-help-id="contactos.acciones">
         {c.phone && (
           <a href={`tel:${c.phone}`} className="link-button" aria-label="Llamar">
             📞
@@ -387,6 +391,7 @@ function ContactCard({
         <button
           type="button"
           className="icon-button-share"
+          data-help-id="contactos.compartir-uno"
           onClick={handleShareOne}
           disabled={sharing}
           aria-label="Compartir contacto"
@@ -537,7 +542,7 @@ function ImportContactsForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="contactos.importar-telefono">
       <h2>Importar del teléfono</h2>
       {picked.length === 0 ? (
         <>
@@ -676,7 +681,7 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
   const selectedCount = candidates.filter((c) => c.selected).length
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="contactos.importar-vcf">
       <h2>Importar contactos desde el móvil (.vcf)</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         En Contactos del iPhone (o en icloud.com → Contactos), selecciona los que quieras → Compartir/Exportar vCard,
@@ -804,7 +809,7 @@ function ImportIcsBirthdaysForm({ existingContacts, onAdded }: { existingContact
   const selectedCount = candidates.filter((c) => c.selected).length
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="contactos.importar-ics">
       <h2>Importar cumpleaños desde Google (.ics)</h2>
       <p className="muted" style={{ fontSize: 13 }}>
         En Google Calendar, en "Otros calendarios" → Cumpleaños → Configuración → "Exportar calendario", descarga el
@@ -873,6 +878,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
     setError(null)
     try {
       await addContact({ name, category, phone, email, notes, birthDate: birthDate || null })
+      emitHelpEvent('contacts.contact-added') // para los tutoriales «Enséñame»: el contacto YA está guardado
       setName('')
       setPhone('')
       setEmail('')
@@ -897,6 +903,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
           onChange={(e) => handleNameChange(e.target.value)}
           placeholder="Colegio Los Álamos"
           required
+          data-help-id="contactos.nombre"
         />
         <datalist id="contact-names">
           {uniqueNames.map((n) => (
@@ -912,26 +919,27 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           placeholder="Familia"
+          data-help-id="contactos.categoria"
         />
       </label>
       <label>
         Teléfono
-        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} data-help-id="contactos.telefono" />
       </label>
       <label>
         Email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} data-help-id="contactos.email" />
       </label>
-      <label>
+      <label data-help-id="contactos.cumpleanos">
         Cumpleaños (opcional)
         <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin cumpleaños" />
       </label>
       <label>
         Notas
-        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} data-help-id="contactos.notas" />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="contactos.anadir">
         {saving ? 'Guardando…' : 'Añadir'}
       </button>
     </form>

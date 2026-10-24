@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { HELP_COVERAGE_LABEL, type HelpCoverage } from '@/admin/features/featureTypes'
 import { HELP_CARDS, HELP_MODULES, HELP_MODULE_BY_ID, HELP_VIDEOS, LEGACY_ENTRIES } from '@/help/catalog'
 import { loadHelpFeedbackSummary, type HelpFeedbackRow } from '@/help/feedback'
+import { EXPLAINERS } from '@/help/explainers'
 import { cardCompleteness, computeHelpHealth } from '@/help/health'
+import { sectionInventory, type SectionStatus } from '@/help/master/inventory'
 import { AdminGroup } from '@/ui/admin/AdminGroups'
 import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 
@@ -11,10 +13,12 @@ import { useFeatureRows } from '@/ui/admin/useFeatureRows'
 // prioridades para completar la documentación. Todo sale del propio catálogo (sin consultas al servidor) salvo las valoraciones, que se piden solo al pulsar el botón y son
 // SIEMPRE agregadas (sí/no por ficha): nunca hay conversaciones ni textos de preguntas. Una función con la Ayuda incompleta NO está «parcialmente desarrollada»: son dos cosas.
 const COVERAGE_ORDER: HelpCoverage[] = ['completa', 'parcial', 'inexistente', 'pendiente']
+const SECTION_STATUS_TEXT: Record<SectionStatus, string> = { operativa: 'operativa', parcial: 'parcial', 'no-disponible': 'no disponible' }
 
 export function AreaAyuda() {
   const rows = useFeatureRows()
   const health = computeHelpHealth()
+  const inventory = sectionInventory()
   const totals = COVERAGE_ORDER.map((c) => ({ c, n: rows.filter((r) => r.help.coverage === c).length }))
   // Una función desactivada (apagada o sin pantalla) todavía no necesita Ayuda: se cuenta aparte para no pedir documentar lo que nadie puede usar.
   const gaps = rows.filter((r) => r.help.coverage !== 'completa' && r.entry.state !== 'desactivada')
@@ -103,11 +107,20 @@ export function AreaAyuda() {
         id="tutoriales"
         title="Tutoriales y vídeos"
         summary="Vídeos publicados, tutoriales «Enséñame» disponibles y los que faltan"
-        badge={`${health.toursAvailable.length} Enséñame · ${Object.keys(HELP_VIDEOS).length} vídeos`}
+        badge={`${inventory.reduce((n, r) => n + r.visits.length, 0)} visitas · ${inventory.reduce((n, r) => n + r.tutorials.length, 0)} Enséñame · ${EXPLAINERS.length} explicaciones · ${Object.keys(HELP_VIDEOS).length} vídeos`}
       >
         <h4 className="section-title" style={{ marginTop: 0 }}>
-          Tutoriales «Enséñame» disponibles ({health.toursAvailable.length})
+          Catálogo maestro por sección
         </h4>
+        <p className="muted">Estado real de cada sección y lo que tiene: visita guiada («Conoce esta sección»), tutoriales («Enséñame») y explicaciones («Cómo funciona PEPA»). Solo se ofrece lo que está verificado.</p>
+        <ul className="admin-plain-list">
+          {inventory.map((r) => (
+            <li key={r.module.id} className="card">
+              {r.module.icon} <strong>{r.module.label}</strong> — {SECTION_STATUS_TEXT[r.status]} · visitas {r.visits.length} · tutoriales {r.tutorials.length} · explicaciones {r.explainers} · fichas {r.cards}
+            </li>
+          ))}
+        </ul>
+        <h4 className="section-title">Tutoriales «Enséñame» y visitas registrados ({health.toursAvailable.length})</h4>
         {health.toursAvailable.length > 0 ? (
           <ul className="admin-plain-list">
             {health.toursAvailable.map((id) => (

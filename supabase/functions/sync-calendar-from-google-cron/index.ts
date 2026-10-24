@@ -197,9 +197,11 @@ Deno.serve(async (req) => {
 
           // Para que salga con el color del miembro y Pepa sepa "para
           // quién" es — igual que cualquier evento creado a mano.
+          // ignoreDuplicates (ON CONFLICT DO NOTHING): si la asignación ya existe NO se reescribe la fila cada hora (antes: ~755 escrituras inútiles por vuelta);
+          // si faltara, se vuelve a crear exactamente igual que antes. No cambia qué asignaciones hay.
           await admin
             .from("calendar_event_members")
-            .upsert({ event_id: eventId, member_id: memberId }, { onConflict: "event_id,member_id" })
+            .upsert({ event_id: eventId, member_id: memberId }, { onConflict: "event_id,member_id", ignoreDuplicates: true })
         }
 
         // Lo que ya no aparece en Google (borrado hace tiempo, fuera de

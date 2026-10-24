@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 import { RewardsScreen } from '@/ui/RewardsScreen'
 import { KidsFinanceTab } from '@/ui/FinanceScreen'
 import { WishlistScreen } from '@/ui/WishlistScreen'
@@ -25,15 +27,21 @@ type PequenosGrandesModule = 'recompensas' | 'educacion' | 'deseos' | null
 // título/subtítulo encima ni debajo (petición real, segunda ronda: "eliminar los subtítulos grises
 // visibles, ya que los títulos están incorporados en las ilustraciones"); "stat" solo queda como el
 // nombre accesible del botón (aria-label), nunca pintado en pantalla.
-const MODULE_CARDS: { key: Exclude<PequenosGrandesModule, null>; label: string; stat: string; img: string }[] = [
-  { key: 'recompensas', label: 'Puntos y recompensas', stat: 'Gana puntos y canjea premios', img: recompensasCardImg },
-  { key: 'educacion', label: 'Educación financiera', stat: 'Ahorrar, gastar y aportar', img: educacionFinancieraCardImg },
-  { key: 'deseos', label: 'Lista de deseos', stat: 'Sueños y regalos', img: deseosCardImg },
+const MODULE_CARDS: { key: Exclude<PequenosGrandesModule, null>; label: string; stat: string; img: string; helpMark: { 'data-help-id': string } }[] = [
+  { key: 'recompensas', label: 'Puntos y recompensas', stat: 'Gana puntos y canjea premios', img: recompensasCardImg, helpMark: { 'data-help-id': 'pequenos.tarjeta-puntos' } },
+  { key: 'educacion', label: 'Educación financiera', stat: 'Ahorrar, gastar y aportar', img: educacionFinancieraCardImg, helpMark: { 'data-help-id': 'pequenos.tarjeta-educacion' } },
+  { key: 'deseos', label: 'Lista de deseos', stat: 'Sueños y regalos', img: deseosCardImg, helpMark: { 'data-help-id': 'pequenos.tarjeta-deseos' } },
 ]
 
 export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
   const [openModule, setOpenModule] = useState<PequenosGrandesModule>(null)
   useSectionHome(() => setOpenModule(null))
+  // «Llévame» de la Ayuda: cada vista (no son rutas) se abre por su nombre. Las marcas de llegada las pintan las propias vistas.
+  useHelpDestinations({
+    'pequenos.inicio': () => setOpenModule(null),
+    'pequenos.recompensas': () => setOpenModule('recompensas'),
+    'pequenos.deseos': () => setOpenModule('deseos'),
+  })
 
   if (openModule === 'recompensas') return <RewardsScreen profile={profile} />
   if (openModule === 'educacion') return <EducacionFinancieraTab profile={profile} />
@@ -45,10 +53,11 @@ export function PequenosGrandesScreen({ profile }: { profile: Profile }) {
         <img src={pequenosGrandesHeaderImg} alt="Pequeños Grandes" className="kitchen-header-img" />
       </div>
       <SectionBreadcrumb subsection="Inicio" />
+      <HelpDestMark id="pequenos.inicio" />
       <p className="muted">Aprender, jugar y soñar</p>
-      <div className="pg-access-list">
+      <div className="pg-access-list" data-help-id="pequenos.hub">
         {MODULE_CARDS.map((card) => (
-          <button key={card.key} type="button" className="pg-access-card" aria-label={`${card.label} — ${card.stat}`} onClick={() => setOpenModule(card.key)}>
+          <button key={card.key} type="button" className="pg-access-card" aria-label={`${card.label} — ${card.stat}`} onClick={() => setOpenModule(card.key)} {...card.helpMark}>
             <img src={card.img} alt="" className="pg-access-card-img" />
           </button>
         ))}

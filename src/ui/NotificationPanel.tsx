@@ -5,6 +5,8 @@ import {
   deleteAllNotifications,
   deleteNotifications,
   listNotifications,
+  markAllNotificationsRead,
+  markAllNotificationsUnread,
   markNotificationsRead,
   markNotificationUnread,
 } from '@/data/notifications'
@@ -37,7 +39,7 @@ import { useModalDialog } from '@/ui/useModalDialog'
 //  · Dos bloques en orden fijo (Personales / Otras notificaciones), cada uno plegable a mano. Se ven TODOS los avisos (nada escondido al abrir), de más reciente a más
 //    antiguo; los nuevos en negrita y con punto azul, los leídos con letra normal y sin punto. Arriba se cuentan por separado («3 nuevas · 12 leídas»).
 //  · Abrir el panel NO marca nada como leído: un aviso se da por leído al abrirlo o tras 3 segundos a la vista dentro del panel (los de un bloque plegado, los que están
-//    fuera de la zona visible o con el panel cerrado no cuentan). No hay «marcar todas»: cada aviso leído tiene «Marcar como no leída» para recordarlo más tarde.
+//    fuera de la zona visible o con el panel cerrado no cuentan). «Marcar todas como leídas / no leídas» (solo al pulsarlos) y, por aviso, «Marcar como no leída» para recordarlo más tarde.
 //  · Borrar uno, varios o todos (también los plegados) pide confirmación; borrar un aviso no borra la tarea, el pago o el evento al que apuntaba.
 //  · El historial es el del servidor (30 días), así que leído/borrado/contador son iguales en todos los dispositivos de la persona.
 //  · El aviso agrupado de tareas (resumen diario) no navega: abre un DETALLE dentro del mismo panel con TODAS las tareas del aviso (título completo, fecha,
@@ -100,7 +102,11 @@ export function NotificationPanel({
   // oculta tras abrir un detalle y todo si la pestaña está en segundo plano o el panel se cierra enseguida (al desmontar se cancelan las cuentas atrás).
   const readQueue = useRef<string[]>([])
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Avisos que la persona ha dejado A MANO como «no leídos» (uno a uno o «Marcar todas como no leídas»): la lectura automática de los 3 segundos no los vuelve a marcar
+  // mientras el panel siga abierto — si no, volverían a «leído» a los 3 s y el botón no serviría para recordarlos. Abrirlos sí los marca (y los saca de aquí).
+  const keepUnread = useRef<Set<string>>(new Set())
   const markSeen = useCallback((id: string) => {
+    if (keepUnread.current.has(id)) return
     readQueue.current.push(id)
     if (readTimer.current !== null) return
     readTimer.current = setTimeout(() => {
@@ -136,7 +142,9 @@ export function NotificationPanel({
       },
       { root: panel, threshold: 0.6 },
     )
-    panel.querySelectorAll<HTMLElement>('li[data-unread="true"]').forEach((el) => observer.observe(el))
+    panel.querySelectorAll<HTMLElement>('li[data-unread="true"]').forEach((el) => {
+      if (!keepUnread.current.has(el.dataset.notificationId ?? '')) observer.observe(el)
+    })
     return () => {
       observer.disconnect()
       tracker.cancelAll()
@@ -179,6 +187,7 @@ export function NotificationPanel({
     }
     const target = safeInternalUrl(n.url)
     // Abrir un aviso lo marca como leído (se avisa a la lista al instante y al servidor en segundo plano).
+    keepUnread.current.delete(n.id)
     if (n.readAt === null) {
       setItems((prev) => (prev ? prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)) : prev))
       void markNotificationsRead([n.id]).then(
@@ -286,6 +295,21 @@ export function NotificationPanel({
     setConfirmDelete(false)
   }
 
+  // «Marcar todas como leídas / como no leídas»: afecta a todos los avisos del historial (también los de bloques plegados). El estado es del servidor, igual en todos los
+  // dispositivos de la persona. Los que se dejan como no leídos no se vuelven a leer solos (ver keepUnread).
+  function markAll(asRead: boolean) {
+    const affected = (items ?? []).filter((n) => (asRead ? n.readAt === null : n.readAt !== null)).map((n) => n.id)
+    if (affected.length === 0) return
+    for (const id of affected) {
+      if (asRead) keepUnread.current.delete(id)
+      else keepUnread.current.add(id)
+    }
+    void run(
+      () => (asRead ? markAllNotificationsRead() : markAllNotificationsUnread()),
+      asRead ? 'Todos los avisos marcados como leídos.' : 'Todos los avisos marcados como no leídos.',
+    )
+  }
+
   const allIds = (items ?? []).map((n) => n.id)
   const allSelected = allIds.length > 0 && allIds.every((id) => selected.has(id))
 
@@ -309,13 +333,35 @@ export function NotificationPanel({
           {n.body && <span className="notification-item-body">{n.body}</span>}
           <span className="notification-item-time muted">{relativeTime(n.createdAt)}</span>
         </button>
+        {/* Botón VISIBLE junto a cada aviso para marcarlo como leído o devolverlo a no leído (además de la lectura automática a los 3 s). */}
+        {!selecting && isUnread && (
+          <button
+            type="button"
+            className="notification-toggle-read notification-toggle-read-mark"
+            data-help-id="notificaciones.marcar-leida"
+            disabled={busy}
+            aria-label={`Marcar como leída: ${n.title}`}
+            onClick={() => {
+              keepUnread.current.delete(n.id)
+              setItems((prev) => (prev ? prev.map((x) => (x.id === n.id && x.readAt === null ? { ...x, readAt: new Date().toISOString() } : x)) : prev))
+              void markNotificationsRead([n.id]).then(
+                () => setStatus('Aviso marcado como leído.'),
+                () => void load(),
+              )
+            }}
+          >
+            <span aria-hidden="true">✓ </span>Marcar leída
+          </button>
+        )}
         {!selecting && !isUnread && (
           <button
             type="button"
-            className="link-button notification-mark-unread"
+            className="notification-toggle-read notification-toggle-read-unmark"
+            data-help-id="notificaciones.marcar-no-leida"
             disabled={busy}
             aria-label={`Marcar como no leída: ${n.title}`}
             onClick={() => {
+              keepUnread.current.add(n.id)
               setItems((prev) => (prev ? prev.map((x) => (x.id === n.id ? { ...x, readAt: null } : x)) : prev))
               void markNotificationUnread(n.id).then(
                 () => setStatus('Aviso marcado como no leído.'),
@@ -323,7 +369,7 @@ export function NotificationPanel({
               )
             }}
           >
-            Marcar como no leída
+            <span aria-hidden="true">↺ </span>Marcar como no leída
           </button>
         )}
       </li>
@@ -335,6 +381,7 @@ export function NotificationPanel({
       <div
         ref={panelRef}
         className="notification-panel"
+        data-help-id="notificaciones.panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby={detail ? `${titleId}-detail` : titleId}
@@ -346,7 +393,7 @@ export function NotificationPanel({
         <div hidden={detail !== null}>
           <header className="notification-panel-header">
             <h2 id={titleId}>Avisos</h2>
-            <button type="button" className="notification-close" onClick={onClose} aria-label="Cerrar avisos">
+            <button type="button" className="notification-close" data-help-id="notificaciones.cerrar" onClick={onClose} aria-label="Cerrar avisos">
               <span aria-hidden="true">✕</span>
             </button>
           </header>
@@ -367,18 +414,37 @@ export function NotificationPanel({
             </p>
           )}
 
-          {items !== null && total === 0 && <p className="muted notification-empty">No tienes avisos. Aquí aparecerán los de los últimos 30 días.</p>}
+          {items !== null && total === 0 && <p className="muted notification-empty" data-help-id="notificaciones.vacio">No tienes avisos. Aquí aparecerán los de los últimos 30 días.</p>}
 
           {items !== null && total > 0 && (
-            <p className="notification-counts" role="status">
+            <p className="notification-counts" data-help-id="notificaciones.contador" role="status">
               <strong>{countsLabel(unread, read)}</strong>
             </p>
           )}
 
           {items !== null && total > 0 && (
-            <div className="notification-actions">
+            <div className="notification-actions" data-help-id="notificaciones.acciones">
               {!selecting ? (
                 <>
+                  {/* Además de la lectura automática (3 s a la vista): marcar todo de golpe como leído, o volver a dejarlo todo como no leído para recordarlo. */}
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-help-id="notificaciones.marcar-leidas"
+                    disabled={busy || unread === 0}
+                    onClick={() => markAll(true)}
+                  >
+                    Marcar todas como leídas
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-help-id="notificaciones.marcar-no-leidas"
+                    disabled={busy || read === 0}
+                    onClick={() => markAll(false)}
+                  >
+                    Marcar todas como no leídas
+                  </button>
                   <button type="button" className="link-button" onClick={() => setSelecting(true)}>
                     Seleccionar
                   </button>
@@ -431,6 +497,7 @@ export function NotificationPanel({
                   <button
                     type="button"
                     className="notification-bucket-title"
+                    data-help-id="notificaciones.bloque"
                     aria-expanded={!isCollapsed}
                     aria-controls={bodyId}
                     onClick={() => setCollapsed((prev) => ({ ...prev, [view.bucket]: !isCollapsed }))}

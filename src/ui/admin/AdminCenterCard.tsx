@@ -10,7 +10,7 @@ export function AdminCenterCard() {
   if (owner !== 'owner') return null
 
   return (
-    <Link to="/administracion" className="admin-center-card" aria-label="Centro de Administración PEPA. Gestiona usuarios, Comunidad, funcionalidades, Ayuda y sistema">
+    <Link to="/administracion" className="admin-center-card" data-help-id="config.admin-center" aria-label="Centro de Administración PEPA. Gestiona usuarios, Comunidad, funcionalidades, Ayuda y sistema">
       <span className="admin-center-card-icon" aria-hidden="true">
         🛡️
       </span>

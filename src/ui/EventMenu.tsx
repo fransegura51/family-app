@@ -48,6 +48,7 @@ import { useDragReorder } from '@/ui/useDragReorder'
 import { showToast } from '@/state/toast'
 import { prefSet } from '@/state/prefs/prefsWrite'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 export function EventMenuSection({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
   const [data, setData] = useState<MenuHubData | null>(null)
@@ -238,6 +239,7 @@ export function MenuManager({
         : ({ type: 'end' } as const)
       if (placement.type !== 'end') await reorderEventMenuItems(placeNewIds(sequence.map((i) => i.id), [id], placement))
       if (isDishKind && !values.requiresPurchase) await updateEventMenuItem(id, { requiresPurchase: false })
+      emitHelpEvent('eventos.dish-added') // para los tutoriales «Enséñame»: el plato YA está guardado
     }
     setDishSheet(null)
     await onReload()
@@ -387,14 +389,14 @@ export function MenuManager({
             <button type="button" className="chip" onClick={() => setImporting({ forcedSection: null })}>
               📷 Hacer una foto · 🖼️ Elegir una foto · 📄 Subir PDF
             </button>
-            <button type="button" className="chip" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
+            <button type="button" className="chip" data-help-id="eventos.menu-add-dish" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
               ✏️ Añadirlo manualmente
             </button>
           </div>
         </div>
       ) : (
         <div className="menu-toolbar">
-          <button type="button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
+          <button type="button" data-help-id="eventos.menu-add-dish" onClick={() => setDishSheet({ mode: 'new', sectionLabel: firstSectionLabel, kind: 'dish' })}>
             + Añadir plato
           </button>
           <button type="button" className="link-button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: '', kind: 'heading' })}>
@@ -404,7 +406,7 @@ export function MenuManager({
             📷 Importar menú
           </button>
           {(mode === 'familia' || mode === 'mixto') && (
-            <button type="button" className="link-button" onClick={() => setShoppingOpen(true)}>
+            <button type="button" className="link-button" data-help-id="eventos.menu-shopping" onClick={() => setShoppingOpen(true)}>
               🛒 Preparar compra del menú
             </button>
           )}
@@ -655,7 +657,7 @@ export function DishSheet({
               ))}
             </select>
           </label>
-          <div className="autogrow-field">
+          <div className="autogrow-field" data-help-id="eventos.dish-name">
             <span>{isDishKind ? 'Plato' : 'Texto'}</span>
             <AutoGrowTextarea value={name} onChange={setName} ariaLabel={isDishKind ? 'Nombre del plato' : 'Texto del elemento'} disabled={saving} />
           </div>
@@ -705,7 +707,7 @@ export function DishSheet({
               </select>
             </label>
           )}
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.dish-save">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </form>

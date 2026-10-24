@@ -73,6 +73,7 @@ import { formatDateTime } from '@/domain/dateFormat'
 import { flushPrefsNow } from '@/state/prefs/prefsRuntime'
 import { useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const PINNED_COUNT = 4
 
@@ -107,6 +108,7 @@ function FamilyNameSection() {
       await updateFamilyName(draft)
       setName(draft.trim())
       setEditing(false)
+      emitHelpEvent('config.family-name-saved') // para los tutoriales «Enséñame»: el nombre YA está guardado
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar — puede que solo un admin de la familia pueda cambiar el nombre.'))
     } finally {
@@ -117,16 +119,16 @@ function FamilyNameSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="config.family-name">
       {editing ? (
         <div className="member-form">
           <label>
             Nombre de familia
-            <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+            <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus data-help-id="config.family-name-input" />
           </label>
           {error && <p className="error">{error}</p>}
           <div className="inline-fields">
-            <button type="button" onClick={handleSave} disabled={saving}>
+            <button type="button" onClick={handleSave} disabled={saving} data-help-id="config.family-name-save">
               {saving ? 'Guardando…' : 'Guardar'}
             </button>
             <button
@@ -145,7 +147,7 @@ function FamilyNameSection() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <strong style={{ flex: 1 }}>👨‍👩‍👧‍👦 {name}</strong>
-          <button type="button" className="link-button" onClick={() => setEditing(true)}>
+          <button type="button" className="link-button" onClick={() => setEditing(true)} data-help-id="config.family-name-edit">
             ✏️ Cambiar nombre
           </button>
         </div>
@@ -180,6 +182,7 @@ function AccountingMonthSection() {
     setError(null)
     try {
       await updateFinanceMonthStartDay(next)
+      emitHelpEvent('economia.accounting-month-saved') // para los tutoriales «Enséñame»: el día YA está guardado
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -190,13 +193,13 @@ function AccountingMonthSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.mes-contable">
       <strong>📅 Inicio del mes contable</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         El filtro "Este mes" de Economía cuenta desde este día del mes. Pon 31 para que empiece el último día de
         cada mes. Es solo tuyo — cada persona de la familia puede tener el suyo, sin afectar al de los demás.
       </p>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }} data-help-id="economia.mes-contable-dia">
         Día
         <input
           type="number"
@@ -346,13 +349,13 @@ function AccountsModeSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.modo-cuentas">
       <strong>🔐 Modo de cuentas</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Compartidas: todo el mundo ve los movimientos y saldos de todos, como hasta ahora. Separadas: cada uno ve
         solo los suyos (ni el admin ve los de otro), con una pestaña Común para lo que se comparta a propósito.
       </p>
-      <div className="filter-row" style={{ marginTop: 8 }}>
+      <div className="filter-row" style={{ marginTop: 8 }} data-help-id="economia.modo-cuentas-opciones">
         <button type="button" className={'chip' + (mode === 'compartido' ? ' chip-active' : '')} onClick={() => handleChange('compartido')}>
           Compartidas
         </button>
@@ -450,15 +453,17 @@ function ColorThemePicker<T extends ColorTheme>({
   options,
   current,
   onChoose,
+  helpId,
 }: {
   title: string
   text: string
   options: ColorOption<T>[]
   current: T
   onChoose: (next: T) => void
+  helpId?: string
 }) {
   return (
-    <div className="card event-card" style={{ marginBottom: 12 }}>
+    <div className="card event-card" style={{ marginBottom: 12 }} data-help-id={helpId}>
       <strong>{title}</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         {text}
@@ -510,6 +515,7 @@ function ColorThemeSection() {
         title="🎨 Menús y pantallas"
         text="Los colores de Inicio, los menús ☰, tarjetas, filas, calendario, compras y cocina. Se guarda en tu cuenta y vale en todos tus dispositivos. Al elegir otro estilo la app se recarga."
         options={UI_THEME_OPTIONS}
+        helpId="config.colors-ui"
         current={uiTheme}
         onChoose={(next) => {
           saveColorTheme(next)
@@ -521,6 +527,7 @@ function ColorThemeSection() {
         title="📊 Estadísticas y gráficos"
         text="Los colores de los dónuts, sus leyendas y las barras (Economía y Estadística compras), aparte del estilo de las pantallas."
         options={CHART_THEME_OPTIONS}
+        helpId="config.colors-charts"
         current={chartTheme}
         onChoose={(next) => {
           saveChartColorTheme(next)
@@ -618,6 +625,7 @@ function SettingsGroup({
   open,
   onToggle,
   children,
+  helpId,
 }: {
   icon: string
   title: string
@@ -626,9 +634,10 @@ function SettingsGroup({
   open: boolean
   onToggle: () => void
   children: ReactNode
+  helpId?: string
 }) {
   return (
-    <div className="card ayuda-card" style={{ marginBottom: 8, background: color }} data-settings-open={open ? 'true' : undefined}>
+    <div className="card ayuda-card" style={{ marginBottom: 8, background: color }} data-settings-open={open ? 'true' : undefined} data-help-id={helpId}>
       <button type="button" className="ayuda-card-header" onClick={onToggle} aria-expanded={open}>
         <span style={{ fontSize: 22 }} aria-hidden="true">
           {icon}
@@ -670,10 +679,11 @@ function MenuOrderSection() {
     ;[next[index], next[newIndex]] = [next[newIndex], next[index]]
     setOrder(next)
     saveTabOrder('bottom-nav', next)
+    emitHelpEvent('config.menu-order-changed') // para los tutoriales «Enséñame»: el nuevo orden YA está guardado
   }
 
   return (
-    <div>
+    <div data-help-id="config.menu-order">
       <p className="muted" style={{ margin: '10px 0 4px', fontSize: 12 }}>
         Los {PINNED_COUNT} primeros se quedan fijos abajo del todo; el resto aparece al tocar "☰ Menú".
       </p>
@@ -702,6 +712,7 @@ function MenuOrderSection() {
             disabled={i === 0}
             onClick={() => move(i, -1)}
             aria-label={`Subir ${tab.label}`}
+            {...(i === 1 ? { 'data-help-id': 'config.menu-move' } : {})}
           >
             ↑
           </button>
@@ -1366,7 +1377,7 @@ function GoogleCalendarSettingsCard() {
   // está conectado") — antes el título era fijo ("Conectar con Google Calendar (recomendado)")
   // independientemente del estado; ahora depende de status.connected, igual que el resto de la tarjeta.
   return (
-    <div className="card member-form calendar-external-card">
+    <div className="card member-form calendar-external-card" data-help-id="config.google-card">
       <h3>{status?.connected ? 'Google Calendar conectado' : 'Conectar con Google Calendar (recomendado)'}</h3>
       {!status?.connected && (
         <p className="muted">
@@ -1421,7 +1432,7 @@ function CalendarExportSettingsCard() {
   }
 
   return (
-    <div className="card member-form calendar-external-card">
+    <div className="card member-form calendar-external-card" data-help-id="config.export-card">
       <h3>Exportar tu calendario al móvil</h3>
       <p className="muted">
         Añade esta dirección como "calendario por URL" en Google Calendar o en Apple Calendar para ver aquí todo lo
@@ -1581,7 +1592,7 @@ function CalendarExternalLinksSection() {
         </p>
         {error && <p className="error">{error}</p>}
         {!showAddForm ? (
-          <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+          <button type="button" className="link-button" data-help-id="config.link-add" onClick={() => setShowAddForm(true)}>
             + Enlazar calendario
           </button>
         ) : (
@@ -1637,12 +1648,13 @@ const SETTINGS_GROUP_IDS: SettingsGroupId[] = ['menu', 'inicio', 'colores', 'fam
 // creada con el código de invitación.
 function SignOutCard({ displayName }: { displayName: string }) {
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="cuenta.cerrar-sesion">
       <strong>🚪 Cerrar sesión</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.</p>
       <button
         type="button"
         className="link-button"
+        data-help-id="cuenta.cerrar-sesion-boton"
         onClick={async () => {
           // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
           await disableNativeUpload()
@@ -1684,7 +1696,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
       {/* Acceso al Centro de Administración: solo cuentas propietarias de PEPA (verificado en el servidor). */}
       <AdminCenterCard />
 
-      <SettingsGroup color={groupColors[0]} icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')}>
+      <SettingsGroup color={groupColors[0]} icon="🧭" title="Organizar menú" summary="Qué secciones van fijas abajo y en qué orden" open={openGroup === 'menu'} onToggle={() => toggle('menu')} helpId="config.group-menu">
         <MenuOrderSection />
       </SettingsGroup>
 
@@ -1699,7 +1711,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         <HomeCarouselCard />
       </SettingsGroup>
 
-      <SettingsGroup color={groupColors[1]} icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')}>
+      <SettingsGroup color={groupColors[1]} icon="🎨" title="Colores" summary="Estilo de las pantallas y de las estadísticas" open={openGroup === 'colores'} onToggle={() => toggle('colores')} helpId="config.group-colores">
         <ColorThemeSection />
       </SettingsGroup>
 
@@ -1721,6 +1733,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Qué botones de Pepa ves arriba: los de siempre o solo 💬 Hablar con PEPA"
         open={openGroup === 'pepa'}
         onToggle={() => toggle('pepa')}
+        helpId="config.group-pepa"
       >
         <PepaPreferencesCard />
         <ClassicButtonsCard />
@@ -1733,6 +1746,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Avisos de este móvil, franja horaria, avisos de tareas, permiso de ubicación y ahorro de batería"
         open={openGroup === 'avisos'}
         onToggle={() => toggle('avisos')}
+        helpId="config.group-avisos"
       >
         <NotificationsCard />
         <BackgroundLocationCard />
@@ -1748,6 +1762,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Mes contable, cuentas, categorías, etiquetas y colores"
         open={openGroup === 'economia'}
         onToggle={() => toggle('economia')}
+        helpId="config.group-economia"
       >
         <AccountingMonthSection />
         <AccountsModeSection />
@@ -1778,7 +1793,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         />
       </SettingsGroup>
 
-      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="Correo, contraseña, PIN, huella y sesiones" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
+      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="Correo, contraseña, PIN, huella y sesiones" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')} helpId="config.group-seguridad">
         <SecuritySettings />
       </SettingsGroup>
 
@@ -1797,6 +1812,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         color={groupColors[7]}
         icon="🗓️"
         title="Calendario"
+        helpId="config.group-calendario"
         summary="Colores, categorías y calendarios externos (Google, enlazados)"
         open={openGroup === 'calendario'}
         onToggle={() => toggle('calendario')}
@@ -1818,6 +1834,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Cerrar sesión y borrar mi cuenta"
         open={openGroup === 'cuenta'}
         onToggle={() => toggle('cuenta')}
+        helpId="config.group-cuenta"
       >
         <SignOutCard displayName={profile.displayName} />
         <DeleteAccountCard isAdmin={profile.role === 'admin'} />

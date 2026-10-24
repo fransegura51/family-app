@@ -209,12 +209,13 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
             rows={3}
             placeholder="pepino, lechuga, tomate…  o  lentejas y calabacín"
             disabled={busy}
+            data-help-id="cocina.cocinar-tengo"
           />
         </label>
         <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             Para
-            <select value={servings} onChange={(e) => setServings(Number(e.target.value))} disabled={busy}>
+            <select value={servings} onChange={(e) => setServings(Number(e.target.value))} disabled={busy} data-help-id="cocina.cocinar-personas">
               {SERVING_CHOICES.map((n) => (
                 <option key={n} value={n}>
                   {n} {n === 1 ? 'persona' : 'personas'}
@@ -229,7 +230,7 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
           )}
         </div>
         {error && <p className="error">{error}</p>}
-        <button type="button" onClick={() => void searchSaved()} disabled={busy || text.trim() === ''}>
+        <button type="button" onClick={() => void searchSaved()} disabled={busy || text.trim() === ''} data-help-id="cocina.cocinar-buscar">
           🔍 Buscar qué cocinar (gratis)
         </button>
         <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
@@ -238,7 +239,7 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
       </div>
 
       {result && (
-        <div className="event-list" style={{ marginTop: 12 }}>
+        <div className="event-list" style={{ marginTop: 12 }} data-help-id="cocina.cocinar-resultados">
           <h3 className="section-title" style={{ margin: 0 }}>
             📖 De tus recetas guardadas
           </h3>
@@ -291,7 +292,7 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
             )}
           </div>
           {result.ideas.length === 0 && (
-            <button type="button" onClick={() => void askAi()} disabled={busy}>
+            <button type="button" onClick={() => void askAi()} disabled={busy} data-help-id="cocina.cocinar-ia">
               {busy ? 'Pensando qué puedes cocinar…' : '💡 Pedir ideas a la IA'}
             </button>
           )}

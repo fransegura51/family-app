@@ -42,7 +42,7 @@ export function PostCardView({ item, onUnblocked }: { item: CommunityCardItem; o
   const badge = readBadge(item)
   const author = item.authorDeleted ? 'Usuario eliminado' : (item.authorAlias ?? 'Alguien')
   return (
-    <Link to={paths.post(item.id)} className="community-card" aria-label={`${KIND_LABELS[item.kind]}: ${item.title}`}>
+    <Link to={paths.post(item.id)} className="community-card" aria-label={`${KIND_LABELS[item.kind]}: ${item.title}`} data-help-id="comunidad.post-card">
       <div className="community-card-body">
         <div className="community-card-meta">
           <span>

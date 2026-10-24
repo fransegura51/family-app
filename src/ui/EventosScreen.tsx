@@ -649,6 +649,7 @@ import { GuestExportModal } from '@/ui/GuestExportModal'
 import { InvitationBackground, InvitationCanvasEditor, InvitationCanvasView, InvitationTemplatePicker } from '@/ui/InvitationDesigner'
 import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/domain/invitationAutoCompose'
 import { formatDate, formatDateTime } from '@/domain/dateFormat'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -810,6 +811,16 @@ function validInitialModule(raw: string | null): EventModuleKey | null {
   return raw && EVENT_MODULE_KEYS.has(raw as EventModuleKey) ? (raw as EventModuleKey) : null
 }
 
+// Marcas de la Ayuda («Enséñame») en las tarjetas de módulo del evento: solo atributos, no cambian nada de la pantalla.
+const MODULE_CARD_MARKS: Partial<Record<EventModuleKey | 'compras', Record<string, string>>> = {
+  tareas: { 'data-help-id': 'eventos.module-tareas' },
+  invitados: { 'data-help-id': 'eventos.module-invitados' },
+  invitaciones: { 'data-help-id': 'eventos.module-invitaciones' },
+  presupuesto: { 'data-help-id': 'eventos.module-presupuesto' },
+  menu_compra: { 'data-help-id': 'eventos.module-menu' },
+  plan_dia: { 'data-help-id': 'eventos.module-plan-dia' },
+}
+
 export function EventosScreen() {
   const [events, setEvents] = useState<FamilyEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -915,10 +926,10 @@ export function EventosScreen() {
         />
       ) : (
         <>
-          <button type="button" onClick={() => setShowCreate(true)}>
+          <button type="button" data-help-id="eventos.new-event" onClick={() => setShowCreate(true)}>
             + Nuevo evento
           </button>
-          <button type="button" className="link-button" onClick={() => setShowGlobalProviders(true)} style={{ marginLeft: 8 }}>
+          <button type="button" className="link-button" data-help-id="eventos.providers-link" onClick={() => setShowGlobalProviders(true)} style={{ marginLeft: 8 }}>
             📇 Proveedores y ofertas
           </button>
           {showCreate && (
@@ -932,7 +943,7 @@ export function EventosScreen() {
             />
           )}
 
-          <div className="filter-row" style={{ marginTop: 12 }}>
+          <div className="filter-row" style={{ marginTop: 12 }} data-help-id="eventos.list-filter">
             <button type="button" className={'chip' + (!showArchived ? ' chip-active' : '')} onClick={() => setShowArchived(false)}>
               En marcha
             </button>
@@ -941,7 +952,7 @@ export function EventosScreen() {
             </button>
           </div>
 
-          <div className="event-list" style={{ marginTop: 12 }}>
+          <div className="event-list" style={{ marginTop: 12 }} data-help-id="eventos.event-list">
             {events.length === 0 && (
               <p className="muted">{showArchived ? 'Todavía no hay eventos archivados.' : 'Todavía no hay ningún evento — crea el primero.'}</p>
             )}
@@ -952,6 +963,7 @@ export function EventosScreen() {
                   key={ev.id}
                   type="button"
                   className="card event-card"
+                  data-help-id="eventos.event-card"
                   style={{ textAlign: 'left', width: '100%' }}
                   onClick={() => setSelectedId(ev.id)}
                 >
@@ -1030,6 +1042,7 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
         enabledModules: modules,
         theme,
       })
+      emitHelpEvent('eventos.event-created') // para los tutoriales «Enséñame»: el evento YA está guardado
       onCreated(id)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear el evento'))
@@ -1081,9 +1094,9 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
           )}
           <label>
             Nombre del evento
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Cumpleaños de Eric" autoFocus />
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Cumpleaños de Eric" autoFocus data-help-id="eventos.create-name" />
           </label>
-          <label>
+          <label data-help-id="eventos.create-type">
             Tipo
             <select value={type} onChange={(e) => handleTypeChange(e.target.value as EventType)}>
               {EVENT_TYPES.map((t) => (
@@ -1108,7 +1121,7 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
 
           {/* Los 14 módulos están siempre visibles, los recomendados llegan premarcados y el usuario decide
               libremente (marcar, desmarcar, combinar) — nunca ocultos, nunca bloqueados. */}
-          <strong style={{ marginTop: 8 }}>¿Qué quieres organizar en PEPA?</strong>
+          <strong style={{ marginTop: 8 }} data-help-id="eventos.create-modules">¿Qué quieres organizar en PEPA?</strong>
           <p className="muted" style={{ fontSize: 12, margin: '-4px 0 0' }}>
             ✨ Pepa te recomienda {recommendedModules.length} de {EVENT_MODULES.length} módulos para este evento.
           </p>
@@ -1117,7 +1130,7 @@ function CreateEventModal({ onClose, onCreated }: { onClose: () => void; onCreat
             La fecha, el lugar y el resto de detalles los iréis decidiendo después, en «Cómo queréis que sea vuestro evento». Podrás activar o desactivar módulos más adelante desde el propio evento.
           </p>
 
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.create-save">
             {saving ? 'Creando…' : 'Crear evento'}
           </button>
         </form>
@@ -1691,6 +1704,7 @@ function EventDetail({
             <div className="filter-row" style={{ marginTop: 6, flexWrap: 'wrap' }}>
               <button
                 type="button"
+                data-help-id="eventos.task-new"
                 onClick={() => {
                   setCreatingTaskInGroup(null)
                   setCreatingTask(true)
@@ -2015,14 +2029,14 @@ function EventDetail({
           ← Todos los eventos
         </button>
         <div className="filter-row" style={{ gap: 4 }}>
-          <button type="button" className="link-button" onClick={() => setShowManage(true)}>
+          <button type="button" className="link-button" data-help-id="eventos.manage" onClick={() => setShowManage(true)}>
             ⚙️ Gestionar evento
           </button>
         </div>
       </div>
       {error && <p className="error">{error}</p>}
 
-      <div className="card event-card event-hero-card" style={{ marginTop: 8 }}>
+      <div className="card event-card event-hero-card" style={{ marginTop: 8 }} data-help-id="eventos.event-hero">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             {/* Petición real: dos filas —el tipo y debajo el nombre— con el
@@ -2262,7 +2276,7 @@ function EventDetail({
         </div>
       )}
 
-      <div className="card-grid" style={{ marginTop: 8 }}>
+      <div className="card-grid" style={{ marginTop: 8 }} data-help-id="eventos.module-grid">
         {moduleCards.map((card, i) => (
           <button
             key={card.key}
@@ -2270,6 +2284,7 @@ function EventDetail({
             className="card event-module-card home-card"
             style={{ background: cardColors[i] }}
             onClick={() => setOpenModule(card.key)}
+            {...(MODULE_CARD_MARKS[card.key] ?? {})}
           >
             <div>
               <h2>{card.label}</h2>
@@ -2282,7 +2297,7 @@ function EventDetail({
 
       {event.status === 'planificacion' && (
         <div className="card event-card" style={{ marginTop: 8 }}>
-          <button type="button" className="link-button" onClick={() => setShowPlan(true)}>
+          <button type="button" className="link-button" data-help-id="eventos.organize" onClick={() => setShowPlan(true)}>
             🪄 Organízamelo Pepa
           </button>
           <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
@@ -3040,6 +3055,7 @@ function TaskEditModal({
           const reminders = remindersForForm()
           if (reminders.length > 0) await replaceReminders(linkedId, reminders)
         }
+        emitHelpEvent('eventos.task-created') // para los tutoriales «Enséñame»: la tarea YA está guardada
       } else {
         const priorityChanged = (priority || null) !== (task.priority ?? null)
         await updateEventTask(task.id, {
@@ -3088,12 +3104,12 @@ function TaskEditModal({
           {error && <p className="error">{error}</p>}
           <label>
             Título
-            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+            <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus data-help-id="eventos.task-title" />
           </label>
           {/* Comparten fila si el ancho lo permite; en móvil estrecho se apilan solas (flexWrap), nunca
               desbordan — revisión manual en iPhone encontró scroll horizontal aquí. */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            <label style={{ flex: '1 1 140px', minWidth: 0 }}>
+            <label style={{ flex: '1 1 140px', minWidth: 0 }} data-help-id="eventos.task-date">
               Fecha
               <DateField
                 value={dueDate}
@@ -3112,7 +3128,7 @@ function TaskEditModal({
               <input type="time" value={dueTime} disabled={!dueDate} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} onChange={(e) => setDueTime(e.target.value)} />
             </label>
           </div>
-          <label>
+          <label data-help-id="eventos.task-priority">
             Prioridad
             <select
               value={priority}
@@ -3140,7 +3156,7 @@ function TaskEditModal({
               </select>
             </label>
           )}
-          <div style={{ minWidth: 0 }}>
+          <div style={{ minWidth: 0 }} data-help-id="eventos.task-responsibles">
             <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>
               Responsables (puede ser más de uno; ninguno marcado = sin asignar)
             </div>
@@ -3215,7 +3231,7 @@ function TaskEditModal({
             Nota
             <textarea value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </label>
-          <label className="inline-fields" style={{ alignItems: 'center' }}>
+          <label className="inline-fields" style={{ alignItems: 'center' }} data-help-id="eventos.task-calendar">
             <input type="checkbox" checked={showInCalendar} disabled={!dueDate} onChange={(e) => setShowInCalendar(e.target.checked)} />
             <span>📅 Mostrar en Calendario</span>
           </label>
@@ -3271,7 +3287,7 @@ function TaskEditModal({
               )}
             </div>
           )}
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.task-save">
             {saving ? 'Guardando…' : 'Guardar'}
           </button>
         </form>
@@ -6125,6 +6141,7 @@ function EventPlanningConfigurator({
         type="button"
         className="link-button"
         onClick={toggleOpen}
+        data-help-id="eventos.configurator"
         style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', textAlign: 'left' }}
         aria-expanded={open}
       >
@@ -11980,7 +11997,7 @@ function InvitationSection({ event }: { event: FamilyEvent }) {
           <div style={{ marginTop: 8, maxWidth: 320 }}>
             <InvitationCanvasView canvas={invitation.canvas} templateKey={invitation.templateKey} photoUrls={photoUrls} backgroundImageUrl={backgroundUrl} />
           </div>
-          <button type="button" className="link-button" onClick={() => setShowEditor(true)} style={{ marginTop: 8 }}>
+          <button type="button" className="link-button" data-help-id="eventos.invitation-create" onClick={() => setShowEditor(true)} style={{ marginTop: 8 }}>
             🎨 {trackedEventDataChanges && trackedEventDataChanges.length > 0 ? 'Revisar invitación' : 'Editar diseño'}
           </button>
         </>
@@ -11988,7 +12005,7 @@ function InvitationSection({ event }: { event: FamilyEvent }) {
       {!loading && !hasDesign && (
         <>
           <p className="muted" style={{ margin: '8px 0' }}>Todavía no has creado la invitación de este evento.</p>
-          <button type="button" onClick={() => setShowEditor(true)}>
+          <button type="button" data-help-id="eventos.invitation-create" onClick={() => setShowEditor(true)}>
             + Crear invitación
           </button>
         </>
@@ -12106,7 +12123,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
         <strong>👥 Invitados</strong>
         <div style={{ display: 'flex', flexWrap: 'wrap' }}>
-          <button type="button" className="link-button" onClick={() => setShowExport(true)}>
+          <button type="button" className="link-button" data-help-id="eventos.guest-export" onClick={() => setShowExport(true)}>
             📤 Exportar invitados
           </button>
         </div>
@@ -12120,7 +12137,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       <EventOpenLinkBlock event={event} />
       <GuestQuestionsBlock event={event} />
       {pending.length > 0 && (
-        <button type="button" className="link-button" onClick={handleRemindPending}>
+        <button type="button" className="link-button" data-help-id="eventos.guest-remind" onClick={handleRemindPending}>
           🔔 Recordar a pendientes ({pending.length})
         </button>
       )}
@@ -12233,7 +12250,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
         {guests.length === 0 && <p className="muted">Todavía no hay invitados.</p>}
         {guests.length > 0 && visibleGuests.length === 0 && <p className="muted">Nadie con ese estado por ahora.</p>}
       </div>
-      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+      <button type="button" className="link-button" data-help-id="eventos.guest-add" onClick={() => setShowAdd(true)}>
         + Añadir invitado
       </button>
       {showAdd && (
@@ -12332,7 +12349,7 @@ function EventOpenLinkBlock({ event }: { event: FamilyEvent }) {
   }
 
   return (
-    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }} data-help-id="eventos.guest-open-link">
       <strong style={{ fontSize: 13 }}>🔗 Enlace abierto (opcional)</strong>
       <p className="muted" style={{ fontSize: 12, margin: '2px 0 4px' }}>
         Para invitar sin lista cerrada — quien lo abre escribe su nombre y cuántos vienen, y crea su propio invitado.
@@ -12895,6 +12912,7 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
         notes: notes || null,
         inviteScope: hasScope ? inviteScope : null,
       })
+      emitHelpEvent('eventos.guest-added') // para los tutoriales «Enséñame»: el invitado YA está guardado (no se envía nada)
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -12918,9 +12936,9 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
           {error && <p className="error">{error}</p>}
           <label>
             Nombre o familia
-            <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Familia García" autoFocus />
+            <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Familia García" autoFocus data-help-id="eventos.guest-name" />
           </label>
-          <div className="inline-fields">
+          <div className="inline-fields" data-help-id="eventos.guest-counts">
             <label style={{ flex: 1 }}>
               Adultos
               <input type="number" min={0} value={adultsCount} onChange={(e) => setAdultsCount(e.target.value)} />
@@ -12946,7 +12964,7 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
             Notas (opcional)
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Alergia, comentario..." />
           </label>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.guest-save">
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
         </form>
@@ -13167,7 +13185,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
           explicación detrás de un icono ⓘ en vez de un párrafo fijo ocupando media pantalla. El nombre de
           "Comprometido" ya no sugiere que venga de un encargo concreto (un pago puede registrarse sin
           pasar por ninguno) — su ⓘ dice de dónde sale de verdad: lo registrado en Pagos y fianzas. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, margin: '8px 0' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, margin: '8px 0' }} data-help-id="eventos.budget-summary">
         <BudgetSummaryTile
           label="Planificado"
           value={planned}
@@ -13199,7 +13217,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
         {listContent}
         {items.length === 0 && <p className="muted">Todavía no hay partidas de presupuesto.</p>}
       </div>
-      <button type="button" className="link-button" onClick={() => setShowAdd(true)}>
+      <button type="button" className="link-button" data-help-id="eventos.budget-add" onClick={() => setShowAdd(true)}>
         + Añadir partida
       </button>
       {showAdd && (
@@ -13282,6 +13300,7 @@ function AddBudgetItemModal({
         groupId: groupId || null,
         categoryGroup: categoryGroup || null,
       })
+      emitHelpEvent('eventos.budget-item-added') // para los tutoriales «Enséñame»: la partida YA está guardada
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -13303,7 +13322,7 @@ function AddBudgetItemModal({
         </div>
         <form className="card member-form" onSubmit={handleSubmit}>
           {error && <p className="error">{error}</p>}
-          <label>
+          <label data-help-id="eventos.budget-concept">
             Concepto
             <CategoryInputWithSuggestions id="budget-category-suggestions-add" value={category} onChange={setCategory} suggestions={categorySuggestions} />
           </label>
@@ -13319,7 +13338,7 @@ function AddBudgetItemModal({
               suggestions={categoryGroupSuggestions}
             />
           </label>
-          <label>
+          <label data-help-id="eventos.budget-amount">
             Presupuesto (€)
             <input type="number" min={0} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
@@ -13349,7 +13368,7 @@ function AddBudgetItemModal({
               </select>
             </label>
           )}
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="eventos.budget-save">
             {saving ? 'Guardando…' : 'Añadir'}
           </button>
         </form>

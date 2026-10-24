@@ -11,7 +11,6 @@ import {
   isCustomAlimentacionMenuKey,
   loadAlimentacionMenuLayout,
   loadAlimentacionPinnedItems,
-  saveAlimentacionMenuLayout,
   saveAlimentacionPinnedItems,
   type AlimentacionMenuEntry,
   type AlimentacionMenuGroup,
@@ -37,6 +36,7 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { fetchWikibooksRecipe, searchRecipeCandidates, type WikibooksSearchResult } from '@/services/recipeSearch'
 import { getFatSecretRecipe, searchFatSecretRecipes, type FatSecretRecipeResult } from '@/services/fatsecretRecipes'
 import { searchCookpadRecipes, type CookpadSearchResult } from '@/services/cookpadSearch'
@@ -142,11 +142,6 @@ export function AlimentacionScreen() {
   usePrefChange('familyapp:alimentacion-menu-layout', () => setMenuLayout(loadAlimentacionMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
 
-  function persistMenuLayout(next: AlimentacionMenuGroup[]) {
-    setMenuLayout(next)
-    saveAlimentacionMenuLayout(next)
-  }
-
   function togglePinnedItem(key: AlimentacionMenuItemKey) {
     setPinnedItems((prev) => {
       const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -177,6 +172,7 @@ export function AlimentacionScreen() {
         alt="La cocina de Pepa"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Alimentación' : 'Abrir menú de Alimentación'}
+        helpId="cocina.menu-vistas"
         onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
@@ -187,7 +183,6 @@ export function AlimentacionScreen() {
         <AlimentacionMenuDropdown
           activeTab={tab}
           layout={menuLayout}
-          onLayoutChange={persistMenuLayout}
           pinnedItems={pinnedItems}
           onTogglePin={togglePinnedItem}
           onActivate={handleAction}
@@ -246,15 +241,16 @@ export function AlimentacionScreen() {
 }
 
 function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void }) {
-  const shortcuts: { tab: SubTab; body: string }[] = [
-    { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.' },
-    { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.' },
-    { tab: 'Cocinar', body: 'Dile a Pepa qué ingredientes tienes y te propone qué cocinar, con su receta.' },
+  // `helpMark`: marca para la Ayuda (visita guiada); no cambia nada visible.
+  const shortcuts: { tab: SubTab; body: string; helpMark: { 'data-help-id': string } }[] = [
+    { tab: 'Menú', body: 'Planifica desayuno, comida, merienda y cena de toda la semana.', helpMark: { 'data-help-id': 'cocina.inicio-menu' } },
+    { tab: 'Recetas', body: 'Busca, importa y organiza las recetas de la familia, con foto y etiquetas.', helpMark: { 'data-help-id': 'cocina.inicio-recetas' } },
+    { tab: 'Cocinar', body: 'Dile a Pepa qué ingredientes tienes y te propone qué cocinar, con su receta.', helpMark: { 'data-help-id': 'cocina.inicio-cocinar' } },
   ]
   // Un color pastel por tarjeta, igual que Compras Inicio.
   const cardColors = pastelPalette(shortcuts.length)
   return (
-    <div className="event-list">
+    <div className="event-list" data-help-id="cocina.inicio-tarjetas">
       {shortcuts.map((s, i) => {
         const meta = ALIMENTACION_MENU_ITEM_META[s.tab]
         return (
@@ -264,6 +260,7 @@ function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => vo
             className="section-shortcut-card"
             style={{ background: cardColors[i] }}
             onClick={() => onNavigate(s.tab)}
+            {...s.helpMark}
           >
             <span className="section-shortcut-card-icon" aria-hidden="true">
               {meta.icon}
@@ -291,7 +288,6 @@ function AlimentacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => vo
 function AlimentacionMenuDropdown({
   activeTab,
   layout,
-  onLayoutChange,
   pinnedItems,
   onTogglePin,
   onActivate,
@@ -299,243 +295,42 @@ function AlimentacionMenuDropdown({
 }: {
   activeTab: SubTab
   layout: AlimentacionMenuGroup[]
-  onLayoutChange: (next: AlimentacionMenuGroup[]) => void
   pinnedItems: AlimentacionMenuItemKey[]
   onTogglePin: (key: AlimentacionMenuItemKey) => void
   onActivate: (key: AlimentacionMenuItemKey) => void
   onClose: () => void
 }) {
-  const [editMode, setEditMode] = useState(false)
-  const [addingGroup, setAddingGroup] = useState(false)
-  const [addingGroupName, setAddingGroupName] = useState('')
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [addingCustomItem, setAddingCustomItem] = useState(false)
-  const [newItemIcon, setNewItemIcon] = useState('📌')
-  const [newItemLabel, setNewItemLabel] = useState('')
-  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
-  const [editItemIcon, setEditItemIcon] = useState('')
-  const [editItemLabel, setEditItemLabel] = useState('')
-  const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function moveItem(groupId: string, index: number, direction: -1 | 1) {
-    const group = layout.find((g) => g.id === groupId)
-    if (!group) return
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.items.length) return
-    const items = [...group.items]
-    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
-  }
-
-  function moveItemToGroup(itemKey: AlimentacionMenuItemKey, fromGroupId: string, toGroupId: string) {
-    if (fromGroupId === toGroupId) return
-    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
-    if (!moved) return
-    onLayoutChange(
-      layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
-        return g
-      }),
-    )
-  }
-
-  function handleAddGroup(e: FormEvent) {
-    e.preventDefault()
-    if (!addingGroupName.trim()) return
-    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
-    setAddingGroupName('')
-    setAddingGroup(false)
-  }
-
-  function handleRenameGroup(id: string) {
-    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
-    setRenamingGroupId(null)
-  }
-
-  function deleteGroup(id: string) {
-    const group = layout.find((g) => g.id === id)
-    const rest = layout.filter((g) => g.id !== id)
-    if (!group || rest.length === 0) return
-    const [first, ...others] = rest
-    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
-  }
-
-  function handleAddCustomItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItemLabel.trim()) return
-    const entry: AlimentacionMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
-    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
-    setNewItemIcon('📌')
-    setNewItemLabel('')
-    setAddingCustomItem(false)
-  }
-
-  function handleSaveItem(groupId: string, key: AlimentacionMenuItemKey) {
-    onLayoutChange(
-      layout.map((g) =>
-        g.id === groupId
-          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
-          : g,
-      ),
-    )
-    setEditingItemKey(null)
-  }
-
-  function deleteItem(groupId: string, key: AlimentacionMenuItemKey) {
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
-  }
-
   function handleItemActivate(entry: AlimentacionMenuEntry) {
-    if (isCustomAlimentacionMenuKey(entry.key)) {
-      setPlaceholderNotice(true)
-      setTimeout(() => setPlaceholderNotice(false), 2500)
-      return
-    }
     onActivate(entry.key)
     onClose()
   }
 
+  // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
+  // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
     <div className="economia-menu-dropdown">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? '✓ Listo' : '✏️ Editar'}
-      </button>
-
-      {layout.map((group) => (
-        <div key={group.id} className="economia-menu-group">
-          {(group.name || editMode) &&
-            (renamingGroupId === group.id ? (
-              <form
-                className="inline-fields"
-                style={{ margin: '4px 4px 6px' }}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleRenameGroup(group.id)
-                }}
-              >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
-                <button type="submit">Guardar</button>
-              </form>
-            ) : (
+      {layout.map((group) => {
+        const items = group.items.filter((entry) => !isCustomAlimentacionMenuKey(entry.key))
+        if (items.length === 0) return null
+        return (
+          <div key={group.id} className="economia-menu-group">
+            {group.name && (
               <div className="economia-menu-group-title">
-                <span>{group.name ?? 'Sin categoría'}</span>
-                {editMode && (
-                  <span style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => {
-                        setRenamingGroupId(group.id)
-                        setRenameValue(group.name ?? '')
-                      }}
-                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
-                    >
-                      ✎
-                    </button>
-                    {layout.length > 1 && (
-                      <ConfirmIconButton
-                        icon="✕"
-                        className="link-button"
-                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
-                        onConfirm={() => deleteGroup(group.id)}
-                      />
-                    )}
-                  </span>
-                )}
+                <span>{group.name}</span>
               </div>
-            ))}
+            )}
 
-          {group.items.map((entry, i) => {
-            const meta = alimentacionMenuEntryMeta(entry)
-            const isTab = isAlimentacionSubTab(entry.key)
-            const isCustom = isCustomAlimentacionMenuKey(entry.key)
+            {items.map((entry) => {
+              const meta = alimentacionMenuEntryMeta(entry)
+              const isTab = isAlimentacionSubTab(entry.key)
 
-            if (editMode && editingItemKey === entry.key) {
               return (
-                <form
-                  key={entry.key}
-                  className="inline-fields"
-                  style={{ margin: '2px 4px' }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSaveItem(group.id, entry.key)
-                  }}
-                >
-                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
-                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
-                  <button type="submit">Guardar</button>
-                </form>
-              )
-            }
-
-            return (
-              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
-                {editMode ? (
-                  <span className="economia-menu-item">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label}
-                  </span>
-                ) : (
+                <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
                   <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </button>
-                )}
 
-                {editMode ? (
-                  <span className="economia-menu-edit-controls">
-                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      disabled={i === group.items.length - 1}
-                      onClick={() => moveItem(group.id, i, 1)}
-                      aria-label={`Bajar ${meta.label}`}
-                    >
-                      ↓
-                    </button>
-                    <select
-                      value={group.id}
-                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
-                      aria-label={`Mover ${meta.label} a otra categoría`}
-                    >
-                      {layout.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name ?? 'Sin categoría'}
-                        </option>
-                      ))}
-                    </select>
-                    {isCustom && (
-                      <>
-                        <button
-                          type="button"
-                          className="link-button"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingItemKey(entry.key)
-                            setEditItemIcon(meta.icon)
-                            setEditItemLabel(meta.label)
-                          }}
-                          aria-label={`Renombrar ${meta.label}`}
-                        >
-                          ✎
-                        </button>
-                        <ConfirmIconButton
-                          icon="✕"
-                          className="link-button"
-                          ariaLabel={`Eliminar ${meta.label}`}
-                          onConfirm={() => deleteItem(group.id, entry.key)}
-                        />
-                      </>
-                    )}
-                  </span>
-                ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
@@ -544,68 +339,12 @@ function AlimentacionMenuDropdown({
                   >
                     {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
-
-      {placeholderNotice && (
-        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
-          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
-        </p>
-      )}
-
-      {editMode && (
-        <>
-          {addingCustomItem ? (
-            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={newItemIcon}
-                onChange={(e) => setNewItemIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                aria-label="Icono"
-              />
-              <input
-                type="text"
-                value={newItemLabel}
-                onChange={(e) => setNewItemLabel(e.target.value)}
-                placeholder="Nombre del acceso"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
-              <span aria-hidden="true">📌</span>
-              Nuevo acceso
-            </button>
-          )}
-
-          {addingGroup ? (
-            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={addingGroupName}
-                onChange={(e) => setAddingGroupName(e.target.value)}
-                placeholder="Nombre de la categoría"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-              <span aria-hidden="true">➕</span>
-              Nueva categoría
-            </button>
-          )}
-        </>
-      )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -662,7 +401,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
     <div>
       {error && <p className="error">{error}</p>}
       {communityVisible === true && (
-        <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)}>
+        <button type="button" className="primary menu-import-community-btn" style={{ width: '100%', minHeight: 44, margin: '0 0 12px' }} onClick={() => setImportOpen(true)} data-help-id="cocina.menu-importar">
           📥 Importar menú de Comunidad
         </button>
       )}
@@ -670,6 +409,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
         <button
           type="button"
           className="menu-week-shop-btn"
+          data-help-id="cocina.menu-semana-compras"
           onClick={() => setShopping({ scope: { scope: 'week' }, title: 'Todos los platos de toda la semana' })}
         >
           🛒 Añadir semana a Compras
@@ -678,7 +418,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
       {dates.map((date) => {
         const dayLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
         return (
-        <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }}>
+        <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }} data-help-id="cocina.menu-dia">
           <div className="menu-day-head">
             <strong>{dayLabel}</strong>
             {hasShoppableEntry(entries, recipes, { scope: 'day', date }) && (
@@ -687,6 +427,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                 className="menu-icon-btn"
                 title="Añadir a Compras los platos de este día"
                 aria-label={`Añadir a Compras los platos de ${dayLabel}`}
+                data-help-id="cocina.menu-dia-compras"
                 onClick={() => setShopping({ scope: { scope: 'day', date }, title: `Los platos de ${dayLabel}` })}
               >
                 🛒
@@ -743,7 +484,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                       <span>{e.freeText}</span>
                     )}
                   </div>
-                  <div className="menu-slot-actions">
+                  <div className="menu-slot-actions" data-help-id="cocina.menu-acciones">
                     {cart(e, label)}
                     <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
                       <PencilIcon />
@@ -764,6 +505,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                       recipes={recipes}
                       onPick={async (pick) => {
                         await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
+                        emitHelpEvent('cocina.menu-entry-added')
                         setAddingFor(null)
                         reload()
                       }}
@@ -771,7 +513,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     />
                   ) : (
                     <div className="menu-slot-name">
-                      <button type="button" className="link-button" onClick={() => setAddingFor({ date, meal: meal.value })}>
+                      <button type="button" className="link-button" data-help-id="cocina.menu-anadir" onClick={() => setAddingFor({ date, meal: meal.value })}>
                         + Añadir
                       </button>
                     </div>
@@ -901,8 +643,8 @@ function MenuEntryPicker({
   const pickedRecipe = recipeId ? recipes.find((r) => r.id === recipeId) : null
 
   return (
-    <span className="menu-picker">
-      <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)}>
+    <span className="menu-picker" data-help-id="cocina.menu-selector">
+      <select value={recipeId} onChange={(e) => setRecipeId(e.target.value)} data-help-id="cocina.menu-receta">
         <option value="">— receta —</option>
         {recipes.map((r) => (
           <option key={r.id} value={r.id}>
@@ -917,10 +659,12 @@ function MenuEntryPicker({
         placeholder="o texto libre"
         value={freeText}
         onChange={(e) => setFreeText(e.target.value)}
+        data-help-id="cocina.menu-texto"
       />
       <button
         type="button"
         className="link-button"
+        data-help-id="cocina.menu-ok"
         onClick={() => onPick({ recipeId: recipeId || null, freeText: recipeId ? null : freeText || null })}
       >
         OK
@@ -1119,6 +863,7 @@ function RecipesTab() {
         <input
           type="search"
           value={recipeSearch}
+          data-help-id="cocina.recetas-buscar"
           onChange={(e) => setRecipeSearch(e.target.value)}
           placeholder="Escribe el nombre de la receta…"
         />
@@ -1145,7 +890,7 @@ function RecipesTab() {
       )}
 
       <div className="filter-row recipe-quick-filters">
-        <button type="button" className={'chip' + (favoritesOnly ? ' chip-active' : '')} aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly((v) => !v)}>
+        <button type="button" className={'chip' + (favoritesOnly ? ' chip-active' : '')} aria-pressed={favoritesOnly} data-help-id="cocina.recetas-favoritos" onClick={() => setFavoritesOnly((v) => !v)}>
           ⭐ Favoritos
         </button>
         <button
@@ -1153,6 +898,7 @@ function RecipesTab() {
           className={'chip' + (filtersOpen || activeFilterCount > 0 ? ' chip-active' : '')}
           aria-expanded={filtersOpen}
           aria-controls="recipe-filters-panel"
+          data-help-id="cocina.recetas-filtros"
           onClick={() => setFiltersOpen((v) => !v)}
         >
           🎚️ Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}
@@ -1193,7 +939,7 @@ function RecipesTab() {
         </div>
       )}
 
-      <div className="event-list">
+      <div className="event-list" data-help-id="cocina.recetas-lista">
         {filteredRecipes.map((r) => (
           <button
             key={r.id}
@@ -1211,7 +957,7 @@ function RecipesTab() {
         )}
       </div>
 
-      <button type="button" className="screen-fab" onClick={() => setAdding(true)}>
+      <button type="button" className="screen-fab" data-help-id="cocina.receta-nueva" onClick={() => setAdding(true)}>
         + Nueva receta
       </button>
 
@@ -1720,6 +1466,7 @@ function RecipeForm({
         await updateRecipe(recipe.id, input)
       } else {
         await createRecipe(input)
+        emitHelpEvent('cocina.recipe-created')
       }
       onDone()
     } catch (err) {
@@ -1731,12 +1478,12 @@ function RecipeForm({
 
   return (
     <form onSubmit={handleSubmit} className="recipe-form">
-      <RecipeTitleField value={title} onChange={setTitle} required placeholder="Nombre de la receta (p. ej. Tortilla de patatas)" suggestions={searchHistory} ariaLabel="Título" />
+      <RecipeTitleField value={title} onChange={setTitle} required placeholder="Nombre de la receta (p. ej. Tortilla de patatas)" suggestions={searchHistory} ariaLabel="Título" helpId="cocina.receta-titulo" />
 
       {mode === 'add' && (
         <div className="recipe-field">
           <span className="recipe-field-label">¿Cómo quieres empezar?</span>
-          <div className="segmented" role="tablist">
+          <div className="segmented" role="tablist" data-help-id="cocina.receta-modo">
             {(
               [
                 ['manual', '✍️ Escribirla'],
@@ -1862,11 +1609,17 @@ function RecipeForm({
         steps={steps}
         onStepsChange={setSteps}
         legacyNotes={legacyNotes ? { value: notes, onChange: setNotes } : undefined}
+        marks={{
+          servings: { 'data-help-id': 'cocina.receta-raciones' },
+          tags: { 'data-help-id': 'cocina.receta-etiquetas' },
+          ingredients: { 'data-help-id': 'cocina.receta-ingredientes' },
+          steps: { 'data-help-id': 'cocina.receta-pasos' },
+        }}
       />
 
       {error && <p className="error">{error}</p>}
       <div className="recipe-form-footer">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} {...(mode === 'add' ? { 'data-help-id': 'cocina.receta-guardar' } : {})}>
           {saving ? 'Guardando…' : mode === 'edit' ? 'Guardar cambios' : 'Crear receta'}
         </button>
         {onCancel && (

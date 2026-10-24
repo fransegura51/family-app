@@ -4,6 +4,7 @@ import type { HelpModuleId } from '@/help/types'
 import { HelpAnswer } from '@/help/ui/HelpAnswer'
 import { useHelp } from '@/help/ui/helpContext'
 import { PepaFace } from '@/help/ui/PepaFace'
+import { HelpAreaTabs, HelpHowArea, HelpLearnArea, HelpSectionArea, HelpSupportArea } from '@/help/ui/HelpAreas'
 import '@/help/ui/help.css'
 
 // Conversación de la Ayuda: la pregunta («¿Qué quieres hacer o saber?»), las respuestas de Pepa y atajos. La usan la pantalla de Ayuda ('page') y el panel flotante ('panel').
@@ -122,6 +123,13 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
 
   return (
     <div className={`help-conversation help-conversation-${variant}`} ref={rootRef}>
+      <HelpAreaTabs />
+      {help.area === 'section' && <HelpSectionArea focusModule={focusModule ?? null} />}
+      {help.area === 'learn' && <HelpLearnArea focusModule={focusModule ?? null} />}
+      {help.area === 'how' && <HelpHowArea focusModule={focusModule ?? null} />}
+      {help.area === 'support' && <HelpSupportArea focusModule={focusModule ?? null} />}
+      {help.area === 'chat' && (
+        <>
       <div className="help-log" role="log" aria-live="polite" aria-label="Conversación con la Ayuda">
         {fresh && (
           <div className="help-bubble help-bubble-pepa">
@@ -206,7 +214,7 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
         </details>
       )}
 
-      <form className="help-ask" onSubmit={submit} ref={formRef}>
+      <form className="help-ask" onSubmit={submit} ref={formRef} data-help-id="ayuda.pregunta">
         {suggestions.length > 0 && text.trim().length >= 2 && (
           <ul id="help-suggestions" className="help-suggestions" role="listbox" aria-label="Sugerencias de la Ayuda">
             {suggestions.map((h) =>
@@ -251,6 +259,8 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
           </button>
         </div>
       </form>
+        </>
+      )}
     </div>
   )
 }

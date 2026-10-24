@@ -19,6 +19,9 @@ export async function autoConfirmProposal(proposal: ActionProposal): Promise<str
     return null
   }
   if (view.warnings.length > 0) return null
+  // Una TAREA sin persona asignada siempre enseña la tarjeta: en directo se guardaba «para toda la familia» sin dejar elegir a quién va (queja real, 24/10/2026,
+  // móvil Samsung: «no me reconoce para quién le asigno la tarea»). Con la persona dicha en la frase ya viene asignada y se guarda directo.
+  if (proposal.actionId === 'calendar.create' && selection.choices.kind === 'task' && selection.choices.member === 'none') return null
   if (view.choices.some((choice) => !selection.choices[choice.id])) return null
   try {
     return await proposal.confirm(selection)

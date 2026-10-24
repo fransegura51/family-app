@@ -8,7 +8,6 @@ import {
   isCustomUbicacionMenuKey,
   loadUbicacionMenuLayout,
   loadUbicacionPinnedItems,
-  saveUbicacionMenuLayout,
   saveUbicacionPinnedItems,
   type UbicacionMenuEntry,
   type UbicacionMenuGroup,
@@ -33,7 +32,7 @@ import {
   updatePlace,
 } from '@/data/location'
 import { getMemberPhotoUrl, listFamilyMembers } from '@/data/family'
-import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ConfirmButton } from '@/ui/ConfirmButton'
 import { distanceMeters, formatDistance, formatDuration, trafficDescription } from '@/domain/geo'
 import { getCurrentPosition } from '@/services/geolocation'
 import { getDrivingEta, type DrivingEta } from '@/services/drivingEta'
@@ -68,6 +67,9 @@ import { consumeMemberFocus, onMemberFocus } from '@/services/mapFocus'
 import { pastelPalette } from '@/domain/colors'
 import { formatTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 const SUB_TABS = ['Inicio', 'Ubicación', 'Reglas'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -80,6 +82,12 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
   const [tab, setTab] = useState<SubTab>('Inicio')
   // "Ubicación" del breadcrumb siempre vuelve a Inicio, incluso ya estando en /ubicacion.
   useSectionHome(() => setTab('Inicio'))
+  // «Llévame» y tutoriales de la Ayuda: las pestañas de Ubicación (no son rutas) se abren por su nombre.
+  useHelpDestinations({
+    'ubicacion.inicio': () => setTab('Inicio'),
+    'ubicacion.mapa': () => setTab('Ubicación'),
+    'ubicacion.reglas': () => setTab('Reglas'),
+  })
   // Petición real: "el formato que has hecho ahora para meter todas
   // las pestañas me gusta mucho, aplícalo a toda la aplicación" —
   // mismo desplegable ☰ con sacar/meter/editar que Economía.
@@ -89,11 +97,6 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
   usePrefChange('familyapp:ubicacion-pinned-tabs', () => setPinnedItems(loadUbicacionPinnedItems()))
   usePrefChange('familyapp:ubicacion-menu-layout', () => setMenuLayout(loadUbicacionMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function persistMenuLayout(next: UbicacionMenuGroup[]) {
-    setMenuLayout(next)
-    saveUbicacionMenuLayout(next)
-  }
 
   function togglePinnedItem(key: UbicacionMenuItemKey) {
     setPinnedItems((prev) => {
@@ -119,13 +122,14 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         alt="Ubicación"
         open={menuOpen}
         ariaLabel={menuOpen ? 'Cerrar menú de Ubicación' : 'Abrir menú de Ubicación'}
+        helpId="ubicacion.menu"
         onToggle={() => {
             if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setMenuOpen((v) => !v)
           }}
       />
       <SectionBreadcrumb subsection={UBICACION_MENU_ITEM_META[tab].label} />
-      <p className="muted">
+      <p className="muted" data-help-id="ubicacion.intro">
         Desactivada por defecto. Solo se comparte si activas el consentimiento explícitamente. El
         mapa muestra la ruta de las últimas 24h — pasado ese tiempo se borra sola. Línea continua: recorrido
         registrado. Línea de rayas: tramo sin datos (el móvil solo manda su posición con la app abierta).
@@ -134,7 +138,6 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         <UbicacionMenuDropdown
           activeTab={tab}
           layout={menuLayout}
-          onLayoutChange={persistMenuLayout}
           pinnedItems={pinnedItems}
           onTogglePin={togglePinnedItem}
           onActivate={handleAction}
@@ -174,6 +177,9 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
         </p>
       )}
 
+      {tab === 'Inicio' && <HelpDestMark id="ubicacion.inicio" />}
+      {tab === 'Ubicación' && <HelpDestMark id="ubicacion.mapa" />}
+      {tab === 'Reglas' && <HelpDestMark id="ubicacion.reglas" />}
       {tab === 'Inicio' && <UbicacionInicioTab onNavigate={setTab} />}
       {tab === 'Ubicación' && <LocationTab isAdmin={role === 'admin'} profileId={profileId} />}
       {tab === 'Reglas' && <RulesTab />}
@@ -221,7 +227,6 @@ function UbicacionInicioTab({ onNavigate }: { onNavigate: (tab: SubTab) => void 
 function UbicacionMenuDropdown({
   activeTab,
   layout,
-  onLayoutChange,
   pinnedItems,
   onTogglePin,
   onActivate,
@@ -229,243 +234,42 @@ function UbicacionMenuDropdown({
 }: {
   activeTab: SubTab
   layout: UbicacionMenuGroup[]
-  onLayoutChange: (next: UbicacionMenuGroup[]) => void
   pinnedItems: UbicacionMenuItemKey[]
   onTogglePin: (key: UbicacionMenuItemKey) => void
   onActivate: (key: UbicacionMenuItemKey) => void
   onClose: () => void
 }) {
-  const [editMode, setEditMode] = useState(false)
-  const [addingGroup, setAddingGroup] = useState(false)
-  const [addingGroupName, setAddingGroupName] = useState('')
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [addingCustomItem, setAddingCustomItem] = useState(false)
-  const [newItemIcon, setNewItemIcon] = useState('📌')
-  const [newItemLabel, setNewItemLabel] = useState('')
-  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
-  const [editItemIcon, setEditItemIcon] = useState('')
-  const [editItemLabel, setEditItemLabel] = useState('')
-  const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function moveItem(groupId: string, index: number, direction: -1 | 1) {
-    const group = layout.find((g) => g.id === groupId)
-    if (!group) return
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.items.length) return
-    const items = [...group.items]
-    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
-  }
-
-  function moveItemToGroup(itemKey: UbicacionMenuItemKey, fromGroupId: string, toGroupId: string) {
-    if (fromGroupId === toGroupId) return
-    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
-    if (!moved) return
-    onLayoutChange(
-      layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
-        return g
-      }),
-    )
-  }
-
-  function handleAddGroup(e: FormEvent) {
-    e.preventDefault()
-    if (!addingGroupName.trim()) return
-    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
-    setAddingGroupName('')
-    setAddingGroup(false)
-  }
-
-  function handleRenameGroup(id: string) {
-    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
-    setRenamingGroupId(null)
-  }
-
-  function deleteGroup(id: string) {
-    const group = layout.find((g) => g.id === id)
-    const rest = layout.filter((g) => g.id !== id)
-    if (!group || rest.length === 0) return
-    const [first, ...others] = rest
-    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
-  }
-
-  function handleAddCustomItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItemLabel.trim()) return
-    const entry: UbicacionMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
-    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
-    setNewItemIcon('📌')
-    setNewItemLabel('')
-    setAddingCustomItem(false)
-  }
-
-  function handleSaveItem(groupId: string, key: UbicacionMenuItemKey) {
-    onLayoutChange(
-      layout.map((g) =>
-        g.id === groupId
-          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
-          : g,
-      ),
-    )
-    setEditingItemKey(null)
-  }
-
-  function deleteItem(groupId: string, key: UbicacionMenuItemKey) {
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
-  }
-
   function handleItemActivate(entry: UbicacionMenuEntry) {
-    if (isCustomUbicacionMenuKey(entry.key)) {
-      setPlaceholderNotice(true)
-      setTimeout(() => setPlaceholderNotice(false), 2500)
-      return
-    }
     onActivate(entry.key)
     onClose()
   }
 
+  // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
+  // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
     <div className="economia-menu-dropdown">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? '✓ Listo' : '✏️ Editar'}
-      </button>
-
-      {layout.map((group) => (
-        <div key={group.id} className="economia-menu-group">
-          {(group.name || editMode) &&
-            (renamingGroupId === group.id ? (
-              <form
-                className="inline-fields"
-                style={{ margin: '4px 4px 6px' }}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleRenameGroup(group.id)
-                }}
-              >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
-                <button type="submit">Guardar</button>
-              </form>
-            ) : (
+      {layout.map((group) => {
+        const items = group.items.filter((entry) => !isCustomUbicacionMenuKey(entry.key))
+        if (items.length === 0) return null
+        return (
+          <div key={group.id} className="economia-menu-group">
+            {group.name && (
               <div className="economia-menu-group-title">
-                <span>{group.name ?? 'Sin categoría'}</span>
-                {editMode && (
-                  <span style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => {
-                        setRenamingGroupId(group.id)
-                        setRenameValue(group.name ?? '')
-                      }}
-                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
-                    >
-                      ✎
-                    </button>
-                    {layout.length > 1 && (
-                      <ConfirmIconButton
-                        icon="✕"
-                        className="link-button"
-                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
-                        onConfirm={() => deleteGroup(group.id)}
-                      />
-                    )}
-                  </span>
-                )}
+                <span>{group.name}</span>
               </div>
-            ))}
+            )}
 
-          {group.items.map((entry, i) => {
-            const meta = ubicacionMenuEntryMeta(entry)
-            const isTab = isUbicacionSubTab(entry.key)
-            const isCustom = isCustomUbicacionMenuKey(entry.key)
+            {items.map((entry) => {
+              const meta = ubicacionMenuEntryMeta(entry)
+              const isTab = isUbicacionSubTab(entry.key)
 
-            if (editMode && editingItemKey === entry.key) {
               return (
-                <form
-                  key={entry.key}
-                  className="inline-fields"
-                  style={{ margin: '2px 4px' }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSaveItem(group.id, entry.key)
-                  }}
-                >
-                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
-                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
-                  <button type="submit">Guardar</button>
-                </form>
-              )
-            }
-
-            return (
-              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
-                {editMode ? (
-                  <span className="economia-menu-item">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label}
-                  </span>
-                ) : (
+                <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
                   <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                   </button>
-                )}
 
-                {editMode ? (
-                  <span className="economia-menu-edit-controls">
-                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      disabled={i === group.items.length - 1}
-                      onClick={() => moveItem(group.id, i, 1)}
-                      aria-label={`Bajar ${meta.label}`}
-                    >
-                      ↓
-                    </button>
-                    <select
-                      value={group.id}
-                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
-                      aria-label={`Mover ${meta.label} a otra categoría`}
-                    >
-                      {layout.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name ?? 'Sin categoría'}
-                        </option>
-                      ))}
-                    </select>
-                    {isCustom && (
-                      <>
-                        <button
-                          type="button"
-                          className="link-button"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingItemKey(entry.key)
-                            setEditItemIcon(meta.icon)
-                            setEditItemLabel(meta.label)
-                          }}
-                          aria-label={`Renombrar ${meta.label}`}
-                        >
-                          ✎
-                        </button>
-                        <ConfirmIconButton
-                          icon="✕"
-                          className="link-button"
-                          ariaLabel={`Eliminar ${meta.label}`}
-                          onConfirm={() => deleteItem(group.id, entry.key)}
-                        />
-                      </>
-                    )}
-                  </span>
-                ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
@@ -474,68 +278,12 @@ function UbicacionMenuDropdown({
                   >
                     {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
-
-      {placeholderNotice && (
-        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
-          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
-        </p>
-      )}
-
-      {editMode && (
-        <>
-          {addingCustomItem ? (
-            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={newItemIcon}
-                onChange={(e) => setNewItemIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                aria-label="Icono"
-              />
-              <input
-                type="text"
-                value={newItemLabel}
-                onChange={(e) => setNewItemLabel(e.target.value)}
-                placeholder="Nombre del acceso"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
-              <span aria-hidden="true">📌</span>
-              Nuevo acceso
-            </button>
-          )}
-
-          {addingGroup ? (
-            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={addingGroupName}
-                onChange={(e) => setAddingGroupName(e.target.value)}
-                placeholder="Nombre de la categoría"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-              <span aria-hidden="true">➕</span>
-              Nueva categoría
-            </button>
-          )}
-        </>
-      )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -766,7 +514,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           real: "que se vea así con los nombres arriba... que el mapa
           ocupe toda la pantalla". Se sale del margen normal de la
           pantalla para llegar de borde a borde. */}
-      <div className="location-map-hero">
+      <div className="location-map-hero" data-help-id="ubicacion.map">
         <LocationMap
           members={members}
           locations={sharedNow}
@@ -776,7 +524,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           routePolyline={routePolyline}
           focusMemberId={memberFocus}
         />
-        <div className="location-map-chips">
+        <div className="location-map-chips" data-help-id="ubicacion.member-chips">
           {members.map((m) => {
             const enabled = consents.find((c) => c.memberId === m.id)?.enabled ?? false
             return (
@@ -808,7 +556,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           petición real: "que al tocar se abra debajo del mapa la
           información" — en vez de una ventana emergente encima. */}
       {selectedMember ? (
-        <div className="card task-card">
+        <div className="card task-card" data-help-id="ubicacion.member-info">
           <MemberAvatar member={selectedMember} size={40} />
           <div className="task-card-main">
             <strong>{selectedMember.name}</strong>
@@ -851,14 +599,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         )
       )}
 
-      <div className="segmented" style={{ marginTop: 16 }} role="tablist">
-        <button type="button" role="tab" aria-selected={panelTab === 'lugares'} className={panelTab === 'lugares' ? 'segmented-active' : ''} onClick={() => setPanelTab('lugares')}>
+      <div className="segmented" style={{ marginTop: 16 }} role="tablist" data-help-id="ubicacion.panel-tabs">
+        <button type="button" role="tab" aria-selected={panelTab === 'lugares'} className={panelTab === 'lugares' ? 'segmented-active' : ''} onClick={() => setPanelTab('lugares')} data-help-id="ubicacion.tab-places">
           🏠 Lugares
         </button>
-        <button type="button" role="tab" aria-selected={panelTab === 'estoy-aqui'} className={panelTab === 'estoy-aqui' ? 'segmented-active' : ''} onClick={() => setPanelTab('estoy-aqui')}>
+        <button type="button" role="tab" aria-selected={panelTab === 'estoy-aqui'} className={panelTab === 'estoy-aqui' ? 'segmented-active' : ''} onClick={() => setPanelTab('estoy-aqui')} data-help-id="ubicacion.tab-here">
           📍 ¡Estoy aquí!
         </button>
-        <button type="button" role="tab" aria-selected={panelTab === 'compartir'} className={panelTab === 'compartir' ? 'segmented-active' : ''} onClick={() => setPanelTab('compartir')}>
+        <button type="button" role="tab" aria-selected={panelTab === 'compartir'} className={panelTab === 'compartir' ? 'segmented-active' : ''} onClick={() => setPanelTab('compartir')} data-help-id="ubicacion.tab-share">
           👥 Compartir ubicación
         </button>
       </div>
@@ -872,7 +620,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
 
           {/* Petición real (17/10/2026): «Lugares frecuentes» pasaba muy desapercibido y costaba encontrarlo: tarjeta grande, con el título grande y
               cuántos lugares hay guardados. Sigue siendo plegable. */}
-          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen}>
+          <button type="button" className="places-toggle-card" onClick={() => setPlacesOpen((v) => !v)} aria-expanded={placesOpen} data-help-id="ubicacion.places-toggle">
             <span className="places-toggle-icon" aria-hidden="true">
               🏠
             </span>
@@ -909,14 +657,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
             // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes
             // era una tarjeta grande (título + aviso + botón grande); sigue actualizándose sola
             // igual, solo que ahora no hace falta explicarlo cada vez que se ve la pantalla.
-            <p className="muted inline-fields" style={{ alignItems: 'center' }}>
+            <p className="muted inline-fields" style={{ alignItems: 'center' }} data-help-id="ubicacion.device-picker">
               📍 Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.
               <button type="button" className="link-button" onClick={stopSharingGlobal}>
                 Dejar de compartir
               </button>
             </p>
           ) : (
-            <div className="card member-form">
+            <div className="card member-form" data-help-id="ubicacion.device-picker">
               <p className="muted">¿Quién lleva este dispositivo?</p>
               <div className="filter-row">
                 {members
@@ -938,7 +686,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           <p className="muted">
             {isAdmin ? 'Activa o desactiva a cada miembro de la familia.' : 'Solo puedes activar o desactivar tu propia ubicación.'}
           </p>
-          <div className="event-list">
+          <div className="event-list" data-help-id="ubicacion.consent-list">
             {members
               .filter((m) => isAdmin || m.linkedProfileId === profileId)
               .map((m) => {
@@ -1481,6 +1229,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
     setError(null)
     try {
       await addPlace({ name, category: category.trim() || null, latitude: coords.latitude, longitude: coords.longitude, radiusM, notifyArrivals })
+      emitHelpEvent('location.place-added') // para los tutoriales «Enséñame»: el lugar YA está guardado
       setName('')
       setCategory('')
       setNotifyArrivals(false)
@@ -1494,13 +1243,13 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="ubicacion.place-form">
       <h2>Nuevo lugar</h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Supermercado" required />
+        <input type="text" data-help-id="ubicacion.place-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Supermercado" required />
       </label>
-      <label>
+      <label data-help-id="ubicacion.place-category">
         Categoría (opcional)
         <input
           type="text"
@@ -1509,15 +1258,15 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
           placeholder="Trabajo, casa de mamá, campo de papá…"
         />
       </label>
-      <label>
+      <label data-help-id="ubicacion.place-radius">
         Radio (m)
         <input type="number" value={radiusM} onChange={(e) => setRadiusM(Number(e.target.value))} />
       </label>
-      <label className="inline-fields" style={{ alignItems: 'center' }}>
+      <label className="inline-fields" style={{ alignItems: 'center' }} data-help-id="ubicacion.place-notify">
         <input type="checkbox" checked={notifyArrivals} onChange={(e) => setNotifyArrivals(e.target.checked)} />
         🔔 Avisarme cuando alguien llegue o se vaya de aquí
       </label>
-      <div className="inline-fields">
+      <div className="inline-fields" data-help-id="ubicacion.place-position">
         <button type="button" className="link-button" onClick={() => setPickerOpen(true)}>
           🔍 Buscar por nombre
         </button>
@@ -1526,7 +1275,7 @@ function AddPlaceForm({ onAdded }: { onAdded: () => void }) {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="ubicacion.place-save">
         {saving ? 'Guardando…' : 'Guardar lugar'}
       </button>
       {pickerOpen && (
@@ -1651,6 +1400,7 @@ function AddRuleForm({
         timeOfDay: triggerType === 'hora_diaria' ? timeOfDay || null : null,
         message,
       })
+      emitHelpEvent('location.rule-created') // para los tutoriales «Enséñame»: la regla YA está guardada
       setName('')
       setMessage('')
       onAdded()
@@ -1662,13 +1412,13 @@ function AddRuleForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="ubicacion.rule-form">
       <h2>Nueva regla</h2>
       <label>
         Nombre
-        <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mochila escolar" required />
+        <input type="text" data-help-id="ubicacion.rule-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Mochila escolar" required />
       </label>
-      <label>
+      <label data-help-id="ubicacion.rule-when">
         Cuándo
         <select value={triggerType} onChange={(e) => setTriggerType(e.target.value as AutomationTriggerType)}>
           {Object.entries(TRIGGER_LABELS).map(([value, label]) => (
@@ -1679,7 +1429,7 @@ function AddRuleForm({
         </select>
       </label>
       {isLocationTrigger && (
-        <label>
+        <label data-help-id="ubicacion.rule-place">
           Lugar
           <select value={placeId} onChange={(e) => setPlaceId(e.target.value)} required>
             <option value="">— elige un lugar —</option>
@@ -1692,12 +1442,12 @@ function AddRuleForm({
         </label>
       )}
       {triggerType === 'hora_diaria' && (
-        <label>
+        <label data-help-id="ubicacion.rule-time">
           Hora
           <input type="time" value={timeOfDay} onChange={(e) => setTimeOfDay(e.target.value)} required />
         </label>
       )}
-      <label>
+      <label data-help-id="ubicacion.rule-who">
         Para quién (opcional)
         <select value={memberId} onChange={(e) => setMemberId(e.target.value)}>
           <option value="">Cualquiera</option>
@@ -1710,10 +1460,10 @@ function AddRuleForm({
       </label>
       <label>
         Mensaje del aviso
-        <input type="text" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="¡No olvides la mochila!" required />
+        <input type="text" data-help-id="ubicacion.rule-message" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="¡No olvides la mochila!" required />
       </label>
       {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={saving}>
+      <button type="submit" disabled={saving} data-help-id="ubicacion.rule-save">
         {saving ? 'Guardando…' : 'Crear regla'}
       </button>
     </form>

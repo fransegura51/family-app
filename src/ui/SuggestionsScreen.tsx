@@ -91,7 +91,7 @@ export function SuggestionsScreen() {
         <img src={sugerenciasHeaderImg} alt="Buzón de sugerencias" className="kitchen-header-img" />
       </div>
       <SectionBreadcrumb subsection="Inicio" />
-      <p className="muted">
+      <p className="muted" data-help-id="suggestions.intro">
         {isOwner
           ? 'Aquí llegan las sugerencias de todas las familias que usan la app.'
           : '¿Se te ocurre algo que mejorar? Déjalo aquí y lo revisamos.'}
@@ -99,27 +99,28 @@ export function SuggestionsScreen() {
 
       {error && <p className="error">{error}</p>}
 
-      <form onSubmit={handleSubmit} className="card member-form">
+      <form onSubmit={handleSubmit} className="card member-form" data-help-id="suggestions.form">
         <label>
           Nueva sugerencia
           <textarea
+            data-help-id="suggestions.message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Cuéntanos qué añadirías o cambiarías…"
             rows={3}
           />
         </label>
-        <button type="submit" disabled={sending || !message.trim()}>
+        <button type="submit" disabled={sending || !message.trim()} data-help-id="suggestions.send">
           {sending ? 'Enviando…' : '📮 Enviar sugerencia'}
         </button>
       </form>
 
-      <div className="event-list" style={{ marginTop: 16 }}>
+      <div className="event-list" style={{ marginTop: 16 }} data-help-id="suggestions.list">
         {suggestions.length === 0 && <p className="muted">Todavía no hay ninguna sugerencia.</p>}
         {suggestions.map((s) => (
           <div key={s.id} className="card task-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <strong style={{ fontSize: 13 }}>
+              <strong style={{ fontSize: 13 }} data-help-id="suggestions.status">
                 {isOwner && s.familyId !== myFamilyId ? `${familyNames.get(s.familyId) ?? 'Familia'} · ` : ''}
                 {STATUS_LABELS[s.status]}
               </strong>

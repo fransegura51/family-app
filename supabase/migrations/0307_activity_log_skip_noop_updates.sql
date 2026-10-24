@@ -1,6 +1,6 @@
 -- 0307 · «Actividad reciente»: un UPDATE que no cambia nada ya no es actividad.
 --
--- PENDIENTE DE APLICAR (no se ha aplicado en producción). Reversión: supabase/rollbacks/0307_activity_log_skip_noop_updates_down.sql.
+-- APLICADA en producción el 23/10/2026 (editor SQL del panel, con autorización expresa); no borró ni cambió ninguna fila de activity_log. Reversión: supabase/rollbacks/0307_activity_log_skip_noop_updates_down.sql.
 --
 -- Causa demostrada en el código: el disparador log_activity() (0011) anota CADA update de calendar_events, aunque el valor no cambie. La sincronización horaria de Google
 -- (sync-calendar-from-google-cron) hace `update` de TODOS los eventos ya importados en cada vuelta, con los mismos datos y sin sesión de persona (auth.uid() nulo): por eso salían

@@ -12,7 +12,6 @@ import {
   firstCalendarioView,
   loadCalendarioMenuLayout,
   loadCalendarioPinnedItems,
-  saveCalendarioMenuLayout,
   saveCalendarioPinnedItems,
   type CalendarioMenuEntry,
   type CalendarioMenuGroup,
@@ -21,7 +20,7 @@ import {
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { DateField } from '@/ui/DateField'
 import { useSectionHome } from '@/ui/useSectionHome'
-import { useHelpDestinations } from '@/help/destinations'
+import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
 import { CalendarCategoriesSection } from '@/ui/MenuSettingsScreen'
 import {
   completeEventOccurrence,
@@ -126,6 +125,18 @@ import { emitHelpEvent } from '@/help/tours/helpBus'
 // vistas solo ofrece el acceso secundario "⚙️ Gestionar calendarios".
 const VIEWS = ['Mes', 'Vista general', 'Semana', '3 días', 'Día', 'Familiar', 'Agenda', 'Personal'] as const
 type ViewMode = (typeof VIEWS)[number]
+
+// Marcas de la Ayuda: una por cada vista del menú ☰ (ids fijos; no cambian nada de lo que se ve).
+const VIEW_HELP_MARK: Record<ViewMode, Record<string, string>> = {
+  'Vista general': { 'data-help-id': 'calendar.view-inicio' },
+  Mes: { 'data-help-id': 'calendar.view-mes' },
+  Semana: { 'data-help-id': 'calendar.view-semana' },
+  '3 días': { 'data-help-id': 'calendar.view-3-dias' },
+  Día: { 'data-help-id': 'calendar.view-dia' },
+  Familiar: { 'data-help-id': 'calendar.view-familiar' },
+  Agenda: { 'data-help-id': 'calendar.view-agenda' },
+  Personal: { 'data-help-id': 'calendar.view-personal' },
+}
 
 function isCalendarioSubTab(key: CalendarioMenuItemKey): key is ViewMode {
   return (VIEWS as readonly string[]).includes(key)
@@ -282,6 +293,8 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   // nombres de los miembros (filtro de abajo) se quedan siempre
   // visibles, fuera del desplegable — petición real explícita.
   const [calendarMenuOpen, setCalendarMenuOpen] = useState(false)
+  // Al empezar una visita o un tutorial de la Ayuda se cierran los menús desplegados (el ☰ de Calendario incluido): solo reacciona a la Ayuda.
+  useCloseMenusOnHelp(() => setCalendarMenuOpen(false))
   const [pinnedViews, setPinnedViews] = useState<CalendarioMenuItemKey[]>(() => loadCalendarioPinnedItems())
   const [calendarMenuLayout, setCalendarMenuLayout] = useState<CalendarioMenuGroup[]>(() => loadCalendarioMenuLayout())
   usePrefChange('familyapp:calendario-pinned-tabs', () => setPinnedViews(loadCalendarioPinnedItems()))
@@ -661,6 +674,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       const ev = events.find((e) => e.id === eventId)
       const soleMember = ev && ev.memberIds.length === 1 ? ev.memberIds[0] : null
       await completeEventOccurrence(eventId, dateStr, soleMember, ev?.points ?? 0)
+      emitHelpEvent('calendar.event-completed') // para los tutoriales «Enséñame»: el apunte YA está marcado como hecho
       reload()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo marcar como hecho'))
@@ -873,11 +887,6 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
     })
   }
 
-  function persistCalendarMenuLayout(next: CalendarioMenuGroup[]) {
-    setCalendarMenuLayout(next)
-    saveCalendarioMenuLayout(next)
-  }
-
   function toggleCalendarPinnedItem(key: CalendarioMenuItemKey) {
     setPinnedViews((prev) => {
       const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -904,6 +913,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         alt="Calendario"
         open={calendarMenuOpen}
         ariaLabel={calendarMenuOpen ? 'Cerrar menú de Calendario' : 'Abrir menú de Calendario'}
+        helpId="calendar.menu"
         onToggle={() => {
             if (!calendarMenuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })
             setCalendarMenuOpen((v) => !v)
@@ -922,7 +932,6 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         <CalendarioMenuDropdown
           activeTab={view}
           layout={calendarMenuLayout}
-          onLayoutChange={persistCalendarMenuLayout}
           pinnedItems={pinnedViews}
           onTogglePin={toggleCalendarPinnedItem}
           onActivate={handleCalendarMenuAction}
@@ -973,7 +982,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
 
       {view === 'Mes' ? (
         <>
-          <div className="month-nav">
+          <div className="month-nav" data-help-id="calendar.month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
               ‹
             </button>
@@ -1060,7 +1069,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         </>
       ) : view === 'Vista general' ? (
         <>
-          <div className="month-nav">
+          <div className="month-nav" data-help-id="calendar.month-nav">
             <button type="button" className="link-button" onClick={() => goToMonth(-1)}>
               ‹
             </button>
@@ -1210,6 +1219,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           swipeHandlers={daySwipe}
           onAdd={async (text) => {
             await addPersonalNote(selectedDate, text)
+            emitHelpEvent('calendar.note-added') // para los tutoriales «Enséñame»: la nota YA está guardada
             reload()
           }}
           onDelete={async (id) => {
@@ -1599,7 +1609,7 @@ function DateJumpControl({ dateStr, onJump, children }: { dateStr: string; onJum
   const [open, setOpen] = useState(false)
   return (
     <span className="date-jump">
-      <button type="button" className="date-jump-trigger" onClick={() => setOpen((v) => !v)} aria-label="Ir a una fecha concreta">
+      <button type="button" className="date-jump-trigger" data-help-id="calendar.date-jump" onClick={() => setOpen((v) => !v)} aria-label="Ir a una fecha concreta">
         {children}
       </button>
       {open && (
@@ -1607,6 +1617,7 @@ function DateJumpControl({ dateStr, onJump, children }: { dateStr: string; onJum
           <input
             type="date"
             autoFocus
+            data-help-id="calendar.date-jump-input"
             defaultValue={dateStr}
             onChange={(e) => {
               if (e.target.value) {
@@ -1659,7 +1670,7 @@ function DayModal({
   onManageCategories: () => void
 }) {
   return (
-    <div className="day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+    <div className="day-panel" data-help-id="calendar.day-panel" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
       <div className="modal-header">
         {/* Arrastrar con el dedo cambia de día (petición real); estas
             flechas hacen lo mismo con un toque, para quien prefiera
@@ -2055,13 +2066,13 @@ function PersonalView({
         </p>
       )}
 
-      <p className="muted" style={{ fontSize: 12, marginTop: 12 }}>
+      <p className="muted" data-help-id="calendar.note-privacy" style={{ fontSize: 12, marginTop: 12 }}>
         🔒 Notas privadas — solo tú puedes ver lo que apuntes aquí, ni el resto de la familia lo verá.
       </p>
 
       <form onSubmit={handleAdd} className="inline-fields">
-        <input type="text" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe algo para este día…" />
-        <button type="submit" disabled={!text.trim() || saving}>
+        <input type="text" data-help-id="calendar.note-input" value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe algo para este día…" />
+        <button type="submit" data-help-id="calendar.note-add" disabled={!text.trim() || saving}>
           {saving ? 'Guardando…' : '+ Añadir'}
         </button>
       </form>
@@ -2698,17 +2709,21 @@ function CompletionCircle({
   color,
   onComplete,
   onUncomplete,
+  helpMark = true,
 }: {
   done: boolean
   color: string
   onComplete?: () => void
   onUncomplete?: () => void
+  /** Marca del tutorial «Enséñame»: solo en un círculo que aún se puede marcar (pendiente). Las citas de calendarios enlazados la desactivan: no son eventos propios. */
+  helpMark?: boolean
 }) {
   if (!onComplete && !onUncomplete) return null
   return (
     <button
       type="button"
       className={'completion-circle' + (done ? ' completion-circle-done' : '')}
+      {...(helpMark && !done && onComplete ? { 'data-help-id': 'calendar.entry-complete' } : {})}
       style={done ? { color } : undefined}
       onClick={(e) => {
         e.stopPropagation()
@@ -2834,11 +2849,12 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
       >
         <div className="agenda-stripe" style={entry.colors.length <= 1 ? { background: entry.color } : undefined}>
           <ColorSegments colors={entry.colors} direction="column" />
-          <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} />
+          <CompletionCircle done={entry.done} color={entry.color} onComplete={entry.onComplete} onUncomplete={entry.onUncomplete} helpMark={!entry.isExternal} />
         </div>
         <button
           type="button"
           className="agenda-row-body"
+          {...(entry.onEdit ? { 'data-help-id': 'calendar.entry-edit' } : {})}
           onClick={() => {
             if (openX !== 0) {
               setOpenX(0)
@@ -2875,6 +2891,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
           <button
             type="button"
             className="icon-button-share agenda-row-share"
+            data-help-id="calendar.entry-share"
             onClick={(e) => {
               e.stopPropagation()
               entry.onShare?.()
@@ -3108,11 +3125,11 @@ function EventCard({
             Calendario: "mandos de edición, archivo y eliminación de forma ordenada y compacta") y su
             aria-label/title propios. El sub-flujo de confirmación de borrado (¿Seguro?/Solo un día/Toda
             la serie/Cancelar) no se toca, solo su disparador inicial. */}
-        <button type="button" className="icon-button-share icon-button-share-sm" onClick={onEdit} aria-label="Editar" title="Editar">
+        <button type="button" className="icon-button-share icon-button-share-sm" data-help-id="calendar.entry-edit" onClick={onEdit} aria-label="Editar" title="Editar">
           ✏️
         </button>
         {onShare && (
-          <button type="button" className="icon-button-share icon-button-share-sm" onClick={onShare} aria-label="Compartir" title="Compartir">
+          <button type="button" className="icon-button-share icon-button-share-sm" data-help-id="calendar.entry-share" onClick={onShare} aria-label="Compartir" title="Compartir">
             📤
           </button>
         )}
@@ -3185,7 +3202,7 @@ function MemberFilterDropdown({
   const summary = selected.length === 0 ? 'Todos' : members.filter((m) => selected.includes(m.id)).map((m) => m.name).join(', ')
 
   return (
-    <div>
+    <div data-help-id="calendar.filter">
       <button type="button" className="category-picker-toggle" onClick={() => setOpen(true)}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
           {selected.length > 0 && (
@@ -3225,8 +3242,8 @@ function MemberFilterDropdown({
                 ✕
               </button>
             </div>
-            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
-              <button type="button" className="category-picker-row" style={{ justifyContent: 'space-between' }} onClick={onClear}>
+            <div className="category-picker-panel" data-help-id="calendar.filter-panel" style={{ maxHeight: 'none', border: 'none' }}>
+              <button type="button" className="category-picker-row" data-help-id="calendar.filter-all" style={{ justifyContent: 'space-between' }} onClick={onClear}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ width: 14, height: 14, borderRadius: '50%', background: '#9ca3af' }} />
                   Todos
@@ -3238,6 +3255,7 @@ function MemberFilterDropdown({
                   key={m.id}
                   type="button"
                   className="category-picker-row"
+                  data-help-id="calendar.filter-person"
                   style={{ justifyContent: 'space-between' }}
                   onClick={() => onToggle(m.id)}
                 >
@@ -3278,7 +3296,14 @@ function FieldDropdown({ label, summary, children, helpId }: { label: string; su
               <h2 className="section-title" style={{ margin: 0 }}>
                 {label}
               </h2>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+              {/* Marca de la Ayuda para la ✕ de «Repetición» y de «Recordatorio» (los tutoriales piden cerrar la ventana antes de seguir). */}
+              <button
+                type="button"
+                className="modal-close"
+                {...(label === 'Repetición' ? { 'data-help-id': 'calendar.repeat-close' } : label === 'Recordatorio' ? { 'data-help-id': 'calendar.reminder-close' } : {})}
+                onClick={() => setOpen(false)}
+                aria-label="Cerrar"
+              >
                 ✕
               </button>
             </div>
@@ -3344,11 +3369,11 @@ function WhoDropdown({
               <h2 className="section-title" style={{ margin: 0 }}>
                 ¿Para quién?
               </h2>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+              <button type="button" className="modal-close" data-help-id="calendar.who-close" onClick={() => setOpen(false)} aria-label="Cerrar">
                 ✕
               </button>
             </div>
-            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
+            <div className="category-picker-panel" data-help-id="calendar.who-list" style={{ maxHeight: 'none', border: 'none' }}>
               {members.map((m) => (
                 <button
                   key={m.id}
@@ -3513,7 +3538,7 @@ function ReminderPicker({
   return (
     <div>
       {hasEnd && (
-        <div className="filter-row">
+        <div className="filter-row" data-help-id="calendar.reminder-anchor">
           <button
             type="button"
             className={'chip' + (anchor === 'start' ? ' chip-active' : '')}
@@ -3531,7 +3556,7 @@ function ReminderPicker({
         </div>
       )}
 
-      <div className="recurrence-preset-list">
+      <div className="recurrence-preset-list" data-help-id="calendar.reminder-presets">
         <button
           type="button"
           className={'chip recurrence-preset' + (reminders.length === 0 ? ' chip-active' : '')}
@@ -3636,7 +3661,7 @@ function RecurrenceControl({
   return (
     <div>
       <p className="muted">Repetir</p>
-      <div className="recurrence-preset-list">
+      <div className="recurrence-preset-list" data-help-id="calendar.repeat-presets">
         {RECURRENCE_PRESETS.map((p) => (
           <button
             key={p.key}
@@ -3682,11 +3707,11 @@ function RecurrenceControl({
 
       {value.freq && (
         <>
-          <label>
+          <label data-help-id="calendar.repeat-until">
             Repetir hasta (opcional)
             <DateField value={value.until} onChange={(until) => onChange({ ...value, until })} placeholder="Sin fecha de fin" />
           </label>
-          <label className="checkbox-label">
+          <label className="checkbox-label" data-help-id="calendar.repeat-holidays">
             <input
               type="checkbox"
               checked={value.skipHolidays}
@@ -4032,6 +4057,7 @@ function EditEventForm({
       } else {
         await updateEventFromOccurrenceForward(event.id, occurrenceDate, payload)
       }
+      emitHelpEvent('calendar.event-updated') // para los tutoriales «Enséñame»: los cambios YA están guardados
       onDone()
     } catch (err) {
       setError(errorMessage(err, isTask ? 'No se pudo guardar la tarea' : 'No se pudo guardar el evento'))
@@ -4044,9 +4070,9 @@ function EditEventForm({
     <form onSubmit={handleSubmit} className="card member-form">
       <label>
         Título
-        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <input type="text" data-help-id="calendar.edit-title" value={title} onChange={(e) => setTitle(e.target.value)} required />
       </label>
-      <label>
+      <label data-help-id="calendar.edit-date">
         Fecha
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
       </label>
@@ -4058,7 +4084,7 @@ function EditEventForm({
           filtra quién puede llegar a leerlo (RLS, ver migración 0089).
           RETOQUE: antes vivía dentro de {!isTask && ...} (bug real: una Tarea no podía marcarse
           privada) — ahora se ofrece igual para Evento y para Tarea. */}
-      <label className="checkbox-label">
+      <label className="checkbox-label" data-help-id="calendar.edit-private">
         <input
           type="checkbox"
           checked={visibility === 'private'}
@@ -4070,7 +4096,7 @@ function EditEventForm({
       {!isTask && (
         <>
           {!allDay && (
-            <div className="inline-fields">
+            <div className="inline-fields" data-help-id="calendar.edit-time">
               <label>
                 Empieza
                 <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
@@ -4094,6 +4120,7 @@ function EditEventForm({
           (un "Cada semana" sin día marcado sigue siendo válido: repite el mismo día que la fecha). */}
       <FieldDropdown
         label="Repetición"
+        helpId="calendar.edit-repeat"
         summary={
           recurrenceLabel(buildRecurrenceRule(recurrence.freq, recurrence.byDay, recurrence.skipHolidays, recurrence.until || null, recurrence.interval)) ||
           'No se repite'
@@ -4104,12 +4131,13 @@ function EditEventForm({
       {!isTask && (
         <FieldDropdown
           label="Recordatorio"
+          helpId="calendar.edit-reminder"
           summary={reminders.length === 0 ? 'Sin recordatorio' : reminders.map((r) => reminderLabel(r.minutesBefore, r.anchor)).join(', ')}
         >
           <ReminderPicker reminders={reminders} onChange={setReminders} hasEnd={!allDay && !!endTime} />
         </FieldDropdown>
       )}
-      <WhoDropdown members={members} selected={selectedMembers} onToggle={toggleMember} />
+      <WhoDropdown helpId="calendar.edit-who" members={members} selected={selectedMembers} onToggle={toggleMember} />
       <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
@@ -4118,7 +4146,7 @@ function EditEventForm({
           los adultos también"). Al marcarlo "Hecho" esa persona se los
           lleva. */}
       {selectedMembers.length === 1 && (
-        <label>
+        <label data-help-id="calendar.edit-points">
           Puntos al marcarlo "Hecho" (opcional)
           <input type="number" min={0} value={points} onChange={(e) => setPoints(Number(e.target.value))} />
         </label>
@@ -4142,7 +4170,7 @@ function EditEventForm({
       {/* Encargo "tareas recurrentes" (Parte 6) — solo aparece cuando el Evento/Tarea YA se repite;
           uno suelto nunca ve esto y guarda exactamente como antes. */}
       {event.recurrenceRule && (
-        <fieldset className="edit-scope-fieldset">
+        <fieldset className="edit-scope-fieldset" data-help-id="calendar.edit-scope">
           <legend>Guardar cambios en</legend>
           <label className="checkbox-label">
             <input type="radio" checked={editScope === 'series'} onChange={() => handleScopeChange('series')} />
@@ -4160,10 +4188,10 @@ function EditEventForm({
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving || !recurrenceValid}>
+        <button type="submit" data-help-id="calendar.edit-save" disabled={saving || !recurrenceValid}>
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
-        <button type="button" className="link-button" onClick={onCancel}>
+        <button type="button" className="link-button" data-help-id="calendar.edit-cancel" onClick={onCancel}>
           Cancelar
         </button>
       </div>
@@ -4639,7 +4667,6 @@ function OpensFirstBadge() {
 function CalendarioMenuDropdown({
   activeTab,
   layout,
-  onLayoutChange,
   pinnedItems,
   onTogglePin,
   onActivate,
@@ -4647,260 +4674,60 @@ function CalendarioMenuDropdown({
 }: {
   activeTab: ViewMode
   layout: CalendarioMenuGroup[]
-  onLayoutChange: (next: CalendarioMenuGroup[]) => void
   pinnedItems: CalendarioMenuItemKey[]
   onTogglePin: (key: CalendarioMenuItemKey) => void
   onActivate: (key: CalendarioMenuItemKey) => void
   onClose: () => void
 }) {
   const openFirstKey = firstCalendarioView(layout)
-  const [editMode, setEditMode] = useState(false)
-  const [addingGroup, setAddingGroup] = useState(false)
-  const [addingGroupName, setAddingGroupName] = useState('')
-  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [addingCustomItem, setAddingCustomItem] = useState(false)
-  const [newItemIcon, setNewItemIcon] = useState('📌')
-  const [newItemLabel, setNewItemLabel] = useState('')
-  const [editingItemKey, setEditingItemKey] = useState<string | null>(null)
-  const [editItemIcon, setEditItemIcon] = useState('')
-  const [editItemLabel, setEditItemLabel] = useState('')
-  const [placeholderNotice, setPlaceholderNotice] = useState(false)
-
-  function moveItem(groupId: string, index: number, direction: -1 | 1) {
-    const group = layout.find((g) => g.id === groupId)
-    if (!group) return
-    const newIndex = index + direction
-    if (newIndex < 0 || newIndex >= group.items.length) return
-    const items = [...group.items]
-    ;[items[index], items[newIndex]] = [items[newIndex], items[index]]
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items } : g)))
-  }
-
-  function moveItemToGroup(itemKey: CalendarioMenuItemKey, fromGroupId: string, toGroupId: string) {
-    if (fromGroupId === toGroupId) return
-    const moved = layout.find((g) => g.id === fromGroupId)?.items.find((it) => it.key === itemKey)
-    if (!moved) return
-    onLayoutChange(
-      layout.map((g) => {
-        if (g.id === fromGroupId) return { ...g, items: g.items.filter((it) => it.key !== itemKey) }
-        if (g.id === toGroupId) return { ...g, items: [...g.items, moved] }
-        return g
-      }),
-    )
-  }
-
-  function handleAddGroup(e: FormEvent) {
-    e.preventDefault()
-    if (!addingGroupName.trim()) return
-    onLayoutChange([...layout, { id: crypto.randomUUID(), name: addingGroupName.trim(), items: [] }])
-    setAddingGroupName('')
-    setAddingGroup(false)
-  }
-
-  function handleRenameGroup(id: string) {
-    onLayoutChange(layout.map((g) => (g.id === id ? { ...g, name: renameValue.trim() || null } : g)))
-    setRenamingGroupId(null)
-  }
-
-  function deleteGroup(id: string) {
-    const group = layout.find((g) => g.id === id)
-    const rest = layout.filter((g) => g.id !== id)
-    if (!group || rest.length === 0) return
-    const [first, ...others] = rest
-    onLayoutChange([{ ...first, items: [...first.items, ...group.items] }, ...others])
-  }
-
-  function handleAddCustomItem(e: FormEvent) {
-    e.preventDefault()
-    if (!newItemLabel.trim()) return
-    const entry: CalendarioMenuEntry = { key: `custom:${crypto.randomUUID()}`, icon: newItemIcon, label: newItemLabel.trim() }
-    onLayoutChange(layout.map((g, i) => (i === 0 ? { ...g, items: [...g.items, entry] } : g)))
-    setNewItemIcon('📌')
-    setNewItemLabel('')
-    setAddingCustomItem(false)
-  }
-
-  function handleSaveItem(groupId: string, key: CalendarioMenuItemKey) {
-    onLayoutChange(
-      layout.map((g) =>
-        g.id === groupId
-          ? { ...g, items: g.items.map((it) => (it.key === key ? { ...it, icon: editItemIcon, label: editItemLabel.trim() || it.label } : it)) }
-          : g,
-      ),
-    )
-    setEditingItemKey(null)
-  }
-
-  function deleteItem(groupId: string, key: CalendarioMenuItemKey) {
-    onLayoutChange(layout.map((g) => (g.id === groupId ? { ...g, items: g.items.filter((it) => it.key !== key) } : g)))
-  }
 
   function handleItemActivate(entry: CalendarioMenuEntry) {
-    if (isCustomCalendarioMenuKey(entry.key)) {
-      setPlaceholderNotice(true)
-      setTimeout(() => setPlaceholderNotice(false), 2500)
-      return
-    }
     onActivate(entry.key)
     onClose()
   }
 
+  // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
+  // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
-    <div className="economia-menu-dropdown">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
-        {editMode ? '✓ Listo' : '✏️ Editar'}
-      </button>
-
-      {layout.map((group) => (
-        <div key={group.id} className="economia-menu-group">
-          {(group.name || editMode) &&
-            (renamingGroupId === group.id ? (
-              <form
-                className="inline-fields"
-                style={{ margin: '4px 4px 6px' }}
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  handleRenameGroup(group.id)
-                }}
-              >
-                <input type="text" value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus style={{ flex: 1 }} />
-                <button type="submit">Guardar</button>
-              </form>
-            ) : (
+    <div className="economia-menu-dropdown" data-help-id="calendar.menu-panel">
+      {layout.map((group) => {
+        const items = group.items.filter((entry) => !isCustomCalendarioMenuKey(entry.key))
+        if (items.length === 0) return null
+        return (
+          <div key={group.id} className="economia-menu-group">
+            {group.name && (
               <div className="economia-menu-group-title">
-                <span>{group.name ?? 'Sin categoría'}</span>
-                {editMode && (
-                  <span style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      onClick={() => {
-                        setRenamingGroupId(group.id)
-                        setRenameValue(group.name ?? '')
-                      }}
-                      aria-label={`Renombrar categoría ${group.name ?? ''}`}
-                    >
-                      ✎
-                    </button>
-                    {layout.length > 1 && (
-                      <ConfirmIconButton
-                        icon="✕"
-                        className="link-button"
-                        ariaLabel={`Eliminar categoría ${group.name ?? ''}`}
-                        onConfirm={() => deleteGroup(group.id)}
-                      />
-                    )}
-                  </span>
-                )}
+                <span>{group.name}</span>
               </div>
-            ))}
+            )}
 
-          {group.items.map((entry, i) => {
-            const meta = calendarioMenuEntryMeta(entry)
-            const isTab = isCalendarioSubTab(entry.key)
-            const isCustom = isCustomCalendarioMenuKey(entry.key)
+            {items.map((entry) => {
+              const meta = calendarioMenuEntryMeta(entry)
+              const isTab = isCalendarioSubTab(entry.key)
 
-            if (editMode && editingItemKey === entry.key) {
               return (
-                <form
-                  key={entry.key}
-                  className="inline-fields"
-                  style={{ margin: '2px 4px' }}
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    handleSaveItem(group.id, entry.key)
-                  }}
-                >
-                  <input type="text" value={editItemIcon} onChange={(e) => setEditItemIcon(e.target.value)} style={{ width: 48, textAlign: 'center', flex: 'none' }} maxLength={4} autoFocus />
-                  <input type="text" value={editItemLabel} onChange={(e) => setEditItemLabel(e.target.value)} style={{ flex: 1 }} />
-                  <button type="submit">Guardar</button>
-                </form>
-              )
-            }
-
-            return (
-              <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
-                {editMode ? (
-                  <span className="economia-menu-item">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label}
-                    {entry.key === openFirstKey && <OpensFirstBadge />}
-                  </span>
-                ) : (
-                  <button type="button" className="economia-menu-item" onClick={() => handleItemActivate(entry)}>
+                <div key={entry.key} className={'economia-menu-row' + (isTab && activeTab === entry.key ? ' active' : '')}>
+                  <button type="button" className="economia-menu-item" {...(isTab ? VIEW_HELP_MARK[entry.key as ViewMode] : {})} onClick={() => handleItemActivate(entry)}>
                     <span aria-hidden="true">{meta.icon}</span>
                     {meta.label}
                     {entry.key === openFirstKey && <OpensFirstBadge />}
                   </button>
-                )}
 
-                {editMode ? (
-                  <span className="economia-menu-edit-controls">
-                    <button type="button" className="link-button" style={{ padding: '2px 6px' }} disabled={i === 0} onClick={() => moveItem(group.id, i, -1)} aria-label={`Subir ${meta.label}`}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      style={{ padding: '2px 6px' }}
-                      disabled={i === group.items.length - 1}
-                      onClick={() => moveItem(group.id, i, 1)}
-                      aria-label={`Bajar ${meta.label}`}
-                    >
-                      ↓
-                    </button>
-                    <select
-                      value={group.id}
-                      onChange={(e) => moveItemToGroup(entry.key, group.id, e.target.value)}
-                      aria-label={`Mover ${meta.label} a otra categoría`}
-                    >
-                      {layout.map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name ?? 'Sin categoría'}
-                        </option>
-                      ))}
-                    </select>
-                    {isCustom && (
-                      <>
-                        <button
-                          type="button"
-                          className="link-button"
-                          style={{ padding: '2px 6px' }}
-                          onClick={() => {
-                            setEditingItemKey(entry.key)
-                            setEditItemIcon(meta.icon)
-                            setEditItemLabel(meta.label)
-                          }}
-                          aria-label={`Renombrar ${meta.label}`}
-                        >
-                          ✎
-                        </button>
-                        <ConfirmIconButton
-                          icon="✕"
-                          className="link-button"
-                          ariaLabel={`Eliminar ${meta.label}`}
-                          onConfirm={() => deleteItem(group.id, entry.key)}
-                        />
-                      </>
-                    )}
-                  </span>
-                ) : (
                   <button
                     type="button"
                     className="economia-menu-pin"
+                    data-help-id="calendar.menu-pin"
                     onClick={() => onTogglePin(entry.key)}
                     aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Calendario` : `Sacar ${meta.label} a la pantalla de Calendario`}
                   >
                     {pinnedItems.includes(entry.key) ? '📍 Quitar' : '📌 Sacar'}
                   </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      ))}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
 
       {/* Revisión Calendario — "Externos" desaparece como vista (sus funciones viven ahora en
           Configuración → Calendario); este es el acceso SECUNDARIO que pide el encargo: nunca una
@@ -4909,64 +4736,8 @@ function CalendarioMenuDropdown({
           abierto (mismo patrón que ya usa Economía: state={{ group: 'calendario' }}). */}
       <Link to="/menu-organizar" state={{ group: 'calendario' }} className="economia-menu-item" onClick={onClose}>
         <span aria-hidden="true">⚙️</span>
-        Gestionar calendarios
+        <span data-help-id="calendar.manage-calendars">Gestionar calendarios</span>
       </Link>
-
-      {placeholderNotice && (
-        <p className="muted" style={{ fontSize: 12, padding: '4px 12px' }}>
-          Todavía no hay nada aquí — pídemelo cuando lo necesites y lo construyo.
-        </p>
-      )}
-
-      {editMode && (
-        <>
-          {addingCustomItem ? (
-            <form onSubmit={handleAddCustomItem} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={newItemIcon}
-                onChange={(e) => setNewItemIcon(e.target.value)}
-                style={{ width: 48, textAlign: 'center', flex: 'none' }}
-                maxLength={4}
-                aria-label="Icono"
-              />
-              <input
-                type="text"
-                value={newItemLabel}
-                onChange={(e) => setNewItemLabel(e.target.value)}
-                placeholder="Nombre del acceso"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
-              <span aria-hidden="true">📌</span>
-              Nuevo acceso
-            </button>
-          )}
-
-          {addingGroup ? (
-            <form onSubmit={handleAddGroup} className="inline-fields" style={{ margin: '6px 4px' }}>
-              <input
-                type="text"
-                value={addingGroupName}
-                onChange={(e) => setAddingGroupName(e.target.value)}
-                placeholder="Nombre de la categoría"
-                autoFocus
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Crear</button>
-            </form>
-          ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingGroup(true)}>
-              <span aria-hidden="true">➕</span>
-              Nueva categoría
-            </button>
-          )}
-        </>
-      )}
     </div>
   )
 }

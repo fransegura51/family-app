@@ -314,6 +314,49 @@ describe('calendar.create', () => {
   })
 })
 
+describe('calendar.create: tarea o evento', () => {
+  const members = [{ id: 'm1', name: 'Eric' }]
+  const base = { title: 'Sacar la basura', date: '2026-09-25', time: '17:00', endTime: '18:00', memberId: 'm1', recurrenceRule: 'FREQ=WEEKLY;BYDAY=TU', reminders: [{ minutesBefore: 60, anchor: 'start' }] }
+
+  beforeEach(() => vi.mocked(createEvent).mockClear())
+
+  it('sin tipo se guarda como evento (compatibilidad)', async () => {
+    const result = proposeAction('calendar.create', base, ctx({ members }))
+    if (!result.ok) throw new Error('debería ser válida')
+    await result.proposal.confirm(result.proposal.initialSelection)
+    expect(vi.mocked(createEvent).mock.calls[0][0]).not.toHaveProperty('kind')
+  })
+
+  it('la tarjeta ofrece Evento/Tarea y elegir Tarea guarda una tarea sin hora, repetición ni avisos ni Google', async () => {
+    const result = proposeAction('calendar.create', { ...base, kind: 'event' }, ctx({ members }))
+    if (!result.ok) throw new Error('debería ser válida')
+    const kindChoice = result.proposal.preview(result.proposal.initialSelection).choices.find((c) => c.id === 'kind')
+    expect(kindChoice?.options.map((o) => o.label)).toEqual(['Evento', 'Tarea'])
+    const asTask = { ...result.proposal.initialSelection, choices: { ...result.proposal.initialSelection.choices, kind: 'task' } }
+    const view = result.proposal.preview(asTask)
+    expect(view.title).toBe('✅ Apuntar como tarea')
+    expect(view.confirmLabel).toBe('Guardar tarea')
+    expect(view.lines.join(' ')).not.toContain('Repite')
+    const message = await result.proposal.confirm(asTask)
+    expect(createEvent).toHaveBeenCalledWith({
+      title: 'Sacar la basura',
+      startAt: new Date('2026-09-25T00:00').toISOString(),
+      endAt: null,
+      allDay: true,
+      recurrenceRule: null,
+      reminders: [],
+      memberIds: ['m1'],
+      kind: 'task',
+      syncToGoogle: false,
+    })
+    expect(message).toContain('Apuntada como tarea: Sacar la basura')
+  })
+
+  it('un tipo desconocido se rechaza', () => {
+    expect(proposeAction('calendar.create', { ...base, kind: 'otra' }, ctx({ members })).ok).toBe(false)
+  })
+})
+
 describe('calendar.create: notas de la tarjeta', () => {
   it('las notas se enseñan como aviso en la tarjeta y no se guardan', async () => {
     const result = proposeAction(

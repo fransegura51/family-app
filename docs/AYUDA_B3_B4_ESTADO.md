@@ -74,14 +74,14 @@ Documento vivo. Última actualización: 23/10/2026. Base de diseño: «Nueva Ayu
 - **Causa demostrada en el código**: el disparador `log_activity()` (0011) anota CADA `update` de `calendar_events`, aunque no cambie nada, con `auth.uid()` (nulo si no hay sesión de persona → «Alguien»).
   `sync-calendar-from-google-cron` (cada hora, según su cabecera) hacía `update` de TODOS los eventos ya importados de Google en cada vuelta, con los mismos datos y con la clave de servicio → N filas idénticas por hora.
   No hay otro escritor masivo: los formularios, los tutoriales y la edición de eventos recurrentes escriben una fila por acción (revisado en `src/data/calendar.ts` y `events.ts`); los tutoriales no escriben nada.
-- **No verificado en producción**: la herramienta de base de datos disponible en esta sesión no tiene acceso al proyecto de PEPA, así que no se han contado las filas reales. Consulta de solo lectura para comprobarlo (SQL Editor de Supabase):
+- **Comprobado en producción (23/10/2026, solo lectura, desde el SQL Editor del panel)**: `activity_log` tenía 771.200 filas (desde el 31/08/2026); en las últimas 72 horas, 54.288 «modificó un evento» SIN persona: 754 filas CADA hora (la sincronización de Google, cron `5 * * * *`, actualizaba 754 eventos importados por vuelta); solo 3.511 filas del total tenían persona. La pantalla enseñaba 49 porque cabían 50. Consulta usada:
   `select date_trunc('hour', created_at) h, actor_id is null as sin_persona, count(*) n, count(distinct record_id) elementos from activity_log where table_name='calendar_events' and action='update' and created_at > now() - interval '3 days' group by 1,2 order by 1 desc;`
   Si salen ~N filas por hora con `sin_persona = true` y `elementos` = N, es esto.
 - **Corrección (publicada, solo web)**: las líneas seguidas de lo mismo (misma persona/tabla/acción, ≤ 2 min) se juntan («Un proceso automático de PEPA modificó 49 eventos»), nunca se juntan cosas distintas; sin persona ya no dice «Alguien»;
   se nombra el evento/producto/miembro cuando la cuenta puede leerlo (3 lecturas pequeñas al abrir la pantalla; un evento privado de otra persona no se nombra); se piden 200 filas y hay «Ver más antiguas».
-- **Corrección de la causa (preparada, NO aplicada)**: (1) `supabase/pending-migrations/0307_activity_log_skip_noop_updates.sql` (+ reversión): un `update` que no cambia nada salvo `updated_at` ya no se anota; no borra nada; probada en local.
-  (2) `sync-calendar-from-google-cron` ahora solo escribe lo que cambió (`eventDiff.ts`, probado): menos filas, menos Realtime y menos coste. Necesita DESPLEGAR la función (no desplegada).
-  Las filas ya acumuladas NO se borran (haría falta autorización expresa y una justificación; ya no estorban al estar agrupadas).
+- **Corrección de la causa (APLICADA con autorización expresa el 23/10/2026)**: (1) `supabase/migrations/0307_activity_log_skip_noop_updates.sql` (+ reversión en `supabase/rollbacks/`): un `update` que no cambia nada salvo `updated_at` ya no se anota; aplicada con el editor SQL del panel; el recuento de filas antes y después fue idéntico (771.200: no borró nada).
+  (2) `sync-calendar-from-google-cron` DESPLEGADA desde el editor de funciones del panel (index.ts + eventDiff.ts, código idéntico al del repositorio; la versión anterior es la de `git show ece1d15:supabase/functions/sync-calendar-from-google-cron/index.ts`): solo escribe lo que cambió. Probada ejecutando su código real con una base de datos y un Google simulados (`src/data/googleImportSync.test.ts`).
+  Las filas ya acumuladas NO se borran (haría falta autorización expresa; 771.200 filas ocupan espacio y se podrían depurar más adelante con una decisión tuya).
 
 ## Privacidad
 

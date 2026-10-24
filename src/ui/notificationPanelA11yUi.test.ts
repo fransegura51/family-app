@@ -77,9 +77,10 @@ describe('contenido con semántica para el lector de pantalla', () => {
     expect(panel).toContain('aria-controls={bodyId}')
   })
 
-  it('«Seleccionar» usa casillas con nombre; ya no hay «marcar todas» y cada aviso leído tiene «Marcar como no leída» con su nombre accesible', () => {
+  it('«Seleccionar» usa casillas con nombre; «Marcar todas…» son botones de texto con nombre propio y cada aviso leído tiene «Marcar como no leída» con su nombre accesible', () => {
     expect(panel).toContain('<span className="visually-hidden">Seleccionar: {n.title}</span>')
-    expect(panel).not.toContain('Marcar todas como leídas')
+    expect(panel).toContain('Marcar todas como leídas')
+    expect(panel).toContain('Marcar todas como no leídas')
     expect(panel).toContain('aria-label={`Marcar como no leída: ${n.title}`}')
     expect(panel).toContain('role="group" aria-label="Confirmar eliminación"')
   })

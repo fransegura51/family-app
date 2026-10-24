@@ -99,6 +99,20 @@ export const tutNotificacionesCampana: TourDef = {
       optional: true,
     },
     {
+      id: 'marcar-leidas',
+      text: 'Además de que se marquen solos a los 3 segundos, con «Marcar todas como leídas» los dejas todos leídos de golpe. Aquí solo te lo enseño: yo no lo pulso por ti.',
+      target: 'notificaciones.marcar-leidas',
+      ...pending,
+      optional: true,
+    },
+    {
+      id: 'marcar-no-leidas',
+      text: 'Y con «Marcar todas como no leídas» los vuelves a dejar todos pendientes para recordarlos; esos no se marcan solos otra vez mientras tengas el panel abierto.',
+      target: 'notificaciones.marcar-no-leidas',
+      ...pending,
+      optional: true,
+    },
+    {
       id: 'seleccionar',
       text: '«Seleccionar» sirve para elegir avisos y eliminarlos, y siempre pide confirmación. Eliminar un aviso no borra la tarea o el evento al que apuntaba. Aquí solo te lo enseño: yo no lo pulso por ti.',
       target: 'notificaciones.acciones',

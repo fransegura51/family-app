@@ -7,7 +7,6 @@ import {
   COMMUNITY_MENU_META,
   loadCommunityMenuOrder,
   loadCommunityPinned,
-  saveCommunityMenuOrder,
   saveCommunityPinned,
   type CommunityMenuKey,
 } from '@/state/communityMenu'
@@ -96,10 +95,6 @@ export function CommunityLayout() {
     }
   }, [menuOpen])
 
-  const changeOrder = useCallback((next: CommunityMenuKey[]) => {
-    setOrder(next)
-    saveCommunityMenuOrder(next)
-  }, [])
   const togglePin = useCallback((key: CommunityMenuKey) => {
     setPinned((prev) => {
       const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
@@ -148,7 +143,6 @@ export function CommunityLayout() {
             pinned={pinned}
             activeKey={activeKey}
             isAdmin={isAdmin}
-            onOrderChange={changeOrder}
             onTogglePin={togglePin}
             onGo={(to) => navigate(to, { state: { from: location.pathname } })}
             onClose={() => {

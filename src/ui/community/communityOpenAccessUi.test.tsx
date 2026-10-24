@@ -40,7 +40,7 @@ const recipe = (key: string, title: string) => ({
 describe('menú desplegable de Comunidad', () => {
   const render = (isAdmin: boolean, activeKey: 'portada' | 'recetas' | 'hogar' | null = 'recetas', pinned: ('portada' | 'recetas' | 'hogar')[] = []) =>
     renderToStaticMarkup(
-      <CommunityMenu order={['portada', 'recetas', 'hogar']} pinned={pinned} activeKey={activeKey} isAdmin={isAdmin} onOrderChange={noop} onTogglePin={noop} onGo={noop} onClose={noop} />,
+      <CommunityMenu order={['portada', 'recetas', 'hogar']} pinned={pinned} activeKey={activeKey} isAdmin={isAdmin} onTogglePin={noop} onGo={noop} onClose={noop} />,
     )
 
   it('enseña Portada, Recetas y cocina y Hogar y familia, con el actual resaltado y «Sacar»/«Quitar» como en Compras', () => {
@@ -50,7 +50,7 @@ describe('menú desplegable de Comunidad', () => {
     expect(html).toContain('aria-current="page"')
     expect(html).toContain('📍 Quitar') // Hogar está sacado a la pantalla
     expect(html).toContain('📌 Sacar')
-    expect(html).toContain('✏️ Editar')
+    expect(html).not.toContain('Editar') // sin modo Editar: solo «Sacar» / «Quitar»
     expect(html).toContain('Cerrar')
   })
 

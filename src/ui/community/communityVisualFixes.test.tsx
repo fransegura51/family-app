@@ -19,7 +19,7 @@ const css = readFileSync(join(process.cwd(), 'src/ui/community/community.css'), 
 describe('marco de Comunidad: «☰ Menú» desplegable + barra de herramientas (sustituyen a las cuatro pestañas grandes)', () => {
   it('el menú desplegable tiene los tres destinos (Portada, Recetas y cocina, Hogar y familia) y reutiliza las clases del desplegable de Compras', () => {
     for (const label of ['Portada', 'Recetas y cocina', 'Hogar y familia']) expect(stateSrc, label).toContain(`label: '${label}'`)
-    for (const cls of ['economia-menu-dropdown', 'economia-menu-row', 'economia-menu-item', 'economia-menu-pin', 'economia-menu-edit-toggle', 'economia-menu-edit-controls']) {
+    for (const cls of ['economia-menu-dropdown', 'economia-menu-row', 'economia-menu-item', 'economia-menu-pin']) {
       expect(menuSrc, cls).toContain(cls)
     }
     // El diseño antiguo (cuatro botones grandes + «Más opciones») ya no existe.
@@ -49,7 +49,7 @@ describe('marco de Comunidad: «☰ Menú» desplegable + barra de herramientas 
   })
 
   it('Administración no está en la barra: es un enlace discreto dentro del menú y solo para la administración', () => {
-    expect(menuSrc).toContain('{isAdmin && !editMode && (')
+    expect(menuSrc).toContain('{isAdmin && (')
     expect(menuSrc).toContain('🛠️ Administración')
     expect(communityToolbarItems('abc').map((i) => i.label)).not.toContain('Administración')
     expect(toolbarSrc).not.toContain('paths.admin')

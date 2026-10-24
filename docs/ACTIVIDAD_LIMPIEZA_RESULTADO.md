@@ -38,3 +38,10 @@ Cambiado en `sync-calendar-from-google-cron` (una línea: `ignoreDuplicates: tru
 
 - Pruebas antes de desplegar: `googleImportSync.test.ts` ejecuta el código real de la función con una base simulada (ahora distingue «reescribe» de «no hace nada»): una vuelta sin cambios hace 0 reescrituras de asignaciones, una asignación que falta se recrea, y la función contiene exactamente un `upsert` con `ignoreDuplicates: true`.
 - Desplegada como versión 5 de la función (la descargada en vivo contiene el cambio). La verificación del efecto en la primera vuelta horaria posterior se anota abajo.
+
+### Verificación en producción de la primera vuelta con la función nueva (24/10/2026, 01:05 UTC)
+
+- El `pg_cron` `5 * * * *` se ejecutó (`succeeded`); las 4 credenciales de Google quedaron `ok` (sincronizadas entre 01:05:06 y 01:05:33 UTC, sin error).
+- `calendar_event_members`: contador de actualizaciones **759.279 antes y después** de la vuelta (con la versión anterior sumaba ≈ 754 por hora). Asignaciones de eventos importados: 755 (sin pérdida).
+- `calendar_events`: 0 actualizaciones nuevas; 755 eventos importados y 755 vínculos intactos.
+- `activity_log`: 10.263 filas antes y después de la vuelta (ninguna fila nueva de la sincronización).

@@ -26,6 +26,16 @@ Ningún requisito pasa a **Aprobado** sin confirmación expresa del usuario.
 - [`PROJECT.md`](PROJECT.md) — arquitectura técnica.
 - [`docs/QA_EVENTOS_PENDIENTES.md`](docs/QA_EVENTOS_PENDIENTES.md) — checklist manual detallado del módulo Eventos.
 
+## RECORRIDOS-01 — toda función y sección nueva lleva su recorrido (obligatorio, sin que lo pidan)
+
+Petición permanente de la persona responsable (24/10/2026): cada vez que se cree una función o una sección nueva en PEPA se crea también, **en el mismo cambio y sin que nadie lo pida**:
+1. Su ficha de Ayuda (`src/help/catalog/cards*.ts`) y, si es una sección, su módulo (`src/help/catalog/modules.ts`).
+2. Su recorrido guiado «Enséñame» (`src/help/tours/defs/…`, registrado en `src/help/tours/registry.ts`, con `cardId` apuntando a la ficha) y, si es una sección, su visita «Conoce esta sección» (`kind: 'visit'`).
+3. Las marcas `data-help-id` en los controles reales que el recorrido señala (nunca controles inventados; los pasos que guardan datos son `sensitive` y esperan `emitHelpEvent`).
+4. La asociación con Pepa por voz: «Hablar con PEPA» arranca solo el recorrido con «necesito ayuda con…» (`src/help/talkHelp.ts`) en cuanto existen la ficha y el recorrido; añade el nombre de la sección en `MODULE_WORDS` de ese archivo si la sección es nueva.
+
+La prueba `src/help/tours/tourCoverage.test.ts` falla si una ficha usable no tiene recorrido o una sección con fichas no tiene visita. No la esquives con listas de excepciones: crea el recorrido.
+
 ## AYUDA-01 — mantener la Ayuda al día (obligatorio)
 
 La Ayuda de PEPA («Pepa te acompaña», `src/help/`) es parte del producto: no puede volver a quedarse desactualizada. **Cuando crees, modifiques, desactives o elimines una

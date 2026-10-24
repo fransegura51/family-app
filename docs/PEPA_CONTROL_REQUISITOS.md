@@ -818,6 +818,22 @@ Hallazgos de producto descubiertos (sin corregir): Cumpleaños para adultos no a
 
 ---
 
+## Hablar con PEPA: tareas, ayuda por voz y recorridos de todas las funciones (24/10/2026)
+
+Origen: avisos de personas que ya usan la app (captura del estado de funciones) y peticiones del propietario el 24/10/2026. Ninguno está **Aprobado**: falta la comprobación en móvil real.
+
+| ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |
+|---|---|---|---|---|---|---|
+| PEPA-VOZ-TAREA-1 | «Hablar con PEPA» crea tareas además de eventos: «tarea…»/«tengo que…» propone tarea; selector «Guardar como» (Evento/Tarea); tarea sin hora, repetición, avisos ni Google | Implementado | `talkActions.ts`, `talk.ts`, `talkRoute.ts` | `actions.test.ts`, `talk.test.ts`, `talkRoute.test.ts` | — | Comprobación en móvil real |
+| PEPA-VOZ-TAREA-2 | La persona se reconoce por voz («para Eric», «tarea Jennifer…», «le toca a…»); «recoger a Eric» no asigna a Eric; títulos sin «Que» suelto ni «que viene» | Implementado | `talkParse.ts`, `talk.ts` | `talk.test.ts` | PEPA-VOZ-TAREA-1 | Comprobación en móvil real |
+| PEPA-VOZ-TAREA-3 | Una tarea sin persona, o repetida (aviso de duplicado), siempre enseña la tarjeta aunque la app esté en modo directo; la misma frase repetida en 6 s se ignora (no abre dos tarjetas ni habla dos veces) | Implementado | `autoConfirm.ts`, `repeatedUtterance.ts`, `VoiceCapture.tsx` | `autoConfirm.test.ts`, `repeatedUtterance.test.ts`, `talk.test.ts` | PEPA-VOZ-TAREA-1 | «Me anota las tareas 2 veces» en la web: no se ha podido reproducir en la base de datos (una fila por frase); pendiente de que se indique dónde se ve repetida |
+| PEPA-VOZ-AYUDA-1 | «Necesito ayuda con compras» (y todas las secciones): Pepa lleva a la sección y explica por voz con la Ayuda; con algo concreto explica esa ficha; respeta permisos; sin recorrido, explica de palabra | Implementado | `help/talkHelp.ts`, `talk.ts`, `VoiceCapture.tsx` | `talkHelp.test.ts`, `talk.test.ts` | PEPA-RECORRIDOS-1 | Comprobación en móvil real (voz y cambio de pantalla) |
+| PEPA-VOZ-AYUDA-2 | Si hay recorrido guiado, Pepa dice una frase corta y arranca el «Enséñame» / «Conoce esta sección» (marca en pantalla dónde pulsar, cambia de pantalla, habla cada paso) | Implementado | `talkHelp.ts`, `VoiceCapture.tsx` | `talkHelp.test.ts` | PEPA-VOZ-AYUDA-1 | Comprobación en móvil real; la voz de los pasos sigue la preferencia de voz de Pepa |
+| PEPA-RECORRIDOS-1 | Todas las funciones de la Ayuda (44 que faltaban) y las visitas de Pepa, Avisos y Cuenta tienen recorrido, y salen en «Enséñame» | Implementado | `src/help/tours/defs/g7…g10`, `registry.ts`, marcas `data-help-id` en las pantallas | `tourDefs.test.ts`, `masterCatalog.test.ts`, `tourCoverage.test.ts` | — | Comprobación en móvil real; los recorridos de banco, compartir, PIN, borrar cuenta y permisos de Android solo señalan y explican (no ejecutan nada) |
+| PEPA-RECORRIDOS-2 | Regla permanente: toda función o sección nueva lleva ficha + recorrido + visita (si es sección) + marcas, y queda asociada a Pepa por voz sin que se pida | Implementado | `CLAUDE.md` (RECORRIDOS-01), `tourCoverage.test.ts` | `tourCoverage.test.ts` falla si falta alguno | PEPA-RECORRIDOS-1 | — |
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

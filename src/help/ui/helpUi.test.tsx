@@ -297,12 +297,12 @@ describe('permisos: la Ayuda explica restricciones y no ofrece botones que no va
   })
 
   it('una función a medias dice con claridad cuál es su límite', async () => {
-    app(ADULT, <Opener q="próximos cumpleaños" />)
+    app(ADULT, <Opener q="qué cocino hoy" />)
     fireEvent.click(screen.getByText('abrir'))
     const panel = await screen.findByRole('complementary')
     // Para cualquier persona: sin etiquetas técnicas de estado; la limitación que afecta al uso, dicha con naturalidad.
     expect(within(panel).queryByText('Funciona, pero con limitaciones')).toBeNull()
-    expect(within(panel).getByText(/Ten en cuenta: No hay avisos ni notificaciones de cumpleaños/)).toBeTruthy()
+    expect(within(panel).getByText(/Ten en cuenta: La versión con IA/)).toBeTruthy()
     expect(within(panel).queryByTestId('help-admin-state')).toBeNull()
   })
 
@@ -310,7 +310,7 @@ describe('permisos: la Ayuda explica restricciones y no ofrece botones que no va
     const { rememberAppOwnerForTests, clearAppOwnerCache } = await import('@/state/useAppOwner')
     rememberAppOwnerForTests('admin-1', true)
     const calls = supabaseCalls.n
-    app({ ...ADULT, id: 'admin-1' } as never, <Opener q="próximos cumpleaños" />)
+    app({ ...ADULT, id: 'admin-1' } as never, <Opener q="qué cocino hoy" />)
     fireEvent.click(screen.getByText('abrir'))
     const panel = await screen.findByRole('complementary')
     expect(within(panel).getByTestId('help-admin-state').textContent).toMatch(/Solo administración PEPA · estado: parcial/)

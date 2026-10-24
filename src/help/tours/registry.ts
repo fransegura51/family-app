@@ -10,6 +10,7 @@ import { TOURS_G3 } from '@/help/tours/defs/groups/g3'
 import { TOURS_G4 } from '@/help/tours/defs/groups/g4'
 import { TOURS_G5 } from '@/help/tours/defs/groups/g5'
 import { TOURS_G6 } from '@/help/tours/defs/groups/g6'
+import { TOURS_G7 } from '@/help/tours/defs/groups/g7'
 import type { TourDef } from '@/help/tours/types'
 
 // Registro de visitas guiadas («Conoce esta sección») y tutoriales «Enséñame» (B4 + ampliación). Cada uno se define en su archivo (defs/) y se registra aquí. Lo que no esté aquí no se
@@ -27,6 +28,7 @@ export const TOURS: readonly TourDef[] = [
   ...TOURS_G4,
   ...TOURS_G5,
   ...TOURS_G6,
+  ...TOURS_G7,
 ]
 
 export const TOUR_IDS: readonly string[] = TOURS.map((t) => t.id)

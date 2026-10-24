@@ -38,7 +38,7 @@ function ReviewRow({ section, review, onChanged, onError, big }: { section: Revi
 
   const stars = review?.stars ?? 0
   return (
-    <div className="card review-row">
+    <div className="card review-row" {...(big ? { 'data-help-id': 'resenas.general' } : {})}>
       <div className="review-row-head">
         <strong style={big ? { fontSize: 17 } : undefined}>
           {section.icon} {section.label}
@@ -46,7 +46,7 @@ function ReviewRow({ section, review, onChanged, onError, big }: { section: Revi
         <StarPicker value={stars} label={section.label} disabled={busy} onPick={(n) => run(() => saveAppReview({ section: section.id, stars: n, liked, disliked }))} />
       </div>
       <details className="review-more">
-        <summary>
+        <summary {...(big ? { 'data-help-id': 'resenas.comentario' } : {})}>
           <span>{review?.liked || review?.disliked ? 'Mi comentario' : 'Contar qué me gusta y qué no'}</span>
           <span className="review-chevron" aria-hidden="true">
             ▾

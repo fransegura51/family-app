@@ -2,6 +2,8 @@
 
 Decisiones definitivas del 20/10/2026. Estado: **Fase A preparada en la rama `feature/cuentas-seguridad`, probada en local, SIN aplicar en producción**. Fase B (gestionar el correo de los menores) **aplazada**: aquí solo está su diseño técnico.
 
+> **Actualización 24/10/2026:** las migraciones 0299 a 0303 están APLICADAS en producción desde el 21/10/2026 (verificado). Donde este documento diga «sin aplicar» o «sin desplegar» sobre ellas es histórico. Ver `docs/ESTADO_MIGRACIONES_0299_0303.md`.
+
 > No confundir: el **código de invitación de PEPA** (alta de una cuenta; un solo uso; caduca) es otra cosa que el **código de 6 cifras del correo** (solo confirma un correo). PEPA sigue siendo privada: sin invitación válida no se crea ninguna cuenta. Ver `docs/CUENTAS_SEGURIDAD_PLAN.md` §1 bis.
 
 ## 1. Quién es quién (los permisos no se mezclan)

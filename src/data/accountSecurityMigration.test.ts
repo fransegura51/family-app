@@ -1,6 +1,6 @@
 // Cuentas y seguridad (PEPA-CUENTAS): la migración 0299 (solo funciones nuevas), el endurecimiento 0303 (aplicado) y las plantillas de correo.
 // Son pruebas sobre el texto del SQL y de las plantillas; la prueba EN VIVO del SQL está en supabase/pending-migrations/0299_live_test.sql y se ejecuta
-// después de aplicar 0299 (no se ha ejecutado todavía).
+// después de aplicar 0299 (aplicada en producción el 21/10/2026; resultado PRUEBA_0299_OK).
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'

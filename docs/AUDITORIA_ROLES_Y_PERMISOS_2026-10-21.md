@@ -42,6 +42,8 @@ Un niño o invitado creado como «adulta» habría podido: ver **Economía** y t
 8. Hay 3 disparadores en las fichas (comprobar que la cuenta enlazada es de la misma familia, recalcular exclusión de IA y registro de actividad). El permiso de insertar o borrar perfiles está retirado a la app (0276).
 
 ## 5. Propuesta de corrección (preparada en la rama, **sin aplicar**)
+
+> **Actualización 24/10/2026:** las migraciones 0299 a 0303 están APLICADAS en producción desde el 21/10/2026 (verificado). Donde este documento diga «sin aplicar» o «sin desplegar» sobre ellas es histórico. Ver `docs/ESTADO_MIGRACIONES_0299_0303.md`.
 Está en `supabase/migrations/0301_invitation_hardening.sql` (con su rollback). Necesita tu autorización antes de aplicarse.
 
 | Pieza | Qué hace |

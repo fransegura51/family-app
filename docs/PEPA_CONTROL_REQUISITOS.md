@@ -658,6 +658,8 @@ Encargo dictado el 2026-10-17: «Quiero que el asistente de Pepa reconozca otras
 
 ## Cuentas, acceso, seguridad y correos oficiales (PEPA-CUENTAS; rama `feature/cuentas-seguridad`, SIN desplegar)
 
+> **Actualización 24/10/2026:** las migraciones 0299 a 0303 están APLICADAS en producción desde el 21/10/2026 (verificado). Donde este documento diga «sin aplicar» o «sin desplegar» sobre ellas es histórico. Ver `docs/ESTADO_MIGRACIONES_0299_0303.md`.
+
 Encargo dictado el 2026-10-20 (auditoría + implementación por fases). Auditoría previa: la app usa Supabase Auth con correo y contraseña, sesión persistente en el dispositivo y, aparte, un PIN opcional con huella/Face ID como candado extra; el correo no se veía en ninguna pantalla, no había «Cambiar contraseña» dentro de la app, «Quitar PIN» no pedía nada, el botón «Reiniciar PIN» salía a todos y no borraba las huellas, y los correos de acceso salían de Supabase («Supabase Auth», en inglés). Decisiones aprobadas: remitente `no-reply@pepafamilyapp.es` (buzón aún sin crear) con nombre «PEPA · Tu familia organizada» y respuestas a `info@pepafamilyapp.es`; códigos de seis cifras en vez de enlaces; la administradora ve los correos de la familia pero no puede cambiarlos; cada adulto cambia solo el suyo; el reinicio de PIN por administradora se retira. **Plan, dependencias externas, orden de despliegue y reversión: [`docs/CUENTAS_SEGURIDAD_PLAN.md`](CUENTAS_SEGURIDAD_PLAN.md).** Nada se ha desplegado, ni aplicado a la base de datos, ni tocado en OVH/Supabase/DNS.
 
 | ID | Descripción | Estado | Commits / archivos | Pruebas | Dependencias | Pendientes |

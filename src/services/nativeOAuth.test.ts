@@ -91,8 +91,8 @@ describe('servidor: vuelve a la app solo si la conexión empezó en la app', () 
   it('las dos de vuelta leen la marca antes que nada (también si el usuario cancela) y mandan a la página puente en vez de a la web', () => {
     for (const src of [googleCallback, bankCallback]) {
       expect(src).toContain('const APP_BRIDGE_URL = "https://fransegura51.github.io/family-app/volver-app.html"')
-      expect(src).toContain('fromApp = readAppFlag(stateRaw)')
-      expect(src.indexOf('fromApp = readAppFlag(stateRaw)')).toBeLessThan(src.indexOf('return back("error", '))
+      expect(src).toContain('fromApp = await readVerifiedAppFlag(stateRaw, ')
+      expect(src.indexOf('fromApp = await readVerifiedAppFlag(stateRaw, ')).toBeLessThan(src.indexOf('return back("error", '))
       expect(src).toContain('bridge.searchParams.set("to"')
       // Ninguna salida del manejador se salta la marca: todas pasan por back().
       const handler = src.slice(src.indexOf('Deno.serve('))

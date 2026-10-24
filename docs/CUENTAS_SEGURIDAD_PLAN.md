@@ -1,6 +1,8 @@
 # Cuentas, acceso, seguridad y correos oficiales (PEPA-CUENTAS)
 
 Rama de trabajo: `feature/cuentas-seguridad` (sin subir a GitHub, sin desplegar). Nada de esto está en producción.
+
+> **Actualización 24/10/2026:** las migraciones 0299 a 0303 están APLICADAS en producción desde el 21/10/2026 (verificado). Donde este documento diga «sin aplicar» o «sin desplegar» sobre ellas es histórico. Ver `docs/ESTADO_MIGRACIONES_0299_0303.md`.
 Cada dato está marcado como **[Código]** (leído en el código), **[Docs]** (documentación pública), **[Foros]** (mensajes de usuarios, no oficial) o **[No verificado]**.
 
 ## 1. Qué hay hecho en la rama y qué no

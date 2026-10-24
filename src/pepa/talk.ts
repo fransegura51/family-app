@@ -163,20 +163,22 @@ async function fetchCalendarEventsSafely(deps: TalkDeps): Promise<ScheduleEvent[
 }
 
 // «Tarea sacar la basura» es la tarea «Sacar la basura», no una llamada literalmente «Tarea sacar la basura».
-function stripTaskMarker(title: string): string {
-  const stripped = title.replace(/^(tarea:?\s+|tengo que\s+)/i, '').trim()
+// El analizador de fechas se come «tengo» de «tengo que llamar al médico» y deja «Que llamar al médico»: ese «Que» también se quita.
+function stripTaskMarker(title: string, text: string): string {
+  let stripped = title.replace(/^(tarea:?\s+|tengo que\s+)/i, '').trim()
+  if (/^\s*tengo que\b/i.test(text)) stripped = stripped.replace(/^que\s+/i, '').trim()
   return stripped ? stripped.charAt(0).toUpperCase() + stripped.slice(1) : title
 }
 
 async function calendarProposal(text: string, deps: TalkDeps, today: Date): Promise<TalkOutcome> {
   const members = await deps.members()
-  const prepared = prepareCalendarFromText(text, today, members)
-  const calendarEvents = await fetchCalendarEventsSafely(deps)
-  const context = baseContext(today, members, calendarEvents)
   // Tarea o evento: se decide por lo dicho («tarea…», «tengo que…» = tarea). Si lleva marcas de las dos cosas no se adivina: queda como evento y se avisa en la tarjeta, que deja elegir.
   const entryKind = detectCalendarEntryKind(text)
   const isTask = entryKind === 'task'
-  const title = isTask ? stripTaskMarker(prepared.title) : prepared.title
+  const prepared = prepareCalendarFromText(text, today, members, { keepMemberInTitle: isTask })
+  const calendarEvents = await fetchCalendarEventsSafely(deps)
+  const context = baseContext(today, members, calendarEvents)
+  const title = isTask ? stripTaskMarker(prepared.title, text) : prepared.title
   if (entryKind === 'ambiguous') prepared.notes.push('No sé si es una tarea o un evento: elige arriba «Guardar como».')
   const result = proposeAction(
     'calendar.create',

@@ -241,7 +241,13 @@ export const calendarCreateAction = defineAction<CalendarCreateParams>({
     return {
       title: isTask ? '✅ Apuntar como tarea' : '📅 Apuntar en el calendario',
       lines,
-      warnings: [...params.notes, ...(isTask ? [] : scheduleWarningsFor(params, ctx))],
+      // Una tarea no tiene hora, así que no hay «choque de horario»; el aviso de DUPLICADO sí se mantiene (y con él la tarjeta aunque se guarde directo): protege de apuntar la misma tarea dos veces.
+      warnings: [
+        ...params.notes,
+        ...(isTask
+          ? scheduleWarningsFor({ ...params, time: null, endTime: null }, ctx).filter((line) => line.startsWith('Parece que ya tienes'))
+          : scheduleWarningsFor(params, ctx)),
+      ],
       choices,
       checks: [],
       confirmLabel: isTask ? 'Guardar tarea' : 'Guardar en el calendario',

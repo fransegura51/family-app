@@ -86,7 +86,27 @@ function capitalize(text: string): string {
 
 const RECURRENCE_PHRASE = /\b(?:todos los|todas las semanas el|cada)\s+(?:lunes|martes|miercoles|jueves|viernes|sabado|domingo)/
 
-export function prepareCalendarFromText(text: string, today: Date, members: { id: string; name: string }[]): PreparedCalendarEntry {
+const OBJECT_PREPOSITIONS = new Set(['a', 'al', 'con', 'de', 'del', 'en', 'por', 'sin', 'hacia'])
+const ASSIGN_VERBS = new Set(['toca', 'encarga', 'encargas', 'encargar', 'pide', 'pidele', 'dile', 'dale'])
+
+// ¿Ese nombre es QUIEN hace la tarea («tarea Paco saca la basura», «que Eric saque la basura», «le toca a Jennifer…»)? Si va tras una preposición es el
+// complemento de la frase («recoger a Eric del colegio», «llamar con Eric»), salvo «le toca a / encarga a / dile a …».
+function isAssigneeMention(title: string, name: string): boolean {
+  const words = normalize(title).split(/\s+/).filter(Boolean)
+  const idx = words.indexOf(normalize(name))
+  if (idx <= 0) return true
+  if (!OBJECT_PREPOSITIONS.has(words[idx - 1])) return true
+  return words[idx - 1] === 'a' && idx >= 2 && ASSIGN_VERBS.has(words[idx - 2])
+}
+
+// `keepMemberInTitle` (tareas): un nombre solo se toma como destinatario si es quien hace la tarea (ver isAssigneeMention); si no, se queda en el
+// título — en «recoger a Eric del colegio» Eric es a quien se recoge, y quitarlo dejaba «recoger a del colegio». «para …» siempre asigna.
+export function prepareCalendarFromText(
+  text: string,
+  today: Date,
+  members: { id: string; name: string }[],
+  options: { keepMemberInTitle?: boolean } = {},
+): PreparedCalendarEntry {
   const orig = text.normalize('NFC').trim()
   const n = normalize(orig)
   const notes: string[] = []
@@ -124,13 +144,21 @@ export function prepareCalendarFromText(text: string, today: Date, members: { id
   let member = parsed.memberHint ? matchMemberByHint(parsed.memberHint, members) : null
   if (!member) {
     const found = findMemberInText(title, members)
-    if (found) {
+    // En una tarea, un nombre es la persona a quien se asigna solo si no es el complemento de una preposición («recoger A ERIC del colegio»).
+    if (found && (!options.keepMemberInTitle || isAssigneeMention(title, found.name))) {
       member = found
       const nameRe = new RegExp(`\\b${found.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
       title = title.replace(nameRe, '')
     }
   }
   title = capitalize(restoreAccents(tidyTitle(title), orig)) || 'Cita'
+  // Los nombres que se quedan en el título (tareas) recuperan su mayúscula: restoreAccents devuelve todo en minúsculas.
+  if (options.keepMemberInTitle) {
+    for (const m of members) {
+      const nameRe = new RegExp(`\\b${m.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
+      title = title.replace(nameRe, m.name)
+    }
+  }
 
   // Un recordatorio "al terminar" no tiene sentido sin hora de fin (mismo
   // criterio que el apunte de siempre).

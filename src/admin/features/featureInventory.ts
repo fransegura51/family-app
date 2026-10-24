@@ -41,7 +41,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     name: 'Elegir Tarea o Evento al apuntar por voz en «Hablar con PEPA»',
     state: 'operativa',
     works: 'Los botones clásicos de calendario distinguen tarea y evento (y preguntan si dudan). «Hablar con PEPA» también: «tarea…» o «tengo que…» propone una tarea, lo demás un evento, y la tarjeta trae el selector «Guardar como» (Evento / Tarea). Una tarea se guarda sin hora, sin repetición, sin avisos y sin Google Calendar.',
-    limits: 'Si la frase lleva a la vez marcas de tarea y de evento no se adivina: queda como evento y la tarjeta avisa para elegir.',
+    limits: 'Si la frase lleva a la vez marcas de tarea y de evento no se adivina: queda como evento y la tarjeta avisa para elegir. La persona se reconoce por voz («para Eric», «tarea Jennifer llamar al médico», «le toca a Jennifer…»); «recoger a Eric» no asigna a Eric. Una tarea sin persona o repetida enseña la tarjeta aunque la app esté en modo directo.',
     verification: 'probada',
     verificationNote: 'Pruebas automáticas del selector, del guardado como tarea y del enrutado de frases. La comprobación con voz real en el móvil depende del dispositivo.',
     reviewed: '2026-10-24',

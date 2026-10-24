@@ -50,3 +50,23 @@ describe('autoConfirmProposal: cuándo se puede saltar la tarjeta', () => {
     await expect(autoConfirmProposal(p)).resolves.toBeNull()
   })
 })
+
+describe('autoConfirmProposal: tareas del calendario', () => {
+  const calendarChoices = [{ id: 'member', label: 'Para', options: [{ key: 'none', label: 'Toda la familia' }, { key: 'm1', label: 'Eric' }] }]
+
+  it('una tarea SIN persona enseña la tarjeta para elegir a quién va', async () => {
+    const p = proposal({ actionId: 'calendar.create', view: view({ choices: calendarChoices }), selection: selection({ member: 'none', kind: 'task' }) })
+    await expect(autoConfirmProposal(p)).resolves.toBeNull()
+    expect(p.confirm).not.toHaveBeenCalled()
+  })
+
+  it('una tarea CON persona se guarda directo', async () => {
+    const p = proposal({ actionId: 'calendar.create', view: view({ choices: calendarChoices }), selection: selection({ member: 'm1', kind: 'task' }) })
+    await expect(autoConfirmProposal(p)).resolves.toBe('Hecho.')
+  })
+
+  it('un evento para toda la familia sigue guardándose directo', async () => {
+    const p = proposal({ actionId: 'calendar.create', view: view({ choices: calendarChoices }), selection: selection({ member: 'none', kind: 'event' }) })
+    await expect(autoConfirmProposal(p)).resolves.toBe('Hecho.')
+  })
+})

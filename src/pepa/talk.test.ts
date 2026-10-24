@@ -494,3 +494,91 @@ describe('runTalk: preferencia «hacerlo directamente, sin tarjeta»', () => {
   })
 })
 
+
+// Fallo real (24/10/2026, tablet): «tengo que llamar al médico» se guardó como la tarea «Que llamar a médico» y «recoger a Eric del colegio» como «recoger a del colegio».
+describe('runTalk: tareas dichas con voz', () => {
+  async function card(text: string) {
+    const outcome = await runTalk(text, makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    return outcome.proposal.preview(outcome.proposal.initialSelection)
+  }
+
+  it('«tengo que…» propone una tarea sin el «Que» suelto', async () => {
+    const view = await card('tengo que llamar al médico')
+    expect(view.title).toBe('✅ Apuntar como tarea')
+    expect(view.lines[0]).toBe('Título: Llamar al médico')
+  })
+
+  it('«tarea…» propone una tarea y un nombre dentro de la frase se queda en el título, sin asignarla a esa persona', async () => {
+    const outcome = await runTalk('tarea recoger a Eric del colegio mañana', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    expect(view.title).toBe('✅ Apuntar como tarea')
+    expect(view.lines[0]).toBe('Título: Recoger a Eric del colegio')
+    expect(outcome.proposal.initialSelection.choices.member).toBe('none')
+  })
+
+  it('«para Eric» sí asigna la tarea', async () => {
+    const outcome = await runTalk('tarea sacar la basura para Eric', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.initialSelection.choices.member).toBe('m-eric')
+  })
+
+  it('un evento con nombre sigue asignándose como siempre', async () => {
+    const outcome = await runTalk('el viernes a las cinco dentista de Eric', makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.initialSelection.choices.member).toBe('m-eric')
+  })
+})
+
+describe('runTalk: a quién se asigna una tarea dicha con voz', () => {
+  async function member(text: string): Promise<{ title: string; member: string | undefined }> {
+    const outcome = await runTalk(text, makeDeps())
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    const view = outcome.proposal.preview(outcome.proposal.initialSelection)
+    return { title: view.lines[0], member: outcome.proposal.initialSelection.choices.member }
+  }
+
+  it.each([
+    ['tarea Jennifer llamar al médico', 'm-jen'],
+    ['tarea que Eric saque la basura', 'm-eric'],
+    ['tarea le toca a Jennifer sacar la basura', 'm-jen'],
+    ['tarea sacar la basura para Eric', 'm-eric'],
+  ])('«%s» se asigna a quien se dice', async (text, id) => {
+    expect((await member(text)).member).toBe(id)
+  })
+
+  it('«recoger a Eric del colegio» no asigna a Eric: es a quien se recoge', async () => {
+    const result = await member('tarea recoger a Eric del colegio')
+    expect(result.member).toBe('none')
+    expect(result.title).toBe('Título: Recoger a Eric del colegio')
+  })
+})
+
+describe('runTalk: la misma tarea dicha dos veces', () => {
+  // Today de los tests: domingo 20/09/2026. «Tarea sacar la basura» sin fecha queda para hoy.
+  const existingTask = {
+    id: 'task-1',
+    title: 'Sacar la basura',
+    startAt: new Date(2026, 8, 20, 0, 0).toISOString(),
+    endAt: null,
+    allDay: true,
+    recurrenceRule: null,
+    exceptionDates: [],
+    memberIds: [] as string[],
+  }
+
+  it('si ya existe la misma tarea, la tarjeta avisa de duplicado (y en modo directo no se guarda sola)', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([existingTask]), autoConfirm: () => true })
+    const outcome = await runTalk('tarea sacar la basura', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería quedarse en tarjeta')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings.join(' ')).toContain('Parece que ya tienes «Sacar la basura»')
+  })
+
+  it('sin duplicado no hay aviso', async () => {
+    const deps = makeDeps({ calendarEvents: vi.fn().mockResolvedValue([]) })
+    const outcome = await runTalk('tarea sacar la basura', deps)
+    if (outcome.kind !== 'proposal') throw new Error('debería proponer')
+    expect(outcome.proposal.preview(outcome.proposal.initialSelection).warnings).toEqual([])
+  })
+})

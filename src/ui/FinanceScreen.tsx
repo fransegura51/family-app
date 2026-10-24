@@ -11463,7 +11463,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
   if (members.length === 0) return <p className="muted">No hay niños/bebés en la familia todavía.</p>
 
   const memberChips = (
-    <div className="filter-row">
+    <div className="filter-row" data-help-id="finance.kids-ninos">
       {members.map((m) => (
         <button
           key={m.id}
@@ -11635,7 +11635,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
       {showAddGoal ? (
         <AddGoalForm memberId={activeMemberId} onAdded={() => { setShowAddGoal(false); reload() }} onClose={() => setShowAddGoal(false)} />
       ) : (
-        <button type="button" className="link-button" onClick={() => setShowAddGoal(true)}>
+        <button type="button" className="link-button" data-help-id="finance.kids-objetivo" onClick={() => setShowAddGoal(true)}>
           + Nuevo objetivo de ahorro
         </button>
       )}
@@ -11649,7 +11649,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
       {/* Parte B3 — sustituye el par "Disponible"/"Ahorro acumulado": el total (hucha + para gastar) y
           los 3 conceptos alineados debajo, compacto y sin scroll horizontal (flex-wrap, nunca una fila
           que se salga de la pantalla). Nunca pie charts aquí — eso es cosa de las 4 tarjetas (Parte B4). */}
-      <div className="card" style={{ marginTop: 10, padding: 10 }}>
+      <div className="card" style={{ marginTop: 10, padding: 10 }} data-help-id="finance.kids-dinero">
         <p style={{ margin: '0 0 6px', fontWeight: 600 }}>💰 Mi dinero ahora: {moneyNow.toFixed(2)} €</p>
         <div className="inline-fields" style={{ flexWrap: 'wrap', gap: '4px 16px', fontSize: 13 }}>
           <span>🐷 Hucha: {savedTotal.toFixed(2)} €</span>
@@ -11663,7 +11663,7 @@ export function KidsFinanceTab({ profile, standalone = false }: { profile: Profi
       {/* Parte B4 — mismo reparto configurado (p. ej. 60/20/20) en las 4 tarjetas, nunca porcentajes
           fijos ni recalculados a partir de movimientos reales: solo cambia qué porción se resalta en
           cada una. "Recibido" no resalta ninguna (se ve el reparto completo). */}
-      <div className="card-grid" style={{ marginTop: 8 }}>
+      <div className="card-grid" style={{ marginTop: 8 }} data-help-id="finance.kids-tarjetas">
         {WALLET_TABS.map((t) => {
           const cardTotal = t.key === 'gasto' ? balance : walletCategoryTotal(activeMemberId, t.key, transactions)
           const disponiblePct = Math.max(0, 100 - activeSplitConfig.ahorroPct - activeSplitConfig.impuestoPct)
@@ -12021,7 +12021,7 @@ function IncomeSplitInfo({
   }
 
   return (
-    <p className="muted">
+    <p className="muted" data-help-id="finance.kids-reparto">
       Reparto automático: {config.ahorroPct}% a ahorro · {config.impuestoPct}% a impuestos · {disponiblePct}% queda disponible.
       {isAdult && (
         <button type="button" className="link-button" onClick={() => setEditing(true)} style={{ marginLeft: 6 }}>

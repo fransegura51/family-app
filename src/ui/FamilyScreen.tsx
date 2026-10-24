@@ -461,7 +461,7 @@ function InviteCodeButton({ memberId, memberName }: { memberId: string; memberNa
 
   if (code) {
     return (
-      <div className="card" style={{ marginTop: 8, padding: 12 }}>
+      <div className="card" style={{ marginTop: 8, padding: 12 }} data-help-id="family.access-code">
         <p className="muted">
           Código para que {memberName} se cree su propia cuenta (válido 24h, un solo uso):
         </p>
@@ -477,7 +477,7 @@ function InviteCodeButton({ memberId, memberName }: { memberId: string; memberNa
 
   return (
     <div className="member-card-actions">
-      <button type="button" className="link-button" onClick={handleGenerate} disabled={generating}>
+      <button type="button" className="link-button" data-help-id="family.generate-code" onClick={handleGenerate} disabled={generating}>
         {generating ? 'Generando…' : '🔑 Generar código de acceso'}
       </button>
       {error && <p className="error">{error}</p>}

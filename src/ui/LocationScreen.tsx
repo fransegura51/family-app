@@ -779,7 +779,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           real: "que se vea así con los nombres arriba... que el mapa
           ocupe toda la pantalla". Se sale del margen normal de la
           pantalla para llegar de borde a borde. */}
-      <div className="location-map-hero">
+      <div className="location-map-hero" data-help-id="ubicacion.map">
         <LocationMap
           members={members}
           locations={sharedNow}
@@ -821,7 +821,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           petición real: "que al tocar se abra debajo del mapa la
           información" — en vez de una ventana emergente encima. */}
       {selectedMember ? (
-        <div className="card task-card">
+        <div className="card task-card" data-help-id="ubicacion.member-info">
           <MemberAvatar member={selectedMember} size={40} />
           <div className="task-card-main">
             <strong>{selectedMember.name}</strong>
@@ -922,14 +922,14 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
             // Petición real: "quiero que me la hagas mucho más pequeña, de una sola línea" — antes
             // era una tarjeta grande (título + aviso + botón grande); sigue actualizándose sola
             // igual, solo que ahora no hace falta explicarlo cada vez que se ve la pantalla.
-            <p className="muted inline-fields" style={{ alignItems: 'center' }}>
+            <p className="muted inline-fields" style={{ alignItems: 'center' }} data-help-id="ubicacion.device-picker">
               📍 Compartiendo como {members.find((m) => m.id === sharingAs)?.name}.
               <button type="button" className="link-button" onClick={stopSharingGlobal}>
                 Dejar de compartir
               </button>
             </p>
           ) : (
-            <div className="card member-form">
+            <div className="card member-form" data-help-id="ubicacion.device-picker">
               <p className="muted">¿Quién lleva este dispositivo?</p>
               <div className="filter-row">
                 {members
@@ -951,7 +951,7 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
           <p className="muted">
             {isAdmin ? 'Activa o desactiva a cada miembro de la familia.' : 'Solo puedes activar o desactivar tu propia ubicación.'}
           </p>
-          <div className="event-list">
+          <div className="event-list" data-help-id="ubicacion.consent-list">
             {members
               .filter((m) => isAdmin || m.linkedProfileId === profileId)
               .map((m) => {

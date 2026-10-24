@@ -73,7 +73,7 @@ export function AccessInvitePanel({ member, inviterName, autoStart = false, onCl
   }
 
   return (
-    <div className="card" style={{ marginTop: 8, padding: 12 }}>
+    <div className="card" style={{ marginTop: 8, padding: 12 }} data-help-id="family.access-code">
       <p className="muted" style={{ margin: 0 }}>
         Invitación para que {member.name} cree su cuenta en PEPA:
       </p>

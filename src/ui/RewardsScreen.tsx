@@ -246,7 +246,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       <div className="inline-fields" style={{ alignItems: 'center', flexWrap: 'wrap', rowGap: 4 }}>
         <h2 className="section-title" style={{ flex: '1 0 100%', margin: 0 }} data-help-id="pequenos.puntos-por-persona">Puntos por persona</h2>
         {isAdult && (
-          <button type="button" className="link-button" onClick={() => setShowModeSettings((v) => !v)}>
+          <button type="button" className="link-button" data-help-id="pequenos.camino-modo" onClick={() => setShowModeSettings((v) => !v)}>
             ⚙️ {mode === 'camino' ? '🛤️ Camino' : '🏁 Carrera'}
           </button>
         )}

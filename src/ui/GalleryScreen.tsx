@@ -111,7 +111,7 @@ export function GalleryScreen() {
         {selecting ? 'Cancelar selección' : '📤 Compartir varias'}
       </button>
       {selecting && selectedIds.size > 0 && (
-        <button type="button" onClick={handleShareSelected} style={{ marginBottom: 8, marginLeft: 8 }}>
+        <button type="button" data-help-id="gallery.mandar-seleccion" onClick={handleShareSelected} style={{ marginBottom: 8, marginLeft: 8 }}>
           📤 Compartir {selectedIds.size} foto{selectedIds.size === 1 ? '' : 's'}
         </button>
       )}
@@ -125,6 +125,7 @@ export function GalleryScreen() {
                 checked={selectedIds.has(p.id)}
                 onChange={() => toggleSelected(p.id)}
                 aria-label="Seleccionar foto"
+                data-help-id="gallery.casilla"
                 className="gallery-item-select"
               />
             ) : (
@@ -132,6 +133,7 @@ export function GalleryScreen() {
                 <button
                   type="button"
                   className="gallery-item-share"
+                  data-help-id="gallery.share-one"
                   aria-label="Compartir foto"
                   onClick={() => handleShareOne(p)}
                 >

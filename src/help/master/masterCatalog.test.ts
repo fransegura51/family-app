@@ -90,7 +90,8 @@ describe('catálogo maestro: tutoriales («Enséñame»)', () => {
   })
 
   it('los tutoriales de Comunidad exigen acceso a Comunidad; los de administración de la familia, ser administración', () => {
-    for (const t of tutorialsOf('comunidad')) expect(t.access?.community, t.id).toBe(true)
+    // Salvo los que ni siquiera entran en Comunidad: «Por qué no puedo entrar» se recorre en la ficha de Familia (/familia) y es justo para quien NO tiene acceso.
+    for (const t of tutorialsOf('comunidad').filter((x) => x.startPath.startsWith('/comunidad'))) expect(t.access?.community, t.id).toBe(true)
   })
 
   it('cada marca (data-help-id) que cualquier visita o tutorial señala tiene un identificador válido', () => {

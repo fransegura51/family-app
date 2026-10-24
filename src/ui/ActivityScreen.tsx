@@ -52,12 +52,12 @@ export function ActivityScreen() {
   return (
     <div className="screen">
       <h1>Actividad</h1>
-      <p className="muted">Quién hizo qué y cuándo, para lo más importante. Los cambios seguidos de lo mismo se juntan en una sola línea.</p>
+      <p className="muted" data-help-id="actividad.intro">Quién hizo qué y cuándo, para lo más importante. Los cambios seguidos de lo mismo se juntan en una sola línea.</p>
       {error && <p className="error">{error}</p>}
       {loading ? (
         <p className="muted">Cargando…</p>
       ) : (
-        <div className="event-list">
+        <div className="event-list" data-help-id="actividad.lista">
           {groups.map((g) => (
             <div key={g.key} className="card">
               <p>{describeActivityGroup(g, names)}</p>
@@ -66,7 +66,7 @@ export function ActivityScreen() {
           ))}
           {groups.length === 0 && <p className="muted">Todavía no hay actividad registrada.</p>}
           {hasMore && (
-            <button type="button" className="link-button" disabled={loadingMore} onClick={loadMore}>
+            <button type="button" className="link-button" data-help-id="actividad.mas" disabled={loadingMore} onClick={loadMore}>
               {loadingMore ? 'Cargando…' : 'Ver más antiguas'}
             </button>
           )}

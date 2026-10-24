@@ -307,7 +307,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
     [goToPlace],
   )
 
-  const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [])
+  const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canDoTour(card.tour!) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [canDoTour])
   const startTourById = useCallback((tourId: string) => {
     if (!getTour(tourId)) return
     setPanelOpen(false)

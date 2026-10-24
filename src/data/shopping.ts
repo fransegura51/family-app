@@ -143,9 +143,9 @@ export async function updateShoppingItem(
   if (error) throw error
 }
 
-// El precio opcional se puede fijar en el mismo cambio de estado
-// (ticket que marca comprado y ya trae el precio) — se guarda EN el
-// propio producto, no solo en la Memoria de precios, para que al
+// Marcar «comprado» (o desmarcarlo) SOLO cambia el estado del producto en la lista: no crea compras, productos del historial, registros
+// de precios ni movimientos de Economía (decisión definitiva; ver shoppingBoughtDoesNotFeedHistory.test.ts). El precio opcional, si se manda,
+// se guarda EN el propio producto de la lista, no en el historial, para que al
 // recargar la app no se vuelva a pedir un precio que ya se dio (bug
 // real: "le doy a guardar, me desaparece, pero si cierro la app y la
 // vuelvo a abrir, me vuelven a aparecer otra vez con el guardar").

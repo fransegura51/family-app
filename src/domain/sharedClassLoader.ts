@@ -47,7 +47,8 @@ export function createSharedClassLoader(fetcher: SharedBatchFetcher, now: () => 
       for (const pair of pairs) {
         const store = pair.store.trim()
         const text = pair.text.trim()
-        if (!store || !text) continue
+        // Sin tienda también viaja: el servidor aplica solo el conocimiento general (cualquier establecimiento), nunca una cadena.
+        if (!text) continue
         const key = sharedPairKey(store, text)
         const cached = cache.get(key)
         if (cached) {

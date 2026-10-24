@@ -52,12 +52,13 @@ describe('carga por lotes del aprendizaje compartido', () => {
     expect((fetcher as ReturnType<typeof vi.fn>).mock.calls[1][0]).toEqual([{ store: 'Mercadona', text: 'b' }])
   })
 
-  it('pares sin tienda o sin texto no viajan', async () => {
+  it('pares sin texto no viajan; sin tienda sí (conocimiento general de cualquier establecimiento)', async () => {
     const fetcher = okFetcher()
     const loader = createSharedClassLoader(fetcher)
-    const result = await loader.load([{ store: '', text: 'a' }, { store: 'Mercadona', text: '  ' }])
+    await loader.load([{ store: 'Mercadona', text: '  ' }])
     expect(fetcher).not.toHaveBeenCalled()
-    expect(result.size).toBe(0)
+    await loader.load([{ store: '', text: 'a' }])
+    expect(fetcher).toHaveBeenCalledWith([{ store: '', text: 'a' }])
   })
 
   it('food_type_key solo se conserva con «matched»', async () => {

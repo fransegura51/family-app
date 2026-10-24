@@ -4,6 +4,7 @@ import { isCreditLine, partitionCreditLines } from '@/domain/ticketCreditLines'
 import screen from '@/ui/FinanceScreen.tsx?raw'
 import products from '@/data/products.ts?raw'
 import help from '@/help/legacy/legacyHelp.ts?raw'
+import linesSummarySrc from '@/domain/ticketLinesSummary.ts?raw'
 
 describe('isCreditLine', () => {
   it('un importe negativo (abono, descuento) es una línea de abono; cero y positivos no', () => {
@@ -57,7 +58,9 @@ describe('la pantalla de tickets no deja que un abono rompa el guardado', () => 
   })
 
   it('al guardar ignora cualquier línea con precio negativo (también las escritas o editadas a mano)', () => {
-    expect(screen).toContain('!isCreditLine(Number(line.unitPrice))')
+    // La regla de guardado vive en isSavableLine (domain/ticketLinesSummary.ts): excluye el importe negativo y el precio vacío, y es la MISMA que usa el aviso de importes.
+    expect(screen).toContain('.filter((line) => isSavableLine(line))')
+    expect(linesSummarySrc).toContain('!isCreditLine(price)')
   })
 
   it('avisa en la revisión de las líneas negativas y la ayuda lo explica', () => {
@@ -77,7 +80,7 @@ describe('la pantalla de tickets no deja que un abono rompa el guardado', () => 
 
   it('«Subir ticket» tiene Cancelar cuando ya hay foto o líneas leídas: deja el formulario como nuevo, sin guardar nada', () => {
     expect(screen).toContain('function resetAddForm()')
-    expect(screen).toContain("{mode === 'add' && (file || lines.length > 0) && (")
+    expect(screen).toContain("{mode === 'add' && !attachToProp && (file || lines.length > 0) && (")
     expect(screen).toContain('onClick={resetAddForm}')
   })
 })

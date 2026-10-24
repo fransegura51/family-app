@@ -42,6 +42,7 @@ import {
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
 import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
+import { ListPriceComparison, ProductPriceComparison } from '@/ui/PriceComparisonPanels'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -741,7 +742,7 @@ function ShoppingListTab() {
   })
   // Aprendizaje compartido de las tiendas de los elementos de la lista (una sola consulta por lote, con caché).
   const listSharedPairs = useMemo(
-    () => items.filter((i) => i.store).map((i) => ({ store: i.store as string, text: i.name })),
+    () => items.map((i) => ({ store: i.store ?? '', text: i.name })),
     [items],
   )
   const listShared = useSharedClasses(listSharedPairs)
@@ -1085,6 +1086,7 @@ function ShoppingListTab() {
       {shareNotice && <p className="muted" style={{ fontSize: 12 }}>{shareNotice}</p>}
 
       <h2 className="section-title">Lista de la Compra</h2>
+      {pending.length >= 2 && <ListPriceComparison items={pending} />}
       {storeGroups.map(([store, storeItems]) => {
         const pendingItems = storeItems.filter((i) => i.status === 'pendiente')
         const doneItems = storeItems.filter((i) => i.status === 'comprado')
@@ -1959,8 +1961,8 @@ export function AddShoppingItemForm({
   // Al escribir "LE" ya aparece "Leche" (con su marca habitual) en el
   // desplegable nativo del input; al completarlo (a mano o eligiéndolo)
   // se rellenan cantidad/unidad/precio con lo último comprado (Skill 09)
-  // — el precio no se guarda aquí, solo se muestra como referencia hasta
-  // marcarlo comprado.
+  // — el precio no se guarda aquí, solo se muestra como referencia. Marcar «comprado» solo cambia el estado del producto en la lista:
+  // nunca crea compras, productos del historial, precios ni movimientos de Economía (el historial solo viene de tickets y compras con productos).
   function handleNameChange(value: string) {
     setName(value)
     const match = suggestions.find((s) => s.normalizedName === value.trim().toLowerCase())
@@ -2457,7 +2459,7 @@ function HistoryTab() {
     () =>
       products.flatMap((p) => {
         const store = storeByProductId.get(p.id)
-        return store ? [{ store, text: p.displayName }] : []
+        return [{ store: store ?? '', text: p.displayName }]
       }),
     [products, storeByProductId],
   )
@@ -2747,7 +2749,7 @@ function HistoryTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <p className="muted">Se construye solo: cada vez que guardas el precio de un producto comprado, queda aquí.</p>
+      <p className="muted">Se construye con los tickets que guardas (y con las compras sin ticket que lleven productos). Marcar «comprado» en la lista no guarda precios.</p>
 
       <div className="filter-row" data-help-id="shopping.history-mode">
         <button
@@ -2829,7 +2831,7 @@ function HistoryTab() {
       </div>
 
       <p className="muted">
-        Todo lo que has comprado alguna vez, con su último precio — cuando también se compró el mes anterior, se ve
+        Todo lo que aparece en tus tickets, con su último precio — cuando también se compró el mes anterior, se ve
         la comparación (🔺 rojo si ha subido, 🔻 verde si ha bajado). Toca el nombre de un producto para ver cada
         cuánto lo compras y comparar precio entre tiendas.
       </p>
@@ -2890,7 +2892,7 @@ function HistoryTab() {
         <p className="muted">
           {query.trim()
             ? 'Ningún producto coincide con esa búsqueda.'
-            : 'Todavía no hay ningún producto con precio registrado (tickets o lista de la compra).'}
+            : 'Todavía no hay ningún producto con precio registrado. Se llena al guardar un ticket (o una compra sin ticket con productos); marcar «comprado» en la lista no guarda precios.'}
         </p>
       )}
 
@@ -2950,6 +2952,7 @@ function HistoryTab() {
                   ))}
               </select>
             </div>
+            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} />
           </div>
         </div>
       )}

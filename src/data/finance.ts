@@ -37,7 +37,7 @@ export async function listExpenses(): Promise<Expense[]> {
     supabase
       .from('expenses')
       .select(
-        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification',
+        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification, payment_method',
       )
       .order('expense_date', { ascending: false })
       .order('id')
@@ -61,6 +61,7 @@ export async function listExpenses(): Promise<Expense[]> {
     shared: r.shared,
     sharedFromExpenseId: r.shared_from_expense_id,
     productClassification: r.product_classification,
+    paymentMethod: r.payment_method ?? null,
   }))
 }
 

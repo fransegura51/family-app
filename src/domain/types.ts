@@ -319,6 +319,8 @@ export interface Expense {
   // independiente de la categoría, una por movimiento.
   tagId: string | null
   source: ExpenseSource
+  // Cómo se pagó (efectivo / tarjeta / bizum / transferencia / otro / mixto); null = no indicado. El efectivo y los pagos mixtos no se concilian con el banco.
+  paymentMethod?: string | null
   // Petición real: "quiero que yo pueda seleccionar cada gasto, si es
   // fijo o es variable" — null = se calcula de la categoría como
   // siempre (resolveCategoryClassification); true/false = este
@@ -585,6 +587,10 @@ export interface Receipt {
   purchasedByMemberId: string | null
   // Suma (€, positiva) de los descuentos impresos en el ticket; 0 si no hay.
   discountTotal?: number
+  // Compra apuntada a mano, sin ticket (el justificante se puede añadir después sobre esta misma fila).
+  isManual?: boolean
+  // Forma de pago: efectivo | tarjeta | bizum | transferencia | otro; null = no indicada.
+  paymentMethod?: string | null
 }
 
 export interface Contact {

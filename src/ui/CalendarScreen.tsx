@@ -1616,7 +1616,7 @@ function DateJumpControl({ dateStr, onJump, children }: { dateStr: string; onJum
   const [open, setOpen] = useState(false)
   return (
     <span className="date-jump">
-      <button type="button" className="date-jump-trigger" onClick={() => setOpen((v) => !v)} aria-label="Ir a una fecha concreta">
+      <button type="button" className="date-jump-trigger" data-help-id="calendar.date-jump" onClick={() => setOpen((v) => !v)} aria-label="Ir a una fecha concreta">
         {children}
       </button>
       {open && (
@@ -1624,6 +1624,7 @@ function DateJumpControl({ dateStr, onJump, children }: { dateStr: string; onJum
           <input
             type="date"
             autoFocus
+            data-help-id="calendar.date-jump-input"
             defaultValue={dateStr}
             onChange={(e) => {
               if (e.target.value) {
@@ -2897,6 +2898,7 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
           <button
             type="button"
             className="icon-button-share agenda-row-share"
+            data-help-id="calendar.entry-share"
             onClick={(e) => {
               e.stopPropagation()
               entry.onShare?.()
@@ -3134,7 +3136,7 @@ function EventCard({
           ✏️
         </button>
         {onShare && (
-          <button type="button" className="icon-button-share icon-button-share-sm" onClick={onShare} aria-label="Compartir" title="Compartir">
+          <button type="button" className="icon-button-share icon-button-share-sm" data-help-id="calendar.entry-share" onClick={onShare} aria-label="Compartir" title="Compartir">
             📤
           </button>
         )}
@@ -4942,7 +4944,7 @@ function CalendarioMenuDropdown({
           abierto (mismo patrón que ya usa Economía: state={{ group: 'calendario' }}). */}
       <Link to="/menu-organizar" state={{ group: 'calendario' }} className="economia-menu-item" onClick={onClose}>
         <span aria-hidden="true">⚙️</span>
-        Gestionar calendarios
+        <span data-help-id="calendar.manage-calendars">Gestionar calendarios</span>
       </Link>
 
       {placeholderNotice && (

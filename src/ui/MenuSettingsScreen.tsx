@@ -1375,7 +1375,7 @@ function GoogleCalendarSettingsCard() {
   // está conectado") — antes el título era fijo ("Conectar con Google Calendar (recomendado)")
   // independientemente del estado; ahora depende de status.connected, igual que el resto de la tarjeta.
   return (
-    <div className="card member-form calendar-external-card">
+    <div className="card member-form calendar-external-card" data-help-id="config.google-card">
       <h3>{status?.connected ? 'Google Calendar conectado' : 'Conectar con Google Calendar (recomendado)'}</h3>
       {!status?.connected && (
         <p className="muted">
@@ -1430,7 +1430,7 @@ function CalendarExportSettingsCard() {
   }
 
   return (
-    <div className="card member-form calendar-external-card">
+    <div className="card member-form calendar-external-card" data-help-id="config.export-card">
       <h3>Exportar tu calendario al móvil</h3>
       <p className="muted">
         Añade esta dirección como "calendario por URL" en Google Calendar o en Apple Calendar para ver aquí todo lo
@@ -1590,7 +1590,7 @@ function CalendarExternalLinksSection() {
         </p>
         {error && <p className="error">{error}</p>}
         {!showAddForm ? (
-          <button type="button" className="link-button" onClick={() => setShowAddForm(true)}>
+          <button type="button" className="link-button" data-help-id="config.link-add" onClick={() => setShowAddForm(true)}>
             + Enlazar calendario
           </button>
         ) : (
@@ -1807,6 +1807,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         color={groupColors[7]}
         icon="🗓️"
         title="Calendario"
+        helpId="config.group-calendario"
         summary="Colores, categorías y calendarios externos (Google, enlazados)"
         open={openGroup === 'calendario'}
         onToggle={() => toggle('calendario')}

@@ -4781,7 +4781,7 @@ function CalendarioMenuDropdown({
 
   return (
     <div className="economia-menu-dropdown" data-help-id="calendar.menu-panel">
-      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)}>
+      <button type="button" className="link-button economia-menu-edit-toggle" onClick={() => setEditMode((v) => !v)} data-help-id="calendar.menu-edit">
         {editMode ? '✓ Listo' : '✏️ Editar'}
       </button>
 
@@ -4974,7 +4974,7 @@ function CalendarioMenuDropdown({
               <button type="submit">Crear</button>
             </form>
           ) : (
-            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)}>
+            <button type="button" className="economia-menu-item" onClick={() => setAddingCustomItem(true)} data-help-id="calendar.menu-new-access">
               <span aria-hidden="true">📌</span>
               Nuevo acceso
             </button>

@@ -46,7 +46,7 @@ export function TaskNotifyModeCard({ familyId, isAdmin }: { familyId: string; is
   }
 
   return (
-    <div className="card">
+    <div className="card" data-help-id="notifications.task-mode">
       <h3>🔔 ¿A quién avisamos de tareas y eventos?</h3>
       {!loaded && <p className="muted">Cargando…</p>}
       {loaded && (

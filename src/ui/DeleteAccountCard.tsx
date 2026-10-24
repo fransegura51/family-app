@@ -51,12 +51,12 @@ export function DeleteAccountCard({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <div className="card member-form" style={{ marginTop: 16 }}>
+    <div className="card member-form" style={{ marginTop: 16 }} data-help-id="cuenta.borrar-tarjeta">
       <h2>🗑️ Borrar mi cuenta</h2>
       <p className="muted">Puedes borrar tu cuenta cuando quieras. No se puede deshacer.</p>
       {!scope && (
         <div className="inline-fields" style={{ flexWrap: 'wrap' }}>
-          <button type="button" className="link-button" onClick={() => setScope('me')}>
+          <button type="button" className="link-button" onClick={() => setScope('me')} data-help-id="cuenta.borrar-solo-yo">
             Borrar solo mi cuenta
           </button>
           {isAdmin && (

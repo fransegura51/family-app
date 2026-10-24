@@ -10,8 +10,9 @@ import { formatDateFromTimestamp } from '@/domain/dateFormat'
 import { GENERAL_SECTION, REVIEW_SECTIONS, sectionLabel, starsText, summarizeReviews, type AppReview, type ReviewSection } from '@/domain/appReviews'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { StarPicker } from '@/ui/StarPicker'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
-function ReviewRow({ section, review, onChanged, onError, big }: { section: ReviewSection; review: AppReview | undefined; onChanged: () => void; onError: (m: string) => void; big?: boolean }) {
+function ReviewRow({ section, review, onChanged, onError, big, helpId }: { section: ReviewSection; review: AppReview | undefined; onChanged: () => void; onError: (m: string) => void; big?: boolean; helpId?: string }) {
   const [liked, setLiked] = useState(review?.liked ?? '')
   const [disliked, setDisliked] = useState(review?.disliked ?? '')
   const [busy, setBusy] = useState(false)
@@ -29,6 +30,7 @@ function ReviewRow({ section, review, onChanged, onError, big }: { section: Revi
       await action()
       onChanged()
       setSaved(true)
+      emitHelpEvent('resenas.review-saved') // para los tutoriales «Enséñame»: la valoración YA está guardada
     } catch (err) {
       onError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -38,7 +40,7 @@ function ReviewRow({ section, review, onChanged, onError, big }: { section: Revi
 
   const stars = review?.stars ?? 0
   return (
-    <div className="card review-row">
+    <div className="card review-row" data-help-id={helpId}>
       <div className="review-row-head">
         <strong style={big ? { fontSize: 17 } : undefined}>
           {section.icon} {section.label}
@@ -119,10 +121,10 @@ export function ReviewsScreen() {
       <p className="muted">¿Qué tal te va con PEPA? Valórala de 1 a 5 estrellas y cuéntanos qué te gusta y qué no. Si quieres proponer un cambio, usa el Buzón de sugerencias.</p>
       {error && <p className="error">{error}</p>}
 
-      <ReviewRow big section={GENERAL_SECTION} review={mine.get(GENERAL_SECTION.id)} onChanged={reload} onError={setError} />
+      <ReviewRow big helpId="resenas.general" section={GENERAL_SECTION} review={mine.get(GENERAL_SECTION.id)} onChanged={reload} onError={setError} />
 
       <details className="card review-sections">
-        <summary>
+        <summary data-help-id="resenas.secciones">
           <span className="review-summary-main">
             <strong>📋 Valorar cada sección (opcional)</strong>
             <span className="muted">Compras, Economía, Galería, Ubicación… cada una con sus estrellas</span>

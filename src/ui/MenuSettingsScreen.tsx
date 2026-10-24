@@ -108,6 +108,7 @@ function FamilyNameSection() {
       await updateFamilyName(draft)
       setName(draft.trim())
       setEditing(false)
+      emitHelpEvent('config.family-name-saved') // para los tutoriales «Enséñame»: el nombre YA está guardado
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar — puede que solo un admin de la familia pueda cambiar el nombre.'))
     } finally {
@@ -123,11 +124,11 @@ function FamilyNameSection() {
         <div className="member-form">
           <label>
             Nombre de familia
-            <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus />
+            <input type="text" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus data-help-id="config.family-name-input" />
           </label>
           {error && <p className="error">{error}</p>}
           <div className="inline-fields">
-            <button type="button" onClick={handleSave} disabled={saving}>
+            <button type="button" onClick={handleSave} disabled={saving} data-help-id="config.family-name-save">
               {saving ? 'Guardando…' : 'Guardar'}
             </button>
             <button
@@ -146,7 +147,7 @@ function FamilyNameSection() {
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <strong style={{ flex: 1 }}>👨‍👩‍👧‍👦 {name}</strong>
-          <button type="button" className="link-button" onClick={() => setEditing(true)}>
+          <button type="button" className="link-button" onClick={() => setEditing(true)} data-help-id="config.family-name-edit">
             ✏️ Cambiar nombre
           </button>
         </div>
@@ -181,6 +182,7 @@ function AccountingMonthSection() {
     setError(null)
     try {
       await updateFinanceMonthStartDay(next)
+      emitHelpEvent('economia.accounting-month-saved') // para los tutoriales «Enséñame»: el día YA está guardado
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -191,13 +193,13 @@ function AccountingMonthSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.mes-contable">
       <strong>📅 Inicio del mes contable</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         El filtro "Este mes" de Economía cuenta desde este día del mes. Pon 31 para que empiece el último día de
         cada mes. Es solo tuyo — cada persona de la familia puede tener el suyo, sin afectar al de los demás.
       </p>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }} data-help-id="economia.mes-contable-dia">
         Día
         <input
           type="number"
@@ -347,13 +349,13 @@ function AccountsModeSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.modo-cuentas">
       <strong>🔐 Modo de cuentas</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Compartidas: todo el mundo ve los movimientos y saldos de todos, como hasta ahora. Separadas: cada uno ve
         solo los suyos (ni el admin ve los de otro), con una pestaña Común para lo que se comparta a propósito.
       </p>
-      <div className="filter-row" style={{ marginTop: 8 }}>
+      <div className="filter-row" style={{ marginTop: 8 }} data-help-id="economia.modo-cuentas-opciones">
         <button type="button" className={'chip' + (mode === 'compartido' ? ' chip-active' : '')} onClick={() => handleChange('compartido')}>
           Compartidas
         </button>
@@ -1646,12 +1648,13 @@ const SETTINGS_GROUP_IDS: SettingsGroupId[] = ['menu', 'inicio', 'colores', 'fam
 // creada con el código de invitación.
 function SignOutCard({ displayName }: { displayName: string }) {
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="cuenta.cerrar-sesion">
       <strong>🚪 Cerrar sesión</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>Sales de la cuenta de {displayName} en este móvil. Podrás volver a entrar cuando quieras.</p>
       <button
         type="button"
         className="link-button"
+        data-help-id="cuenta.cerrar-sesion-boton"
         onClick={async () => {
           // App nativa: antes de cerrar sesión se anula la llave de envío de ubicación y se apaga el servicio (si no, seguiría mandando con la cuenta cerrada).
           await disableNativeUpload()
@@ -1730,6 +1733,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Qué botones de Pepa ves arriba: los de siempre o solo 💬 Hablar con PEPA"
         open={openGroup === 'pepa'}
         onToggle={() => toggle('pepa')}
+        helpId="config.group-pepa"
       >
         <PepaPreferencesCard />
         <ClassicButtonsCard />
@@ -1758,6 +1762,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Mes contable, cuentas, categorías, etiquetas y colores"
         open={openGroup === 'economia'}
         onToggle={() => toggle('economia')}
+        helpId="config.group-economia"
       >
         <AccountingMonthSection />
         <AccountsModeSection />
@@ -1788,7 +1793,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         />
       </SettingsGroup>
 
-      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="Correo, contraseña, PIN, huella y sesiones" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')}>
+      <SettingsGroup color={groupColors[4]} icon="🔒" title="Seguridad" summary="Correo, contraseña, PIN, huella y sesiones" open={openGroup === 'seguridad'} onToggle={() => toggle('seguridad')} helpId="config.group-seguridad">
         <SecuritySettings />
       </SettingsGroup>
 

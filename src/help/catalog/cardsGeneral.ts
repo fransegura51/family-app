@@ -69,6 +69,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     state: 'disponible',
     go: { path: '/resenas' },
     labels: ['Reseñas y opiniones'],
+    tour: 'tut-ayuda-resenas',
     verified: V,
   },
   {
@@ -172,6 +173,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     state: 'disponible',
     go: { path: '/menu-organizar', dest: 'config.pepa' },
     labels: ['Mostrar botones clásicos', '🔘 Botones de Pepa'],
+    tour: 'tut-pepa-botones',
     verified: V,
   },
   {
@@ -183,6 +185,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     state: 'disponible',
     go: { path: '/menu-organizar', dest: 'config.pepa' },
     labels: ['Hacerlo directamente, sin tarjeta'],
+    tour: 'tut-pepa-sin-tarjeta',
     verified: V,
   },
 
@@ -217,13 +220,14 @@ export const CARDS_GENERAL: HelpCard[] = [
     title: 'Activar los avisos en este móvil',
     synonyms: ['notificaciones', 'push', 'avisos del movil', 'no me llegan avisos', 'activar notificaciones', 'recordatorios en el movil'],
     quick: 'Los avisos se activan por móvil: Configuración → tema «🔔 Avisos» → tarjeta «🔔 Avisos en este móvil», con un botón para mandarte uno de prueba.',
-    steps: ['Abre Configuración y entra en «🔔 Avisos».', 'Activa «🔔 Avisos en este móvil» y acepta el permiso del móvil.', 'Mándate uno de prueba para comprobarlo.'],
+    steps: ['Abre Configuración y entra en «🔔 Avisos».', 'En la tarjeta «🔔 Avisos en este móvil», pulsa «Activar avisos» y acepta el permiso del móvil.', 'Mándate uno de prueba para comprobarlo.'],
     state: 'parcial',
     limits: 'En iPhone (web) hay que instalar PEPA en la pantalla de inicio para que lleguen avisos. Que el aviso llegue con la app cerrada depende también de los ajustes del móvil (batería).',
     go: { path: '/menu-organizar', dest: 'config.avisos' },
     featureId: 'notificaciones',
     labels: ['🔔 Avisos en este móvil'],
     frequent: true,
+    tour: 'tut-notificaciones-activar',
     verified: V,
   },
   {
@@ -261,6 +265,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     state: 'disponible',
     featureId: 'cuentas-acceso',
     labels: ['Tengo una invitación'],
+    tour: 'tut-cuentas-entrar',
     verified: V,
   },
   {
@@ -273,6 +278,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     go: { path: '/menu-organizar', dest: 'config.seguridad' },
     featureId: 'cuentas-acceso',
     labels: ['🔒 Bloqueo personal'],
+    tour: 'tut-cuentas-pin',
     verified: V,
   },
   {
@@ -284,6 +290,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     state: 'disponible',
     featureId: 'cuentas-acceso',
     labels: ['¿Has olvidado tu PIN?'],
+    tour: 'tut-cuentas-olvide-pin',
     verified: V,
   },
   {
@@ -296,6 +303,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     go: { path: '/menu-organizar', dest: 'config.seguridad' },
     featureId: 'cuentas-acceso',
     labels: ['Correo y contraseña'],
+    tour: 'tut-cuentas-correo-contrasena',
     verified: V,
   },
   {
@@ -308,6 +316,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     go: { path: '/menu-organizar', dest: 'config.cuenta' },
     featureId: 'cuentas-acceso',
     labels: ['🚪 Cerrar sesión'],
+    tour: 'tut-cuentas-cerrar-sesion',
     verified: V,
   },
   {
@@ -320,6 +329,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     go: { path: '/menu-organizar', dest: 'config.cuenta' },
     featureId: 'cuentas-acceso',
     labels: ['🗑️ Borrar mi cuenta'],
+    tour: 'tut-cuentas-borrar-cuenta',
     verified: V,
   },
   {
@@ -370,6 +380,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     access: { familyAdmin: true },
     go: { path: '/menu-organizar' },
     labels: ['Nombre de familia'],
+    tour: 'tut-configuracion-nombre-familia',
     verified: V,
   },
   {
@@ -394,6 +405,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     limitsInternal: true,
     featureId: 'accesos-personalizados',
     labels: ['Nombre del acceso'],
+    tour: 'tut-configuracion-accesos-nuevos',
     verified: V,
   },
   {
@@ -404,6 +416,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     quick: 'Tus preferencias personales (orden del menú, colores, modo de respuesta de PEPA…) viajan con tu cuenta y se ven igual en tus dispositivos. Si dos dispositivos cambian lo mismo a la vez, PEPA te avisa y puedes recuperar tu elección.',
     state: 'disponible',
     featureId: 'config-sincronizacion',
+    tour: 'tut-configuracion-sincronizacion',
     verified: V,
   },
 ]

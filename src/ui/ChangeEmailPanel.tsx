@@ -117,7 +117,7 @@ export function ChangeEmailPanel({ onChanged, compact = false }: { onChanged?: (
   return (
     <div style={{ marginTop: compact ? 4 : 8 }}>
       {!showing && (
-        <button type="button" className="link-button" onClick={() => setOpen(true)}>
+        <button type="button" className="link-button" onClick={() => setOpen(true)} data-help-id="seguridad.cambiar-correo">
           ✉️ Cambiar correo
         </button>
       )}

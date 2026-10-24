@@ -76,12 +76,12 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" data-help-id="finance.bank-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
             🏦 Cuentas bancarias
           </h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Cerrar">
+          <button type="button" className="modal-close" data-help-id="finance.bank-modal-close" onClick={onClose} aria-label="Cerrar">
             ✕
           </button>
         </div>
@@ -145,6 +145,7 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
                           }
                           disabled={!canEditOwner(a)}
                           style={{ flex: 'none', fontSize: 13 }}
+                          data-help-id="finance.bank-owner"
                           aria-label={
                             canEditOwner(a)
                               ? `De quién es la cuenta ${a.name ?? ''}`
@@ -176,7 +177,7 @@ export function BankAccountsModal({ onClose }: { onClose: () => void }) {
               })
             )}
 
-            <button type="button" className="link-button" onClick={() => setShowConnect((v) => !v)}>
+            <button type="button" className="link-button" data-help-id="finance.bank-connect" onClick={() => setShowConnect((v) => !v)}>
               {showConnect ? 'Cerrar' : '+ Conectar banco'}
             </button>
             {showConnect && (

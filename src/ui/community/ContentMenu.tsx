@@ -6,7 +6,7 @@ import '@/ui/community/communityPost.css'
 // Menú «Más» de una publicación o de un comentario (denunciar, bloquear, editar, eliminar). Se cierra con Escape, tocando fuera o al elegir algo.
 // Se coloca en pantalla (position: fixed) midiendo el botón y el menú: si abajo no cabe se abre hacia arriba, no se sale por los lados y, si es muy alto, se desplaza
 // por dentro. Así «Denunciar publicación» nunca queda cortado al final de la página ni bajo la barra del móvil.
-export function ContentMenu({ label, children }: { label: string; children: (close: () => void) => ReactNode }) {
+export function ContentMenu({ label, helpId, children }: { label: string; helpId?: string; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
@@ -58,7 +58,7 @@ export function ContentMenu({ label, children }: { label: string; children: (clo
 
   return (
     <div className="community-menu" ref={rootRef}>
-      <button type="button" className="community-action" aria-haspopup="true" aria-expanded={open} aria-label={label} onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="community-action" aria-haspopup="true" aria-expanded={open} aria-label={label} data-help-id={helpId} onClick={() => setOpen((v) => !v)}>
         <span aria-hidden="true">⋯</span> Más
       </button>
       {open && (

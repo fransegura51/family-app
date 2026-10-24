@@ -180,7 +180,7 @@ export function ContactsScreen() {
       </div>
 
       {selecting && selectedIds.size > 0 && (
-        <button type="button" onClick={handleShareSelected} style={{ marginBottom: 8 }}>
+        <button type="button" data-help-id="contactos.mandar-seleccion" onClick={handleShareSelected} style={{ marginBottom: 8 }}>
           📤 Compartir {selectedIds.size} contacto{selectedIds.size === 1 ? '' : 's'}
         </button>
       )}
@@ -348,6 +348,7 @@ function ContactCard({
           checked={selected}
           onChange={onToggleSelect}
           aria-label={`Seleccionar ${c.name}`}
+          data-help-id="contactos.casilla"
           style={{ marginRight: 4 }}
         />
       )}
@@ -390,6 +391,7 @@ function ContactCard({
         <button
           type="button"
           className="icon-button-share"
+          data-help-id="contactos.compartir-uno"
           onClick={handleShareOne}
           disabled={sharing}
           aria-label="Compartir contacto"

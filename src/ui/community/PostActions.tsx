@@ -229,7 +229,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
           <span aria-hidden="true">📤</span> Compartir
         </button>
         {(interactive || (detail.isMine && canParticipate) || (!detail.isMine && !canParticipate)) && (
-          <ContentMenu label="Más opciones de la publicación">
+          <ContentMenu label="Más opciones de la publicación" helpId="comunidad.post-menu">
             {(close) =>
               detail.isMine ? (
                 <>
@@ -248,6 +248,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
                 <>
                   <button
                     type="button"
+                    data-help-id="comunidad.post-report"
                     onClick={() => {
                       close()
                       void startReport()
@@ -258,6 +259,7 @@ export function PostActions({ detail, onPatch, onReload }: { detail: PostDetail;
                   {canBlockAuthor && canParticipate && (
                     <button
                       type="button"
+                      data-help-id="comunidad.post-block"
                       onClick={() => {
                         close()
                         void startBlock()

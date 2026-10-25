@@ -208,3 +208,5 @@ Contiene: estadísticas con una sola definición de gasto real, carteras en «Mi
 3. **Función bancaria**: v19 sin cambios. No hay que redesplegar nada.
 
 **Comprobación después de publicar:** que los 15 casos pasen a un solo gasto (Resumen de junio–agosto baja 1.387,67 €), que «Deshacer» devuelva el apunte del banco, y que no queden avisos de duplicados en Compras registradas salvo casos dudosos.
+
+**Estado final del anexo (25/10/2026):** migración 0318 aplicada (huellas de gastos, movimientos bancarios, carteras, movimientos de cartera: idénticas antes y después; +7 categorías «Retirada de efectivo»); cliente publicado en el commit 637fa7d (build y deploy en verde); función bancaria v19 sin cambios. **Pendiente de comprobar tras abrir «Compras registradas» en el iPhone:** que se crean 15 anotaciones «bank_expense_merged», que desaparecen 15 apuntes duplicados del banco, que el gasto de junio–agosto baja 1.387,67 € y que 14 compras quedan con la etiqueta «Comun». Para deshacerlo: «Deshacer» en el aviso (o restore_economy_log por anotación).

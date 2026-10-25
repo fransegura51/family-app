@@ -887,7 +887,7 @@ Encargo del usuario tras la validación real en iPhone: **Banco y Movimientos si
 
 ## Estadísticas, efectivo, retiradas y conciliación tras la validación real (EST-1, EFE-3, EFE-4, CONC-1, COM-4, UX-1, 25/10/2026)
 
-Encargo del usuario tras probar en iPhone. **Estado: implementado y probado en local (tests, typecheck, lint, build); **migración 0318 APLICADA en producción el 25/10/2026** (con autorización expresa, tras ensayarla y su reversión en transacciones revertidas); cliente pendiente de publicar o recién publicado (ver estado en el plan de despliegue); función bancaria v19 sin cambios; pendiente de validación real, sin Aprobar.** Informe de la auditoría de los 15 avisos: `docs/INFORME_CONCILIACION_15_AVISOS.md`.
+Encargo del usuario tras probar en iPhone. **Estado: implementado y probado en local (tests, typecheck, lint, build); **migración 0318 APLICADA en producción el 25/10/2026** (con autorización expresa, tras ensayarla y su reversión en transacciones revertidas); **cliente PUBLICADO el 25/10/2026** (commit 637fa7d, GitHub Actions en verde); la vinculación automática de los 15 casos ocurre cuando alguien abre «Compras registradas» con la versión nueva (a las 08:08 UTC aún no se había abierto: 0 vinculaciones hechas); función bancaria v19 sin cambios; pendiente de validación real, sin Aprobar.** Informe de la auditoría de los 15 avisos: `docs/INFORME_CONCILIACION_15_AVISOS.md`.
 
 | ID | Requisito | Estado | Evidencia |
 |---|---|---|---|

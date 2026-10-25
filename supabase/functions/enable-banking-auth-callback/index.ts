@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { verifyOAuthState, readVerifiedAppFlag } from "../_shared/oauthState.ts"
+import { verifyOAuthState, readVerifiedAppFlag, loadStateSecret } from "../_shared/oauthState.ts"
 
 // Enable Banking redirige aquí el navegador tras la autorización en la
 // web del banco, con ?code=&state=. Sin sesión (el navegador sigue un
@@ -132,7 +132,8 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const authError = url.searchParams.get("error")
-    const stateSecret = Deno.env.get("OAUTH_STATE_SECRET")
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+    const stateSecret = await loadStateSecret(admin)
     fromApp = await readVerifiedAppFlag(stateRaw, "bank", stateSecret)
     if (authError) return back("error", authError)
     if (!code || !stateRaw) return back("error", "missing_code")
@@ -147,8 +148,6 @@ Deno.serve(async (req) => {
     }
     familyId = verified.payload.familyId
     profileId = verified.payload.profileId
-
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     // Defensa en profundidad: quien inició el flujo debe pertenecer (todavía) a esa familia.
     const { data: initiator } = await admin.from("profiles").select("family_id").eq("id", profileId).maybeSingle()

@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { signOAuthState } from "../_shared/oauthState.ts"
+import { signOAuthState, loadStateSecret } from "../_shared/oauthState.ts"
 
 // Primer paso de "Conectar banco": el cliente llama con su sesión, aquí
 // se arma la URL de autorización de Enable Banking (con el family_id
@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
     try {
       state = await signOAuthState(
         { purpose: "bank", familyId: profile.family_id, profileId: userData.user.id, ...(native === true ? { app: true } : {}) },
-        Deno.env.get("OAUTH_STATE_SECRET"),
+        await loadStateSecret(admin),
       )
     } catch {
       return json({ error: "not_configured" }, 500)

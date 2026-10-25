@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { verifyOAuthState, readVerifiedAppFlag } from "../_shared/oauthState.ts"
+import { verifyOAuthState, readVerifiedAppFlag, loadStateSecret } from "../_shared/oauthState.ts"
 
 // Google redirige aquí el navegador tras el consentimiento, con ?code=
 // y el ?state= que se mandó en google-calendar-oauth-start. Sin sesión
@@ -43,7 +43,8 @@ Deno.serve(async (req) => {
     const code = url.searchParams.get("code")
     const stateRaw = url.searchParams.get("state")
     const oauthError = url.searchParams.get("error")
-    const stateSecret = Deno.env.get("OAUTH_STATE_SECRET")
+    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
+    const stateSecret = await loadStateSecret(admin)
     fromApp = await readVerifiedAppFlag(stateRaw, "google", stateSecret)
     if (oauthError) return back("error", oauthError)
     if (!code || !stateRaw) return back("error", "missing_code")
@@ -60,8 +61,6 @@ Deno.serve(async (req) => {
     familyId = verified.payload.familyId
     memberId = verified.payload.memberId
     profileId = verified.payload.profileId
-
-    const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
     // Defensa en profundidad: el miembro debe ser la ficha de quien inició el flujo y de esa familia.
     const { data: ownMember } = await admin

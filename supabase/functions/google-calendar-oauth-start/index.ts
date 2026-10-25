@@ -1,6 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { signOAuthState } from "../_shared/oauthState.ts"
+import { signOAuthState, loadStateSecret } from "../_shared/oauthState.ts"
 
 // Primer paso de "Conectar con Google": el cliente llama esto con su
 // sesión, aquí se arma la URL de consentimiento de Google (con el
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     try {
       state = await signOAuthState(
         { purpose: "google", familyId: profile.family_id, memberId: member.id, profileId: userData.user.id, ...(fromApp ? { app: true } : {}) },
-        Deno.env.get("OAUTH_STATE_SECRET"),
+        await loadStateSecret(admin),
       )
     } catch {
       return new Response(JSON.stringify({ error: "not_configured" }), {

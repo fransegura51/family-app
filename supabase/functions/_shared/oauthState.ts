@@ -119,3 +119,14 @@ export async function readVerifiedAppFlag(token: string | null | undefined, purp
   const r = await verifyOAuthState(token, purpose, secret, nowMs)
   return r.ok && r.payload.app === true
 }
+
+// Lee la clave del state: primero de Vault (secreto `oauth_state_secret`, vía get_app_secret, solo service_role, como las demás claves) y, si no está, de la variable de entorno OAUTH_STATE_SECRET.
+export async function loadStateSecret(admin: { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown }> }): Promise<string | undefined> {
+  try {
+    const { data } = await admin.rpc('get_app_secret', { p_name: 'oauth_state_secret' })
+    if (typeof data === 'string' && data.length >= 32) return data
+  } catch {
+    // cae a la variable de entorno
+  }
+  return (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env.get('OAUTH_STATE_SECRET')
+}

@@ -72,3 +72,18 @@ Ninguna de los 15: no hay ambigüedad. Queda a decisión del usuario **autorizar
 ## Deshacer
 
 Cada vinculación queda anotada. «Deshacer» (aviso tras la vinculación automática) restituye el apunte del banco, el origen del gasto del ticket y los vínculos, una sola vez por anotación.
+
+## Comprobación final antes de publicar (25/10/2026): qué se conserva al vincular
+
+Al repasar cada vinculación apareció un fallo que habría perdido datos: **14 de los 15 cargos del banco llevaban la etiqueta «Comun» puesta a mano**, y los tickets no tenían etiqueta. La función de vinculación (0312) retira el apunte duplicado del banco, así que esa etiqueta se habría perdido (y, con ella, el reparto «Común» de esas compras en las estadísticas por etiqueta). Se corrigió en la migración 0318 (aplicada el 25/10/2026) y se ensayó otra vez con los 15 casos dentro de una transacción revertida:
+
+| Se conserva | Resultado del ensayo (15 casos) |
+|---|---|
+| La compra original (importe, fecha, tienda, categoría, presupuesto) | 0 diferencias |
+| El justificante (fila del ticket, con o sin foto) y sus productos (10–45 líneas por compra) | 0 diferencias |
+| La etiqueta que ya tenía el cargo del banco | Heredada por la compra en 14 casos (el 15.º no tenía); si la compra ya tenía, no se pisa |
+| El movimiento bancario original | 398 de 398 movimientos, contenido idéntico (solo cambia a qué gasto apunta, ahora la compra) |
+| Otros gastos | No se crea ninguno; se retira el apunte duplicado (queda su copia completa en el registro de operaciones) |
+| Poder deshacer | 15 anotaciones; «Deshacer» devuelve el apunte del banco con su etiqueta y la compra a como estaba (3/3 probadas); un segundo «Deshacer» se rechaza |
+
+La categoría de la compra se queda como la tenía el ticket («Alimentación»); la del cargo del banco («Supermercado, carnicería…», adivinada por el comercio) queda en el registro de operaciones y se recupera al deshacer.

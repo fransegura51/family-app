@@ -1,6 +1,6 @@
 // Contrato de la migración PREPARADA 0318 (retiradas de efectivo). Se probó entera contra la base real dentro de una transacción REVERTIDA (reparto, exceso, doble
 // asignación, deshacer por partes, entrada adoptada, aislamiento entre familias, movimientos bancarios intactos); aquí se fijan sus garantías para que ninguna
-// edición futura las rompa sin querer. NO está aplicada en producción.
+// edición futura las rompa sin querer. Aplicada en producción el 25/10/2026.
 import { describe, expect, it } from 'vitest'
 
 const FILES = import.meta.glob(['/supabase/pending-migrations/0318_cash_withdrawals.sql', '/supabase/migrations/0318_cash_withdrawals.sql', '/supabase/rollbacks/0318_cash_withdrawals_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
@@ -24,10 +24,13 @@ describe('migración 0318 · retiradas de efectivo', () => {
   })
 
   it('no toca el movimiento bancario original ni la sincronización: nada escribe en bank_transactions ni borra gastos', () => {
-    const c = code(UP)
+    // Retiradas (secciones 1-6): ni un solo cambio en el banco ni borrado de gastos. La sección 7 (vincular compra ↔ cargo) solo repunta el movimiento bancario (ver su prueba).
+    const c = code(UP.slice(0, UP.indexOf('function public.link_purchase_to_bank_expense')))
     expect(c).not.toMatch(/(insert into|update|delete from|alter table|truncate)\s+public\.bank_(transactions|accounts|connections)/i)
     expect(c).not.toMatch(/delete from public\.expenses/i)
     expect(c).not.toMatch(/drop table|truncate/i)
+    // En todo el archivo: el banco nunca se inserta, borra ni altera (solo se repunta matched_expense_id al vincular una compra).
+    expect(code(UP)).not.toMatch(/(insert into|delete from|alter table|truncate)\s+public\.bank_(transactions|accounts|connections)/i)
   })
 
   it('añade «Retirada de efectivo» dentro de «Movimientos internos» (catálogo + familias), sin duplicar si ya existe', () => {
@@ -81,9 +84,31 @@ describe('migración 0318 · retiradas de efectivo', () => {
     expect(UP).toMatch(/revoke all on function public\.cash_assign_withdrawal\(uuid, jsonb\)[^;]*from public, anon;/)
   })
 
+  it('vincular una compra con su cargo del banco NO pierde datos: hereda etiqueta, fijo/variable y clasificación si la compra no los tenía, y Deshacer los devuelve', () => {
+    const link = UP.slice(UP.indexOf('function public.link_purchase_to_bank_expense'), UP.indexOf('function public.restore_economy_log'))
+    expect(link).toContain('tag_id = coalesce(tag_id, v_bank.tag_id)')
+    expect(link).toContain('is_fixed_override = coalesce(is_fixed_override, v_bank.is_fixed_override)')
+    expect(link).toContain('product_classification = coalesce(product_classification, v_bank.product_classification)')
+    // la compra conserva su categoría, tienda, importe y fecha: nunca se tocan en la vinculación
+    expect(link).not.toMatch(/update public.expenses set[^;]*(category|store|amount|expense_date)s*=/)
+    // el movimiento bancario original se conserva (solo cambia a qué gasto apunta); no se borra ni se crea otro gasto
+    expect(link).toContain('update public.bank_transactions set matched_expense_id = p_purchase_expense where id = v_bt')
+    expect(link).not.toMatch(/delete from public.bank_transactions|insert into public.expenses/)
+    // un apunte con previsiones de pago o copias a Común enlazadas no se retira
+    expect(link).toContain('public.forecast_occurrences o where o.matched_expense_id = p_bank_expense')
+    expect(link).toContain('s.shared_from_expense_id = p_bank_expense')
+    // queda anotado para poder deshacer, con la etiqueta anterior de la compra
+    expect(link).toContain("'kept_prev_tag', v_keep.tag_id")
+    const restore = UP.slice(UP.indexOf('function public.restore_economy_log'))
+    expect(restore).toContain("tag_id = case when v_s ? 'kept_prev_tag'")
+  })
+
   it('la reversión devuelve las entradas adoptadas y no borra categorías en uso', () => {
     expect(DOWN).toContain('where adopted_from is not null')
     expect(DOWN).toMatch(/delete from public\.budget_categories[\s\S]*not exists \(select 1 from public\.expenses e where e\.family_id = c\.family_id and e\.category = c\.name\)/)
     expect(DOWN).toContain('create unique index cash_movements_bank_transfer_uidx on public.cash_movements (expense_id)')
+    // vuelven las versiones de 0312 de vincular compra ↔ banco y de Deshacer
+    expect(DOWN).toContain('create or replace function public.link_purchase_to_bank_expense(')
+    expect(DOWN).toContain('create or replace function public.restore_economy_log(')
   })
 })

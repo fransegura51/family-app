@@ -163,10 +163,11 @@ import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { CashWalletsSection, DeletePurchaseDialog, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
+import { DeletePurchaseDialog, NewWalletForm, WalletTools, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
-import { addMovement, cashErrorText, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
-import { shortfallNotice, usableWallets, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
+import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
+import { eur as cashEur, isManualMovement, MOVEMENT_LABELS, shortfallNotice, usableWallets, type CashMovement, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
+import { bankTransferMovementOf, CASH_WITHOUT_WALLET, allWalletLinkedExpenseIds, cashOnlyMovements, filterExpensesByCashView, isCashWithoutWallet, mergeCashListItems, walletCardInfo } from '@/domain/cashMovementsView'
 import { findExistingEconomyExpense, type DupExpense } from '@/domain/duplicateDetection'
 import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/purchasePayments'
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
@@ -904,6 +905,121 @@ function OwnerBadge({ owner, size = 16, ring = false }: { owner: FamilyMember | 
   )
 }
 
+// Carteras de efectivo en Movimientos: mismas tarjetas que las cuentas bancarias de «Mis cuentas» (color del dueño, icono, saldo). Tocar una filtra
+// Movimientos por esa cartera; tocarla otra vez (o «Ver todos los movimientos») vuelve a todos. El efectivo es opcional: sin carteras solo se ofrece crear una.
+export function CashWalletCards({
+  wallets,
+  members,
+  myMemberId,
+  activeView,
+  hasCashWithoutWallet,
+  onSelect,
+  onCreated,
+}: {
+  wallets: CashWallet[]
+  members: FamilyMember[]
+  myMemberId: string | null
+  activeView: string | null
+  hasCashWithoutWallet: boolean
+  onSelect: (view: string | null) => void
+  onCreated: () => void
+}) {
+  const [adding, setAdding] = useState(false)
+  return (
+    <div className="account-cards-block" data-help-id="finance.cash-wallets">
+      <div className="account-cards-heading">
+        <strong>💶 Efectivo</strong>
+        {hasCashWithoutWallet && (
+          <button type="button" className={'link-button' + (activeView === CASH_WITHOUT_WALLET ? ' chip-active' : '')} onClick={() => onSelect(activeView === CASH_WITHOUT_WALLET ? null : CASH_WITHOUT_WALLET)}>
+            Efectivo sin cartera
+          </button>
+        )}
+      </div>
+      {wallets.length === 0 && !adding && (
+        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
+          Controlar el efectivo es opcional: puedes apuntar gastos en efectivo sin ninguna cartera. Si quieres saber cuánto llevas, crea una.
+        </p>
+      )}
+      <div className="account-cards-grid">
+        {wallets.map((w) => {
+          const info = walletCardInfo(w, members)
+          const owner = w.ownerMemberId ? (members.find((m) => m.id === w.ownerMemberId) ?? null) : null
+          const active = activeView === w.id
+          return (
+            <button
+              key={w.id}
+              type="button"
+              className={'account-card' + (active ? ' account-card-active' : '')}
+              aria-pressed={active}
+              style={{ background: owner ? toPastel(owner.color) : COMMON_ACCOUNT_COLOR, color: 'var(--text)' }}
+              onClick={() => onSelect(active ? null : w.id)}
+            >
+              <div className="account-card-name">💶 {info.title}</div>
+              <div className="account-card-kind">{info.kind === 'personal' ? `Personal${info.holder ? ` · ${info.holder}` : ''}` : 'Familiar'}</div>
+              <div className="account-card-bottom">
+                <OwnerBadge owner={owner} size={36} />
+                <div className="account-card-balance" style={w.balance < 0 ? { color: '#c92a2a' } : undefined}>
+                  {cashEur(w.balance)}
+                </div>
+              </div>
+              {w.balance < 0 && <div className="account-card-kind">por regularizar</div>}
+            </button>
+          )
+        })}
+        <button type="button" className="account-card account-card-add" data-help-id="finance.cash-add" onClick={() => setAdding(true)}>
+          <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+          <span>Añadir cartera</span>
+        </button>
+      </div>
+      {adding && (
+        <NewWalletForm
+          startOpen
+          members={members}
+          myMemberId={myMemberId}
+          hasPersonal={wallets.some((w) => w.ownerMemberId === myMemberId)}
+          onCancel={() => setAdding(false)}
+          onCreated={() => {
+            setAdding(false)
+            onCreated()
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+// Fila de un movimiento de cartera que NO es un gasto ni un ingreso (entrada, salida, ajuste de saldo, traspaso entre carteras): mismo diseño que
+// MovementRow, sin crear nada en Economía.
+export function CashMovementRow({ movement: m, walletName, onDelete }: { movement: CashMovement; walletName: string; onDelete?: () => void }) {
+  return (
+    <div className="movement-row" data-help-id="finance.cash-movement-row">
+      <span className="movement-row-dot" aria-hidden="true" style={{ background: 'transparent' }} />
+      <div className="movement-row-body">
+        <div className="movement-row-line">
+          <span className="movement-row-category">💶 {MOVEMENT_LABELS[m.kind]}</span>
+          <span className="price-row-price" style={{ color: m.amount > 0 ? '#1e8449' : undefined }}>
+            {m.amount > 0 ? '+' : m.amount < 0 ? '−' : ''}
+            {Math.abs(m.amount).toFixed(2)} €
+          </span>
+        </div>
+        <div className="movement-row-line movement-row-meta muted">
+          <span>
+            {formatDate(m.occurredOn)}
+            {walletName && ` · ${walletName}`}
+          </span>
+          <span title="Efectivo (no es gasto ni ingreso)">💶</span>
+        </div>
+        {m.note && <div className="movement-row-line movement-row-notes muted">{m.note}</div>}
+      </div>
+      {onDelete && (
+        <span onClick={(ev) => ev.stopPropagation()} style={{ flex: 'none' }}>
+          <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar movimiento de cartera" onConfirm={onDelete} />
+        </span>
+      )}
+    </div>
+  )
+}
+
 function AccountBalanceCards({
   onAddAccount,
   onSelectAccount,
@@ -1367,7 +1483,7 @@ function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
 // ?bank=connected|error). Los movimientos importados alimentan
 // Movimientos (source='banco', módulo de conciliación con tickets
 // pendiente aparte).
-function BankTab({
+export function BankTab({
   openConnectSignal,
   focusAccountId,
 }: {
@@ -1377,10 +1493,6 @@ function BankTab({
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
-  const [bankMyMemberId, setBankMyMemberId] = useState<string | null>(null)
-  useEffect(() => {
-    currentProfileId().then((id) => setBankMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
-  }, [members])
   // Petición real: la lista tiene que verse y editarse igual que
   // Movimientos (fecha, detalle, importe, categoría y etiqueta
   // editables) — no el texto suelto del banco. Cada movimiento del
@@ -1598,7 +1710,6 @@ function BankTab({
     <div>
       {notice && <p className="points-badge">{notice}</p>}
       {error && <p className="error">{error}</p>}
-      <CashWalletsSection members={members} myMemberId={bankMyMemberId} bankExpenses={linkedExpenses} />
 
       {/* Petición real: "Esta parte de las cuentas quiero que la pongas
           en una página emergente accesible desde el menú arriba con
@@ -3283,7 +3394,7 @@ function EvolucionTemporal({
 // categorizar... traslado el botón flotante de Presupuesto General a
 // Gastos"). Presupuesto Generales y Registro Alimentación pasan a leer
 // de esta misma lista, sin su propio sitio para crearlos.
-function ExpensesTab({
+export function ExpensesTab({
   filter,
   onClearFilter,
   previousTabLabel,
@@ -3356,6 +3467,12 @@ function ExpensesTab({
   // (expenseAccountId) que ya usa el avatar de cada fila, ahora también
   // como filtro. null = todas las cuentas.
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
+  // Carteras de efectivo (opcionales). cashView: null = todos los movimientos; CASH_WITHOUT_WALLET = efectivo sin cartera; otro valor = id de cartera.
+  // Es el mismo patrón que activeAccountId (tocar la tarjeta filtra), y los dos filtros no se combinan: una cuenta bancaria o una cartera.
+  const [wallets, setWallets] = useState<CashWallet[]>([])
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
+  const [cashView, setCashView] = useState<string | null>(null)
+  const [cashError, setCashError] = useState<string | null>(null)
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
   // ingresos también se deberían poder categorizar, como sueldo,
@@ -3376,8 +3493,10 @@ function ExpensesTab({
       listBankAccounts(),
       listBankTransactions(),
       listFamilyMembers(),
+      listWalletsSafe(),
+      listAllMovementsSafe(),
     ])
-      .then(async ([e, c, t, monthStart, acc, bankTx, m]) => {
+      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov]) => {
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -3391,6 +3510,8 @@ function ExpensesTab({
         setMembers(m)
         setExpenseAccountId(new Map(bankTx.filter((bt) => bt.matchedExpenseId).map((bt) => [bt.matchedExpenseId as string, bt.accountId])))
         setBankTransactions(bankTx)
+        setWallets(wal)
+        setCashMovements(cashMov)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -3508,10 +3629,17 @@ function ExpensesTab({
   // Base para "cuentas separadas": si hay una cuenta elegida, todo lo
   // demás (cabecera, filtro de tipo, lista) se calcula solo sobre ESA
   // cuenta — mismo patrón que activeAccountId en BankTab.
-  const accountFilteredExpenses = useMemo(
-    () => (activeAccountId ? scopeFilteredExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId) : scopeFilteredExpenses),
-    [scopeFilteredExpenses, activeAccountId, expenseAccountId],
-  )
+  const visibleWallets = useMemo(() => wallets.filter((w) => w.archivedAt == null), [wallets])
+  const activeWallet = visibleWallets.find((w) => w.id === cashView) ?? null
+  // Una cartera archivada o desaparecida no deja la lista vacía: se vuelve a «todos».
+  const effectiveCashView = cashView === CASH_WITHOUT_WALLET ? CASH_WITHOUT_WALLET : activeWallet ? activeWallet.id : null
+  const accountFilteredExpenses = useMemo(() => {
+    const byAccount = activeAccountId ? scopeFilteredExpenses.filter((e) => expenseAccountId.get(e.id) === activeAccountId) : scopeFilteredExpenses
+    return effectiveCashView ? filterExpensesByCashView(byAccount, cashMovements, effectiveCashView) : byAccount
+  }, [scopeFilteredExpenses, activeAccountId, expenseAccountId, effectiveCashView, cashMovements])
+  const walletLinkedIds = useMemo(() => allWalletLinkedExpenseIds(cashMovements), [cashMovements])
+  const hasCashWithoutWallet = useMemo(() => expenses.some((e) => isCashWithoutWallet(e, walletLinkedIds)), [expenses, walletLinkedIds])
+  const walletWritable = activeWallet != null && (activeWallet.ownerMemberId == null || activeWallet.ownerMemberId === myMemberId)
 
   // Bug real: "en Movimientos salen 4349,63€ de ingresos, pero en
   // Presupuesto/Resumen 4241,63€" — esta cabecera sumaba TODO
@@ -3563,6 +3691,20 @@ function ExpensesTab({
     [typeFilteredExpenses, categories],
   )
 
+  // Con una cartera elegida, sus movimientos sin gasto enlazado (entrada, salida, ajuste, traspaso) salen en el MISMO listado, por fecha, junto a sus
+  // compras y retiradas del banco (que ya son filas de Movimientos). Sin cartera elegida la lista es exactamente la de siempre.
+  const listItems = useMemo(() => {
+    if (!activeWallet) return typeFilteredExpenses.map((expense) => ({ type: 'expense' as const, date: expense.expenseDate, expense }))
+    const own = typeFilter === 'todos' && !filter ? cashOnlyMovements(cashMovements, activeWallet.id, periodFrom, periodTo) : []
+    return mergeCashListItems(typeFilteredExpenses, own)
+  }, [activeWallet, typeFilteredExpenses, cashMovements, typeFilter, filter, periodFrom, periodTo])
+
+  function pickCashView(view: string | null) {
+    setCashError(null)
+    setCashView(view)
+    if (view != null) setActiveAccountId(null)
+  }
+
   const memberById = new Map(members.map((m) => [m.id, m]))
   const accountById = new Map(accounts.map((a) => [a.id, a]))
   function ownerMemberForExpense(expenseId: string): FamilyMember | null {
@@ -3586,6 +3728,36 @@ function ExpensesTab({
         <button type="button" style={{ marginBottom: 8 }} data-help-id="finance.new-movement" onClick={onOpenNewMovement}>
           + Nuevo movimiento
         </button>
+      )}
+
+      <CashWalletCards
+        wallets={visibleWallets}
+        members={members}
+        myMemberId={myMemberId}
+        activeView={effectiveCashView}
+        hasCashWithoutWallet={hasCashWithoutWallet}
+        onSelect={pickCashView}
+        onCreated={reload}
+      />
+      {effectiveCashView && (
+        <div className="card event-card" style={{ marginBottom: 8 }}>
+          <strong>{activeWallet ? `Cartera: ${activeWallet.name} · ${cashEur(activeWallet.balance)}` : 'Efectivo sin cartera'}</strong>
+          <button type="button" className="link-button" onClick={() => pickCashView(null)}>
+            ✕ Ver todos los movimientos
+          </button>
+        </div>
+      )}
+      {cashError && <p className="error">{cashError}</p>}
+      {activeWallet && (
+        <WalletTools
+          key={activeWallet.id}
+          wallet={activeWallet}
+          wallets={visibleWallets}
+          myMemberId={myMemberId}
+          bankExpenses={expenses}
+          linkedExpenseIds={walletLinkedIds}
+          onChanged={reload}
+        />
       )}
 
       {filter ? (
@@ -3704,8 +3876,20 @@ function ExpensesTab({
       )}
 
       <div className="price-row-list">
-        {typeFilteredExpenses.map((e) =>
-          editingId === e.id ? (
+        {listItems.map((item) => {
+          if (item.type === 'cash') {
+            const m = item.movement
+            return (
+              <CashMovementRow
+                key={`cash-${m.id}`}
+                movement={m}
+                walletName={activeWallet?.name ?? ''}
+                onDelete={walletWritable && isManualMovement(m.kind) ? () => deleteMovement(m.id).then(reload).catch((err) => setCashError(cashErrorText(err, 'No se pudo borrar el movimiento'))) : undefined}
+              />
+            )
+          }
+          const e = item.expense
+          return editingId === e.id ? (
             <EditExpenseInline
               key={e.id}
               expense={e}
@@ -3771,6 +3955,18 @@ function ExpensesTab({
                       ✅
                     </span>
                   )}
+                  {walletWritable && activeWallet && bankTransferMovementOf(cashMovements, activeWallet.id, e.id) && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => {
+                        const mv = bankTransferMovementOf(cashMovements, activeWallet.id, e.id)
+                        if (mv) void unlinkBankMovement(mv.id).then(reload).catch((err) => setCashError(cashErrorText(err, 'No se pudo deshacer')))
+                      }}
+                    >
+                      Deshacer
+                    </button>
+                  )}
                   <ConfirmIconButton
                     icon="✕"
                     className="icon-button"
@@ -3780,9 +3976,9 @@ function ExpensesTab({
                 </>
               }
             />
-          ),
-        )}
-        {typeFilteredExpenses.length === 0 && <p className="muted">No hay gastos este mes.</p>}
+          )
+        })}
+        {listItems.length === 0 && <p className="muted">No hay gastos este mes.</p>}
       </div>
 
       {forecastError && <p className="error">{forecastError}</p>}
@@ -5044,7 +5240,7 @@ export function ReceiptsTab() {
           guardados tengo de Mercadona 583, pero son los del mes pasado
           y los de este... quiero filtrarme solo por los de este mes o
           por esta semana". */}
-      <h2 className="section-title" data-help-id="shopping.receipts-saved">Tickets guardados</h2>
+      <h2 className="section-title" data-help-id="shopping.receipts-saved">Historial de compras</h2>
       <p className="muted" style={{ marginTop: -8 }}>
         Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
       </p>
@@ -5136,7 +5332,7 @@ export function ReceiptsTab() {
           )
         })}
       </div>
-      {receipts.length === 0 && <p className="muted">No hay tickets guardados.</p>}
+      {receipts.length === 0 && <p className="muted">No hay compras registradas.</p>}
     </div>
   )
 }
@@ -6363,7 +6559,7 @@ function ReceiptForm({
     <form ref={formRef} onSubmit={handleSubmit} className="card member-form" {...(mode === 'add' ? { 'data-help-id': 'shopping.receipt-form' } : {})}>
       {mode === 'add' && (
         <>
-          <h2>{attachTo ? 'Añadir el ticket a esta compra' : noTicket ? 'Compra sin ticket' : 'Subir ticket'}</h2>
+          <h2>{attachTo ? 'Añadir el ticket a esta compra' : noTicket ? 'Compra sin ticket' : 'Registrar compra'}</h2>
           {!attachTo && (
             <div className="chip-row" role="group" aria-label="Tipo de compra" data-help-id="shopping.receipt-mode">
               <button type="button" className={noTicket ? 'chip' : 'chip chip-active'} aria-pressed={!noTicket} data-help-id="shopping.receipt-with" onClick={() => setNoTicket(false)}>
@@ -7655,7 +7851,7 @@ export function BudgetsTab({
               venir mal para un producto o una tienda concretos. */}
           <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
             ℹ️ La clasificación de cada producto es una sugerencia (heredada o adivinada por su nombre) — revísala y
-            corrígela si no encaja, tocando el icono en Tickets o el nombre en Historial de precios.
+            corrígela si no encaja, tocando el icono en Compras registradas o el nombre en Historial de precios.
           </p>
           {/* Petición real: "creo que lo preguntarán más de una vez, deberíamos aclararlo en las dos
               secciones" — reconciliados los ~351€ de diferencia real de una familia: eran compras pagadas

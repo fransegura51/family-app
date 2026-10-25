@@ -58,7 +58,7 @@ export const expComprasLeerTicket: HelpExplainer = {
   ],
   ifWrong: [
     'Una línea mal leída: corrígela antes de «Guardar ticket». Con «+ Añadir línea» añades una que falte.',
-    'Ya lo guardaste: abre la carpeta de su tienda en Tickets guardados y toca ✏️ (Editar ticket); es el mismo formulario y sustituye todas las líneas por las que dejes.',
+    'Ya lo guardaste: abre la carpeta de su tienda en Historial de compras y toca ✏️ (Editar ticket); es el mismo formulario y sustituye todas las líneas por las que dejes.',
     'Que a veces lea mal es una limitación normal. Si «Leer ticket» da error siempre, con cualquier foto, ya no es normal: cuéntalo en Sugerencias (Ayuda) para que lo revise el equipo de PEPA.',
   ],
   verified: V,
@@ -77,7 +77,7 @@ export const expComprasLeerTicket: HelpExplainer = {
     'supabase/migrations/0056_purge_old_receipt_photos.sql',
   ],
   tour: 'tut-compras-subir-ticket',
-  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Tickets' },
+  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Compras registradas' },
   labels: ['📷 Leer ticket', 'Guardar ticket', 'Guardar compra', '✍️ Sin ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea'],
   cardIds: ['com-ticket'],
   synonyms: ['leer ticket', 'ocr', 'foto del ticket', 'ia ticket', 'como lee el ticket', 'productos leidos', 'por que se equivoca el ticket', 'que envia a la ia', 'privacidad ticket', 'sin ticket', 'sin ia', 'compra sin ticket'],
@@ -178,7 +178,7 @@ export const expComprasCompradoFinalizar: HelpExplainer = {
     {
       heading: 'Entonces, ¿cómo se registra una compra?',
       paragraphs: [
-        'Guardando un ticket («📷 Con ticket») o una compra «✍️ Sin ticket» en la pestaña Tickets. Eso sí crea el gasto en Economía (si hay importe) y, si hay productos con precio, llena el Historial de precios.',
+        'Guardando un ticket («📷 Con ticket») o una compra «✍️ Sin ticket» en la pestaña Compras registradas. Eso sí crea el gasto en Economía (si hay importe) y, si hay productos con precio, llena el Historial de precios.',
       ],
       example:
         'Ejemplo inventado: tachas leche y pan en «Modo compra» y pulsas «Finalizar compra». La lista queda limpia, pero en Economía no hay ningún gasto nuevo y el Historial no tiene precios nuevos. Esa tarde subes la foto del ticket de 23,40 €: ahora sí se crea el gasto y se guardan los precios.',
@@ -190,7 +190,7 @@ export const expComprasCompradoFinalizar: HelpExplainer = {
   ],
   ifWrong: [
     'Si marcaste algo por error, toca otra vez su círculo y vuelve a pendiente (mientras no hayas finalizado la compra).',
-    'Si esperabas ver un gasto o un precio nuevo y no está, falta registrar la compra en Tickets. Que no aparezca solo es lo normal, no un fallo.',
+    'Si esperabas ver un gasto o un precio nuevo y no está, falta registrar la compra en Compras registradas. Que no aparezca solo es lo normal, no un fallo.',
   ],
   verified: V,
   basedOn: ['src/data/shopping.ts', 'src/data/shoppingBoughtDoesNotFeedHistory.test.ts', 'src/ui/ShoppingScreen.tsx', 'src/data/receipts.ts'],
@@ -237,7 +237,7 @@ export const expComprasHistorialPrecios: HelpExplainer = {
     'Cuantos menos tickets registres, menos fiable es todo: el Historial solo sabe lo que le cuentas.',
   ],
   ifWrong: [
-    'Si falta un precio, registra esa compra en Tickets con sus productos. Si dos productos son lo mismo y no los compara, usa «Sí, equivalente» en la ficha.',
+    'Si falta un precio, registra esa compra en Compras registradas con sus productos. Si dos productos son lo mismo y no los compara, usa «Sí, equivalente» en la ficha.',
     'Si un precio está mal, edita el ticket con ✏️: sustituye todas sus líneas.',
   ],
   verified: V,
@@ -297,7 +297,7 @@ export const expComprasUnionEconomia: HelpExplainer = {
   verified: V,
   basedOn: ['src/data/receipts.ts', 'src/domain/ticketExpenseMatch.ts', 'src/domain/manualPurchase.ts', 'src/ui/FinanceScreen.tsx', 'supabase/functions/enable-banking-sync-transactions/index.ts'],
   tour: 'tut-compras-pago-economia',
-  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Tickets' },
+  go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Compras registradas' },
   labels: ['¿Es una compra que ya apuntaste?', 'Ya tienes este gasto apuntado en Economía', 'Guardar compra', 'Guardar ticket', 'Deshacer'],
   cardIds: ['com-ticket', 'eco-banco'],
   synonyms: ['ticket y banco', 'se duplica el gasto', 'unir ticket con el banco', 'por que sale dos veces', 'compra sin ticket y banco', 'gasto en economia', 'efectivo no se une'],

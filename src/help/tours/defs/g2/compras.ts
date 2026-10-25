@@ -1,14 +1,14 @@
 import { TOURS_COMPRAS_TICKETS } from '@/help/tours/defs/g2/comprasTickets'
 import type { TourDef } from '@/help/tours/types'
 
-// Compras (grupo g2). Una visita informativa y los capítulos de cuatro series «Enséñame» sobre las pantallas REALES de Compras (ShoppingScreen.tsx y, para Tickets, ReceiptsTab/ReceiptForm
+// Compras (grupo g2). Una visita informativa y los capítulos de cuatro series «Enséñame» sobre las pantallas REALES de Compras (ShoppingScreen.tsx y, para Compras registradas, ReceiptsTab/ReceiptForm
 // de FinanceScreen.tsx):
 //  · ser-compras-lista      → com-anadir-producto, tut-compras-editar-producto, tut-compras-marcar-comprado, tut-compras-finalizar-compra, tut-compras-compartir
 //  · ser-compras-tiendas    → tut-compras-tiendas, tut-compras-asignar-tienda, tut-compras-clase-historial
 //  · ser-compras-tickets    → defs/g2/comprasTickets.ts
 //  · ser-compras-historial  → tut-compras-consultar-compras, tut-compras-historial-precios, tut-compras-ficha-producto, tut-compras-comparar-lista, tut-compras-estadistica
 // REGLA (verificada en data/shopping.ts y shoppingBoughtDoesNotFeedHistory.test.ts): marcar «Comprado» solo cambia el estado en la lista; «Finalizar compra» solo borra de la lista lo tachado
-// de esa tienda. Ninguno crea compra, gasto ni precio. Lo que sí registra es guardar un ticket o una compra «Sin ticket» (pestaña Tickets).
+// de esa tienda. Ninguno crea compra, gasto ni precio. Lo que sí registra es guardar un ticket o una compra «Sin ticket» (pestaña Compras registradas).
 // Ningún capítulo pulsa nada por la persona. Lo que NO se automatiza a propósito: «📷 Leer ticket» (envía la foto a una IA), «✅ Finalizar compra» (borra lo tachado), compartir y cualquier borrado.
 
 export const visitaCompras: TourDef = {
@@ -25,7 +25,7 @@ export const visitaCompras: TourDef = {
   steps: [
     {
       id: 'menu',
-      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Tickets y Estadística compras. Con «📌 Sacar» pones un acceso como botón en pantalla. Ahora solo miramos.',
+      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Compras registradas y Estadística compras. Con «📌 Sacar» pones un acceso como botón en pantalla. Ahora solo miramos.',
       target: 'shopping.menu',
       completeOn: [],
       manualNext: true,
@@ -39,7 +39,7 @@ export const visitaCompras: TourDef = {
     },
     {
       id: 'relacion',
-      text: 'Cómo encaja todo: la Lista es lo que falta. Marcar «comprado» solo tacha, no guarda nada. Lo que de verdad se registra es un ticket o una compra «Sin ticket», en Tickets: crea el gasto en Economía y llena el Historial.',
+      text: 'Cómo encaja todo: la Lista es lo que falta. Marcar «comprado» solo tacha, no guarda nada. Lo que de verdad se registra es un ticket o una compra «Sin ticket», en Compras registradas: crea el gasto en Economía y llena el Historial.',
       completeOn: [],
       manualNext: true,
     },
@@ -52,7 +52,7 @@ export const visitaCompras: TourDef = {
     },
     {
       id: 'tickets',
-      text: '🧾 Tickets: aquí se registra una compra, con foto o PDF («📷 Con ticket») o apuntada a mano («✍️ Sin ticket»). PEPA puede leer los productos con IA (solo adultas, si la IA está activa) y tú los revisas antes de guardar.',
+      text: '🧾 Compras registradas: aquí se registra una compra, con foto o PDF («📷 Con ticket») o apuntada a mano («✍️ Sin ticket»). PEPA puede leer los productos con IA (solo adultas, si la IA está activa) y tú los revisas antes de guardar.',
       target: 'shopping.card-tickets',
       completeOn: [],
       manualNext: true,
@@ -191,7 +191,7 @@ export const tutComprasMarcarComprado: TourDef = {
     },
     {
       id: 'regla',
-      text: 'Recuerda: «Comprado» no registra nada. Para que la compra cuente en Economía y en el Historial, regístrala en Tickets (con ticket o «Sin ticket»). Para limpiar lo tachado, mira el siguiente capítulo.',
+      text: 'Recuerda: «Comprado» no registra nada. Para que la compra cuente en Economía y en el Historial, regístrala en Compras registradas (con ticket o «Sin ticket»). Para limpiar lo tachado, mira el siguiente capítulo.',
       completeOn: [],
       manualNext: true,
     },
@@ -230,12 +230,12 @@ export const tutComprasFinalizar: TourDef = {
     },
     {
       id: 'regla',
-      text: 'Importante: finalizar solo limpia la lista. No guarda la compra: no crea gasto en Economía ni precios en el Historial. Eso lo hace guardar un ticket, o una compra «Sin ticket», en la pestaña Tickets.',
+      text: 'Importante: finalizar solo limpia la lista. No guarda la compra: no crea gasto en Economía ni precios en el Historial. Eso lo hace guardar un ticket, o una compra «Sin ticket», en la pestaña Compras registradas.',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. Para registrar lo que has comprado, ve a Tickets: allí se guarda el gasto y los precios.',
+  finishText: 'Eso es todo. Para registrar lo que has comprado, ve a Compras registradas: allí se guarda el gasto y los precios.',
   next: ['com-ticket', 'com-historial-precios'],
 }
 
@@ -342,7 +342,7 @@ export const tutComprasClaseHistorial: TourDef = {
       detailsLabel: 'Más sobre las clases',
     },
   ],
-  finishText: 'Hecho. Ese producto queda con la clase que elegiste, en la Lista, el Historial y los Tickets de tu familia. Otro producto con nombre distinto se clasifica por su cuenta. Cómo decide PEPA, en «Cómo funciona PEPA».',
+  finishText: 'Hecho. Ese producto queda con la clase que elegiste, en la Lista, el Historial y las Compras registradas de tu familia. Otro producto con nombre distinto se clasifica por su cuenta. Cómo decide PEPA, en «Cómo funciona PEPA».',
   next: ['com-historial-precios', 'com-ticket'],
 }
 
@@ -350,7 +350,7 @@ export const tutComprasClaseHistorial: TourDef = {
 // Serie «Historial y comparación de precios»
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// Tickets → «Cuánto he gastado», filtros y carpetas. Solo mira.
+// Compras registradas → «Cuánto he gastado», filtros y carpetas. Solo mira.
 export const tutComprasConsultarCompras: TourDef = {
   id: 'tut-compras-consultar-compras',
   module: 'compras',
@@ -366,7 +366,7 @@ export const tutComprasConsultarCompras: TourDef = {
   steps: [
     {
       id: 'resumen',
-      text: 'En Tickets, «Cuánto he gastado» suma las compras registradas del periodo elegido (con ticket, sin ticket y gastos de comida que llegaron del banco). Aquí solo miramos: no se guarda nada.',
+      text: 'En Compras registradas, «Cuánto he gastado» suma las compras registradas del periodo elegido (con ticket, sin ticket y gastos de comida que llegaron del banco). Aquí solo miramos: no se guarda nada.',
       target: 'shopping.receipts-summary',
       completeOn: [],
       manualNext: true,
@@ -395,7 +395,7 @@ export const tutComprasConsultarCompras: TourDef = {
     },
     {
       id: 'carpetas',
-      text: 'Más abajo, «Tickets guardados» tiene una carpeta por tienda, con cuántas compras y cuánto suman. Tócala para abrirla y ver sus compras; la fila «📎 falta ticket» es un gasto del banco sin ticket subido.',
+      text: 'Más abajo, «Historial de compras» tiene una carpeta por tienda, con cuántas compras y cuánto suman. Tócala para abrirla y ver sus compras; la fila «📎 falta ticket» es un gasto del banco sin ticket subido.',
       target: 'shopping.receipt-folder',
       completeOn: [],
       manualNext: true,

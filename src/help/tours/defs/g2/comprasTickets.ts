@@ -1,6 +1,6 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Compras → Tickets: serie «Registrar compras y tickets» (ser-compras-tickets). Sigue ReceiptsTab/ReceiptForm de FinanceScreen.tsx (el mismo formulario se usa para subir un ticket, para
+// Compras → Compras registradas: serie «Registrar compras y tickets» (ser-compras-tickets). Sigue ReceiptsTab/ReceiptForm de FinanceScreen.tsx (el mismo formulario se usa para subir un ticket, para
 // apuntar una compra «Sin ticket» y para editar). Ningún capítulo guarda por la persona ni lee con IA por ella: los pasos señalan, explican y esperan. Estos capítulos terminan SIN
 // guardar (la persona decide si pulsa «Guardar ticket» / «Guardar compra»); el primer paso de cada uno avisa de que guardar es de verdad.
 //
@@ -13,7 +13,7 @@ import type { TourDef } from '@/help/tours/types'
 export const tutComprasRegistrarCompra: TourDef = {
   id: 'tut-compras-registrar-compra',
   module: 'compras',
-  group: 'Tickets',
+  group: 'Compras registradas',
   title: 'Con ticket o sin ticket',
   summary: 'Elegir si registras la compra con la foto del ticket o la apuntas a mano, sin ticket.',
   version: 1,
@@ -71,11 +71,11 @@ export const tutComprasRegistrarCompra: TourDef = {
   next: ['com-ticket', 'com-historial-precios'],
 }
 
-// Subir un ticket (foto o PDF) y, si se quiere, leerlo con IA. La hoja «Añadir ticket» y el selector del sistema son del móvil: la tarjeta se aparta.
+// Registrar una compra con ticket (foto o PDF) y, si se quiere, leerlo con IA. La hoja «Añadir ticket» y el selector del sistema son del móvil: la tarjeta se aparta.
 export const tutComprasSubirTicket: TourDef = {
   id: 'tut-compras-subir-ticket',
   module: 'compras',
-  group: 'Tickets',
+  group: 'Compras registradas',
   title: 'Subir y leer un ticket',
   summary: 'Añadir la foto o el PDF de un ticket y, si quieres, dejar que PEPA lo lea.',
   version: 2,
@@ -131,7 +131,7 @@ export const tutComprasSubirTicket: TourDef = {
 export const tutComprasRevisarTicket: TourDef = {
   id: 'tut-compras-revisar-ticket',
   module: 'compras',
-  group: 'Tickets',
+  group: 'Compras registradas',
   title: 'Revisar datos y productos',
   summary: 'Revisar tienda, fecha, importe, categoría y quién, y añadir o corregir los productos a mano.',
   version: 1,
@@ -212,7 +212,7 @@ export const tutComprasRevisarTicket: TourDef = {
 export const tutComprasPagoEconomia: TourDef = {
   id: 'tut-compras-pago-economia',
   module: 'compras',
-  group: 'Tickets',
+  group: 'Compras registradas',
   title: 'Cómo se paga y qué pasa en Economía',
   summary: 'La forma de pago y lo que hace guardar una compra con tu Economía.',
   version: 1,
@@ -270,7 +270,7 @@ export const tutComprasPagoEconomia: TourDef = {
 export const tutComprasGuardarTicket: TourDef = {
   id: 'tut-compras-guardar-ticket',
   module: 'compras',
-  group: 'Tickets',
+  group: 'Compras registradas',
   title: 'Guardar y gestionar lo guardado',
   summary: 'Guardar la compra y, después, abrir su carpeta, editarla, añadirle el ticket o borrarla.',
   version: 1,
@@ -289,7 +289,7 @@ export const tutComprasGuardarTicket: TourDef = {
     },
     {
       id: 'donde',
-      text: 'La compra queda en «Tickets guardados», en la carpeta de su tienda. Solo ves las del periodo del filtro 📅 Fecha; si hay otras fuera de él, un aviso lo dice.',
+      text: 'La compra queda en «Historial de compras», en la carpeta de su tienda. Solo ves las del periodo del filtro 📅 Fecha; si hay otras fuera de él, un aviso lo dice.',
       target: 'shopping.receipts-saved',
       completeOn: [],
       manualNext: true,

@@ -347,7 +347,7 @@ export const tutEconomiaApuntarMovimiento: TourDef = {
     },
     {
       id: 'pago',
-      text: 'Aquí no se elige la forma de pago (efectivo, tarjeta…). Eso se hace al registrar una compra, en Compras → Tickets.',
+      text: 'Aquí no se elige la forma de pago (efectivo, tarjeta…). Eso se hace al registrar una compra, en Compras → Compras registradas.',
       completeOn: [],
       manualNext: true,
     },

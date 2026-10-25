@@ -27,7 +27,7 @@ function run(tourId: string, path: string, screenNode: React.ReactNode) {
     <MemoryRouter initialEntries={[path]}>
       {screenNode}
       {tour.startDest && <HelpDestMark id={tour.startDest} />}
-      <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={() => undefined} onPick={() => undefined} missingAfterMs={400} />
+      <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={() => undefined} onPick={() => undefined} missingAfterMs={400} readyMaxMs={2500} />
     </MemoryRouter>,
   )
 }
@@ -399,7 +399,7 @@ describe('Familia · guardado, error y reintento (datos simulados, nada real)', 
       <MemoryRouter initialEntries={['/familia']}>
         <AddMemberForm onAdded={() => undefined} existingMembers={[]} />
         <HelpDestMark id="familia.anadir-miembro" />
-        <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={onClose} onPick={() => undefined} missingAfterMs={400} />
+        <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={onClose} onPick={() => undefined} missingAfterMs={400} readyMaxMs={2500} />
       </MemoryRouter>,
     )
     await says(/Escribe su nombre/)

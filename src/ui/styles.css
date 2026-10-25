@@ -8451,3 +8451,14 @@ details[open] > summary > .review-chevron {
   font-size: 22px;
   line-height: 1;
 }
+
+/* Tarjeta de cartera de efectivo elegida (Movimientos filtrados por esa cartera) y su línea de tipo/titular. */
+.account-card-active {
+  outline: 3px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.account-card-kind {
+  font-size: 11px;
+  opacity: 0.75;
+}

@@ -16,12 +16,15 @@ const calls = {
   removeDuplicateExpense: vi.fn(async (..._a: unknown[]) => 'log-dup'),
   createWallet: vi.fn(async (..._a: unknown[]) => undefined),
   transferCash: vi.fn(async (..._a: unknown[]) => undefined),
+  addMovement: vi.fn(async (..._a: unknown[]) => undefined),
+  renameWallet: vi.fn(async (..._a: unknown[]) => undefined),
   linkBank: vi.fn(async (..._a: unknown[]) => undefined),
 }
 let walletRows: CashWallet[] = []
 
 vi.mock('@/data/cash', () => ({
-  addMovement: vi.fn(async () => undefined),
+  addMovement: (...a: unknown[]) => calls.addMovement(...a),
+  renameWallet: (...a: unknown[]) => calls.renameWallet(...a),
   archiveWallet: vi.fn(async () => undefined),
   cashErrorText: (_e: unknown, fallback: string) => fallback,
   createWallet: (...a: unknown[]) => calls.createWallet(...a),
@@ -38,7 +41,7 @@ vi.mock('@/data/cash', () => ({
   unlinkBankMovement: vi.fn(async () => undefined),
 }))
 
-const { PaymentSection, ShortfallDialog, RefundPanel, CashWalletsSection, PurchaseDuplicatesPanel, DeletePurchaseDialog, UndoNotice } = await import('@/ui/CashAndPaymentsUi')
+const { PaymentSection, ShortfallDialog, RefundPanel, NewWalletForm, WalletTools, PurchaseDuplicatesPanel, DeletePurchaseDialog, UndoNotice } = await import('@/ui/CashAndPaymentsUi')
 
 const wallet = (o: Partial<CashWallet> = {}): CashWallet => ({ id: 'w1', name: 'Cartera familiar', ownerMemberId: null, openingBalance: 0, archivedAt: null, balance: 0, ...o })
 const expense = (o: Partial<Expense>): Expense => ({ id: 'x', familyId: 'f', expenseDate: '2026-10-20', amount: 8, category: null, store: 'Panadería', kind: 'real', notes: null, isIncome: false, budgetGroup: 'generales', tagId: null, source: 'manual', isFixedOverride: null, ownerMemberId: null, shared: false, sharedFromExpenseId: null, productClassification: null, ...o } as Expense)
@@ -150,58 +153,67 @@ describe('devolución de una compra', () => {
   })
 })
 
-describe('carteras (opcionales)', () => {
-  it('está plegado y avisa de que el efectivo se puede apuntar sin cartera', async () => {
-    render(<CashWalletsSection members={[]} myMemberId={null} bankExpenses={[]} />)
-    expect(screen.queryByText(/sin tener ninguna cartera/)).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    expect(await screen.findByText(/sin tener ninguna cartera/)).toBeTruthy()
-    expect(await screen.findByText('Todavía no hay carteras.')).toBeTruthy()
-  })
-  it('un saldo negativo se muestra «por regularizar»', async () => {
-    walletRows = [wallet({ balance: -75 })]
-    render(<CashWalletsSection members={[]} myMemberId={null} bankExpenses={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    expect(await screen.findByText(/por regularizar/)).toBeTruthy()
-  })
+describe('carteras (opcionales): alta y herramientas (ahora dentro de Movimientos)', () => {
+  const noLinks: ReadonlySet<string> = new Set()
   it('crear una cartera familiar con saldo inicial', async () => {
-    render(<CashWalletsSection members={[]} myMemberId={null} bankExpenses={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    fireEvent.click(await screen.findByRole('button', { name: '+ Añadir cartera' }))
+    const onCreated = vi.fn()
+    render(<NewWalletForm members={[]} myMemberId={null} hasPersonal={false} onCreated={onCreated} />)
+    fireEvent.click(screen.getByRole('button', { name: '+ Añadir cartera' }))
     fireEvent.change(screen.getByLabelText(/Saldo inicial/), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('button', { name: 'Crear cartera' }))
     await waitFor(() => expect(calls.createWallet).toHaveBeenCalledWith({ name: 'Cartera familiar', ownerMemberId: null, openingBalance: 30 }))
+    await waitFor(() => expect(onCreated).toHaveBeenCalled())
   })
-  it('un traspaso entre carteras avisa de que no es ingreso ni gasto', async () => {
-    walletRows = [wallet({ balance: 25 }), wallet({ id: 'w2', name: 'Caja', balance: 0 })]
-    render(<CashWalletsSection members={[]} myMemberId={null} bankExpenses={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    fireEvent.click(await screen.findByText('Cartera familiar'))
-    fireEvent.click(await screen.findByRole('button', { name: '⇄ Traspaso' }))
+  it('abierto desde la tarjeta «Añadir cartera», cancelar lo cierra', () => {
+    const onCancel = vi.fn()
+    render(<NewWalletForm startOpen members={[]} myMemberId={null} hasPersonal={false} onCreated={() => undefined} onCancel={onCancel} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(onCancel).toHaveBeenCalled()
+  })
+  it('ofrece las cinco herramientas sobre la cartera elegida', () => {
+    render(<WalletTools wallet={wallet({ balance: 25 })} wallets={[wallet({ balance: 25 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)
+    for (const name of ['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '🏦 Retirada del banco']) expect(screen.getByRole('button', { name })).toBeTruthy()
+  })
+  it('un traspaso entre carteras avisa de que no es ingreso ni gasto y usa la cartera elegida como origen', async () => {
+    const w1 = wallet({ balance: 25 })
+    const onChanged = vi.fn()
+    render(<WalletTools wallet={w1} wallets={[w1, wallet({ id: 'w2', name: 'Caja', balance: 0 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={onChanged} />)
+    fireEvent.click(screen.getByRole('button', { name: '⇄ Traspaso' }))
     expect(screen.getByText(/no es ingreso ni gasto/)).toBeTruthy()
     fireEvent.change(screen.getByLabelText(/Importe/), { target: { value: '10' } })
     fireEvent.change(screen.getByLabelText('Cartera de destino'), { target: { value: 'w2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(calls.transferCash).toHaveBeenCalledWith(expect.objectContaining({ from: 'w1', to: 'w2', amount: 10 })))
+    await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
-  it('la retirada del banco solo ofrece movimientos del banco aún sin vincular', async () => {
-    walletRows = [wallet()]
-    const bank = [expense({ id: 'b1', source: 'banco', amount: 100, store: 'CAJERO' }), expense({ id: 'm1', source: 'manual', amount: 8 })]
-    render(<CashWalletsSection members={[]} myMemberId={null} bankExpenses={bank} />)
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    fireEvent.click(await screen.findByText('Cartera familiar'))
-    fireEvent.click(await screen.findByRole('button', { name: '🏦 Retirada del banco' }))
+  it('la retirada del banco solo ofrece movimientos del banco aún sin vincular', () => {
+    const bank = [expense({ id: 'b1', source: 'banco', amount: 100, store: 'CAJERO' }), expense({ id: 'm1', source: 'manual', amount: 8 }), expense({ id: 'b2', source: 'banco', amount: 50, store: 'YA VINCULADO' })]
+    render(<WalletTools wallet={wallet()} wallets={[wallet()]} myMemberId={null} bankExpenses={bank} linkedExpenseIds={new Set(['b2'])} onChanged={() => undefined} />)
+    fireEvent.click(screen.getByRole('button', { name: '🏦 Retirada del banco' }))
     const options = [...(screen.getByLabelText('Movimiento del banco') as HTMLSelectElement).options].map((o) => o.value)
     expect(options).toEqual(['', 'b1'])
     expect(screen.getByText(/deja de contar como gasto o ingreso/)).toBeTruthy()
   })
-  it('la cartera personal de otra persona se puede ver pero no tocar', async () => {
-    walletRows = [wallet({ id: 'w9', name: 'Cartera de Ana', ownerMemberId: 'ana', balance: 5 })]
-    render(<CashWalletsSection members={[]} myMemberId="yo" bankExpenses={[]} />)
-    fireEvent.click(screen.getByRole('button', { name: /Efectivo \(opcional\)/ }))
-    fireEvent.click(await screen.findByText('Cartera de Ana'))
-    expect(await screen.findByText(/solo puedes verla/)).toBeTruthy()
+  it('una salida mayor que el saldo no se bloquea (el saldo queda por regularizar)', async () => {
+    render(<WalletTools wallet={wallet({ balance: 5 })} wallets={[wallet({ balance: 5 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)
+    fireEvent.click(screen.getByRole('button', { name: '− Salida' }))
+    fireEvent.change(screen.getByLabelText(/Importe/), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+    await waitFor(() => expect(calls.addMovement).toHaveBeenCalledWith(expect.objectContaining({ walletId: 'w1', kind: 'out', delta: -8 })))
+  })
+  it('se puede cambiar el nombre de la cartera', async () => {
+    render(<WalletTools wallet={wallet({ balance: 5 })} wallets={[wallet({ balance: 5 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)
+    fireEvent.click(screen.getByRole('button', { name: '✏️ Cambiar nombre' }))
+    fireEvent.change(screen.getByLabelText('Nombre de la cartera'), { target: { value: 'Caja del mercado' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar nombre' }))
+    await waitFor(() => expect(calls.renameWallet).toHaveBeenCalledWith('w1', 'Caja del mercado'))
+  })
+  it('la cartera personal de otra persona se puede ver pero no tocar', () => {
+    const w = wallet({ id: 'w9', name: 'Cartera de Ana', ownerMemberId: 'ana', balance: 5 })
+    render(<WalletTools wallet={w} wallets={[w]} myMemberId="yo" bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)
+    expect(screen.getByText(/solo puedes verla/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: '＋ Entrada' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '✏️ Cambiar nombre' })).toBeNull()
   })
 })
 

@@ -8,7 +8,7 @@ export const PLANNED_B: PlannedSeries[] = [
     module: 'economia',
     title: 'Efectivo y carteras',
     summary: 'Crear carteras de efectivo (personales o familiares), apuntar entradas, salidas y ajustes, hacer traspasos y retirar efectivo del banco.',
-    blockedBy: 'Validación en iPhone y Android por la usuaria (carteras de efectivo implementadas el 24/10/2026, pendientes de aprobar).',
+    blockedBy: 'Validación en iPhone y Android por la usuaria (carteras de efectivo implementadas el 24/10/2026 y trasladadas el 25/10/2026 a Economía → Movimientos, pendientes de validar y aprobar).',
   },
   {
     id: 'ser-compras-pagos-devoluciones',

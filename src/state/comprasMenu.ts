@@ -29,7 +29,7 @@ export const COMPRAS_MENU_ITEM_META: Record<FixedComprasMenuItemKey, { icon: str
   Inicio: { icon: '🏠', label: 'Inicio' },
   Lista: { icon: '🛒', label: 'Lista de la compra' },
   Historial: { icon: '📈', label: 'Historial de precios' },
-  Tickets: { icon: '🧾', label: 'Tickets' },
+  Tickets: { icon: '🧾', label: 'Compras registradas' },
   'Estadística compras': { icon: '🍎', label: 'Estadística compras' },
 }
 

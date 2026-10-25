@@ -97,7 +97,7 @@ describe('series B: Compras y Economía', () => {
   it('REGLA: «Comprado» solo cambia el estado de la lista y «Finalizar compra» solo limpia; lo que registra es guardar un ticket o una compra «Sin ticket»', () => {
     const marcar = textOf(getTour('tut-compras-marcar-comprado')!)
     expect(marcar).toMatch(/no registra compra, gasto ni precio/i)
-    expect(marcar).toMatch(/Tickets/)
+    expect(marcar).toMatch(/Compras registradas/)
     const fin = textOf(getTour('tut-compras-finalizar-compra')!)
     expect(fin).toMatch(/no crea gasto en Econom/i)
     expect(fin).toMatch(/Historial/)

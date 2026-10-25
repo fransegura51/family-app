@@ -241,7 +241,7 @@ export const CARDS_DIA_A_DIA: HelpCard[] = [
     module: 'compras',
     title: 'Guardar un ticket de compra',
     synonyms: ['subir ticket', 'foto del ticket', 'leer ticket', 'recibo', 'factura del super'],
-    quick: 'En Compras → Tickets registras una compra «📷 Con ticket» (foto o PDF) o «✍️ Sin ticket» (a mano: importe y fecha). PEPA puede leer las líneas con IA. Al guardar con importe se crea el gasto en Economía, o se une al cargo del banco del mismo importe (±7 días) si ya estaba.',
+    quick: 'En Compras → Compras registradas registras una compra «📷 Con ticket» (foto o PDF) o «✍️ Sin ticket» (a mano: importe y fecha). PEPA puede leer las líneas con IA. Al guardar con importe se crea el gasto en Economía, o se une al cargo del banco del mismo importe (±7 días) si ya estaba.',
     state: 'parcial',
     limits: 'La lectura automática con IA solo la usan personas adultas y depende de que la IA esté activa; si no, o si la lectura se deja algún producto, puedes añadir y corregir las líneas a mano con «+ Añadir productos a mano» antes de guardar (PEPA comprueba que cuadran con el total). Una compra pagada en efectivo no se une a un cargo del banco, y sin importe no se crea gasto.',
     go: { path: '/compras', dest: 'compras.tickets' },

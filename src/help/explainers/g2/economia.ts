@@ -164,7 +164,7 @@ export const expEconomiaConciliacion: HelpExplainer = {
   ],
   ifWrong: [
     'Propuesta que no es: «No es este». Ya confirmada por error: «Desconciliar» en ese pago (y revisa la categoría del movimiento, que no se restaura sola).',
-    'Un ticket o apunte unido al gasto equivocado, o un duplicado: en Compras → Tickets hay un panel de posibles duplicados que aún estoy revisando. Si no basta, cuéntalo en Sugerencias (Ayuda) con la tienda, la fecha y el importe.',
+    'Un ticket o apunte unido al gasto equivocado, o un duplicado: en Compras → Compras registradas hay un panel de posibles duplicados que aún estoy revisando. Si no basta, cuéntalo en Sugerencias (Ayuda) con la tienda, la fecha y el importe.',
     'Que no proponga un cargo que tú ves claro es una limitación normal de las reglas. Que una propuesta con los datos claramente iguales no aparezca nunca, ni tras sincronizar, sí podría ser un fallo: avísalo en Sugerencias.',
   ],
   verified: V,

@@ -81,6 +81,38 @@ export async function listMovements(walletId: string): Promise<CashMovement[]> {
   }))
 }
 
+/** Todos los movimientos de todas las carteras visibles (para filtrar Movimientos por cartera). Sin lanzar: sin carteras o sin 0312 no hay nada que enseñar. */
+export async function listAllMovementsSafe(): Promise<CashMovement[]> {
+  try {
+    const { data, error } = await supabase
+      .from('cash_movements')
+      .select('id, wallet_id, kind, amount, occurred_on, note, transfer_id, expense_id')
+      .order('occurred_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(2000)
+    if (error) return []
+    return (data ?? []).map((m) => ({
+      id: m.id,
+      walletId: m.wallet_id,
+      kind: m.kind as CashMovementKind,
+      amount: Number(m.amount),
+      occurredOn: m.occurred_on,
+      note: m.note,
+      transferId: m.transfer_id,
+      expenseId: m.expense_id,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export async function renameWallet(id: string, name: string): Promise<void> {
+  const clean = name.trim()
+  if (!clean) throw new Error('cash_wallet: ponle un nombre')
+  const { error } = await supabase.from('cash_wallets').update({ name: clean }).eq('id', id)
+  if (error) throw error
+}
+
 export async function addMovement(input: { walletId: string; kind: 'in' | 'out' | 'adjust'; delta: number; note: string; date: string }): Promise<void> {
   const familyId = await currentFamilyId()
   const { error } = await supabase.from('cash_movements').insert({ family_id: familyId, wallet_id: input.walletId, kind: input.kind, amount: input.delta, note: input.note.trim() || null, occurred_on: input.date })

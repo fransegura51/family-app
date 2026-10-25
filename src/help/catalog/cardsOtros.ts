@@ -10,7 +10,7 @@ export const CARDS_OTROS: HelpCard[] = [
     module: 'economia',
     title: 'Apuntar un gasto o un ingreso',
     synonyms: ['anadir gasto', 'nuevo movimiento', 'apuntar un pago', 'registrar ingreso', 'he gastado', 'cuenta de gastos', 'gastos de la casa'],
-    quick: 'En Economía → Movimientos pulsa «+ Nuevo movimiento»: elige Gasto o Ingreso, categoría, fecha e importe, y si quieres establecimiento, etiqueta y concepto. La forma de pago (efectivo, tarjeta…) no se elige aquí, sino al registrar una compra en Compras → Tickets.',
+    quick: 'En Economía → Movimientos pulsa «+ Nuevo movimiento»: elige Gasto o Ingreso, categoría, fecha e importe, y si quieres establecimiento, etiqueta y concepto. La forma de pago (efectivo, tarjeta…) no se elige aquí, sino al registrar una compra en Compras → Compras registradas.',
     state: 'disponible',
     go: { path: '/dinero', dest: 'economia.movimientos' },
     tour: 'tut-economia-apuntar-movimiento',

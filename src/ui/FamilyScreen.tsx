@@ -282,6 +282,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
             <div
               key={m.id}
               className={'card member-row' + (draggingId === m.id ? ' shopping-item-dragging' : '')}
+              {...(m.linkedProfileId === profile.id ? { 'data-help-id': 'family.own-member-row' } : {})}
               style={{ borderLeftColor: m.color, ...(draggingId === m.id ? { transform: `translateY(${dragOffset}px)` } : {}) }}
             >
               <span
@@ -349,7 +350,7 @@ export function FamilyScreen({ profile }: { profile: Profile }) {
                       }}
                     />
                   ) : (
-                    <button type="button" className="link-button" onClick={() => setGuardianFor(m.id)}>
+                    <button type="button" className="link-button" data-help-id="family.guardian-declare" onClick={() => setGuardianFor(m.id)}>
                       👪 Es mi hijo/a
                     </button>
                   ))}
@@ -425,6 +426,7 @@ function PhotoUploadButton({ memberId, onUploaded }: { memberId: string; onUploa
     setUploading(true)
     try {
       await uploadMemberPhoto(memberId, file)
+      emitHelpEvent('family.member-photo-uploaded') // para los tutoriales «Enséñame»: la foto YA está subida
       onUploaded()
     } catch {
       // Se queda como estaba: no hay sitio para un error aquí sin
@@ -725,7 +727,7 @@ export function AddMemberForm({ onAdded, existingMembers, inviterName }: { onAdd
 
   if (offer) {
     return (
-      <div className="card member-form">
+      <div className="card member-form" data-help-id="family.member-offer">
         {showModePrompt && (
           <AccountsModePromptModal
             onClose={() => {

@@ -371,7 +371,7 @@ function ContactCard({
             </button>
           </div>
         ) : (
-          <button type="button" className="link-button contact-card-birthday" onClick={() => setEditingBirthday(true)}>
+          <button type="button" className="link-button contact-card-birthday" data-help-id="contactos.cumple-ficha" onClick={() => setEditingBirthday(true)}>
             {c.birthDate ? `🎂 ${formatBirthDate(c.birthDate)}` : '🎂 Añadir cumpleaños'}
           </button>
         )}
@@ -384,7 +384,7 @@ function ContactCard({
           los símbolos habituales"). */}
       <div className="task-card-actions" data-help-id="contactos.acciones">
         {c.phone && (
-          <a href={`tel:${c.phone}`} className="link-button" aria-label="Llamar">
+          <a href={`tel:${c.phone}`} className="link-button" data-help-id="contactos.llamar" aria-label="Llamar">
             📞
           </a>
         )}
@@ -398,7 +398,7 @@ function ContactCard({
         >
           {sharing ? '…' : '📤'}
         </button>
-        <button type="button" className="link-button" onClick={() => setEditingAll(true)} aria-label="Editar">
+        <button type="button" className="link-button" data-help-id="contactos.editar" onClick={() => setEditingAll(true)} aria-label="Editar">
           ✏️
         </button>
         <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={() => deleteContact(c.id).then(onChanged)} />
@@ -431,6 +431,7 @@ function EditContactForm({
     setError(null)
     try {
       await updateContact(contact.id, { name, category, phone, email, notes, birthDate: birthDate || null })
+      emitHelpEvent('contacts.contact-edited') // para los tutoriales «Enséñame»: los cambios del contacto YA están guardados
       onDone()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -440,7 +441,7 @@ function EditContactForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card member-form">
+    <form onSubmit={handleSubmit} className="card member-form" data-help-id="contactos.editar-form">
       <label>
         Nombre
         <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
@@ -473,7 +474,7 @@ function EditContactForm({
       </label>
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} data-help-id="contactos.editar-guardar">
           {saving ? 'Guardando…' : 'Guardar'}
         </button>
         <button type="button" className="link-button" onClick={onCancel}>

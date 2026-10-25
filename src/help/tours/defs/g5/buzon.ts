@@ -1,13 +1,14 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Buzón de sugerencias (src/ui/SuggestionsScreen.tsx). Visita guiada y un tutorial que termina ANTES de «Enviar sugerencia»: enviarla es una acción que la persona decide sola.
-// Reseñas y opiniones (estrellas que se guardan al tocar) no tiene tutorial: cada toque guarda y publica una valoración.
+// Buzón de sugerencias (src/ui/SuggestionsScreen.tsx). Visita guiada y un capítulo («Escribir una sugerencia», serie «Dar tu opinión»). El capítulo nunca envía por la persona: «Enviar sugerencia» es una
+// acción que decide ella sola; si la pulsa, la pantalla anuncia 'suggestions.sent' y el capítulo pasa al paso siguiente. Reseñas y opiniones (estrellas que se guardan al tocar) es el otro capítulo
+// de la serie (defs/g10/cuentas.ts).
 
 export const visitaBuzon: TourDef = {
   id: 'visita-buzon',
   kind: 'visit',
   module: 'ayuda',
-  version: 1,
+  version: 2,
   title: 'Conoce el Buzón de sugerencias',
   summary: 'Dónde dejar una idea para mejorar PEPA y cómo ver su estado.',
   cardId: 'ini-sugerencias',
@@ -58,9 +59,8 @@ export const visitaBuzon: TourDef = {
 export const tutBuzonEscribirSugerencia: TourDef = {
   id: 'tut-buzon-escribir-sugerencia',
   module: 'ayuda',
-  group: 'Ayuda',
-  summary: 'Escribir una sugerencia. El tutorial termina antes de enviarla: eso lo decides tú.',
-  version: 1,
+  summary: 'Escribir una sugerencia. Enviarla es decisión tuya: el capítulo nunca la envía por ti.',
+  version: 2,
   title: 'Escribir una sugerencia',
   cardId: 'ini-sugerencias',
   durationSec: 60,
@@ -68,27 +68,27 @@ export const tutBuzonEscribirSugerencia: TourDef = {
   steps: [
     {
       id: 'escribir',
-      text: 'Escribe tu idea con tus palabras, por ejemplo qué botón añadirías o qué te cuesta encontrar. No pongas contraseñas ni datos privados. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      text: 'Escribe tu idea con tus palabras, por ejemplo qué botón añadirías. No pongas contraseñas ni datos privados: la ve toda tu familia. Se envía de verdad solo cuando pulses «Enviar sugerencia». Al terminar, pulsa ✓ o «Siguiente».',
       target: 'suggestions.message',
       completeOn: [{ type: 'entered', target: 'suggestions.message', min: 5 }],
       manualNext: true,
     },
     {
       id: 'enviar',
-      text: 'El botón «📮 Enviar sugerencia» la dejaría en el buzón. No se envía nada hasta que tú lo pulses, y yo no lo pulso por ti. Si no quieres enviarla, sal del tutorial y borra el texto.',
+      text: 'El botón «📮 Enviar sugerencia» la deja en el buzón. Yo no lo pulso por ti. Si la envías, seguiré yo; si no quieres enviarla, pulsa «Siguiente» y borra el texto.',
       target: 'suggestions.send',
-      completeOn: [],
+      completeOn: [{ type: 'event', name: 'suggestions.sent' }],
       manualNext: true,
     },
     {
       id: 'estados',
-      text: 'Al enviar una, aparece en esta lista como «Pendiente». Después puede pasar a «Aplicada» o «Descartada». Mientras está pendiente puedes retirarla con «Retirar».',
+      text: 'Las sugerencias salen en esta lista, la ve toda tu familia. Al enviarla queda «Pendiente»; después puede pasar a «Aplicada» o «Descartada». Mientras está pendiente puedes retirarla con «Retirar».',
       target: 'suggestions.list',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. Tu texto sigue en el cuadro, sin enviar: cuando quieras, pulsa «📮 Enviar sugerencia» tú misma, o bórralo.',
+  finishText: 'Eso es todo. Si no la enviaste, tu texto sigue en el cuadro: cuando quieras, pulsa «📮 Enviar sugerencia» tú misma, o bórralo.',
   next: ['ini-sugerencias', 'ini-resenas'],
 }
 

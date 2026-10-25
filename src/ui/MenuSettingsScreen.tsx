@@ -274,7 +274,7 @@ function DateFilterSettingsSection() {
   if (loading) return null
 
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.filtros-temporales">
       <strong>📅 Filtros temporales</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Qué filtros de fecha ("Hoy", "Mes contable"...) aparecen en los desplegables "📅 Fecha" de Economía y
@@ -413,7 +413,7 @@ function MovementColorModeSection() {
 function BankAccountsSection() {
   const [open, setOpen] = useState(false)
   return (
-    <div className="card event-card" style={{ marginBottom: 16 }}>
+    <div className="card event-card" style={{ marginBottom: 16 }} data-help-id="economia.cuentas-bancarias">
       <strong>🏦 Cuentas bancarias</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Conecta o desconecta bancos y define de quién es cada cuenta.
@@ -564,6 +564,7 @@ function BabyUntilSection() {
     setError(null)
     try {
       await updateBabyUntilMonths(next)
+      emitHelpEvent('config.baby-until-saved') // para los tutoriales «Enséñame»: la edad YA está guardada
     } catch (err) {
       setMonths(previous)
       setError(errorMessage(err, 'No se pudo guardar — puede que solo un admin de la familia pueda cambiarlo.'))
@@ -576,12 +577,12 @@ function BabyUntilSection() {
   const label = (m: number) => (m % 12 === 0 ? `${m / 12} ${m === 12 ? 'año' : 'años'}` : `${m} meses`)
 
   return (
-    <div className="card event-card" style={{ marginBottom: 12 }}>
+    <div className="card event-card" style={{ marginBottom: 12 }} data-help-id="config.baby-until">
       <strong>👶 De bebé a niño</strong>
       <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
         Los percentiles de crecimiento son solo para bebés. Cuando un bebé cumple esta edad, su ficha pasa sola a niño/a (con el medidor de altura ilustrado).
       </p>
-      <div className="filter-row" style={{ marginTop: 8 }}>
+      <div className="filter-row" style={{ marginTop: 8 }} data-help-id="config.baby-until-options">
         {BABY_UNTIL_OPTIONS.map((m) => (
           <button key={m} type="button" className={'chip' + (months === m ? ' chip-active' : '')} onClick={() => choose(m)}>
             {label(m)}
@@ -599,9 +600,9 @@ function BabyUntilSection() {
 // Configuración, pero es imprescindible que en cada lugar donde se
 // utilicen haya un acceso directo a la gestión". Aquí solo está el botón
 // (la ventana de gestión es global, ver state/managers.ts).
-function ManagerLinkSection({ icon, title, text, kind }: { icon: string; title: string; text: string; kind: ManagerKind }) {
+function ManagerLinkSection({ icon, title, text, kind, helpId }: { icon: string; title: string; text: string; kind: ManagerKind; helpId?: string }) {
   return (
-    <div className="card event-card" style={{ marginBottom: 12 }}>
+    <div className="card event-card" style={{ marginBottom: 12 }} data-help-id={helpId}>
       <strong>
         {icon} {title}
       </strong>
@@ -1707,6 +1708,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Carrusel de arriba: lista de la compra, calendario, Comunidad y fotos"
         open={openGroup === 'inicio'}
         onToggle={() => toggle('inicio')}
+        helpId="config.group-inicio"
       >
         <HomeCarouselCard />
       </SettingsGroup>
@@ -1722,6 +1724,7 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
         summary="Cuándo un bebé pasa a niño"
         open={openGroup === 'familia'}
         onToggle={() => toggle('familia')}
+        helpId="config.group-familia"
       >
         <BabyUntilSection />
       </SettingsGroup>
@@ -1772,8 +1775,9 @@ export function MenuSettingsScreen({ profile }: { profile: Profile }) {
           title="Categorías"
           text="Crea, renombra o ordena las categorías y subcategorías de gasto e ingreso."
           kind="categorias"
+          helpId="economia.categorias"
         />
-        <ManagerLinkSection icon="🏷️" title="Etiquetas" text="Crea, cambia de color o borra las etiquetas de los movimientos." kind="etiquetas" />
+        <ManagerLinkSection icon="🏷️" title="Etiquetas" text="Crea, cambia de color o borra las etiquetas de los movimientos." kind="etiquetas" helpId="economia.etiquetas" />
         <MovementColorModeSection />
       </SettingsGroup>
 

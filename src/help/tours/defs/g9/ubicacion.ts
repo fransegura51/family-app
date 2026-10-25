@@ -1,90 +1,33 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Ubicación (grupo g9): ver a la familia en el mapa, compartir la ubicación desde este móvil y el permiso «Permitir todo el tiempo» de Android. Marcas `data-help-id` en
-// src/ui/LocationScreen.tsx y src/ui/BackgroundLocationCard.tsx.
+// Ubicación (grupo g9): compartir la ubicación desde este móvil y el permiso «Permitir todo el tiempo» de Android. Marcas `data-help-id` en src/ui/LocationScreen.tsx y src/ui/BackgroundLocationCard.tsx.
 // Ninguno activa el consentimiento de nadie, ni elige quién lleva el móvil, ni empieza a compartir posición: «Activar/Desactivar» y los nombres de «Este dispositivo» solo se señalan.
-// El permiso de Android se concede en los ajustes del sistema, fuera de PEPA: el tutorial llega hasta el botón «Abrir ajustes de PEPA» y explica el resto.
-
-export const tutUbicacionVerMiembros: TourDef = {
-  id: 'tut-ubicacion-ver-miembros',
-  module: 'ubicacion',
-  group: 'Ubicación',
-  summary: 'Mira dónde está cada persona que comparte su ubicación y su recorrido de las últimas 24 horas.',
-  version: 1,
-  title: 'Ver dónde está cada miembro',
-  cardId: 'ubi-ver',
-  durationSec: 90,
-  startPath: '/ubicacion',
-  startDest: 'ubicacion.mapa',
-  steps: [
-    {
-      id: 'mapa',
-      text: 'Este es el mapa de la familia. Solo salen las personas que han activado compartir su ubicación, con su recorrido de las últimas 24 horas. Esta visita no comparte nada.',
-      target: 'ubicacion.map',
-      completeOn: [],
-      manualNext: true,
-    },
-    {
-      id: 'personas',
-      text: 'Arriba están las personas de la familia. Toca una para ver su información debajo del mapa. El símbolo ⏸ significa que esa persona no comparte su ubicación.',
-      target: 'ubicacion.member-chips',
-      completeOn: [
-        { type: 'click', target: 'ubicacion.member-chips' },
-        { type: 'appear', target: 'ubicacion.member-info' },
-      ],
-      manualNext: true,
-      optional: true,
-    },
-    {
-      id: 'info',
-      text: 'Aquí ves si comparte, cuándo se actualizó su posición y «📍 Abrir en Google Maps». Si puedes cambiar su permiso, también sale «Activar» o «Desactivar»: eso lo decides tú, yo no lo toco.',
-      target: 'ubicacion.member-info',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-    },
-    {
-      id: 'lineas',
-      text: 'Línea continua: recorrido registrado. Línea de rayas: tramo sin datos, porque el móvil solo manda su posición con la app abierta. Pasadas 24 horas, el recorrido se borra solo.',
-      target: 'ubicacion.intro',
-      completeOn: [],
-      manualNext: true,
-    },
-  ],
-  finishText: 'Eso es todo. Si alguien no sale en el mapa, es que todavía no ha activado su ubicación; se hace en «Compartir ubicación».',
-  next: ['ubi-lugares', 'ubi-compartir-movil'],
-}
+// El permiso de Android se concede en los ajustes del sistema, fuera de PEPA: el capítulo llega hasta el botón «Abrir ajustes de PEPA» y explica el resto.
+// «Ver dónde está cada miembro» ya no es un tutorial: lo cubre la visita «Conoce Ubicación» (alias → tut-ubicacion-compartir-movil).
+// Sobre la ubicación con la app CERRADA: Android sí (con «Permitir todo el tiempo»); iPhone SIN PROBAR en un iPhone real (docs/APP_IOS.md): no se afirma que funcione.
 
 export const tutUbicacionCompartirMovil: TourDef = {
   id: 'tut-ubicacion-compartir-movil',
   module: 'ubicacion',
-  group: 'Ubicación',
-  summary: 'Dónde se activa el consentimiento y se elige quién lleva este móvil (sin activar nada por ti).',
-  version: 1,
-  title: 'Compartir mi ubicación desde este móvil',
+  summary: 'Dónde se activa el permiso de cada persona, quién lleva este móvil y qué pasa con la app cerrada (sin activar nada por ti).',
+  version: 2,
+  title: 'Compartir mi ubicación',
   cardId: 'ubi-compartir-movil',
   durationSec: 100,
   startPath: '/ubicacion',
-  startDest: 'ubicacion.mapa',
+  startDest: 'ubicacion.compartir',
+  readyOn: ['ubicacion.consent-list'],
   steps: [
     {
-      id: 'pestana',
-      text: 'Pulsa la pestaña «👥 Compartir ubicación», debajo del mapa.',
-      target: 'ubicacion.tab-share',
-      completeOn: [{ type: 'appear', target: 'ubicacion.consent-list' }],
-      skipIf: [{ type: 'appear', target: 'ubicacion.consent-list' }],
-    },
-    {
       id: 'consentimiento',
-      text: 'En «¿Quién puede compartir?» cada persona se activa con su botón. Tú solo puedes activar la tuya; la administración, la de los demás. Mientras esté en «Desactivado», no se guarda ninguna posición. Yo no lo pulso.',
+      text: 'En «¿Quién puede compartir?» cada persona se activa con su botón: tú solo la tuya; la administración, la de todos. Mientras diga «Desactivado», no se guarda ninguna posición. Si te activas tú, este móvil empieza a compartir como tú. Yo no lo pulso.',
       target: 'ubicacion.consent-list',
       completeOn: [],
       manualNext: true,
-      optional: true,
     },
     {
       id: 'dispositivo',
-      text: 'En «Este dispositivo» eliges quién lleva este móvil, entre las personas con la ubicación activada. Desde ahí, el móvil empieza a mandar su posición como esa persona. Si activas la tuya, el móvil te pedirá permiso.',
+      text: 'En «Este dispositivo» eliges quién lleva este móvil, entre las personas con la ubicación activada. Desde ahí el móvil manda su posición como esa persona. Para parar, «Dejar de compartir». El móvil puede pedirte permiso.',
       target: 'ubicacion.device-picker',
       completeOn: [],
       manualNext: true,
@@ -92,9 +35,28 @@ export const tutUbicacionCompartirMovil: TourDef = {
     },
     {
       id: 'limite',
-      text: 'La posición se manda mientras PEPA está abierta. Con la app cerrada solo funciona en las apps de Android e iPhone, no en la web.',
+      text: 'En la web, la posición se manda solo con PEPA abierta. Con la app cerrada: en la app de Android sí (con «Permitir todo el tiempo»); en la de iPhone todavía no está comprobado, así que no cuentes con ello.',
       completeOn: [],
       manualNext: true,
+    },
+    {
+      id: 'estoy-aqui',
+      text: 'Si solo quieres decir dónde estás ahora, sin activar nada, abre la pestaña «📍 ¡Estoy aquí!».',
+      target: 'ubicacion.tab-here',
+      completeOn: [
+        { type: 'click', target: 'ubicacion.tab-here' },
+        { type: 'appear', target: 'ubicacion.estoy-aqui-boton' },
+      ],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'compartir-aqui',
+      text: '«📍 Compartir mi ubicación actual» abre el menú de compartir de tu móvil con un enlace de Google Maps: no activa nada. Debajo puedes guardar este sitio como «Casa» o «Trabajo» (eso sí se guarda). Yo no pulso nada.',
+      target: 'ubicacion.estoy-aqui-boton',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
     },
   ],
   finishText: 'Eso es todo. No he activado nada: cuando quieras compartir tu ubicación, hazlo tú desde tu botón y elige este móvil en «Este dispositivo».',
@@ -104,11 +66,10 @@ export const tutUbicacionCompartirMovil: TourDef = {
 export const tutUbicacionPermisoAndroid: TourDef = {
   id: 'tut-ubicacion-permiso-android',
   module: 'ubicacion',
-  group: 'Ubicación',
   summary: 'Qué hacer cuando PEPA avisa de que falta el permiso «Permitir todo el tiempo» en Android.',
   access: { platforms: ['android'] },
-  version: 1,
-  title: 'Permiso de ubicación con la app cerrada en Android',
+  version: 2,
+  title: 'Con la app cerrada (solo Android)',
   cardId: 'ubi-permiso-android',
   durationSec: 80,
   startPath: '/menu-organizar',
@@ -139,7 +100,7 @@ export const tutUbicacionPermisoAndroid: TourDef = {
     },
     {
       id: 'sin-tarjeta',
-      text: 'Al volver a PEPA, la tarjeta desaparece sola. Si no la ves, o ya tienes el permiso o no estás en la app de Android: no hay nada más que hacer.',
+      text: 'Al volver a PEPA, la tarjeta desaparece sola. Si no la ves, o ya tienes el permiso o no estás en la app de Android: no hay nada más que hacer. En iPhone, la ubicación con la app cerrada todavía no está comprobada.',
       completeOn: [],
       manualNext: true,
     },
@@ -148,4 +109,4 @@ export const tutUbicacionPermisoAndroid: TourDef = {
   next: ['ubi-lugares', 'ubi-compartir-movil'],
 }
 
-export const TOURS_G9_UBICACION: TourDef[] = [tutUbicacionVerMiembros, tutUbicacionCompartirMovil, tutUbicacionPermisoAndroid]
+export const TOURS_G9_UBICACION: TourDef[] = [tutUbicacionCompartirMovil, tutUbicacionPermisoAndroid]

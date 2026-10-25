@@ -104,7 +104,7 @@ export const expFamiliaDarAcceso: HelpExplainer = {
   limits: [
     'La invitación no se puede ampliar: pasadas las 24 horas hay que generar otra.',
     'El código de invitación no es el código de 6 cifras del correo: ese solo confirma un correo.',
-    'En el menú ⋯ de las fichas sin cuenta sigue existiendo el método antiguo «🔑 Generar código de acceso» (solo administración); funciona igual: un código de un solo uso de 24 horas.',
+    'En el menú ⋯ de las fichas sin cuenta sigue existiendo el método antiguo «🔑 Generar código de acceso» (solo administración). Da también un código de un solo uso de 24 horas, pero las instrucciones que enseña en pantalla son de antes: el camino actual es «🔑 Dar acceso a PEPA» y, para quien recibe el código, «¿No tienes cuenta? Tengo una invitación».',
   ],
   ifWrong: [
     'Si el código «no es válido o ha caducado», pide otro a quien te invitó: caducan a las 24 horas y solo valen una vez.',
@@ -121,7 +121,7 @@ export const expFamiliaDarAcceso: HelpExplainer = {
     'supabase/migrations/0301_invitation_hardening.sql',
     'docs/CUENTAS_PADRES_HIJOS_E_INVITACIONES.md',
   ],
-  tour: 'fam-anadir-miembro',
+  tour: 'tut-familia-codigo-acceso',
   go: { path: '/familia', dest: 'familia.miembros' },
   labels: ['🔑 Dar acceso a PEPA', '🔑 Generar código de acceso', '👪 Es mi hijo/a', 'Sin acceso a PEPA', 'Dejar de figurar como', 'Generar otra'],
   cardIds: ['fam-codigo-acceso', 'fam-anadir-miembro', 'fam-invitado-limitado'],

@@ -25,6 +25,8 @@ export function buildHelpContext(profile: Pick<Profile, 'role' | 'allowedSection
 // Módulo en el que está la persona según la ruta (para la ayuda contextual).
 export function moduleForPath(pathname: string): HelpModuleId | null {
   if (pathname === '/' || pathname === '') return 'inicio'
+  // El buzón de sugerencias y las reseñas son parte de «Ayuda, sugerencias y opiniones» aunque cuelguen de otra ruta.
+  if (pathname === '/sugerencias' || pathname.startsWith('/sugerencias/') || pathname === '/resenas' || pathname.startsWith('/resenas/')) return 'ayuda'
   const mod = [...HELP_MODULES]
     .filter((m) => m.path !== '/' && (pathname === m.path || pathname.startsWith(`${m.path}/`)))
     .filter((m) => !['notificaciones', 'cuentas'].includes(m.id)) // comparten ruta con Configuración

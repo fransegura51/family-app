@@ -43,6 +43,14 @@ export interface TourStep {
   group?: string
   /** Texto del botón que salta el grupo (por defecto «Saltar opciones»). */
   skipGroupLabel?: string
+  /** Otros controles que la tarjeta NO puede tapar mientras dura este paso (marcas `data-help-id`), además de `target`: p. ej. las flechas de fecha que el texto manda pulsar. */
+  keepVisible?: string[]
+  /** El control abre un selector DEL SISTEMA (cámara, fotos, archivos, fecha): al tocarlo la tarjeta se recoge en una píldora que no estorba hasta que la persona vuelve o elige. */
+  native?: boolean
+  /** Añade un botón para continuar sin hacer este paso (p. ej. «Continuar sin foto»). Nunca en pasos sensibles. */
+  skipLabel?: string
+  /** Mensaje propio cuando el control no está en pantalla (en vez del genérico): qué hace falta para verlo. */
+  missingText?: string
   /** Explicaciones breves desplegables bajo el texto del paso (p. ej. qué significa cada tipo de miembro). Cerradas por defecto, para no saturar la tarjeta. */
   details?: Array<{ title: string; text: string }>
   /** Título del desplegable de `details`. */
@@ -74,6 +82,10 @@ export interface TourDef {
   /** Pantallas donde el tutorial tiene sentido; si la persona se va a otra, el tutorial se pausa sin bloquear nada. Por defecto, solo `startPath`. */
   paths?: string[]
   steps: TourStep[]
+  /** Marcas (`data-help-id`) que deben estar en pantalla antes del primer paso (p. ej. algo que solo existe cuando ya cargaron los datos). Se espera a ellas, con un máximo, antes de empezar. */
+  readyOn?: string[]
+  /** Datos que el capítulo necesita (un producto, un evento…). Si falta el control, se avisa con este mensaje y se ofrece verlo solo leyendo o salir. */
+  needs?: Array<{ target: string; message: string }>
   /** Mensaje final. */
   finishText: string
   /** Fichas de Ayuda que se sugieren al terminar («¿qué otra sección quieres conocer?»). */
@@ -88,6 +100,8 @@ export interface TourState {
   status: TourStatus
   /** Por qué está pausado o roto. */
   reason?: 'off-route' | 'target-missing'
+  /** «Solo leer»: la persona eligió ver el capítulo sin practicar (falta algún dato). Los controles que falten no rompen nada y todos los pasos se pueden pasar con «Siguiente»; el tutorial sigue sin ejecutar nada. */
+  readOnly?: boolean
   /** Números de paso que se omitieron (opcionales sin control, o ya cumplidos). */
   skipped: number[]
 }

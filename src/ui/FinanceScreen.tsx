@@ -809,7 +809,7 @@ function EconomiaMenuDropdown({
   // Este menú solo deja «📌 Sacar» / «📍 Quitar» (poner el acceso como botón en la pantalla). Ya no hay modo «Editar» (24/10/2026): los «accesos personalizados» no abrían
   // ninguna pantalla y se retiraron; el orden y las categorías que cada persona ya tenía guardados se respetan tal cual.
   return (
-    <div className="economia-menu-dropdown">
+    <div className="economia-menu-dropdown" data-help-id="finance.menu-panel">
       {layout.map((group) => {
         const items = group.items.filter((entry) => !isCustomEconomiaMenuKey(entry.key))
         if (items.length === 0) return null
@@ -835,6 +835,7 @@ function EconomiaMenuDropdown({
                   <button
                     type="button"
                     className="economia-menu-pin"
+                    data-help-id="finance.menu-pin"
                     onClick={() => onTogglePin(entry.key)}
                     aria-label={pinnedItems.includes(entry.key) ? `Quitar ${meta.label} de la pantalla de Economía` : `Sacar ${meta.label} a la pantalla de Economía`}
                   >
@@ -1269,7 +1270,7 @@ export function BalanceTrendCard() {
     .filter((x): x is { w: CashWallet; start: string } => x.start != null && x.start > effectiveFrom && x.start <= to)
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="finance.balance-trend">
       <strong>Tendencia del saldo</strong>
       {accounts.length + wallets.length > 1 && (
         <div className="filter-row" style={{ marginTop: 8 }}>
@@ -1834,7 +1835,7 @@ export function BankTab({
               {syncing ? 'Sincronizando…' : '🔄 Sincronizar movimientos'}
             </button>
             <div style={{ marginTop: 6 }}>
-              <select value={syncDays} onChange={(e) => setSyncDays(Number(e.target.value))}>
+              <select value={syncDays} data-help-id="finance.bank-sync-days" onChange={(e) => setSyncDays(Number(e.target.value))}>
                 <option value={30}>Traer al menos: último mes</option>
                 <option value={90}>Traer al menos: últimos 3 meses</option>
               </select>
@@ -2007,7 +2008,7 @@ function DateFilterTab({
         📅 Fecha: {label(preset)} {open ? '▲' : '▼'}
       </button>
       {open && (
-        <div className="category-picker-panel" style={{ maxHeight: 'none', marginTop: 6 }}>
+        <div className="category-picker-panel" data-help-id="finance.date-panel" style={{ maxHeight: 'none', marginTop: 6 }}>
           {presets.map((p) => (
             <button
               key={p}
@@ -3333,7 +3334,7 @@ function PeriodComparison({
   }
 
   return (
-    <div className="card event-card" style={{ marginTop: 12 }}>
+    <div className="card event-card" style={{ marginTop: 12 }} data-help-id="finance.stats-compare">
       <strong>Comparado con el periodo anterior</strong>
       <p className="muted" style={{ margin: '4px 0 10px', fontSize: 12 }}>
         {cp.previousLabel}
@@ -3413,7 +3414,7 @@ function EvolucionTemporal({
   const maxAmount = Math.max(1, ...rows.map((r) => Math.max(r.income, r.spent)))
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="finance.stats-evolution">
       <strong>Evolución temporal — últimos 6 meses</strong>
       <div className="filter-row" style={{ marginTop: 6, marginBottom: 2 }}>
         <button type="button" className={'chip' + (mode === 'real' ? ' chip-active' : '')} onClick={() => setMode('real')}>
@@ -3865,7 +3866,7 @@ export function ExpensesTab({
       )}
 
       {filter ? (
-        <div className="card event-card">
+        <div className="card event-card" data-help-id="finance.movements-filter-card">
           <strong>Filtro: {filter.label}</strong>
           <p className="muted" style={{ margin: '4px 0' }}>
             {monthExpenses.length} {monthExpenses.length === 1 ? 'registro' : 'registros'}
@@ -4327,8 +4328,8 @@ function MovementFormFields({
   return (
     <>
       {mode === 'create' && (
-        <div className="filter-row">
-          <button type="button" className={'chip' + (!draft.isIncome ? ' chip-active' : '')} data-help-id="finance.movement-type" onClick={() => onChange(switchMovementType(draft, false))}>
+        <div className="filter-row" data-help-id="finance.movement-type">
+          <button type="button" className={'chip' + (!draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, false))}>
             Gasto
           </button>
           <button type="button" className={'chip' + (draft.isIncome ? ' chip-active' : '')} onClick={() => onChange(switchMovementType(draft, true))}>
@@ -4409,7 +4410,7 @@ function MovementFormFields({
           {/* Petición real: «quiero que yo pueda seleccionar cada gasto, si es fijo o es variable» — a diferencia
               de Debo/Necesito/Quiero (solo por categoría), esto se puede pisar para este movimiento en concreto.
               «Según categoría» es la opción normal y NO convierte el movimiento en Fijo ni Variable. */}
-          <div className="filter-row" style={{ margin: '4px 0 0' }}>
+          <div className="filter-row" style={{ margin: '4px 0 0' }} data-help-id="finance.movement-fixed">
             <button type="button" className={'chip' + (draft.isFixedOverride === null ? ' chip-active' : '')} onClick={() => onChange({ ...draft, isFixedOverride: null })}>
               Según categoría{classification.isFixed != null ? ` (${classification.isFixed ? 'Fijo' : 'Variable'})` : ''}
             </button>
@@ -4669,7 +4670,7 @@ export function CategoriesModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" data-help-id="finance.categories-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
             Categorías
@@ -4750,7 +4751,7 @@ export function TagsModal({ tags, onClose, onChanged }: { tags: Tag[]; onClose: 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" data-help-id="finance.tags-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
             Etiquetas
@@ -5349,7 +5350,7 @@ export function ReceiptsTab() {
           guardados tengo de Mercadona 583, pero son los del mes pasado
           y los de este... quiero filtrarme solo por los de este mes o
           por esta semana". */}
-      <h2 className="section-title">Historial de compras</h2>
+      <h2 className="section-title" data-help-id="shopping.receipts-saved">Historial de compras</h2>
       <p className="muted" style={{ marginTop: -8 }}>
         Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
       </p>
@@ -5367,6 +5368,7 @@ export function ReceiptsTab() {
               <button
                 type="button"
                 className="store-folder-header"
+                data-help-id="shopping.receipt-folder"
                 onClick={() => setExpandedStore(isOpen ? null : store)}
               >
                 <span className="store-folder-icon">
@@ -5514,7 +5516,7 @@ export function ReceiptSpendSummary({
   const byPayment = showBreakdown ? spendByPayment(spendItems, { legs: payments, cashLinkedExpenseIds, expenseSource }) : null
 
   return (
-    <div className="card event-card" data-help-id="shopping.spend-summary">
+    <div className="card event-card" data-help-id="shopping.receipts-summary">
       <strong>Cuánto he gastado</strong>
       <DateFilterTab
         preset={preset}
@@ -5525,7 +5527,7 @@ export function ReceiptSpendSummary({
         onCustomToChange={onCustomToChange}
       />
       {/* Mismo formato que «📅 Fecha»: botón + panel de opciones (antes la tienda era un desplegable distinto y confundía). */}
-      <div style={{ margin: '8px 0' }}>
+      <div style={{ margin: '8px 0' }} data-help-id="shopping.receipts-store-filter">
         <button type="button" className={'chip' + (storeOpen ? ' chip-active' : '')} onClick={() => setStoreOpen((v) => !v)}>
           🏬 Tienda: {selectedStore === 'Todas' ? 'Todas las tiendas' : selectedStore} {storeOpen ? '▲' : '▼'}
         </button>
@@ -5566,7 +5568,7 @@ export function ReceiptSpendSummary({
         </div>
       )}
       {outsideRange.length > 0 && (
-        <p className="muted" style={{ fontSize: 13 }}>
+        <p className="muted" style={{ fontSize: 13 }} data-help-id="shopping.receipts-outside">
           ℹ️ Estás viendo las compras del periodo elegido en «📅 Fecha» ({from} → {to}). Hay {outsideRange.length}{' '}
           {outsideRange.length === 1 ? 'compra más guardada' : 'compras más guardadas'} en otras fechas.{' '}
           <button type="button" className="link-button" onClick={showAllTickets}>
@@ -6048,7 +6050,7 @@ function ReceiptRow({
             </span>
           )}
         </button>
-        <div className="receipt-row-actions">
+        <div className="receipt-row-actions" data-help-id="shopping.receipt-actions">
           {hasTicket ? (
             <>
               {receipt.storagePath && (
@@ -6704,11 +6706,11 @@ function ReceiptForm({
         <>
           <h2>{attachTo ? 'Añadir el ticket a esta compra' : noTicket ? 'Compra sin ticket' : 'Registrar compra'}</h2>
           {!attachTo && (
-            <div className="chip-row" role="group" aria-label="Tipo de compra">
-              <button type="button" className={noTicket ? 'chip' : 'chip chip-active'} aria-pressed={!noTicket} onClick={() => setNoTicket(false)}>
+            <div className="chip-row" role="group" aria-label="Tipo de compra" data-help-id="shopping.receipt-mode">
+              <button type="button" className={noTicket ? 'chip' : 'chip chip-active'} aria-pressed={!noTicket} data-help-id="shopping.receipt-with" onClick={() => setNoTicket(false)}>
                 📷 Con ticket
               </button>
-              <button type="button" className={noTicket ? 'chip chip-active' : 'chip'} aria-pressed={noTicket} onClick={() => { setNoTicket(true); setFile(null); setLines([]); setOcrStatus('idle') }}>
+              <button type="button" className={noTicket ? 'chip chip-active' : 'chip'} aria-pressed={noTicket} data-help-id="shopping.receipt-manual" onClick={() => { setNoTicket(true); setFile(null); setLines([]); setOcrStatus('idle') }}>
                 ✍️ Sin ticket
               </button>
             </div>
@@ -6814,7 +6816,7 @@ function ReceiptForm({
           Categoría
           <CategorySelect value={category} onChange={setCategory} categories={categories} compact emptyLabel={receipt && receipt.category == null ? `⏳ ${PENDING_LABEL}` : undefined} />
         </label>
-        <label>
+        <label data-help-id="shopping.receipt-who">
           ¿Quién? (opcional)
           <select value={purchasedByMemberId} onChange={(e) => setPurchasedByMemberId(e.target.value)}>
             <option value="">—</option>
@@ -6851,7 +6853,7 @@ function ReceiptForm({
       {/* Añadir productos A MANO: al subir un ticket nuevo (con o sin «Leer ticket», o si la lectura no reconoce nada o falla) y en una compra sin ticket.
           Es el mismo editor de líneas de siempre; no hay un formulario aparte. */}
       {mode === 'add' && !showDetail && lines.length === 0 && ocrStatus !== 'reading' && (noTicket || file !== null) && (
-        <button type="button" className="link-button" onClick={() => { setShowDetail(true); addBlankLine() }}>
+        <button type="button" className="link-button" data-help-id="shopping.receipt-add-lines" onClick={() => { setShowDetail(true); addBlankLine() }}>
           {noTicket ? '+ Añadir productos (opcional)' : '+ Añadir productos a mano (opcional)'}
         </button>
       )}
@@ -6965,7 +6967,7 @@ function ReceiptForm({
             )
           })}
           {lines.length === 0 && <p className="muted">{ocrStatus === 'done' ? 'No se ha reconocido ningún producto: añádelos con «+ Añadir línea».' : 'Todavía no hay productos: pulsa «+ Añadir línea».'}</p>}
-          <button type="button" className="link-button" onClick={addBlankLine}>
+          <button type="button" className="link-button" data-help-id="shopping.receipt-add-line" onClick={addBlankLine}>
             + Añadir línea
           </button>
           {linesSummary && (
@@ -6973,6 +6975,7 @@ function ReceiptForm({
               className={linesSummary.tone === 'warn' ? 'error' : 'muted'}
               role="status"
               data-testid="ticket-lines-summary"
+              data-help-id="shopping.receipt-lines-summary"
               style={{ margin: '6px 0 0' }}
             >
               {linesSummary.text}
@@ -7905,7 +7908,7 @@ export function BudgetsTab({
           total ya no es solo Alimentación, es Alimentación + No
           alimentos, con el peso de cada uno debajo. */}
       {group === 'alimentacion' && (
-        <div className="card event-card">
+        <div className="card event-card" data-help-id="shopping.stats-total">
           <strong>Total Registrado en Compras</strong>
           <p style={{ margin: '4px 0' }}>
             {comprasTotal.toFixed(2)} €{' '}
@@ -8107,7 +8110,7 @@ export function BudgetsTab({
               Alimentación y Otros" — un único chip gobierna ahora los
               DOS dónuts (por tienda y por clasificación) a la vez, en
               vez de mostrar siempre los dos lados de golpe. */}
-          <div className="filter-row">
+          <div className="filter-row" data-help-id="shopping.stats-scope">
             <button
               type="button"
               className={'chip' + (storeDonutScope === 'alimentacion' ? ' chip-active' : '')}
@@ -8123,12 +8126,14 @@ export function BudgetsTab({
               Otros
             </button>
           </div>
+          <div data-help-id="shopping.stats-donuts">
           <LinkedDonutCard
             title="Reparto del gasto por tienda"
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
             onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
           />
+          </div>
           <LinkedDonutCard
             title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
             monthLabel={periodTitle}
@@ -8142,7 +8147,7 @@ export function BudgetsTab({
           />
           {ticketDisplayReceipts.length > 0 && (
             <>
-              <h2 className="section-title" style={{ marginTop: 16 }}>
+              <h2 className="section-title" style={{ marginTop: 16 }} data-help-id="shopping.stats-ticket-only">
                 Solo con ticket subido
               </h2>
               <p className="muted" style={{ fontSize: 12, marginTop: -4, marginBottom: 8 }}>
@@ -8418,7 +8423,7 @@ function BudgetsSection({
         {MONTH_LABELS[current.labelMonth0]} {current.labelYear} (mes contable en curso)
       </p>
 
-      <div className="event-list" style={{ marginBottom: 8 }}>
+      <div className="event-list" style={{ marginBottom: 8 }} data-help-id="finance.budget-list">
         {currentBudgets.map(renderBudgetRow)}
         {currentBudgets.length === 0 && (
           <p className="muted">Todavía no hay presupuesto para {MONTH_LABELS[current.labelMonth0]} {current.labelYear}.</p>
@@ -8458,6 +8463,7 @@ function BudgetsSection({
         type="button"
         className="link-button section-title"
         style={{ marginTop: 8, display: 'block' }}
+        data-help-id="finance.budget-history"
         onClick={() => setHistoryOpen((v) => !v)}
       >
         {historyOpen ? '▾' : '▸'} Historial
@@ -8715,7 +8721,7 @@ function BudgetsOverview({
   const rangeLabel = `${PRESET_LABELS[preset]} (${from} a ${to})`
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="finance.budget-overview">
       <strong>Resumen</strong>
       {group === 'alimentacion' && (
         <p className="muted" style={{ marginTop: 0 }}>Solo registro — no tiene presupuesto ni ingresos propios.</p>
@@ -8899,6 +8905,7 @@ function BudgetsOverview({
         type="button"
         className="link-button"
         style={{ marginTop: 8 }}
+        data-help-id="finance.budget-report"
         onClick={() =>
           openBudgetReport({
             pending: pendingInRange.count > 0 ? pendingInRange : undefined,
@@ -9897,6 +9904,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 className="link-button"
                 aria-label={`Más acciones — ${o.title}`}
                 aria-expanded={menuOpen}
+                data-help-id="finance.forecast-menu"
                 style={{ fontSize: 18, padding: '0 4px', lineHeight: 1, flexShrink: 0 }}
                 onClick={() => setOccurrenceMenuKey((cur) => (cur === rowKey ? null : rowKey))}
               >
@@ -9993,7 +10001,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
         <button type="button" data-help-id="finance.add-forecast" onClick={() => setShowAddForm(true)}>
           + Añadir pago
         </button>
-        <button type="button" className="link-button" onClick={() => setShowDocumentImport(true)}>
+        <button type="button" className="link-button" data-help-id="finance.forecast-import" onClick={() => setShowDocumentImport(true)}>
           📄 Importar desde foto o documento
         </button>
       </div>
@@ -10014,7 +10022,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
           {/* Fase 1F.A — "Visión 12 meses" ahora antes del selector de horizonte: detectar qué meses
               vienen más cargados es lo primero que se quiere ver, independientemente del horizonte elegido
               abajo. Mismos cálculos de siempre (monthSlots/forecastByMonth), sin tocar la lógica. */}
-          <h2 className="section-title" style={{ marginTop: 12 }}>
+          <h2 className="section-title" style={{ marginTop: 12 }} data-help-id="finance.forecast-year">
             Visión 12 meses
           </h2>
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
@@ -10047,7 +10055,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             ))}
           </div>
 
-          <div className="filter-row" style={{ marginTop: 12 }}>
+          <div className="filter-row" style={{ marginTop: 12 }} data-help-id="finance.forecast-horizon">
             {HORIZON_OPTIONS.map((h) => (
               <button key={h.key} type="button" className={'chip' + (horizon === h.key ? ' chip-active' : '')} onClick={() => setHorizon(h.key)}>
                 {h.label}
@@ -10196,7 +10204,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
             />
           )}
 
-          <h2 className="section-title" style={{ marginTop: 16 }}>
+          <h2 className="section-title" style={{ marginTop: 16 }} data-help-id="finance.forecast-upcoming">
             Próximos pagos
           </h2>
           <div className="event-list">
@@ -10272,6 +10280,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 type="button"
                 className="link-button section-title"
                 style={{ marginTop: 16, display: 'block' }}
+                data-help-id="finance.forecast-recurring"
                 onClick={() => setRecurrenceProposalsOpen((v) => !v)}
               >
                 {recurrenceProposalsOpen ? '▾' : '▸'} 💡 {recurrenceCandidates.length} posible{recurrenceCandidates.length === 1 ? '' : 's'} pago
@@ -11314,7 +11323,7 @@ function ForecastPaymentForm({
         </div>
       )}
       {amountStatus === 'estimated' && (
-        <label>
+        <label data-help-id="finance.forecast-amount-basis">
           {amountBasisFieldLabel}
           <input type="text" value={amountBasis} onChange={(e) => setAmountBasis(e.target.value)} placeholder="Por ejemplo: recibo del año pasado" required />
         </label>

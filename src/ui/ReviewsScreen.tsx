@@ -23,14 +23,16 @@ function ReviewRow({ section, review, onChanged, onError, big, helpId }: { secti
     setDisliked(review?.disliked ?? '')
   }, [review?.id, review?.liked, review?.disliked])
 
-  async function run(action: () => Promise<void>) {
+  async function run(action: () => Promise<void>, removed = false) {
     setBusy(true)
     setSaved(false)
     try {
       await action()
       onChanged()
       setSaved(true)
-      emitHelpEvent('resenas.review-saved') // para los tutoriales «Enséñame»: la valoración YA está guardada
+      // para los tutoriales «Enséñame»: la valoración YA está guardada; al quitarla se avisa con otro evento (no cuenta como guardada)
+      if (removed) emitHelpEvent('resenas.review-removed')
+      else emitHelpEvent('resenas.review-saved')
     } catch (err) {
       onError(errorMessage(err, 'No se pudo guardar'))
     } finally {
@@ -64,11 +66,11 @@ function ReviewRow({ section, review, onChanged, onError, big, helpId }: { secti
           <textarea value={disliked} maxLength={1000} rows={2} onChange={(e) => setDisliked(e.target.value)} placeholder="Lo que cambiarías o no te convence…" />
         </label>
         <div className="inline-fields">
-          <button type="button" disabled={busy || stars === 0} onClick={() => run(() => saveAppReview({ section: section.id, stars, liked, disliked }))}>
+          <button type="button" disabled={busy || stars === 0} {...(big ? { 'data-help-id': 'resenas.comentario-guardar' } : {})} onClick={() => run(() => saveAppReview({ section: section.id, stars, liked, disliked }))}>
             {busy ? 'Guardando…' : 'Guardar comentario'}
           </button>
           {review && (
-            <button type="button" className="link-button" disabled={busy} onClick={() => run(() => deleteAppReview(section.id))}>
+            <button type="button" className="link-button" disabled={busy} {...(big ? { 'data-help-id': 'resenas.quitar' } : {})} onClick={() => run(() => deleteAppReview(section.id), true)}>
               Quitar mi valoración
             </button>
           )}

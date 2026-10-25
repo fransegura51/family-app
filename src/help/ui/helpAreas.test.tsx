@@ -9,7 +9,7 @@ vi.mock('@/data/supabaseClient', () => ({ supabase: {} }))
 const { HelpAreaTabs, HelpHowArea, HelpLearnArea, HelpSectionArea, ExplainerDetail, AREA_TABS, availableAreas } = await import('@/help/ui/HelpAreas')
 const { HelpUiContext } = await import('@/help/ui/helpContext')
 const { EXPLAINERS } = await import('@/help/explainers')
-const { TOURS } = await import('@/help/tours/registry')
+const { SERIES, chaptersOf } = await import('@/help/tours/series')
 const { setTourProgress } = await import('@/help/prefs')
 
 function api(over: Record<string, unknown> = {}) {
@@ -20,10 +20,14 @@ function api(over: Record<string, unknown> = {}) {
     explainerId: null,
     ctx: { role: 'admin', allowedSections: null, platform: 'web', community: 'ok' },
     canDoTour: () => true,
+    canDoSeries: (id: string) => Boolean(id),
+    learnSeriesId: null,
+    openLearn: vi.fn(),
     canExplain: () => true,
     ...over,
   }
 }
+const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 function mount(ui: React.ReactElement, over: Record<string, unknown> = {}) {
   const value = api(over)
   render(<HelpUiContext.Provider value={value as never}>{ui}</HelpUiContext.Provider>)
@@ -71,29 +75,45 @@ describe('Conoce esta sección', () => {
 })
 
 describe('Enséñame', () => {
-  it('es un catálogo con búsqueda, agrupado por sección, que arranca el tutorial elegido', () => {
+  it('es un catálogo de tutoriales con búsqueda, agrupado por sección, con recorrido completo y capítulos que arrancan el elegido', () => {
     const v = mount(<HelpLearnArea focusModule={null} />, { area: 'learn' })
     expect(screen.getByText('¿Qué quieres aprender a hacer?')).toBeTruthy()
-    const first = screen.getAllByRole('button', { name: /^Enséñame: / })[0]
-    fireEvent.click(first)
+    const full = screen.getAllByRole('button', { name: /^(Recorrido completo|Continuar|Repetir el recorrido): / })[0]
+    fireEvent.click(full)
     expect(v.startTourById).toHaveBeenCalledTimes(1)
+    // Un tutorial con varios capítulos los enseña al desplegarlo y cada uno se puede empezar por separado.
+    const withChapters = SERIES.find((s) => s.chapters.length > 1)!
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`Ver los capítulos de ${esc(withChapters.title)}`) }))
+    const chapter = screen.getAllByRole('button', { name: /^Empezar el capítulo 2: / })[0]
+    fireEvent.click(chapter)
+    expect(v.startTourById).toHaveBeenCalledTimes(2)
     const search = screen.getByLabelText('Buscar entre los tutoriales') as HTMLInputElement
     fireEvent.change(search, { target: { value: 'zzzzzz-no-existe' } })
     expect(screen.getByText('No hay tutoriales con esa búsqueda.')).toBeTruthy()
   })
 
-  it('muestra el estado de cada tutorial: hecho / hay versión nueva, y deja repetirlo', () => {
-    const t = TOURS.find((x) => (x.kind ?? 'tutorial') === 'tutorial' && x.module === 'calendario')!
-    setTourProgress(t.id, { status: 'completed', at: '2026-10-01', version: t.version })
-    mount(<HelpLearnArea focusModule="calendario" />, { area: 'learn' })
-    const row = screen.getByRole('button', { name: new RegExp(`Enséñame: ${t.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) }).closest('li')!
-    expect(row.textContent).toMatch(/✓ Hecho/)
-    expect(within(row as HTMLElement).getByRole('button', { name: /Enséñame/ }).textContent).toBe('Repetir')
+  it('muestra el progreso por capítulo y deja repetir lo hecho', () => {
+    const series = SERIES.find((s) => s.module === 'calendario' && s.chapters.length > 1)!
+    const [first] = chaptersOf(series)
+    setTourProgress(first.id, { status: 'completed', at: '2026-10-01', version: first.version })
+    mount(<HelpLearnArea focusModule="calendario" />, { area: 'learn', learnSeriesId: series.id })
+    const row = screen.getByRole('button', { name: new RegExp(`Ocultar los capítulos de ${esc(series.title)}`) }).closest('li.help-series-row') as HTMLElement
+    expect(row.textContent).toMatch(new RegExp(`1 de ${series.chapters.length} hechos`))
+    expect(within(row).getByRole('button', { name: /^Repetir el capítulo 1: / }).textContent).toBe('Repetir')
+    expect(within(row).getByText(/✓ Hecho/)).toBeTruthy()
+  })
+
+  it('la búsqueda lleva al capítulo concreto', () => {
+    const series = SERIES.find((s) => chaptersOf(s).length > 2)!
+    const c = chaptersOf(series)[2]
+    mount(<HelpLearnArea focusModule={null} />, { area: 'learn' })
+    fireEvent.change(screen.getByLabelText('Buscar entre los tutoriales'), { target: { value: c.title } })
+    expect(screen.getAllByRole('button', { name: /^(Empezar|Repetir) el capítulo 3: / }).length).toBeGreaterThan(0)
   })
 
   it('no lista ningún tutorial que la cuenta no pueda hacer', () => {
-    mount(<HelpLearnArea focusModule={null} />, { area: 'learn', canDoTour: () => false })
-    expect(screen.queryAllByRole('button', { name: /^Enséñame: / })).toHaveLength(0)
+    mount(<HelpLearnArea focusModule={null} />, { area: 'learn', canDoTour: () => false, canDoSeries: () => false })
+    expect(screen.queryAllByRole('button', { name: /(Recorrido completo|Continuar|Repetir el recorrido)/ })).toHaveLength(0)
   })
 })
 

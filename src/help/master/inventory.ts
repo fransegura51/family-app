@@ -1,6 +1,8 @@
 import { HELP_CARDS, HELP_MODULES } from '@/help/catalog'
 import { EXPLAINERS } from '@/help/explainers'
+import { PLANNED_SERIES, type PlannedSeries } from '@/help/tours/planned'
 import { TOURS } from '@/help/tours/registry'
+import { SERIES, type TutorialSeries } from '@/help/tours/series'
 import type { TourDef } from '@/help/tours/types'
 import type { HelpModule, HelpModuleId } from '@/help/types'
 
@@ -16,11 +18,17 @@ export interface SectionInventory {
   /** Visitas guiadas de la sección (normalmente una; Ayuda tiene dos: la Ayuda y el Buzón). */
   visits: TourDef[]
   tutorials: TourDef[]
+  /** Tutoriales principales («Enséñame») de la sección, con sus capítulos. */
+  series: TutorialSeries[]
+  /** Recorridos planificados: la función aún no está terminada o validada (no se ofrecen a las familias). */
+  planned: PlannedSeries[]
   explainers: number
 }
 
 export const visitsOf = (id: HelpModuleId): TourDef[] => TOURS.filter((t) => t.kind === 'visit' && t.module === id)
 export const tutorialsOf = (id: HelpModuleId): TourDef[] => TOURS.filter((t) => (t.kind ?? 'tutorial') === 'tutorial' && t.module === id)
+export const seriesOf = (id: HelpModuleId): TutorialSeries[] => SERIES.filter((s) => s.module === id)
+export const plannedOf = (id: HelpModuleId): PlannedSeries[] => PLANNED_SERIES.filter((s) => s.module === id)
 export const explainersOf = (id: HelpModuleId) => EXPLAINERS.filter((e) => e.module === id)
 
 export function sectionStatus(id: HelpModuleId): SectionStatus {
@@ -36,6 +44,8 @@ export function sectionInventory(): SectionInventory[] {
     cards: HELP_CARDS.filter((c) => c.module === module.id).length,
     visits: visitsOf(module.id),
     tutorials: tutorialsOf(module.id),
+    series: seriesOf(module.id),
+    planned: plannedOf(module.id),
     explainers: explainersOf(module.id).length,
   }))
 }

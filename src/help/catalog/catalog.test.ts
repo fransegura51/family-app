@@ -91,9 +91,14 @@ describe('fichas', () => {
     }
   })
   it('lo que solo puede hacer la administración de la familia lo dice la ficha (regla familyAdmin)', () => {
-    for (const id of ['fam-anadir-miembro', 'fam-codigo-acceso', 'cfg-nombre-familia', 'eco-modo-cuentas', 'fam-invitado-limitado']) {
+    for (const id of ['fam-anadir-miembro', 'cfg-nombre-familia', 'eco-modo-cuentas', 'fam-invitado-limitado']) {
       expect(HELP_CARDS.find((c) => c.id === id)?.access?.familyAdmin, id).toBe(true)
     }
+  })
+  it('dar acceso a PEPA no es solo de la administración: una madre/padre/tutor vinculado también puede (canGiveAccess), así que la ficha es para personas adultas', () => {
+    const c = HELP_CARDS.find((x) => x.id === 'fam-codigo-acceso')!
+    expect(c.access?.familyAdmin).toBeUndefined()
+    expect(c.access?.adultsOnly).toBe(true)
   })
   it('«Invitar amigos» consta como desactivada y sin botones', () => {
     const c = HELP_CARDS.find((x) => x.id === 'cue-invitar-amigos')!

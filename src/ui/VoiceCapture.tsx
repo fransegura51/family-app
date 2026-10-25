@@ -1432,7 +1432,7 @@ export function VoiceCapture() {
               left: pos.left + (isDragging ? buttonDragOffset.x : 0),
             }}
             aria-label={PANEL_INFO[m].title}
-            {...(m === 'talk' ? { 'data-help-id': 'pepa.boton' } : {})}
+            {...(m === 'talk' ? { 'data-help-id': 'pepa.boton' } : { 'data-help-id': 'pepa.botones-clasicos' })}
             onClick={() => handleButtonClick(m)}
             onPointerDown={(e) => handleButtonDragStart(e, m, e.currentTarget)}
             onPointerMove={handleButtonDragMove}

@@ -46,6 +46,7 @@ export function GalleryScreen() {
     setCaptionSaving(true)
     try {
       await updateGalleryCaption(openPhoto.id, captionDraft)
+      emitHelpEvent('gallery.caption-saved') // para los tutoriales «Enséñame»: la descripción YA está guardada
       setPhotos((prev) => prev.map((p) => (p.id === openPhoto.id ? { ...p, caption: captionDraft.trim() || null } : p)))
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar la descripción'))
@@ -195,10 +196,10 @@ export function GalleryScreen() {
             {urls[openPhoto.id] && <img src={urls[openPhoto.id]} alt={openPhoto.caption ?? ''} style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain', display: 'block' }} />}
             <p className="muted">{formatDateFromTimestamp(openPhoto.createdAt)}</p>
             <div className="inline-fields">
-              <button type="button" className="link-button" disabled={openIndex === 0} onClick={() => openAt(openIndex - 1)} aria-label="Foto anterior">
+              <button type="button" className="link-button" data-help-id="gallery.anterior" disabled={openIndex === 0} onClick={() => openAt(openIndex - 1)} aria-label="Foto anterior">
                 ‹ Anterior
               </button>
-              <button type="button" className="link-button" disabled={openIndex >= photos.length - 1} onClick={() => openAt(openIndex + 1)} aria-label="Foto siguiente">
+              <button type="button" className="link-button" data-help-id="gallery.siguiente" disabled={openIndex >= photos.length - 1} onClick={() => openAt(openIndex + 1)} aria-label="Foto siguiente">
                 Siguiente ›
               </button>
             </div>
@@ -206,7 +207,7 @@ export function GalleryScreen() {
               Descripción
               <input type="text" value={captionDraft} onChange={(e) => setCaptionDraft(e.target.value)} placeholder="Escribe una descripción" maxLength={200} />
             </label>
-            <button type="button" disabled={captionSaving || captionDraft.trim() === (openPhoto.caption ?? '')} onClick={handleSaveCaption}>
+            <button type="button" data-help-id="gallery.descripcion-guardar" disabled={captionSaving || captionDraft.trim() === (openPhoto.caption ?? '')} onClick={handleSaveCaption}>
               {captionSaving ? 'Guardando…' : 'Guardar descripción'}
             </button>
           </div>

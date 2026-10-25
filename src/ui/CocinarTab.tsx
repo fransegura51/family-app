@@ -224,7 +224,7 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
             </select>
           </label>
           {isDictationSupported() && (
-            <button type="button" className="link-button" onClick={toggleListening} disabled={busy}>
+            <button type="button" className="link-button" onClick={toggleListening} disabled={busy} data-help-id="cocina.cocinar-voz">
               {listening ? '⏹️ Parar de escuchar' : '🎤 Decirlo con la voz'}
             </button>
           )}
@@ -274,7 +274,7 @@ export function CocinarTab({ onOpenRecipes }: { onOpenRecipes?: () => void }) {
                 <a className="link-button" href={hit.url} target="_blank" rel="noopener noreferrer">
                   🔗 Ver
                 </a>
-                <button type="button" className="link-button" onClick={() => void saveWeb(hit)} disabled={busy}>
+                <button type="button" className="link-button" data-help-id="cocina.cocinar-guardar-web" onClick={() => void saveWeb(hit)} disabled={busy}>
                   💾 Guardar en mis recetas
                 </button>
               </div>

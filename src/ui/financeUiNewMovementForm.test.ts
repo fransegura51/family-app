@@ -61,7 +61,7 @@ describe('A/B. Campos del formulario compartido', () => {
     expect(FIELDS).toContain('Concepto (opcional)')
   })
   it('el selector Gasto/Ingreso solo existe al crear', () => {
-    expect(FIELDS).toContain("{mode === 'create' && (\n        <div className=\"filter-row\">")
+    expect(FIELDS).toContain("{mode === 'create' && (\n        <div className=\"filter-row\" data-help-id=\"finance.movement-type\">")
     expect(CREATE).toContain("draft.isIncome ? 'Apuntar ingreso' : 'Apuntar gasto'")
   })
 })

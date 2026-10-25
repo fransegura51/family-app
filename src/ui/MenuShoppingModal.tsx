@@ -7,6 +7,7 @@ import type { ShoppingStoreEntry } from '@/domain/types'
 import { showToast } from '@/state/toast'
 import { clearPendingMenuShoppingRequestId, pendingMenuShoppingRequestId } from '@/state/menuShoppingRequestId'
 import { RowStoreSelect, StoreChoiceBar } from '@/ui/ShoppingStoreChoice'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Una fila de la revisión. `line` es null para un producto añadido a mano.
 interface ReviewRow {
@@ -68,6 +69,7 @@ export function MenuShoppingModal({
       await addMenuShoppingLines(chosen, eventId, requestId)
       clearPendingMenuShoppingRequestId(eventId)
       showToast(`Añadidos ${chosen.length} a Compras`)
+      emitHelpEvent('eventos.menu-shopping-saved') // para los tutoriales «Enséñame»: los productos YA están en Compras
       onSaved()
     } catch (err) {
       // Atómico en servidor: si falla, no queda nada guardado de esta confirmación.
@@ -89,7 +91,7 @@ export function MenuShoppingModal({
             Escalado orientativo a {targetDiners} comensal{targetDiners === 1 ? '' : 'es'} confirmados (solo donde la receta tiene raciones).
           </p>
         </header>
-        <div className="menu-shopping-body">
+        <div className="menu-shopping-body" data-help-id="eventos.menu-shopping-list">
           {rows.length === 0 && <p className="muted">No hay nada que proponer de este menú. Puedes añadir un producto a mano.</p>}
           <StoreChoiceBar stores={stores} choice={choice} onChange={setChoice} keys={rows.filter((r) => r.include && r.name.trim()).map((r) => r.id)} hideSplit />
           {rows.map((row) => (
@@ -140,7 +142,7 @@ export function MenuShoppingModal({
         <footer className="menu-shopping-footer">
           {error && <p className="error">{error}</p>}
           <div className="menu-shopping-actions">
-            <button type="button" className="menu-shopping-confirm" onClick={() => void confirm()} disabled={saving || selected === 0}>
+            <button type="button" className="menu-shopping-confirm" data-help-id="eventos.menu-shopping-confirm" onClick={() => void confirm()} disabled={saving || selected === 0}>
               {saving ? 'Añadiendo…' : `Añadir ${selected} a Compras`}
             </button>
             <button type="button" className="menu-shopping-cancel link-button" onClick={onClose} disabled={saving}>

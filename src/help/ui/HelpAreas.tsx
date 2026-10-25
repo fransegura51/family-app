@@ -1,9 +1,11 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { HELP_MODULE_BY_ID, HELP_MODULES } from '@/help/catalog'
 import { EXPLAINERS, EXPLAINER_BY_ID } from '@/help/explainers'
 import type { HelpExplainer } from '@/help/explainers/types'
-import { tutorialsOf, visitsOf } from '@/help/master/inventory'
+import { visitsOf } from '@/help/master/inventory'
 import { getTourProgress } from '@/help/prefs'
+import { SERIES, chaptersOf } from '@/help/tours/series'
+import { chapterDone, searchSeries, seriesProgress, type SeriesHit } from '@/help/tours/series/search'
 import { normalizeText } from '@/help/search/normalize'
 import { getTour } from '@/help/tours/registry'
 import type { TourDef } from '@/help/tours/types'
@@ -99,6 +101,14 @@ export function HelpSectionArea({ focusModule }: { focusModule: HelpModuleId | n
           </ul>
         </section>
       )}
+      {current && SERIES.some((s) => s.module === current.id && help.canDoSeries(s.id)) && (
+        <p className="help-note">
+          ¿Quieres hacerlo tú con mi ayuda?{' '}
+          <button type="button" className="help-btn" onClick={() => help.setArea('learn')}>
+            🎓 Tutoriales de {current.label}
+          </button>
+        </p>
+      )}
       {current && currentVisits.length === 0 && <p className="help-note">Para {current.label} no hay visita guiada disponible para tu cuenta. Puedes preguntarme lo que quieras en «Preguntar».</p>}
       <section className="help-area-block" aria-label="Otras secciones">
         <h4>{current ? 'Otras secciones' : 'Secciones de PEPA'}</h4>
@@ -137,50 +147,51 @@ function TourRow({ tour, cta, onStart, prefix = '', primary = false }: { tour: T
   )
 }
 
-// ---- 🎓 Enséñame
+// ---- 🎓 Enséñame: tutoriales principales (series) y sus capítulos
 export function HelpLearnArea({ focusModule }: { focusModule: HelpModuleId | null }) {
   const help = useHelp()
-  const visible = useVisible()
   const [q, setQ] = useState('')
   const [showAll, setShowAll] = useState(false)
+  const [open, setOpen] = useState<string | null>(help.learnSeriesId)
+  const canChapter = help.canDoTour
+
+  // Si se abre el área desde una ficha o la búsqueda con una serie concreta, se despliega.
+  useEffect(() => {
+    if (help.learnSeriesId) setOpen(help.learnSeriesId)
+  }, [help.learnSeriesId])
 
   const groups = useMemo(() => {
-    const words = normalizeText(q).split(/\s+/).filter(Boolean)
-    return HELP_MODULES.map((m) => ({
-      m,
-      tours: tutorialsOf(m.id)
-        .filter(visible)
-        .filter((t) => {
-          if (words.length === 0) return true
-          const hay = normalizeText(`${t.title} ${t.summary ?? ''} ${t.group ?? ''} ${m.label}`)
-          return words.every((w) => hay.includes(w))
-        }),
-    })).filter((g) => g.tours.length > 0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `visible` depende de help.ctx, que ya cambia el resultado al cambiar la cuenta
-  }, [q, help.canDoTour])
+    const hits = searchSeries(q, { canDoSeries: help.canDoSeries, canDoChapter: canChapter })
+    return HELP_MODULES.map((m) => ({ m, hits: hits.filter((h) => h.series.module === m.id) })).filter((g) => g.hits.length > 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `canDoSeries`/`canDoTour` dependen del contexto de la cuenta
+  }, [q, help.canDoSeries, help.canDoTour])
 
-  const total = groups.reduce((n, g) => n + g.tours.length, 0)
-  const done = groups.reduce((n, g) => n + g.tours.filter((t) => badgeOf(t) === 'done').length, 0)
+  const total = groups.reduce((n, g) => n + g.hits.length, 0)
+  const done = groups.reduce((n, g) => n + g.hits.filter((h) => seriesProgress(h.series, canChapter).complete).length, 0)
   const focusGroup = focusModule ? groups.find((g) => g.m.id === focusModule) : undefined
   const shown = q.trim() || showAll || !focusGroup ? groups : [focusGroup]
 
   return (
     <div className="help-area" role="tabpanel" id="help-area-body" aria-labelledby="help-area-tab-learn">
       <h4 className="help-area-title">¿Qué quieres aprender a hacer?</h4>
-      <p className="help-area-intro">Te enseño paso a paso sobre la propia app. Tú haces cada paso de verdad; yo te lo voy señalando. Si sales a mitad, no se guarda nada que no hayas guardado tú.</p>
+      <p className="help-area-intro">Te enseño paso a paso sobre la propia app, en capítulos cortos de 1 o 2 minutos. Puedes hacer el recorrido completo o ir directo al capítulo que te interese. Tú haces cada paso de verdad; yo te lo voy señalando. Si sales a mitad, no se guarda nada que no hayas guardado tú.</p>
       <label htmlFor="help-learn-q" className="help-visually-hidden">
         Buscar entre los tutoriales
       </label>
       <input id="help-learn-q" type="search" className="help-area-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar: crear un evento, subir un ticket…" autoComplete="off" />
       <p className="muted help-area-meta">
-        {total === 0 ? 'No hay tutoriales con esa búsqueda.' : `${total} ${total === 1 ? 'tutorial' : 'tutoriales'} · ${done} hecho${done === 1 ? '' : 's'}`}
+        {total === 0 ? 'No hay tutoriales con esa búsqueda.' : `${total} ${total === 1 ? 'tutorial' : 'tutoriales'} · ${done} completo${done === 1 ? '' : 's'}`}
       </p>
-      {shown.map(({ m, tours }) => (
+      {shown.map(({ m, hits }) => (
         <section key={m.id} className="help-area-block" aria-label={m.label}>
           <h4>
             {m.icon} {m.label}
           </h4>
-          <GroupedTours tours={tours} onStart={(id) => help.startTourById(id)} />
+          <ul className="help-area-list">
+            {hits.map((h) => (
+              <SeriesRow key={h.series.id} hit={h} open={open === h.series.id || (Boolean(q.trim()) && h.chapters.length > 0)} onToggle={() => setOpen(open === h.series.id ? null : h.series.id)} />
+            ))}
+          </ul>
         </section>
       ))}
       {!q.trim() && focusGroup && !showAll && groups.length > 1 && (
@@ -192,25 +203,70 @@ export function HelpLearnArea({ focusModule }: { focusModule: HelpModuleId | nul
   )
 }
 
-function GroupedTours({ tours, onStart }: { tours: TourDef[]; onStart: (id: string) => void }) {
-  const groups = new Map<string, TourDef[]>()
-  for (const t of tours) {
-    const g = t.group ?? ''
-    groups.set(g, [...(groups.get(g) ?? []), t])
-  }
+function SeriesRow({ hit, open, onToggle }: { hit: SeriesHit; open: boolean; onToggle: () => void }) {
+  const help = useHelp()
+  const { series } = hit
+  const prog = seriesProgress(series, help.canDoTour)
+  const chapters = chaptersOf(series).filter((c) => help.canDoTour(c.id))
+  const first = chapters[0]
+  const sec = chapters.reduce((n, c) => n + c.durationSec, 0)
+  const multi = chapters.length > 1
+  const label = prog.complete ? 'Repetir el recorrido' : prog.started && prog.next && prog.next !== first ? 'Continuar' : 'Recorrido completo'
+  const startAt = prog.complete || !prog.started ? first : prog.next
+  const ref = useRef<HTMLLIElement | null>(null)
+  useEffect(() => {
+    if (open && help.learnSeriesId === series.id) ref.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [open, help.learnSeriesId, series.id])
+  if (!first) return null
   return (
-    <>
-      {[...groups.entries()].map(([g, list]) => (
-        <div key={g || 'general'}>
-          {g && <p className="help-area-group">{g}</p>}
-          <ul className="help-area-list">
-            {list.map((t) => (
-              <TourRow key={t.id} tour={t} cta="Enséñame" onStart={() => onStart(t.id)} />
-            ))}
-          </ul>
+    <li className="help-area-row help-series-row" ref={ref}>
+      <div className="help-series-head">
+        <div className="help-area-row-main">
+          <strong>{series.title}</strong>
+          <span className="muted">{series.summary}</span>
+          <span className="muted help-area-meta">
+            {multi ? `${chapters.length} capítulos · ` : ''}
+            {minutes(sec)}
+            {prog.complete ? ' · ✓ Hecho' : prog.done > 0 ? ` · ${prog.done} de ${prog.total} hechos` : prog.started ? ' · Empezado' : ''}
+          </span>
         </div>
-      ))}
-    </>
+        <div className="help-series-actions">
+          <button type="button" className="help-btn help-btn-primary" onClick={() => help.startTourById((startAt ?? first).id)} aria-label={`${label}: ${series.title}`}>
+            {label}
+          </button>
+          {multi && (
+            <button type="button" className="help-btn" onClick={onToggle} aria-expanded={open} aria-label={`${open ? 'Ocultar' : 'Ver'} los capítulos de ${series.title}`}>
+              {open ? 'Ocultar capítulos' : 'Ver capítulos'}
+            </button>
+          )}
+        </div>
+      </div>
+      {multi && open && (
+        <ol className="help-chapters">
+          {chapters.map((c, i) => {
+            const isDone = chapterDone(c)
+            const suggested = hit.chapters.some((x) => x.id === c.id)
+            return (
+              <li key={c.id} className={`help-chapter${suggested ? ' help-chapter-hit' : ''}`}>
+                <div className="help-chapter-main">
+                  <strong>
+                    {i + 1}. {c.title}
+                  </strong>
+                  {c.summary && <span className="muted">{c.summary}</span>}
+                  <span className="muted help-area-meta">
+                    {minutes(c.durationSec)}
+                    {isDone ? ' · ✓ Hecho' : getTourProgress(c.id)?.status === 'started' ? ' · Empezado' : ''}
+                  </span>
+                </div>
+                <button type="button" className="help-btn" onClick={() => help.startTourById(c.id)} aria-label={`${isDone ? 'Repetir' : 'Empezar'} el capítulo ${i + 1}: ${c.title}`}>
+                  {isDone ? 'Repetir' : 'Empezar'}
+                </button>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </li>
   )
 }
 

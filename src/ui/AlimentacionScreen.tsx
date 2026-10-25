@@ -962,6 +962,7 @@ function RecipesTab() {
             key={r.id}
             type="button"
             className="recipe-list-row"
+            data-help-id="cocina.receta-fila"
             style={{ background: r.tags[0] ? tagColors.get(r.tags[0]) : undefined }}
             onClick={() => setViewingId(r.id)}
           >
@@ -1004,7 +1005,7 @@ function RecipesTab() {
 
       {viewing && !editing && (
         <div className="modal-overlay" onClick={() => closeViewer()}>
-          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-sheet" data-help-id="cocina.receta-ficha" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="section-title" style={{ margin: 0 }}>
                 {viewing.title}
@@ -1038,11 +1039,12 @@ function RecipesTab() {
                   </span>
                 ))}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 'none', marginLeft: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flex: 'none', marginLeft: 'auto' }} data-help-id="cocina.receta-acciones">
                 <button
                   type="button"
                   className="link-button"
                   style={{ fontSize: 20 }}
+                  data-help-id="cocina.receta-compras"
                   onClick={() => setPickingFor(viewing)}
                   title="Añadir a la lista de la compra"
                   aria-label="Añadir a la lista de la compra"
@@ -1505,11 +1507,11 @@ function RecipeForm({
           {startMode === 'search' && (
             <div className="recipe-start-panel">
               <p className="muted">Busca por el nombre de arriba en Cookpad, FatSecret y Wikibooks y elige la que más se parezca.</p>
-              <button type="button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'}>
+              <button type="button" onClick={handleSearch} disabled={!title.trim() || searchStatus === 'searching'} data-help-id="cocina.receta-buscar-boton">
                 {searchStatus === 'searching' ? 'Buscando en Internet…' : 'Buscar receta'}
               </button>
               {searchResults.length > 0 && (
-                <div className="card" style={{ padding: 8 }}>
+                <div className="card" style={{ padding: 8 }} data-help-id="cocina.receta-candidatas">
                   <p className="muted" style={{ margin: '4px 8px' }}>
                     Elige cuál es la tuya:
                   </p>
@@ -1544,8 +1546,8 @@ function RecipeForm({
           {startMode === 'url' && (
             <div className="recipe-start-panel">
               <p className="muted">Pega el enlace de una receta de otra web y la leo por ti.</p>
-              <input type="url" value={recipeUrl} onChange={(e) => setRecipeUrl(e.target.value)} placeholder="https://..." aria-label="Enlace de la receta" />
-              <button type="button" onClick={handleImportUrl} disabled={!recipeUrl.trim() || urlImportStatus === 'importing'}>
+              <input type="url" value={recipeUrl} onChange={(e) => setRecipeUrl(e.target.value)} placeholder="https://..." aria-label="Enlace de la receta" data-help-id="cocina.receta-enlace" />
+              <button type="button" onClick={handleImportUrl} disabled={!recipeUrl.trim() || urlImportStatus === 'importing'} data-help-id="cocina.receta-enlace-importar">
                 {urlImportStatus === 'importing' ? 'Leyendo la página…' : 'Importar receta'}
               </button>
               {urlImportStatus === 'error' && <p className="error">{urlImportError}</p>}
@@ -1554,7 +1556,7 @@ function RecipeForm({
         </div>
       )}
 
-      <div className="recipe-field">
+      <div className="recipe-field" data-help-id="cocina.receta-foto">
         <span className="recipe-field-label">Foto</span>
         {imagePath ? (
           <div className="recipe-photo">
@@ -1679,7 +1681,7 @@ function RecipeForm({
               </div>
             )}
 
-            <button type="button" onClick={useFoundRecipe}>
+            <button type="button" onClick={useFoundRecipe} data-help-id="cocina.receta-usar">
               Usar esta receta
             </button>
           </div>

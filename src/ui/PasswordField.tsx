@@ -33,12 +33,14 @@ interface PasswordFieldProps {
   // PIN: solo dígitos, teclado numérico y 6 como máximo. Sigue siendo un campo de contraseña (oculto, con ojo).
   numeric?: boolean
   inputClassName?: string
+  // Marca para los tutoriales «Enséñame» (data-help-id): va en la etiqueta (o en la caja si no hay etiqueta).
+  helpId?: string
 }
 
-export function PasswordField({ label, ariaLabel, value, onChange, autoComplete = 'off', minLength, required = true, autoFocus, name, numeric = false, inputClassName }: PasswordFieldProps) {
+export function PasswordField({ label, ariaLabel, value, onChange, autoComplete = 'off', minLength, required = true, autoFocus, name, numeric = false, inputClassName, helpId }: PasswordFieldProps) {
   const [visible, setVisible] = useState(false)
   const box = (
-    <span className="password-field">
+    <span className="password-field" data-help-id={label ? undefined : helpId}>
       <input
         className={inputClassName ? `password-input ${inputClassName}` : 'password-input'}
         type={visible ? 'text' : 'password'}
@@ -69,7 +71,7 @@ export function PasswordField({ label, ariaLabel, value, onChange, autoComplete 
     </span>
   )
   return label ? (
-    <label>
+    <label data-help-id={helpId}>
       {label}
       {box}
     </label>
@@ -86,6 +88,9 @@ interface NewPasswordFieldsProps {
   passwordLabel?: string
   confirmLabel?: string
   autoFocus?: boolean
+  // Marcas (`{ 'data-help-id': '…' }`) de cada campo para los tutoriales «Enséñame».
+  passwordMark?: { 'data-help-id': string }
+  confirmMark?: { 'data-help-id': string }
 }
 
 // Contraseña + Repetir contraseña, cada una con su ojo. Avisa en vivo si no coinciden; quien lo usa comprueba además passwordsMatch al enviar y NO envía mientras no coincidan.
@@ -97,11 +102,13 @@ export function NewPasswordFields({
   passwordLabel = 'Contraseña',
   confirmLabel = 'Repetir contraseña',
   autoFocus,
+  passwordMark,
+  confirmMark,
 }: NewPasswordFieldsProps) {
   return (
     <>
-      <PasswordField label={passwordLabel} value={password} onChange={onPasswordChange} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} autoFocus={autoFocus} />
-      <PasswordField label={confirmLabel} value={confirm} onChange={onConfirmChange} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />
+      <PasswordField label={passwordLabel} value={password} onChange={onPasswordChange} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} autoFocus={autoFocus} helpId={passwordMark?.['data-help-id']} />
+      <PasswordField label={confirmLabel} value={confirm} onChange={onConfirmChange} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} helpId={confirmMark?.['data-help-id']} />
       {showPasswordMismatch(password, confirm) && (
         <p className="error" role="alert">
           {PASSWORD_MISMATCH_MESSAGE}

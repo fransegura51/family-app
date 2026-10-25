@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
-// B4-UX02..06 y CAL-01 sobre los formularios REALES de Calendario (evento y tarea): avance al confirmar la fecha, recorrido opcional de opciones (con «Saltar opciones»), paso propio de
-// «¿Para quién?» y puntos, marco que acompaña a cada explicación, datos que no se pierden al navegar por el tutorial y selección inicial = persona autenticada. Datos simulados:
-// NO sustituye la prueba en un iPhone real.
+// B4-UX02..06 y CAL-01 sobre el formulario REAL de Calendario (nuevo evento) con los capítulos de «Crear eventos y tareas»: avance al confirmar la fecha, recorrido de las opciones, «¿Para quién?» y
+// puntos, marco que acompaña a cada explicación, datos que no se pierden al navegar por el capítulo y guardado confirmado. Datos simulados: NO sustituye la prueba en un iPhone real.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -14,8 +13,9 @@ vi.mock('@/services/voice', () => ({ isSpeechSupported: () => false, primeSpeech
 
 const { TourRunner } = await import('@/help/tours/TourRunner')
 const { getTour } = await import('@/help/tours/registry')
+const { HelpDestMark } = await import('@/help/ui/HelpDest')
 const { setTargetVisibilityForTests } = await import('@/help/tours/domTargets')
-const { AddEventForm, AddTaskForm } = await import('@/ui/CalendarScreen')
+const { AddEventForm } = await import('@/ui/CalendarScreen')
 
 const member = (id: string, name: string): FamilyMember =>
   ({ id, familyId: 'f', name, avatar: '🙂', color: '#4c6ef5', memberType: 'adult', birthDate: null, sex: null, weightGoalKg: null, birthdayFavorite: false, permissions: {}, linkedProfileId: null, photoPath: null, allowedSections: null, joinedAt: '2020-01-01' }) as FamilyMember
@@ -28,15 +28,13 @@ type EventProps = Partial<Parameters<typeof AddEventForm>[0]>
 const eventForm = (over: EventProps = {}) => (
   <AddEventForm members={MEMBERS} events={[]} categories={[]} defaultDate="2026-11-05" defaultMemberIds={['m1']} hideHeading onAdded={() => undefined} onManageCategories={() => undefined} {...over} />
 )
-const taskForm = (over: Partial<Parameters<typeof AddTaskForm>[0]> = {}) => (
-  <AddTaskForm members={MEMBERS} categories={[]} defaultDate="2026-11-05" defaultMemberId="m1" onAdded={() => undefined} onManageCategories={() => undefined} {...over} />
-)
 
 function run(tourId: string, node: React.ReactNode) {
   const tour = getTour(tourId)!
   return render(
     <MemoryRouter initialEntries={['/calendario']}>
       {node}
+      {tour.startDest && <HelpDestMark id={tour.startDest} />}
       <TourRunner tour={tour} voiceMode="text" nextOptions={[]} onClose={() => undefined} onPick={() => undefined} missingAfterMs={400} confirmMs={CONFIRM} />
     </MemoryRouter>,
   )
@@ -47,7 +45,8 @@ const btn = (name: RegExp) => within(panel()).getByRole('button', { name })
 const next = () => fireEvent.click(btn(/Siguiente/))
 const dateInput = () => document.querySelector('[data-help-id="calendar.event-date"] input') as HTMLInputElement
 const ring = () => document.querySelector('[data-tour-active="true"]') as HTMLElement | null
-// Escribir en un campo y terminar (✓ del teclado de iPhone o tocar fuera = el campo pierde el foco): el tutorial NO avanza mientras se escribe, solo al terminar.
+const mark = (id: string) => document.querySelector(`[data-help-id="${id}"]`) as HTMLElement | null
+// Escribir en un campo y terminar (✓ del teclado de iPhone o tocar fuera = el campo pierde el foco): el capítulo NO avanza mientras se escribe, solo al terminar.
 const typeAndLeave = (el: Element, value: string) => {
   fireEvent.change(el, { target: { value } })
   fireEvent.focusOut(el)
@@ -67,6 +66,8 @@ afterEach(() => {
 describe('B4-UX02 · avance al confirmar la fecha', () => {
   async function toDateStep() {
     run('cal-crear-evento', eventForm())
+    await says(/sin hora, sin «Todo el día» y sin recordatorio/)
+    next()
     await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
@@ -75,7 +76,7 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
   it('al elegir una fecha válida y terminar la selección, avanza solo', async () => {
     await toDateStep()
     fireEvent.change(dateInput(), { target: { value: '2026-11-12' } }) // sin foco en el campo: selección terminada
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
     expect(dateInput().value).toBe('2026-11-12') // la fecha elegida se conserva
   })
 
@@ -86,7 +87,7 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
     await act(async () => new Promise((r) => setTimeout(r, 150))) // más que la espera sin foco, menos que la espera con foco
     expect(within(panel()).getByText(/Aquí eliges el día/)).toBeTruthy()
     dateInput().blur()
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
   })
 
   it('con el selector abierto y varios cambios seguidos (girar la rueda) solo avanza al terminar', async () => {
@@ -98,7 +99,7 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
       expect(within(panel()).getByText(/Aquí eliges el día/)).toBeTruthy()
     }
     dateInput().blur()
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
   })
 
   it('una fecha vacía (borrada) no cuenta como confirmada', async () => {
@@ -114,7 +115,7 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
     expect(within(panel()).getByText(/Aquí eliges el día/)).toBeTruthy()
     expect(dateInput().value).toBe('2026-11-05')
     next()
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
   })
 
   it('respeta la validación real: con una fecha fuera de límite no avanza', async () => {
@@ -126,57 +127,47 @@ describe('B4-UX02 · avance al confirmar la fecha', () => {
   })
 })
 
-describe('B4-UX03 · recorrido de opciones adicionales', () => {
-  async function toOptions() {
+describe('B4-UX03 · hora y «Todo el día» (capítulo 1)', () => {
+  async function toHour() {
     run('cal-crear-evento', eventForm())
+    await says(/sin hora, sin «Todo el día»/)
+    next()
     await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     next()
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
   }
 
-  it('recorre las opciones reales en el orden de la pantalla y en cada una señala SU control', async () => {
-    await toOptions()
-    const order: Array<[RegExp, string]> = [
-      [/hora de inicio/, 'calendar.event-time'],
-      [/«Todo el día» sirve/, 'calendar.event-allday'],
-      [/solo tú verás este evento/, 'calendar.event-private'],
-      [/«Repetición» hace que/, 'calendar.event-repeat'],
-      [/«Recordatorio» te avisa/, 'calendar.event-reminder'],
-    ]
-    for (const [text, id] of order) {
-      await says(text)
-      expect(document.querySelector(`[data-help-id="${id}"]`), id).toBeTruthy()
-      next()
-    }
-    await says(/Aquí eliges para quién es el evento/)
-  })
-
-  it('«Saltar opciones» pasa directamente a «¿Para quién?» y no se pierde nada de lo escrito', async () => {
-    await toOptions()
-    expect((screen.getByLabelText('Título') as HTMLInputElement).value).toBe('Dentista')
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges para quién es el evento/)
-    expect((screen.getByLabelText('Título') as HTMLInputElement).value).toBe('Dentista')
-    expect(dateInput().value).toBe('2026-11-05')
+  it('recorre la hora y «Todo el día» en el orden de la pantalla y en cada paso señala SU control; avisa de las 00:00', async () => {
+    await toHour()
+    expect(within(panel()).getByText(/se guarda a las 00:00/)).toBeTruthy()
+    expect(mark('calendar.event-time')).toBeTruthy()
+    next()
+    await says(/«Todo el día» sirve/)
+    expect(mark('calendar.event-allday')).toBeTruthy()
+    expect(within(panel()).getByText(/Una tarea nunca lleva hora ni «Todo el día»/)).toBeTruthy()
   })
 
   it('el paso de la hora se omite solo si el evento es de «Todo el día» (no existe ese control) y no hay marco huérfano', async () => {
     run('cal-crear-evento', eventForm())
-    await says(/Escribe cómo se llama el evento/)
+    await says(/sin hora, sin «Todo el día»/)
     fireEvent.click(screen.getByLabelText(/Todo el día/)) // sin horas
+    next()
+    await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Viaje')
     await says(/Aquí eliges el día/)
     next()
     await says(/«Todo el día» sirve/) // saltó la hora sin quedarse mirando un paso vacío
-    expect(document.querySelector('[data-help-id="calendar.event-time"]')).toBeNull()
+    expect(mark('calendar.event-time')).toBeNull()
   })
 
   it('«Atrás» no vuelve a un paso que se omitió (no rebota hacia delante)', async () => {
     run('cal-crear-evento', eventForm())
-    await says(/Escribe cómo se llama el evento/)
+    await says(/sin hora, sin «Todo el día»/)
     fireEvent.click(screen.getByLabelText(/Todo el día/))
+    next()
+    await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Viaje')
     await says(/Aquí eliges el día/)
     next()
@@ -185,87 +176,63 @@ describe('B4-UX03 · recorrido de opciones adicionales', () => {
     await says(/Aquí eliges el día/)
   })
 
-  it('el segundo grupo (categoría, ubicación/foto/nota) también se puede saltar y lleva a «Crear evento»', async () => {
-    await toOptions()
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges para quién es el evento/)
+  it('el último paso (cerrar el formulario) se omite solo si no hay ✕ y el capítulo termina sin guardar nada', async () => {
+    await toHour()
     next()
-    await says(/Con una sola persona elegida aparece este campo/)
+    await says(/«Todo el día» sirve/)
     next()
-    await says(/«Categoría» agrupa/)
-    expect(document.querySelector('[data-help-id="calendar.event-category"]')).toBeTruthy()
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/pulsa «Crear evento»/)
-  })
-
-  it('explorar un control (abrir «Repetición») no obliga a cambiarlo ni rompe el recorrido', async () => {
-    await toOptions()
-    for (let i = 0; i < 3; i++) next()
-    await says(/«Repetición» hace que/)
-    fireEvent.click(document.querySelector('[data-help-id="calendar.event-repeat"] button')!) // se abre el selector real
-    expect(document.querySelector('.modal-sheet')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' })) // se cierra sin elegir nada
-    expect(within(panel()).getByText(/«Repetición» hace que/)).toBeTruthy()
-    next()
-    await says(/«Recordatorio» te avisa/)
+    await says(/Ya sabes lo básico de un evento/) // sin la ✕ de la pantalla (aquí solo está el formulario) el paso de cerrar no bloquea
+    expect(data.createEvent).not.toHaveBeenCalled()
   })
 })
 
 describe('B4-UX04 · «¿Para quién?» y puntos', () => {
-  async function toWho(form = eventForm()) {
-    run('cal-crear-evento', form)
-    await says(/Escribe cómo se llama el evento/)
-    typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
-    await says(/Aquí eliges el día/)
+  it('Personas: explica privado, la lista, «Toda la familia» y la asignación por nombre, y resalta el selector real', async () => {
+    run('tut-calendario-para-quien', eventForm())
+    await says(/Si lo creas desde la vista Personal, ya viene marcado/)
+    expect(mark('calendar.event-private')).toBeTruthy()
     next()
-    await says(/hora de inicio/)
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges para quién es el evento/)
-  }
-
-  it('tiene su propio paso, explica persona, puntos y «Toda la familia», y resalta el selector real', async () => {
-    await toWho()
-    const text = within(panel()).getByText(/Aquí eliges para quién es el evento/).textContent ?? ''
-    expect(text).toMatch(/una persona/)
-    expect(text).toMatch(/puntos/)
+    await says(/Aquí decides para quién es/) // «Aviso a toda la familia» no sale con este ajuste: se omite solo
+    expect(mark('calendar.event-who')?.textContent).toContain('¿Para quién?')
+    fireEvent.click(within(mark('calendar.event-who')!).getByRole('button', { name: /Ana/ }))
+    await says(/Marca a una o varias personas/)
+    const text = within(panel()).getByText(/Marca a una o varias personas/).textContent ?? ''
     expect(text).toMatch(/Toda la familia/)
-    expect(text).toMatch(/no hay puntos/)
-    expect(document.querySelector('[data-help-id="calendar.event-who"]')?.textContent).toContain('¿Para quién?')
+    expect(text).toMatch(/nombre de un miembro/)
   })
 
-  it('con una persona elegida (la autenticada) enseña el campo de puntos real', async () => {
-    await toWho()
-    next()
-    await says(/Con una sola persona elegida aparece este campo/)
-    const points = document.querySelector('[data-help-id="calendar.event-points"]')!
-    expect(points.textContent).toContain('Puntos al marcarlo')
+  it('Puntos: con una persona elegida (la autenticada) enseña el campo de puntos real', async () => {
+    run('tut-calendario-puntos', eventForm())
+    await says(/Los puntos son para UNA persona/)
+    next() // sin abrir la lista: «Siguiente» salta los pasos de la ventana, que son opcionales
+    await says(/Escribe cuántos puntos gana/)
+    expect(mark('calendar.event-points')!.textContent).toContain('Puntos al marcarlo')
   })
 
-  it('con «Toda la familia» el campo de puntos no existe y el paso se omite sin inventar nada', async () => {
-    await toWho(eventForm({ defaultMemberIds: undefined }))
-    expect(document.querySelector('[data-help-id="calendar.event-points"]')).toBeNull()
+  it('con «Toda la familia» el campo de puntos no existe y el capítulo lo explica en vez de inventar nada', async () => {
+    run('tut-calendario-puntos', eventForm({ defaultMemberIds: undefined }))
+    await says(/Los puntos son para UNA persona/)
     next()
-    await says(/«Categoría» agrupa/) // saltó los puntos
+    await says(/No veo el campo de puntos/)
+    expect(mark('calendar.event-points')).toBeNull()
   })
 
   it('no inventa reparto de puntos: con dos personas elegidas tampoco hay campo de puntos', async () => {
-    await toWho(eventForm({ defaultMemberIds: ['m1', 'm2'] }))
-    expect(document.querySelector('[data-help-id="calendar.event-points"]')).toBeNull()
+    run('tut-calendario-puntos', eventForm({ defaultMemberIds: ['m1', 'm2'] }))
+    await says(/Los puntos son para UNA persona/)
+    expect(mark('calendar.event-points')).toBeNull()
   })
 
-  it('el tutorial de TAREAS enseña lo mismo (quién la hace + puntos) sobre el formulario de tarea', async () => {
-    run('cal-crear-tarea', taskForm())
-    await says(/Escribe qué hay que hacer/)
-    typeAndLeave(document.querySelector('[data-help-id="calendar.task-title"]')!, 'Sacar la basura')
-    await says(/Aquí eliges para qué día es/)
-    next()
-    await says(/«Privado»: si lo marcas, solo tú verás esta tarea/)
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges quién debe hacer la tarea/)
-    expect(within(panel()).getByText(/Aquí eliges quién debe hacer la tarea/).textContent).toMatch(/Toda la familia/)
-    next()
-    await says(/Con una sola persona elegida aparece este campo/)
-    expect(document.querySelector('[data-help-id="calendar.task-points"]')?.textContent).toContain('Puntos al marcarla')
+  it('el formulario de TAREAS no tiene hora, «Todo el día» ni recordatorio (por eso el capítulo 1 lo dice una sola vez)', async () => {
+    const { AddTaskForm } = await import('@/ui/CalendarScreen')
+    render(
+      <MemoryRouter initialEntries={['/calendario']}>
+        <AddTaskForm members={MEMBERS} categories={[]} defaultDate="2026-11-05" defaultMemberId="m1" onAdded={() => undefined} onManageCategories={() => undefined} />
+      </MemoryRouter>,
+    )
+    const form = document.querySelector('form')!
+    expect(within(form).queryByText(/Empieza|Termina|Todo el día|Recordatorio/)).toBeNull()
+    expect(within(form).getByText(/Puntos al marcarla "Hecha"/)).toBeTruthy()
   })
 })
 
@@ -279,13 +246,16 @@ describe('B4-UX06 · explicación y marco van juntos', () => {
       return el ? (el.dataset.helpId ?? (el.querySelector('[data-help-id]') as HTMLElement | null)?.dataset.helpId ?? '') : ''
     }
     run('cal-crear-evento', eventForm())
+    await says(/sin hora, sin «Todo el día»/)
+    expect(marked()).toBe('') // el paso de bienvenida es solo una explicación: sin marco
+    next()
     await says(/Escribe cómo se llama el evento/)
     await waitFor(() => expect(marked()).toBe('calendar.event-title'))
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
     await says(/Aquí eliges el día/)
     await waitFor(() => expect(marked()).toBe('calendar.event-date'))
     next()
-    await says(/hora de inicio/)
+    await says(/«Empieza» es la hora de inicio/)
     await waitFor(() => expect(marked()).toBe('calendar.event-time'))
     next()
     await says(/«Todo el día» sirve/)
@@ -294,10 +264,12 @@ describe('B4-UX06 · explicación y marco van juntos', () => {
 
   it('si el control del paso no existe, no se dibuja ningún marco (ni el del paso anterior)', async () => {
     run('cal-crear-evento', eventForm())
+    await says(/sin hora, sin «Todo el día»/)
+    next()
     await says(/Escribe cómo se llama el evento/)
     await waitFor(() => expect(ring()).toBeTruthy())
     cleanup()
-    // Sin el formulario abierto, el paso «abrir» apunta a un botón que tampoco existe en esta pantalla de prueba: sin marco.
+    // Sin el formulario abierto, el paso del título apunta a un control que tampoco existe en esta pantalla de prueba: sin marco.
     run('cal-crear-evento', <div />)
     await act(async () => new Promise((r) => setTimeout(r, 100)))
     expect(ring()).toBeNull()
@@ -305,8 +277,10 @@ describe('B4-UX06 · explicación y marco van juntos', () => {
 })
 
 describe('datos del formulario y guardado confirmado', () => {
-  it('pausar, volver atrás, avanzar y reiniciar el tutorial NO borra lo que la persona ya escribió', async () => {
+  it('pausar, volver atrás, avanzar y reiniciar el capítulo NO borra lo que la persona ya escribió', async () => {
     run('cal-crear-evento', eventForm())
+    await says(/sin hora, sin «Todo el día»/)
+    next()
     await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista de Eric')
     await says(/Aquí eliges el día/)
@@ -322,67 +296,37 @@ describe('datos del formulario y guardado confirmado', () => {
     expect(dateInput().value).toBe('2026-11-05')
   })
 
-  it('termina SOLO cuando el servidor confirma; el evento se guarda con la persona y los puntos elegidos; el tutorial no guarda nada', async () => {
-    run('cal-crear-evento', eventForm())
-    await says(/Escribe cómo se llama el evento/)
+  it('el capítulo «Guardar» termina SOLO cuando el servidor confirma; el evento se guarda con la persona elegida; el capítulo no guarda nada por su cuenta', async () => {
+    run('tut-calendario-guardar-evento', eventForm())
+    await says(/Este capítulo guarda de verdad/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
-    await says(/Aquí eliges el día/)
+    await says(/Elige el día/)
     next()
-    await says(/hora de inicio/)
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges para quién es el evento/)
+    await says(/Con título y fecha ya se puede guardar/)
     next()
-    await says(/Con una sola persona elegida aparece este campo/)
-    fireEvent.change(document.querySelector('[data-help-id="calendar.event-points"] input')!, { target: { value: '5' } })
-    next()
-    fireEvent.click(btn(/Saltar opciones/))
     await says(/pulsa «Crear evento»/)
     expect(data.createEvent).not.toHaveBeenCalled()
     expect(within(panel()).queryByRole('button', { name: /Siguiente/ })).toBeNull() // paso sensible
     fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }))
     await waitFor(() => expect(data.createEvent).toHaveBeenCalledTimes(1))
-    expect(data.createEvent).toHaveBeenCalledWith(expect.objectContaining({ title: 'Dentista', memberIds: ['m1'], points: 5 }))
-    await says(/Tu evento ya está en el calendario/)
+    expect(data.createEvent).toHaveBeenCalledWith(expect.objectContaining({ title: 'Dentista', memberIds: ['m1'] }))
+    // Aquí no hay panel del día (solo el formulario), así que el paso «resultado» se omite y llega el final.
+    await says(/Ya sabes crear un evento/)
     expect(within(panel()).getByRole('button', { name: /Cerrar/ })).toBeTruthy()
     expect(within(panel()).getByRole('button', { name: /Repetir/ })).toBeTruthy()
   })
 
-  it('si el guardado falla, el tutorial no da el evento por creado', async () => {
+  it('si el guardado falla, el capítulo no da el evento por creado', async () => {
     data.createEvent.mockRejectedValueOnce(new Error('Sin conexión'))
-    run('cal-crear-evento', eventForm())
-    await says(/Escribe cómo se llama el evento/)
+    run('tut-calendario-guardar-evento', eventForm())
+    await says(/Este capítulo guarda de verdad/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista')
-    await says(/Aquí eliges el día/)
+    await says(/Elige el día/)
     next()
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges para quién es el evento/)
     next()
-    await says(/Con una sola persona/)
-    next()
-    fireEvent.click(btn(/Saltar opciones/))
     await says(/pulsa «Crear evento»/)
     fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }))
     await screen.findByText(/Sin conexión/)
     expect(within(panel()).getByText(/pulsa «Crear evento»/)).toBeTruthy()
-  })
-
-  it('el tutorial de tareas termina con el aviso de tarea creada', async () => {
-    run('cal-crear-tarea', taskForm())
-    await says(/Escribe qué hay que hacer/)
-    typeAndLeave(document.querySelector('[data-help-id="calendar.task-title"]')!, 'Basura')
-    await says(/Aquí eliges para qué día es/)
-    next()
-    await says(/«Privado»/)
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/Aquí eliges quién debe hacer la tarea/)
-    next()
-    await says(/Con una sola persona/)
-    next()
-    await says(/«Categoría» agrupa la tarea/)
-    fireEvent.click(btn(/Saltar opciones/))
-    await says(/pulsa «Crear tarea»/)
-    fireEvent.click(screen.getByRole('button', { name: 'Crear tarea' }))
-    await waitFor(() => expect(data.createEvent).toHaveBeenCalledWith(expect.objectContaining({ kind: 'task', memberIds: ['m1'] })))
-    await says(/Tu tarea ya está en el calendario/)
   })
 })

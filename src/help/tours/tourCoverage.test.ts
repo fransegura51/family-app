@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { HELP_CARDS, HELP_MODULES } from '@/help/catalog'
 import { TOURS } from '@/help/tours/registry'
+import { SERIES } from '@/help/tours/series'
 
 // REGLA DEL PROYECTO (petición del 24/10/2026): toda función y toda sección de PEPA lleva su recorrido guiado. «Hablar con PEPA» lo arranca con «necesito ayuda con…»
 // (help/talkHelp.ts) y la sección «Enséñame» de la Ayuda lo ofrece, así que hace falta una ficha de Ayuda por función, un recorrido por ficha (`cardId`) y una visita
@@ -9,7 +10,9 @@ import { TOURS } from '@/help/tours/registry'
 // Si esta prueba falla porque has añadido una función o una sección nueva: crea su ficha (src/help/catalog/cards*.ts), su recorrido (src/help/tours/defs, registrado en
 // src/help/tours/registry.ts) con `cardId` apuntando a la ficha, y marca los controles con `data-help-id`. NO la arregles con una lista de excepciones.
 
-const coveredBy = (cardId: string, cardTour: string | undefined) => TOURS.some((t) => t.cardId === cardId || t.id === cardTour)
+// RECORRIDOS-01 (revisada al organizar los tutoriales en series con capítulos): una ficha está cubierta si algún capítulo la tiene como ficha, si es la `tour` de la ficha, o si la lista una serie
+// (`cardIds`). Un mismo capítulo o serie puede cubrir varias fichas.
+const coveredBy = (cardId: string, cardTour: string | undefined) => TOURS.some((t) => t.cardId === cardId || t.id === cardTour) || SERIES.some((s) => s.cardIds?.includes(cardId))
 
 describe('cobertura de recorridos: todo lo que PEPA hace se puede aprender en pantalla', () => {
   it('cada ficha de una función que existe (disponible o parcial) tiene su recorrido', () => {

@@ -11,10 +11,16 @@ export function startState(tour: TourDef): TourState {
 export type TourAction =
   | { type: 'signal'; signal: ObservedSignal }
   // `force`: «Siguiente» en un paso al que se ha vuelto con «Atrás» (ya estaba hecho): permitido salvo en pasos sensibles.
-  | { type: 'next'; force?: boolean }
+  // `afterBack`: se volvió a un paso SENSIBLE que ya se había completado (la aplicación confirmó el guardado): se puede pasar al siguiente sin repetir la acción.
+  | { type: 'next'; force?: boolean; afterBack?: boolean }
+  // Vuelve a evaluar el paso actual (p. ej. tras crear el dato que faltaba): sale del estado «sin control» sin perder el sitio.
+  | { type: 'retry' }
+  // Ver el capítulo solo leyendo (falta algún dato): ver TourState.readOnly.
+  | { type: 'read-only' }
   // Salta lo que queda del grupo de pasos opcionales en el que está (nunca un paso sensible: los de guardar quedan fuera de cualquier grupo).
   | { type: 'skip-group' }
-  | { type: 'back' }
+  // `to`: paso concreto al que volver (un paso omitido cuyo control ya está en pantalla); sin él, el anterior no omitido.
+  | { type: 'back'; to?: number }
   | { type: 'pause' }
   | { type: 'resume' }
   | { type: 'restart' }
@@ -58,6 +64,12 @@ export function canGoNext(step: TourStep): boolean {
   return !step.sensitive && (step.manualNext === true || step.completeOn.length === 0)
 }
 
+// Números que ve la persona: «Paso k de n» cuenta solo los pasos que SÍ se muestran (los omitidos por falta de control no cuentan, ni antes ni después).
+export function stepNumbers(tour: TourDef, state: TourState): { k: number; n: number } {
+  const skippedBefore = state.skipped.filter((i) => i < state.index).length
+  return { k: Math.max(1, Math.min(state.index + 1, tour.steps.length) - skippedBefore), n: Math.max(1, tour.steps.length - state.skipped.length) }
+}
+
 function advance(tour: TourDef, state: TourState, skippedIndex?: number): TourState {
   const skipped = skippedIndex === undefined ? state.skipped : [...state.skipped, skippedIndex]
   const index = state.index + 1
@@ -72,12 +84,31 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
   }
   const step = tour.steps[state.index]
   switch (action.type) {
-    case 'signal':
+    case 'signal': {
       if (state.status !== 'running' || !step) return state
-      return stepAdvancesOn(step, action.signal) ? advance(tour, state) : state
+      if (state.readOnly) return state
+      if (stepAdvancesOn(step, action.signal)) return advance(tour, state)
+      // La persona se adelantó (p. ej. guardó antes de llegar al paso que lo espera): si el aviso de «guardado» es el de un paso posterior y entre medias solo hay pasos que no guardan,
+      // se da por conseguido ese paso (los de en medio se cuentan como omitidos) en vez de dejar el tutorial atascado.
+      if (action.signal.type === 'event') {
+        for (let j = state.index + 1; j < tour.steps.length; j++) {
+          const later = tour.steps[j]
+          if (stepAdvancesOn(later, action.signal)) {
+            const skipped = [...state.skipped, ...Array.from({ length: j - state.index }, (_, i) => state.index + i)]
+            const index = j + 1
+            if (index >= tour.steps.length) return { ...state, index: tour.steps.length, status: 'completed', reason: undefined, skipped }
+            return { ...state, index, status: 'running', reason: undefined, skipped }
+          }
+          if (later.sensitive) break
+        }
+      }
+      return state
+    }
     case 'next':
       if (state.status === 'paused' || !step) return state
-      return canGoNext(step) || (action.force === true && !step.sensitive) ? advance(tour, state) : state
+      return canGoNext(step) || (action.force === true && !step.sensitive) || (action.afterBack === true && Boolean(step.sensitive)) || (state.readOnly === true && state.status === 'running')
+        ? advance(tour, state)
+        : state
     case 'skip-group': {
       if (state.status !== 'running' || !step?.group) return state
       let i = state.index
@@ -91,11 +122,16 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
     }
     case 'skip':
       if (action.index !== undefined && action.index !== state.index) return state
-      return state.status === 'running' && step ? advance(tour, state, state.index) : state
+      return (state.status === 'running' || state.status === 'broken') && step ? advance(tour, state, state.index) : state
     case 'back': {
+      if (action.to !== undefined && action.to >= 0 && action.to < state.index) return { ...state, index: action.to, status: 'running', reason: undefined, skipped: state.skipped.filter((i) => i < action.to!) }
       const prev = previousIndex(state)
       return prev === null ? state : { ...state, index: prev, status: 'running', reason: undefined }
     }
+    case 'retry':
+      return state.status === 'broken' || state.status === 'running' ? { ...state, status: 'running', reason: undefined } : state
+    case 'read-only':
+      return { ...state, status: state.status === 'broken' ? 'running' : state.status, reason: undefined, readOnly: true }
     case 'pause':
       return state.status === 'running' ? { ...state, status: 'paused', reason: undefined } : state
     case 'resume':
@@ -107,6 +143,8 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
     case 'target-missing':
       if (action.index !== undefined && action.index !== state.index) return state
       if (state.status !== 'running' || !step) return state
+      // Solo leyendo no hay control que esperar: el paso se muestra como texto.
+      if (state.readOnly) return state
       // Un paso opcional sin control se omite; uno necesario deja el tutorial «roto» con salida comprensible (nunca bloquea).
       return step.optional ? advance(tour, state, state.index) : { ...state, status: 'broken', reason: 'target-missing' }
     case 'target-found':
@@ -119,9 +157,10 @@ export function reduceTour(tour: TourDef, state: TourState, action: TourAction):
 }
 
 // Paso al que lleva «Atrás»: el anterior que no se omitió (volver a un paso omitido lo dejaría saltar otra vez hacia delante). null si no hay ninguno.
-export function previousIndex(state: TourState): number | null {
+// `reopenable`: un paso omitido por falta de control SÍ se puede recuperar con «Atrás» si ese control ya está en pantalla (llegó tarde, p. ej. al terminar de cargar la lista).
+export function previousIndex(state: TourState, reopenable?: (index: number) => boolean): number | null {
   let i = state.index - 1
-  while (i >= 0 && state.skipped.includes(i)) i--
+  while (i >= 0 && state.skipped.includes(i) && !(reopenable?.(i) ?? false)) i--
   return i >= 0 ? i : null
 }
 

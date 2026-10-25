@@ -8,7 +8,7 @@ export function BatteryGuideCard() {
   const brand = detectBrand(navigator.userAgent)
   const guides = orderedGuides(brand)
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="notifications.battery-guide">
       <h2>🔋 Que los avisos lleguen con la app cerrada</h2>
       <p className="muted">
         Muchos móviles Android cierran las apps en segundo plano para ahorrar batería. Si los avisos de llegada y salida solo te salen con PEPA abierta, haz

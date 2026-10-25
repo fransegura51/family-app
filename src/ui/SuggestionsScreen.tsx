@@ -16,6 +16,7 @@ import {
 } from '@/data/suggestions'
 import { supabase } from '@/data/supabaseClient'
 import { errorMessage } from '@/domain/errorMessage'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import type { Suggestion } from '@/domain/types'
 import sugerenciasHeaderImg from '@/assets/sugerencias/sugerencias-header.jpg'
@@ -74,6 +75,7 @@ export function SuggestionsScreen() {
     setError(null)
     try {
       await createSuggestion(message)
+      emitHelpEvent('suggestions.sent') // para los tutoriales «Enséñame»: la sugerencia YA está en el buzón
       setMessage('')
       reload()
     } catch (err) {

@@ -9,6 +9,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import ayudaHeaderImg from '@/assets/ayuda/ayuda-header.jpg'
 import { HELP_MODULES, HELP_VIDEOS, cardsOfModule, legacyEntriesOfModule, summaryOfModule } from '@/help/catalog'
 import { moduleAccess } from '@/help/access'
+import { SERIES_BY_ID, seriesOfChapter } from '@/help/tours/series'
 import type { HelpModule } from '@/help/types'
 import { HelpConversation } from '@/help/ui/HelpConversation'
 import { HelpVideo } from '@/help/ui/HelpVideo'
@@ -28,6 +29,8 @@ export function AyudaScreen() {
   // Un aviso de Soporte llega aquí con ?soporte=<incidencia>: se abre el área de Soporte técnico (solo si está activado; si no, esa pestaña ni existe).
   const [params] = useSearchParams()
   const wantsSupport = params.get('soporte') !== null
+  // Enlace directo a un tutorial: ?serie=<serie> o ?capitulo=<capítulo (o identificador antiguo)> abre «Enséñame» con esa serie desplegada.
+  const wantedSeries = SERIES_BY_ID.get(params.get('serie') ?? '')?.id ?? seriesOfChapter(params.get('capitulo') ?? undefined)?.id
 
   // Al entrar en Ayuda se comprueba (una sola vez, con la memoria compartida) si Comunidad está abierta para esta cuenta, para decidir qué fichas se enseñan.
   const ensured = useRef(false)
@@ -39,7 +42,8 @@ export function AyudaScreen() {
   const setAreaRef = help?.setArea
   useEffect(() => {
     if (wantsSupport && SUPPORT_ENABLED) setAreaRef?.('support')
-  }, [wantsSupport, setAreaRef])
+    else if (wantedSeries) setAreaRef?.('learn', wantedSeries)
+  }, [wantsSupport, wantedSeries, setAreaRef])
 
   // La conversación coloca por sí misma la respuesta nueva a la vista (ver HelpConversation): aquí no hace falta desplazar nada más.
   const showCard = (id: string) => {

@@ -30,7 +30,7 @@ export function NotifyFamilyCheckbox({
 
   if (mode !== 'assigned' || visibility === 'private') return null
   return (
-    <label className="checkbox-label">
+    <label className="checkbox-label" data-help-id="calendar.notify-family">
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       🔔 Aviso a toda la familia
     </label>

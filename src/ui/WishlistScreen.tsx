@@ -323,7 +323,7 @@ function WishlistDetailScreen({
       )}
       {error && <p className="error">{error}</p>}
       <div className="inline-fields" style={{ marginTop: 6 }}>
-        <button type="button" className="link-button" onClick={() => void handleShare()} disabled={sharing}>
+        <button type="button" className="link-button" data-help-id="pequenos.lista-compartir" onClick={() => void handleShare()} disabled={sharing}>
           {sharing ? 'Generando…' : '🔗 Compartir con invitados sin cuenta'}
         </button>
         {guestUrl && (
@@ -490,6 +490,7 @@ function EditWishlistModal({ wishlist, onClose, onSaved }: { wishlist: Wishlist;
     setError(null)
     try {
       await updateWishlist(wishlist.id, { occasion, celebrationDate: celebrationDate || null })
+      emitHelpEvent('pequenos.wishlist-updated') // para los tutoriales «Enséñame»: la lista YA está guardada
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -513,13 +514,13 @@ function EditWishlistModal({ wishlist, onClose, onSaved }: { wishlist: Wishlist;
           {error && <p className="error">{error}</p>}
           <label>
             Celebración
-            <input type="text" value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Cumpleaños, Navidad, Reyes..." autoFocus />
+            <input type="text" value={occasion} onChange={(e) => setOccasion(e.target.value)} placeholder="Cumpleaños, Navidad, Reyes..." autoFocus data-help-id="pequenos.lista-editar-celebracion" />
           </label>
           <label>
             Fecha de la celebración (opcional)
             <DateField value={celebrationDate} onChange={setCelebrationDate} placeholder="Sin fecha" />
           </label>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="pequenos.lista-editar-guardar">
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </form>
@@ -552,6 +553,7 @@ function EditWishlistItemModal({ item, onClose, onSaved }: { item: WishlistItem;
         link: link.trim() || null,
         price: price.trim() === '' ? null : Number(price),
       })
+      emitHelpEvent('pequenos.gift-updated') // para los tutoriales «Enséñame»: el regalo YA está guardado
       onSaved()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo guardar'))
@@ -575,7 +577,7 @@ function EditWishlistItemModal({ item, onClose, onSaved }: { item: WishlistItem;
           {error && <p className="error">{error}</p>}
           <label>
             Nombre
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} autoFocus data-help-id="pequenos.regalo-editar-nombre" />
           </label>
           <label>
             Descripción (opcional)
@@ -589,7 +591,7 @@ function EditWishlistItemModal({ item, onClose, onSaved }: { item: WishlistItem;
             Precio (opcional)
             <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
-          <button type="submit" disabled={saving}>
+          <button type="submit" disabled={saving} data-help-id="pequenos.regalo-editar-guardar">
             {saving ? 'Guardando…' : 'Guardar cambios'}
           </button>
         </form>
@@ -689,7 +691,7 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
             Nombre
             <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Bicicleta, libro, LEGO..." autoFocus data-help-id="pequenos.regalo-nombre" />
           </label>
-          <label>
+          <label data-help-id="pequenos.regalo-descripcion">
             Descripción (opcional)
             <input type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
@@ -718,11 +720,11 @@ function AddWishlistItemModal({ wishlistId, onClose, onAdded }: { wishlistId: st
           {!detecting && detectFailed && !photoFile && (
             <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>No se encontró ninguna foto en ese enlace — puedes subir una a mano abajo.</p>
           )}
-          <label>
+          <label data-help-id="pequenos.regalo-precio">
             Precio (opcional)
             <input type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
           </label>
-          <label>
+          <label data-help-id="pequenos.regalo-foto">
             Fotografía {detectedPath ? '(sustituye a la encontrada automáticamente)' : '(opcional)'}
             <input
               type="file"

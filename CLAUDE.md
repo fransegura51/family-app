@@ -66,3 +66,15 @@ deuda para esquivar la regla. Al mejorar la Ayuda, **sube** los pisos de `helpDe
 
 Ayuda con IA: solo puede ELEGIR entre fichas verificadas ya filtradas por permisos; nunca escribe el texto que ve la persona ni inventa botones, rutas, permisos o comportamientos.
 No se guarda ninguna conversación de Ayuda. Detalle y estado: [`docs/AYUDA_B3_B4_ESTADO.md`](docs/AYUDA_B3_B4_ESTADO.md).
+
+### Tutoriales «Enséñame» = series de capítulos (reorganización 25/10/2026)
+
+Un tutorial principal es una **serie** (`src/help/tours/series/*.ts`, `ser-<modulo>-<tema>`) de **capítulos** (cada capítulo es un `TourDef` normal, ≤ 120 s, 3–10 pasos; la serie ≤ 9 min). Reglas:
+- Todo tutorial (no visita) pertenece a **una sola serie**. Un tutorial que se funde en otro desaparece y su id va a `src/help/tours/aliases/*.ts` (`viejo → capítulo vigente`, sin cadenas): `getTour` y el progreso guardado resuelven los alias.
+- Cada capítulo arranca limpio (`startPath`/`startDest`); **el primer paso nunca es `optional`**: usa `readyOn` (marcas que deben existir antes de evaluar) y `needs` (datos necesarios: si faltan, se explica y se ofrece «Verlo solo leyendo»).
+- Pasos que guardan: `sensitive` + solo `event` (`emitHelpEvent` tras confirmar el servidor). El tutorial nunca pulsa, escribe, guarda, borra ni completa nada por la persona. Si el capítulo puede terminar con un guardado real, lo dice antes («se guarda de verdad…») y puede cerrarse sin guardar.
+- Campos de paso: `keepVisible` (controles auxiliares que la tarjeta no puede tapar), `native` (el control abre cámara/archivos/fecha: la tarjeta se recoge en píldora), `skipLabel`, `missingText`.
+- Entre capítulos hay una **parada explícita** («Siguiente capítulo»): nunca se encadenan solos. El catálogo «Enséñame», las fichas (`tour:`), la búsqueda y `/ayuda?serie=…|?capitulo=…` llevan al capítulo exacto.
+- Funciones sin terminar o sin validar **no** llevan tutorial: se dejan en `src/help/tours/planned/*.ts` con su `blockedBy` (visibles solo en Centro de Administración → Ayuda).
+- Tres niveles sin duplicar: A «Conoce» (visita: dónde está cada cosa), B «Enséñame» (capítulos: hacerlo), C «Cómo funciona» (`src/help/explainers`: reglas internas, clasificaciones, límites). No se afirma que la IA aprenda de las correcciones si el código no lo hace.
+- Pruebas: `src/help/tours/series/series.test.ts`, `seriesProgress.test.ts`, `engineChapters.test.ts`, `tourRunnerChapters.test.tsx`.

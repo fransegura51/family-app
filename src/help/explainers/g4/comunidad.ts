@@ -153,7 +153,7 @@ export const expComunidadAvisos: HelpExplainer = {
     {
       heading: 'Dónde se cambia',
       paragraphs: [
-        'En Comunidad → Mi perfil → Mis ajustes → «Avisos de Comunidad», y también en Familia → «Horarios de tus avisos». La zona horaria se cambia en Familia.',
+        'En Comunidad → Mi perfil → Mis ajustes → «Avisos de Comunidad», y también en Configuración → «Avisos» → «Horarios de tus avisos». La zona horaria se cambia en Configuración → «Avisos» (ya no está en Familia).',
       ],
     },
   ],
@@ -189,6 +189,7 @@ export const expComunidadAvisos: HelpExplainer = {
     'Sin avisos',
     'Horarios de tus avisos',
   ],
+  tour: 'tut-comunidad-guardar-publicacion',
   cardIds: ['com2-publicar', 'com2-alias'],
 }
 

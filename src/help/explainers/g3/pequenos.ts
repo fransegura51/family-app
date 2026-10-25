@@ -1,6 +1,7 @@
 import type { HelpExplainer } from '@/help/explainers/types'
 
-// «Cómo funciona PEPA» de Pequeños Grandes (Puntos y recompensas, Lista de deseos). «Educación financiera» queda fuera: la lleva otra persona.
+// «Cómo funciona PEPA» de Pequeños Grandes (Puntos y recompensas, Lista de deseos y el monedero de Educación financiera). Aquí viven los «por qué» (puntos ganados y disponibles, secreto de las reservas,
+// reparto del monedero): los capítulos de «Enséñame» solo enseñan a hacer cada cosa y enlazan aquí.
 
 export const expPequenosPuntosRecompensas: HelpExplainer = {
   id: 'exp-pequenos-puntos-recompensas',
@@ -28,7 +29,7 @@ export const expPequenosPuntosRecompensas: HelpExplainer = {
       heading: 'Pedir una recompensa',
       paragraphs: [
         'Las recompensas están en el catálogo de cada tarjeta. «Solicitar» solo se activa si los puntos disponibles llegan al coste. Al pedirla, esos puntos quedan reservados y la solicitud queda «Pendiente de aprobar». Aunque dos personas pulsen a la vez, el servidor impide reservar más puntos de los que hay.',
-        'Cualquier persona de la familia puede solicitar. Una persona adulta la ve en «🔔 Solicitudes pendientes de aprobar» y decide: aprobar (los puntos quedan gastados) o rechazar (los puntos se liberan). Una aprobada pasa a «🎁 Premios pendientes de disfrutar», donde un adulto la marca con «Marcar como disfrutado».',
+        'Cualquier persona de la familia puede solicitar. PEPA avisa a las personas adultas y administradoras de la familia (en la campana de avisos y, si lo tienen activado, en el móvil), menos a quien la ha pedido. Una persona adulta la ve en «🔔 Solicitudes pendientes de aprobar» y decide: aprobar (los puntos quedan gastados) o rechazar (los puntos se liberan). Una aprobada pasa a «🎁 Premios pendientes de disfrutar», donde un adulto la marca con «Marcar como disfrutado».',
       ],
     },
     {
@@ -40,7 +41,7 @@ export const expPequenosPuntosRecompensas: HelpExplainer = {
     },
   ],
   limits: [
-    'En esta pantalla no hay un aviso aparte para las personas adultas: la solicitud aparece al abrir Puntos y recompensas.',
+    'El aviso a las personas adultas depende de que tengan activados los avisos de PEPA. Aunque no les llegue, la solicitud siempre aparece al abrir Puntos y recompensas.',
     'No hay un botón para cancelar una solicitud propia: la rechaza una persona adulta y los puntos se liberan.',
     'En el Historial solo las concesiones de «⭐ Dar puntos» se pueden corregir; los puntos que vienen de marcar «Hecho» en el Calendario no tienen esa opción.',
   ],
@@ -130,4 +131,56 @@ export const expPequenosDeseosReservas: HelpExplainer = {
   synonyms: ['reservar regalo', 'quien ha reservado', 'por que no veo las reservas', 'lista de regalos', 'wishlist', 'regalo conjunto', 'sorpresa', 'compartir lista', 'deshacer reserva'],
 }
 
-export const EXPLAINERS_PEQUENOS: HelpExplainer[] = [expPequenosPuntosRecompensas, expPequenosDeseosReservas]
+export const expPequenosMonedero: HelpExplainer = {
+  id: 'exp-pequenos-monedero',
+  module: 'pequenos',
+  title: 'Cómo funciona el monedero de los niños',
+  summary: 'Qué son las cuatro tarjetas, cómo se reparte lo que reciben, quién aprueba sus movimientos y por qué no es dinero de verdad.',
+  sections: [
+    {
+      heading: 'Un monedero de aprendizaje',
+      paragraphs: [
+        'En «Educación financiera» cada niño o niña (y bebé) tiene su monedero. Es para aprender a ahorrar, gastar y aportar: está aparte de las cuentas bancarias reales y nada de lo que se apunta mueve dinero de verdad.',
+        '«Mi dinero ahora» suma lo que hay en la hucha (Ahorro) y lo que queda para gastar.',
+      ],
+    },
+    {
+      heading: 'Las cuatro tarjetas',
+      paragraphs: [
+        '«Recibido» es todo el dinero que le han dado (la paga, un regalo, algo por ayudar en casa). «Ahorro» es lo que guarda para conseguir algo. «Para gastar» es lo que le queda disponible ahora. «Impuestos» es la parte que aporta a un fondo común de la familia.',
+        'Cada tarjeta guarda su historial por años y meses, y cada una tiene su botón «+ Nuevo…» para apuntar un movimiento.',
+      ],
+    },
+    {
+      heading: 'El reparto automático',
+      paragraphs: [
+        'Cuando se apunta un ingreso, se reparte solo: por defecto el 60 % va a ahorro, el 20 % a impuestos y el 20 % queda disponible. Una persona adulta puede cambiar esos porcentajes con «✏️ Editar reparto» (tienen que sumar 100 o menos).',
+        'El cambio solo afecta a los ingresos que se apunten a partir de entonces: nunca recalcula los que ya estaban.',
+      ],
+      example: 'Con el reparto de siempre, si Lucía (nombre inventado) recibe 10 € de paga, 6 € van a su hucha, 2 € al fondo común y 2 € le quedan para gastar.',
+    },
+    {
+      heading: 'Quién aprueba',
+      paragraphs: [
+        'Cuando un niño o una niña apunta un ingreso o un gasto, queda «pendiente de que un adulto lo apruebe» y todavía no cuenta en su saldo. Una persona adulta lo aprueba o lo rechaza desde la pantalla principal de Educación financiera.',
+        'Los objetivos de ahorro (por ejemplo, una bici) muestran lo ahorrado y, al llegar al coste, hay una pequeña celebración.',
+      ],
+    },
+  ],
+  limits: [
+    'El monedero no está conectado a ningún banco ni mueve dinero real: lo que se apunta lo apunta la familia a mano.',
+    'El reparto se fija para cada niño o niña por separado, y solo se aplica a los ingresos que se apunten después de cambiarlo.',
+  ],
+  ifWrong: [
+    'Si un movimiento está mal, una persona adulta puede rechazarlo si sigue pendiente, o usar «Eliminar» en el historial de su tarjeta.',
+    'Si una cifra no te cuadra, mira primero si hay movimientos «pendientes de aprobar»: no cuentan hasta que se aprueban.',
+  ],
+  verified: '2026-10-25',
+  basedOn: ['src/ui/FinanceScreen.tsx', 'src/domain/finance.ts', 'supabase/migrations/0230_pequenos_grandes_income_split.sql'],
+  go: { path: '/puntos', dest: 'pequenos.inicio' },
+  labels: ['Educación financiera', '✏️ Editar reparto'],
+  cardIds: ['pg-monedero'],
+  synonyms: ['monedero', 'paga', 'hucha', 'ahorro de los niños', 'reparto 60 20 20', 'impuestos', 'fondo común', 'objetivo de ahorro', 'educación financiera'],
+}
+
+export const EXPLAINERS_PEQUENOS: HelpExplainer[] = [expPequenosPuntosRecompensas, expPequenosDeseosReservas, expPequenosMonedero]

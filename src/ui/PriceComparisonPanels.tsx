@@ -99,11 +99,11 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
   if (!hasAnyPrices && group.suggestions.length === 0) return null
 
   return (
-    <div className="day-modal-group" style={{ marginTop: 12 }}>
+    <div className="day-modal-group" data-help-id="shopping.price-compare" style={{ marginTop: 12 }}>
       <h3 className="section-title" style={{ margin: '0 0 6px' }}>
         Precio por tienda
       </h3>
-      <div className="chip-row" role="group" aria-label="Qué productos comparar">
+      <div className="chip-row" role="group" aria-label="Qué productos comparar" data-help-id="shopping.price-scope">
         <button type="button" className={scope === 'identical' ? 'chip chip-active' : 'chip'} aria-pressed={scope === 'identical'} onClick={() => setScope('identical')}>
           Solo el mismo
         </button>
@@ -219,11 +219,11 @@ export function ListPriceComparison({ items }: { items: readonly ShoppingItem[] 
 
   return (
     <div style={{ margin: '4px 0 10px' }}>
-      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button type="button" className="link-button" data-help-id="shopping.compare-list" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         💶 {open ? 'Ocultar comparación de tiendas' : 'Comparar la lista entre tiendas'}
       </button>
       {open && (
-        <div className="card" style={{ marginTop: 6 }}>
+        <div className="card" data-help-id="shopping.compare-panel" style={{ marginTop: 6 }}>
           {error && <p className="error">{error}</p>}
           {!comparison && !error && <p className="muted">Calculando con vuestros precios…</p>}
           {comparison && (

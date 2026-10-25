@@ -1,18 +1,18 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Ubicación (src/ui/LocationScreen.tsx). Visita guiada y dos tutoriales: guardar un lugar frecuente y crear una regla de aviso.
+// Ubicación (src/ui/LocationScreen.tsx). La visita guiada y tres capítulos de la serie «Ubicación y avisos» (src/help/tours/series/e.ts): guardar un lugar, editar o mover un lugar y las reglas de aviso.
 // Ninguno activa el consentimiento de nadie, ni empieza a compartir la ubicación, ni pulsa «Compartir mi ubicación actual»: eso lo decide siempre cada persona.
-// Las pestañas internas (Inicio / Ubicación / Reglas) se abren con los destinos «ubicacion.inicio», «ubicacion.mapa» y «ubicacion.reglas».
+// Las pestañas internas se abren con los destinos «ubicacion.inicio», «ubicacion.mapa» y «ubicacion.reglas» (arriba) y «ubicacion.lugares», «ubicacion.estoy-aqui» y «ubicacion.compartir» (debajo del mapa).
 
 export const visitaUbicacion: TourDef = {
   id: 'visita-ubicacion',
   kind: 'visit',
   module: 'ubicacion',
-  version: 1,
+  version: 2,
   title: 'Conoce Ubicación',
-  summary: 'El mapa de la familia, los lugares guardados, el permiso para compartir y las reglas de aviso.',
+  summary: 'El mapa de la familia, los lugares guardados, «¡Estoy aquí!», el permiso para compartir y las reglas de aviso.',
   cardId: 'ubi-ver',
-  durationSec: 100,
+  durationSec: 110,
   startPath: '/ubicacion',
   startDest: 'ubicacion.mapa',
   steps: [
@@ -31,8 +31,16 @@ export const visitaUbicacion: TourDef = {
       manualNext: true,
     },
     {
+      id: 'mapa',
+      text: 'Este es el mapa de la familia. Solo salen las personas que comparten, con su recorrido de las últimas 24 horas. Línea continua: recorrido registrado. Línea de rayas: tramo sin datos, porque el móvil no mandó su posición en ese rato.',
+      target: 'ubicacion.map',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'personas',
-      text: 'Arriba, la familia: toca a una persona para ver su información debajo del mapa. El símbolo ⏸ significa que esa persona no comparte su ubicación.',
+      text: 'Arriba, la familia: toca a una persona para ver su ficha debajo del mapa (si comparte, cuándo se actualizó su posición y «📍 Abrir en Google Maps»). El símbolo ⏸ significa que esa persona no comparte su ubicación.',
       target: 'ubicacion.member-chips',
       completeOn: [],
       manualNext: true,
@@ -40,7 +48,7 @@ export const visitaUbicacion: TourDef = {
     },
     {
       id: 'pestanas',
-      text: 'Debajo del mapa hay tres pestañas: «🏠 Lugares», «📍 ¡Estoy aquí!» y «👥 Compartir ubicación».',
+      text: 'Debajo del mapa hay tres pestañas: «🏠 Lugares», «📍 ¡Estoy aquí!» (compartes dónde estás con un enlace de Google Maps, o guardas «Casa» o «Trabajo» de un toque) y «👥 Compartir ubicación».',
       target: 'ubicacion.panel-tabs',
       completeOn: [],
       manualNext: true,
@@ -48,7 +56,7 @@ export const visitaUbicacion: TourDef = {
     },
     {
       id: 'lugares',
-      text: 'En «Lugares» guardas sitios (casa, el cole…) y puedes marcar que PEPA avise cuando alguien llegue o se vaya de allí. Para guardar uno, pídeme el tutorial «Guardar un lugar».',
+      text: 'En «Lugares» guardas sitios (casa, el cole…) y puedes marcar que PEPA avise cuando alguien llegue o se vaya de allí. Debajo, «Lugares frecuentes» y el historial de sitios de los últimos 90 días.',
       target: 'ubicacion.place-form',
       completeOn: [],
       manualNext: true,
@@ -70,25 +78,24 @@ export const visitaUbicacion: TourDef = {
       manualNext: true,
     },
   ],
-  finishText: 'Ya conoces Ubicación. Si quieres practicar, pídeme un tutorial: guardar un lugar o crear una regla de aviso.',
+  finishText: 'Ya conoces Ubicación. Si quieres practicar, pídeme el tutorial «Ubicación y avisos»: compartir tu ubicación, guardar un lugar o crear una regla.',
   next: ['ubi-ver', 'ubi-lugares', 'ubi-compartir-movil'],
 }
 
 export const tutUbicacionGuardarLugar: TourDef = {
   id: 'tut-ubicacion-guardar-lugar',
   module: 'ubicacion',
-  group: 'Ubicación',
   summary: 'Guardar un sitio frecuente (casa, colegio…) y, si quieres, avisar de llegadas y salidas.',
-  version: 1,
-  title: 'Guardar un lugar frecuente',
+  version: 2,
+  title: 'Guardar un lugar y su aviso',
   cardId: 'ubi-lugares',
   durationSec: 100,
   startPath: '/ubicacion',
-  startDest: 'ubicacion.mapa',
+  startDest: 'ubicacion.lugares',
   steps: [
     {
       id: 'nombre',
-      text: 'Vamos a guardar un sitio. Escribe su nombre, por ejemplo «Colegio». Cuando termines, pulsa ✓ en el teclado o «Siguiente». No se guarda nada hasta el último paso.',
+      text: 'Vamos a guardar un sitio. Escribe su nombre, por ejemplo «Colegio». Se guarda de verdad cuando pulses «Guardar lugar» al final; si solo practicas, sal antes. Al terminar de escribir, pulsa ✓ o «Siguiente».',
       target: 'ubicacion.place-name',
       completeOn: [{ type: 'entered', target: 'ubicacion.place-name', min: 2 }],
       manualNext: true,
@@ -137,26 +144,102 @@ export const tutUbicacionGuardarLugar: TourDef = {
       completeOn: [{ type: 'event', name: 'location.place-added' }],
       sensitive: true,
     },
+    {
+      id: 'donde',
+      text: 'Tu lugar queda en «Lugares frecuentes». Toca esa tarjeta para verlos: allí puedes marcar o quitar el 🔔 de cada uno, editarlo o eliminarlo.',
+      target: 'ubicacion.places-toggle',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
   ],
-  finishText: '¡Listo! El lugar está guardado: lo verás al abrir «Lugares frecuentes». Esto no activa la ubicación de nadie; eso se hace en «Compartir ubicación».',
+  finishText: '¡Listo! El lugar está guardado. Esto no activa la ubicación de nadie; eso se hace en «Compartir ubicación». Para cambiarlo o moverlo, mira «Editar o mover un lugar».',
   next: ['ubi-lugares', 'ubi-compartir-movil'],
+}
+
+export const tutUbicacionEditarLugar: TourDef = {
+  id: 'tut-ubicacion-editar-lugar',
+  module: 'ubicacion',
+  summary: 'Cambiar el nombre, la categoría o el radio de un lugar guardado, o moverlo a donde estás ahora.',
+  version: 1,
+  title: 'Editar o mover un lugar',
+  cardId: 'ubi-lugares',
+  durationSec: 80,
+  startPath: '/ubicacion',
+  startDest: 'ubicacion.lugares',
+  readyOn: ['ubicacion.places-toggle'],
+  steps: [
+    {
+      id: 'abrir',
+      text: 'Toca «Lugares frecuentes» para ver los sitios que ya tienes guardados. Aquí no se cambia nada hasta que pulses «Guardar cambios».',
+      target: 'ubicacion.places-toggle',
+      completeOn: [
+        { type: 'click', target: 'ubicacion.places-toggle' },
+        { type: 'appear', target: 'ubicacion.lugar-editar' },
+      ],
+      skipIf: [{ type: 'appear', target: 'ubicacion.lugar-editar' }, { type: 'appear', target: 'ubicacion.lugar-editar-form' }],
+    },
+    {
+      id: 'editar',
+      text: 'Pulsa «✎ Editar» en el lugar que quieras cambiar.',
+      target: 'ubicacion.lugar-editar',
+      completeOn: [
+        { type: 'click', target: 'ubicacion.lugar-editar' },
+        { type: 'appear', target: 'ubicacion.lugar-editar-form' },
+      ],
+      skipIf: [{ type: 'appear', target: 'ubicacion.lugar-editar-form' }],
+      missingText: 'Todavía no tienes ningún lugar guardado. Guarda uno con el capítulo «Guardar un lugar y su aviso» y vuelve aquí.',
+    },
+    {
+      id: 'campos',
+      text: 'Aquí cambias el nombre, la categoría y el radio (en metros). Si hay categoría, es el nombre que sale en los avisos de llegada y salida.',
+      target: 'ubicacion.lugar-editar-form',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'mover',
+      text: '«📍 Mover el lugar a donde estoy ahora» pone el lugar en tu posición de este momento (el móvil puede pedirte permiso). Úsalo estando en el sitio. No se mueve hasta «Guardar cambios». Yo no lo pulso.',
+      target: 'ubicacion.lugar-mover-aqui',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'guardar',
+      text: '«Guardar cambios» guarda de verdad lo que hayas cambiado; «Cancelar» lo deja como estaba. Si solo estás practicando, pulsa «Cancelar». Yo no pulso nada.',
+      target: 'ubicacion.lugar-editar-guardar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'resto',
+      text: 'En cada lugar guardado también tienes la casilla «🔔 Avisarme cuando alguien llegue o se vaya de aquí» (se guarda al marcarla) y «Eliminar», que pide confirmación antes de borrarlo.',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Eso es todo. No he cambiado ningún lugar: lo que edites se guarda solo cuando tú pulsas «Guardar cambios».',
+  next: ['ubi-lugares', 'ubi-ver'],
 }
 
 export const tutUbicacionCrearRegla: TourDef = {
   id: 'tut-ubicacion-crear-regla',
   module: 'ubicacion',
-  group: 'Ubicación',
-  summary: 'Crear una regla que avise al llegar a un lugar, al salir o a una hora fija.',
-  version: 1,
-  title: 'Crear una regla de aviso',
+  summary: 'Crear una regla que avise al llegar a un lugar, al salir o a una hora fija, y saber pausarla o silenciarla.',
+  version: 2,
+  title: 'Avisos automáticos (reglas)',
   cardId: 'ubi-lugares',
-  durationSec: 100,
+  durationSec: 110,
   startPath: '/ubicacion',
   startDest: 'ubicacion.reglas',
+  // La lista y el formulario salen cuando termina de cargar «Cargando reglas…».
+  readyOn: ['ubicacion.rule-form'],
   steps: [
     {
       id: 'nombre',
-      text: 'Vamos a crear un aviso automático. Ponle un nombre, por ejemplo «Mochila escolar». Cuando termines, pulsa ✓ en el teclado o «Siguiente». No se guarda nada hasta el último paso.',
+      text: 'Vamos a crear un aviso automático. Ponle un nombre, por ejemplo «Mochila escolar». La regla se guarda de verdad cuando pulses «Crear regla» al final; si solo practicas, sal antes. Al terminar de escribir, pulsa ✓ o «Siguiente».',
       target: 'ubicacion.rule-name',
       completeOn: [{ type: 'entered', target: 'ubicacion.rule-name', min: 2 }],
       manualNext: true,
@@ -186,7 +269,7 @@ export const tutUbicacionCrearRegla: TourDef = {
     },
     {
       id: 'quien',
-      text: '«Para quién» es opcional. En las reglas de llegar o salir, sirve para que solo cuente el movimiento de una persona; por defecto cuenta «Cualquiera».',
+      text: '«Para quién» es opcional. En las reglas de llegar o salir, sirve para que solo cuente el movimiento de una persona. En la de hora diaria no filtra: el aviso llega a toda la familia.',
       target: 'ubicacion.rule-who',
       completeOn: [],
       manualNext: true,
@@ -194,7 +277,7 @@ export const tutUbicacionCrearRegla: TourDef = {
     },
     {
       id: 'mensaje',
-      text: 'Escribe el mensaje que llegará, por ejemplo «¡No olvides la mochila!». Cuando se cumpla la regla, ese texto llegará como aviso a la familia.',
+      text: 'Escribe el mensaje que llegará, por ejemplo «¡No olvides la mochila!». En las reglas de llegar o salir puedes poner {miembro} y {lugar}: PEPA los cambia por el nombre de la persona y del lugar.',
       target: 'ubicacion.rule-message',
       completeOn: [{ type: 'entered', target: 'ubicacion.rule-message', min: 2 }],
       manualNext: true,
@@ -206,9 +289,24 @@ export const tutUbicacionCrearRegla: TourDef = {
       completeOn: [{ type: 'event', name: 'location.rule-created' }],
       sensitive: true,
     },
+    {
+      id: 'lista',
+      text: 'Tu regla aparece en esta lista, con su disparador y su mensaje. Las reglas de cada lugar (las del 🔔) no salen aquí: se gestionan desde el propio lugar.',
+      target: 'ubicacion.rule-list',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'estado',
+      text: '«Activa» / «Pausada» la pone en marcha o la pausa sin borrarla; «Silenciar 1h» la calla una hora; «Eliminar» la borra (pide confirmación). Aquí solo te lo enseño: yo no pulso nada.',
+      target: 'ubicacion.rule-state',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
   ],
-  finishText: '¡Listo! La regla está creada y aparece en la lista de arriba. Desde ahí puedes pausarla, silenciarla una hora o eliminarla.',
+  finishText: '¡Listo! La regla está creada. Puedes pausarla o silenciarla cuando quieras desde la lista.',
   next: ['ubi-lugares', 'ubi-ver'],
 }
 
-export const TOURS_UBICACION: TourDef[] = [visitaUbicacion, tutUbicacionGuardarLugar, tutUbicacionCrearRegla]
+export const TOURS_UBICACION: TourDef[] = [visitaUbicacion, tutUbicacionGuardarLugar, tutUbicacionEditarLugar, tutUbicacionCrearRegla]

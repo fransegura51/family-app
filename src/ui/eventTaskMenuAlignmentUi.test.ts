@@ -44,7 +44,7 @@ describe('ConfirmButton acepta un nodo como label (icono + texto), sin cambiar s
 describe('ConfirmButton acepta un `style` opcional — la causa real de la desalineación', () => {
   it('ConfirmButton define `style?: CSSProperties` y lo aplica al botón SIN confirmar', () => {
     expect(STYLES).toContain('style?: CSSProperties')
-    expect(STYLES).toContain('<button type="button" className={className} style={style} onClick={() => setConfirming(true)} aria-label={ariaLabel}>')
+    expect(STYLES).toContain('<button type="button" className={className} style={style} onClick={() => setConfirming(true)} aria-label={ariaLabel} data-help-id={helpId}>')
   })
   it('las filas de Confirmar/Cancelar (otro layout, ya centradas a propósito) NUNCA reciben ese style', () => {
     const confirmingBlock = STYLES.slice(STYLES.indexOf('if (confirming) {'), STYLES.indexOf('return (', STYLES.indexOf('if (confirming) {') + 1))

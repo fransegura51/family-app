@@ -1068,7 +1068,7 @@ function ShoppingListTab() {
           {bought.length}/{total || 0} comprados
         </p>
         {shoppingMode && bought.length > 0 && (
-          <p className="points-badge shopping-running-total">
+          <p className="points-badge shopping-running-total" data-help-id="shopping.running-total">
             🧾 {boughtTotal.toFixed(2)} €
             {boughtWithoutPrice > 0 &&
               ` (${boughtWithoutPrice} sin precio conocido)`}
@@ -1130,7 +1130,7 @@ function ShoppingListTab() {
             <>
               {classGroupsFor(pendingItems).map((group) => (
                 <div key={`${store}:${group.kind}:${group.label}`} className="shopping-class-group">
-                  <p className="shopping-class-heading" style={{ background: classColors.get(group.label) }}>
+                  <p className="shopping-class-heading" data-help-id="shopping.class-heading" style={{ background: classColors.get(group.label) }}>
                     {group.icon} {group.label}
                   </p>
                   <DraggableStoreGroup
@@ -1165,6 +1165,7 @@ function ShoppingListTab() {
               <ConfirmButton
                 className="link-button shopping-finish-button"
                 label="✅ Finalizar compra"
+                helpId="shopping.finish-purchase"
                 confirmLabel="Sí, finalizar"
                 onConfirm={() => finalizePurchase(storeItems)}
               />
@@ -1526,6 +1527,7 @@ function StoreManager({
           ) : (
             <div
               key={s.id}
+              data-help-id="shopping.store-row"
               className={'card task-card' + (draggingId === s.id ? ' shopping-item-dragging' : '')}
               style={{
                 background: storeColors.get(s.name),
@@ -2043,7 +2045,7 @@ export function AddShoppingItemForm({
       {matchedPrice != null && (
         <p className="muted">Último precio: {matchedPrice.toFixed(2)} {displayMeasurementUnit(matchedPriceUnit ?? 'ud')}</p>
       )}
-      <div className="inline-fields">
+      <div className="inline-fields" data-help-id="shopping.product-amount">
         <label>
           Cantidad
           <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="2" />
@@ -2062,7 +2064,7 @@ export function AddShoppingItemForm({
           ))}
         </datalist>
       </label>
-      <label>
+      <label data-help-id="shopping.product-priority">
         Prioridad
         <select value={priority} onChange={(e) => setPriority(e.target.value as ShoppingItemPriority)}>
           {PRIORITIES.map((p) => (
@@ -2081,6 +2083,7 @@ export function AddShoppingItemForm({
         <button
           type="button"
           className="link-button"
+          data-help-id="shopping.product-photo"
           disabled={photoBusy || !name.trim()}
           onClick={() => photoInputRef.current?.click()}
         >
@@ -2204,7 +2207,7 @@ function EditShoppingItemForm({
           ))}
         </datalist>
       </label>
-      <div className="inline-fields">
+      <div className="inline-fields" data-help-id="shopping.edit-amount">
         <label>
           Cantidad
           <input type="text" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="2" />
@@ -2223,7 +2226,7 @@ function EditShoppingItemForm({
           ))}
         </datalist>
       </label>
-      <label>
+      <label data-help-id="shopping.edit-priority">
         Prioridad
         <select value={priority} onChange={(e) => setPriority(e.target.value as ShoppingItemPriority)}>
           {PRIORITIES.map((p) => (
@@ -2233,7 +2236,7 @@ function EditShoppingItemForm({
           ))}
         </select>
       </label>
-      <div>
+      <div data-help-id="shopping.edit-photo">
         <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
           📷 Foto del producto (opcional) — para que se reconozca en la tienda sin dudas.
         </p>
@@ -2749,7 +2752,7 @@ function HistoryTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <p className="muted">Se construye con los tickets que guardas (y con las compras sin ticket que lleven productos). Marcar «comprado» en la lista no guarda precios.</p>
+      <p className="muted" data-help-id="shopping.history-note">Se construye con los tickets que guardas (y con las compras sin ticket que lleven productos). Marcar «comprado» en la lista no guarda precios.</p>
 
       <div className="filter-row" data-help-id="shopping.history-mode">
         <button
@@ -2830,7 +2833,7 @@ function HistoryTab() {
         {previousBasket > 0 && <p className="muted">Mes anterior: {previousBasket.toFixed(2)} €</p>}
       </div>
 
-      <p className="muted">
+      <p className="muted" data-help-id="shopping.history-help">
         Todo lo que aparece en tus tickets, con su último precio — cuando también se compró el mes anterior, se ve
         la comparación (🔺 rojo si ha subido, 🔻 verde si ha bajado). Toca el nombre de un producto para ver cada
         cuánto lo compras y comparar precio entre tiendas.
@@ -2912,7 +2915,7 @@ function HistoryTab() {
                 {line}
               </p>
             ))}
-            <div className="inline-fields" style={{ marginTop: 8, alignItems: 'center' }}>
+            <div className="inline-fields" data-help-id="shopping.product-class-box" style={{ marginTop: 8, alignItems: 'center' }}>
               {!detail.classKnown && (
                 <button
                   type="button"

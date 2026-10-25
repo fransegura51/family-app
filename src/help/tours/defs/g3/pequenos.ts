@@ -1,8 +1,9 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Pequeños Grandes (/puntos): visita guiada y tutoriales «Enséñame» de Puntos y recompensas y de Lista de deseos. Las marcas `data-help-id` están en src/ui/PequenosGrandesScreen.tsx,
-// RewardsScreen.tsx y WishlistScreen.tsx. «Educación financiera» (KidsFinanceTab, en FinanceScreen.tsx) queda SIN tutorial propio: aquí solo se señala su tarjeta del hub. Ningún
-// tutorial borra, comparte con enlace público ni aprueba/rechaza nada.
+// Pequeños Grandes (/puntos): visita guiada y los capítulos de «Puntos y recompensas» y «Lista de deseos». Las marcas `data-help-id` están en src/ui/PequenosGrandesScreen.tsx, RewardsScreen.tsx,
+// WishlistScreen.tsx y MiCamino.tsx. «Educación financiera» (KidsFinanceTab, en FinanceScreen.tsx) NO tiene tutorial todavía: sus formularios no tienen marcas de Ayuda (ver planned/c.ts); aquí solo
+// se señala su tarjeta del hub. Ningún capítulo borra, comparte con enlace, publica ni aprueba/rechaza nada por la persona: lo único que guardan es lo que la persona pulsa, y esperan el aviso
+// de la pantalla. Las cuentas de niño o niña ven el catálogo y pueden solicitar; dar puntos, crear recompensas, aprobar y los ajustes son de personas adultas (`access: adultsOnly` en esos capítulos).
 
 export const visitaPequenos: TourDef = {
   id: 'visita-pequenos',
@@ -10,9 +11,9 @@ export const visitaPequenos: TourDef = {
   module: 'pequenos',
   title: 'Conoce Pequeños Grandes',
   summary: 'Un paseo por los puntos y recompensas, la educación financiera y las listas de deseos.',
-  version: 1,
+  version: 2,
   cardId: 'pg-puntos',
-  durationSec: 70,
+  durationSec: 80,
   startPath: '/puntos',
   startDest: 'pequenos.inicio',
   steps: [
@@ -25,7 +26,7 @@ export const visitaPequenos: TourDef = {
     },
     {
       id: 'puntos',
-      text: 'Puntos y recompensas: cada niño o niña tiene su tarjeta con los puntos que ha ganado y los que puede gastar. Los puntos vienen de marcar «Hecho» eventos o tareas con puntos, o de un adulto que se los da.',
+      text: 'Puntos y recompensas: cada niño o niña tiene su tarjeta con los puntos que ha ganado y los que puede gastar, y su camino (Mi Camino o la Carrera mensual). Los puntos vienen de marcar «Hecho» eventos o tareas con puntos, o de un adulto.',
       target: 'pequenos.tarjeta-puntos',
       completeOn: [],
       manualNext: true,
@@ -33,7 +34,7 @@ export const visitaPequenos: TourDef = {
     },
     {
       id: 'educacion',
-      text: 'Educación financiera: el monedero de aprendizaje de los niños y niñas, con sus objetivos de ahorro. Es aparte de las cuentas reales del banco. Aquí solo te la señalo: no la recorremos en esta visita.',
+      text: 'Educación financiera: el monedero de aprendizaje de los niños y niñas (cuatro tarjetas: Recibido, Ahorro, Para gastar e Impuestos) y sus objetivos de ahorro. Es aparte de las cuentas reales del banco: nada mueve dinero de verdad.',
       target: 'pequenos.tarjeta-educacion',
       completeOn: [],
       manualNext: true,
@@ -41,35 +42,37 @@ export const visitaPequenos: TourDef = {
     },
     {
       id: 'deseos',
-      text: 'Lista de deseos: listas de regalos por persona, año y celebración. Cada regalo puede llevar foto, enlace y precio, y la familia puede reservarlos sin que lo vea quien los va a recibir.',
+      text: 'Lista de deseos: listas de regalos por persona, año y celebración. Cada regalo puede llevar foto, enlace y precio; la familia los reserva sin que lo vea quien los recibe y puedes compartir la lista con invitados sin cuenta.',
       target: 'pequenos.tarjeta-deseos',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
-    {
-      id: 'roles',
-      text: 'En Puntos y recompensas, las personas adultas dan puntos, crean recompensas y aprueban solicitudes; los niños y niñas solicitan. En «Enséñame» tienes un tutorial para cada cosa.',
-      completeOn: [],
-      manualNext: true,
-    },
   ],
-  finishText: 'Eso es todo. Cuando quieras, enséñame a dar puntos, a solicitar una recompensa o a hacer una lista de deseos.',
-  next: ['pg-puntos', 'pg-recompensas', 'pg-lista-deseos', 'pg-mi-camino'],
+  finishText: 'Eso es todo. Cuando quieras, enséñame a dar puntos, a pedir una recompensa o a hacer una lista de deseos.',
+  next: ['pg-puntos', 'pg-recompensas', 'pg-lista-deseos', 'pg-mi-camino', 'pg-monedero'],
 }
 
+// ───────────── Puntos y recompensas
 export const tutPequenosDarPuntos: TourDef = {
   id: 'tut-pequenos-dar-puntos',
   module: 'pequenos',
   group: 'Puntos y recompensas',
   title: 'Dar puntos a un niño o una niña',
-  summary: 'Concede puntos a mano, con una cantidad y un motivo opcional.',
+  summary: 'Concede puntos a mano, con una cantidad y un motivo opcional, y aprende a corregirlos.',
   access: { adultsOnly: true },
-  version: 1,
+  version: 2,
   cardId: 'pg-puntos',
-  durationSec: 70,
+  durationSec: 80,
   startPath: '/puntos',
   startDest: 'pequenos.recompensas',
+  readyOn: ['pequenos.puntos-por-persona'],
+  needs: [
+    {
+      target: 'pequenos.dar-puntos',
+      message: 'Para este capítulo tiene que haber alguien en «Puntos por persona». Las personas adultas empiezan sin participar: actívalas en «⚙️ Quién participa». Puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
   steps: [
     {
       id: 'abrir',
@@ -87,6 +90,7 @@ export const tutPequenosDarPuntos: TourDef = {
       target: 'pequenos.dar-puntos-cantidad',
       completeOn: [{ type: 'entered', target: 'pequenos.dar-puntos-cantidad', min: 1 }],
       manualNext: true,
+      keepVisible: ['pequenos.dar-puntos-form'], // las cantidades rápidas (+5, +10…) que el texto manda tocar están en el mismo formulario
     },
     {
       id: 'motivo',
@@ -98,52 +102,22 @@ export const tutPequenosDarPuntos: TourDef = {
     },
     {
       id: 'enviar',
-      text: 'Pulsa «Dar puntos» para confirmar. Yo no lo hago por ti: lo decides tú. Los puntos se suman a los de esa persona.',
+      text: 'Pulsa «Dar puntos» para confirmar. Se suman de verdad a esa persona. Yo no lo hago por ti: lo decides tú. Si solo practicas, sal del tutorial antes.',
       target: 'pequenos.dar-puntos-enviar',
       completeOn: [{ type: 'event', name: 'pequenos.points-given' }],
       sensitive: true,
     },
-  ],
-  finishText: 'Hecho. Si te equivocas, en el Historial de esa tarjeta cada concesión tiene un «⋯» para corregir o anular los puntos.',
-  next: ['pg-recompensas', 'pg-mi-camino'],
-}
-
-export const tutPequenosSolicitar: TourDef = {
-  id: 'tut-pequenos-solicitar',
-  module: 'pequenos',
-  group: 'Puntos y recompensas',
-  title: 'Solicitar una recompensa',
-  summary: 'Pide una recompensa del catálogo con los puntos disponibles; un adulto la aprueba o la rechaza.',
-  version: 1,
-  cardId: 'pg-recompensas',
-  durationSec: 70,
-  startPath: '/puntos',
-  startDest: 'pequenos.recompensas',
-  steps: [
     {
-      id: 'puntos',
-      text: 'Mira «⭐ Puntos disponibles» de la persona: es lo que se puede gastar ahora. Cada recompensa cuesta puntos y «Solicitar» solo se activa si llegan.',
-      target: 'pequenos.puntos-disponibles',
+      id: 'corregir',
+      text: 'Si te equivocas, abre «📜 Historial» de esa tarjeta: cada concesión tiene un ⋯ con «✏️ Corregir puntos» o «🚫 Anular concesión». El movimiento original se conserva y queda anotado quién lo cambió.',
+      target: 'pequenos.historial',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
-    {
-      id: 'solicitar',
-      text: 'En la tarjeta de la persona, pulsa «Solicitar» en la recompensa que quieras (te señalo la primera). Yo no la pido por ti. Si no ves recompensas, un adulto tiene que crearlas antes.',
-      target: 'pequenos.solicitar',
-      completeOn: [{ type: 'event', name: 'pequenos.reward-requested' }],
-      sensitive: true,
-    },
-    {
-      id: 'despues',
-      text: 'Los puntos quedan reservados. Un adulto verá la solicitud en «Solicitudes pendientes de aprobar»: si la aprueba, pasa a «Premios pendientes de disfrutar»; si la rechaza, los puntos se liberan.',
-      completeOn: [],
-      manualNext: true,
-    },
   ],
-  finishText: 'Solicitud enviada. Cuando se disfrute el premio, un adulto lo marca como disfrutado.',
-  next: ['pg-puntos', 'pg-mi-camino'],
+  finishText: 'Hecho. Los puntos disponibles de esa persona han subido. Para que pueda gastarlos, necesita alguna recompensa en el catálogo.',
+  next: ['pg-recompensas', 'pg-mi-camino'],
 }
 
 export const tutPequenosRecompensaCrear: TourDef = {
@@ -153,11 +127,12 @@ export const tutPequenosRecompensaCrear: TourDef = {
   title: 'Crear una recompensa',
   summary: 'Añade un premio al catálogo con su nombre y su coste en puntos.',
   access: { adultsOnly: true },
-  version: 1,
+  version: 2,
   cardId: 'pg-recompensas',
   durationSec: 80,
   startPath: '/puntos',
   startDest: 'pequenos.recompensas',
+  readyOn: ['pequenos.recompensa-nueva'],
   steps: [
     {
       id: 'abrir',
@@ -201,27 +176,183 @@ export const tutPequenosRecompensaCrear: TourDef = {
     },
     {
       id: 'crear',
-      text: 'Cuando la tengas, pulsa «Crear recompensa». Yo no lo hago por ti: lo pulsas tú.',
+      text: 'Cuando la tengas, pulsa «Crear recompensa». Se guarda de verdad y yo no lo hago por ti: lo pulsas tú.',
       target: 'pequenos.recompensa-crear',
       completeOn: [{ type: 'event', name: 'pequenos.reward-created' }],
       sensitive: true,
     },
   ],
-  finishText: '¡Listo! La recompensa ya está en el catálogo y los niños y niñas podrán solicitarla cuando les lleguen los puntos.',
+  finishText: '¡Listo! La recompensa ya está en el catálogo y los niños y niñas podrán solicitarla cuando les lleguen los puntos. Con el ⋯ del catálogo se edita, se desactiva o se borra.',
   next: ['pg-puntos', 'pg-mi-camino'],
 }
 
+export const tutPequenosSolicitar: TourDef = {
+  id: 'tut-pequenos-solicitar',
+  module: 'pequenos',
+  group: 'Puntos y recompensas',
+  title: 'Pedir una recompensa',
+  summary: 'Pide una recompensa del catálogo con los puntos disponibles; un adulto la aprueba o la rechaza.',
+  version: 2,
+  cardId: 'pg-recompensas',
+  durationSec: 70,
+  startPath: '/puntos',
+  startDest: 'pequenos.recompensas',
+  readyOn: ['pequenos.puntos-disponibles'],
+  needs: [
+    {
+      target: 'pequenos.solicitar',
+      message: 'Para este capítulo tiene que haber alguna recompensa en el catálogo (la crea una persona adulta con «+ Nueva recompensa»). Puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
+  steps: [
+    {
+      id: 'puntos',
+      text: 'Mira «⭐ Puntos disponibles» de la persona: es lo que se puede gastar ahora. Cada recompensa cuesta puntos y «Solicitar» solo se activa si llegan.',
+      target: 'pequenos.puntos-disponibles',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'solicitar',
+      text: 'En la tarjeta de la persona, pulsa «Solicitar» en una recompensa que te llegue (te señalo la primera; si su botón está apagado, usa otra). Yo no la pido por ti.',
+      target: 'pequenos.solicitar',
+      completeOn: [{ type: 'event', name: 'pequenos.reward-requested' }],
+      sensitive: true,
+      missingText: 'Aquí no veo ninguna recompensa. Una persona adulta tiene que crearlas en el catálogo antes de que se puedan solicitar.',
+    },
+    {
+      id: 'despues',
+      text: 'Los puntos quedan reservados y PEPA avisa a las personas adultas de la familia (en la campana y, si lo tienen activado, en el móvil). La solicitud espera en «Solicitudes pendientes de aprobar»: si la aprueban, gastas los puntos; si la rechazan, se liberan.',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Solicitud enviada. Cuando se disfrute el premio, un adulto lo marca como disfrutado. Si te equivocaste de recompensa, pide a una persona adulta que la rechace: los puntos se liberan.',
+  next: ['pg-puntos', 'pg-mi-camino'],
+}
+
+export const tutPequenosAprobar: TourDef = {
+  id: 'tut-pequenos-aprobar',
+  module: 'pequenos',
+  group: 'Puntos y recompensas',
+  title: 'Aprobar o rechazar una solicitud',
+  summary: 'Revisa las recompensas que han pedido los niños y niñas y decide si las apruebas.',
+  access: { adultsOnly: true },
+  version: 1,
+  cardId: 'pg-recompensas',
+  durationSec: 70,
+  startPath: '/puntos',
+  startDest: 'pequenos.recompensas',
+  readyOn: ['pequenos.puntos-por-persona'],
+  needs: [
+    {
+      target: 'pequenos.aprobar',
+      message: 'Ahora mismo no hay ninguna solicitud pendiente. Cuando alguien pida una recompensa saldrá aquí y te llegará un aviso. Puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
+  steps: [
+    {
+      id: 'solicitudes',
+      text: 'Aquí aparecen las solicitudes pendientes de aprobar: quién la pide, qué recompensa es y cuántos puntos cuesta. También te llega un aviso a la campana cuando alguien pide una.',
+      target: 'pequenos.solicitudes',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'decidir',
+      text: 'Pulsa «✓ Aprobar» (los puntos quedan gastados) o «✕ Rechazar» (los puntos se liberan; pide confirmación). Lo decides tú: yo no apruebo ni rechazo nada.',
+      target: 'pequenos.aprobar',
+      completeOn: [{ type: 'event', name: 'pequenos.request-decided' }],
+      sensitive: true,
+      keepVisible: ['pequenos.solicitudes'], // «✕ Rechazar» está en la misma fila y el texto lo nombra
+    },
+    {
+      id: 'disfrutar',
+      text: 'Una solicitud aprobada pasa a «🎁 Premios pendientes de disfrutar». Cuando se haya disfrutado, pulsa «Marcar como disfrutado». Yo no lo marco por ti.',
+      target: 'pequenos.premios-pendientes',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+  ],
+  finishText: 'Hecho. La decisión ya está guardada y la persona que la pidió la verá reflejada en sus puntos.',
+  next: ['pg-recompensas', 'pg-puntos'],
+}
+
+export const tutPequenosCaminoCarrera: TourDef = {
+  id: 'tut-pequenos-camino-carrera',
+  module: 'pequenos',
+  group: 'Puntos y recompensas',
+  title: 'Camino o Carrera y quién participa',
+  summary: 'Elige cómo se mide el progreso de la familia y quién aparece en «Puntos por persona».',
+  access: { adultsOnly: true },
+  version: 1,
+  cardId: 'pg-mi-camino',
+  durationSec: 80,
+  startPath: '/puntos',
+  startDest: 'pequenos.recompensas',
+  readyOn: ['pequenos.camino-modo'],
+  steps: [
+    {
+      id: 'modo',
+      text: 'Este botón elige cómo se mide el progreso de todos. Púlsalo para ver las dos formas; no cambia nada hasta que toques una opción.',
+      target: 'pequenos.camino-modo',
+      completeOn: [
+        { type: 'click', target: 'pequenos.camino-modo' },
+        { type: 'appear', target: 'pequenos.modo-panel' },
+      ],
+      skipIf: [{ type: 'appear', target: 'pequenos.modo-panel' }],
+    },
+    {
+      id: 'panel',
+      text: '«🛤️ Camino de recompensas» nunca se reinicia y está pensado para un solo niño/a; «🏁 Carrera mensual» empieza de cero cada mes para comparar a varios. Es un ajuste de toda la familia y se guarda al tocarlo: yo no lo toco.',
+      target: 'pequenos.modo-panel',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'pista',
+      text: 'En modo Camino, esto es Mi Camino: un viaje por tres mundos de 150 puntos. Cuenta lo ganado y no baja al canjear premios. Toca la tarjeta de un niño/a para ver su camino.',
+      target: 'pequenos.camino',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'quien',
+      text: 'Con «⚙️ Quién participa» eliges quién aparece en «Puntos por persona». Púlsalo para ver la lista.',
+      target: 'pequenos.quien-participa',
+      completeOn: [
+        { type: 'click', target: 'pequenos.quien-participa' },
+        { type: 'appear', target: 'pequenos.participantes' },
+      ],
+      skipIf: [{ type: 'appear', target: 'pequenos.participantes' }],
+    },
+    {
+      id: 'participantes',
+      text: 'Hay una casilla por persona y cada una se guarda al tocarla. Desactivar a alguien no borra su historial; solo deja de verse. Las personas adultas empiezan sin participar. Yo no toco ninguna.',
+      target: 'pequenos.participantes',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Eso es todo. Por qué los puntos ganados y los disponibles son distintos lo cuenta «Entiende cómo funciona».',
+  next: ['pg-puntos', 'pg-recompensas'],
+}
+
+// ───────────── Lista de deseos
 export const tutPequenosListaDeseos: TourDef = {
   id: 'tut-pequenos-lista-deseos',
   module: 'pequenos',
   group: 'Lista de deseos',
   title: 'Crear una lista de deseos',
   summary: 'Haz una lista de regalos para una persona y una celebración.',
-  version: 1,
+  version: 2,
   cardId: 'pg-lista-deseos',
   durationSec: 70,
   startPath: '/puntos',
   startDest: 'pequenos.deseos',
+  readyOn: ['pequenos.lista-nueva'],
   steps: [
     {
       id: 'nueva',
@@ -242,7 +373,7 @@ export const tutPequenosListaDeseos: TourDef = {
     },
     {
       id: 'celebracion',
-      text: 'Escribe la celebración: Cumpleaños, Navidad, Reyes… El año ya viene puesto. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      text: 'Escribe la celebración: Cumpleaños, Navidad, Reyes… El año ya viene puesto, pero lo puedes cambiar. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
       target: 'pequenos.lista-celebracion',
       completeOn: [{ type: 'entered', target: 'pequenos.lista-celebracion', min: 2 }],
       manualNext: true,
@@ -257,7 +388,7 @@ export const tutPequenosListaDeseos: TourDef = {
     },
     {
       id: 'crear',
-      text: 'Pulsa «Crear lista». Yo no lo hago por ti: lo pulsas tú.',
+      text: 'Pulsa «Crear lista». Se guarda de verdad y yo no lo hago por ti: lo pulsas tú.',
       target: 'pequenos.lista-crear',
       completeOn: [{ type: 'event', name: 'pequenos.wishlist-created' }],
       sensitive: true,
@@ -271,17 +402,24 @@ export const tutPequenosRegaloAnadir: TourDef = {
   id: 'tut-pequenos-regalo-anadir',
   module: 'pequenos',
   group: 'Lista de deseos',
-  title: 'Añadir un regalo a una lista de deseos',
-  summary: 'Apunta un regalo con su nombre, enlace opcional y si es conjunto.',
-  version: 1,
+  title: 'Añadir un regalo a una lista',
+  summary: 'Apunta un regalo con su nombre, descripción, enlace, precio y foto, y di si es conjunto.',
+  version: 2,
   cardId: 'pg-lista-deseos',
-  durationSec: 90,
+  durationSec: 100,
   startPath: '/puntos',
   startDest: 'pequenos.deseos',
+  readyOn: ['pequenos.lista-nueva'],
+  needs: [
+    {
+      target: 'pequenos.lista-tarjeta',
+      message: 'Para este capítulo necesitas tener alguna lista de deseos. Créala antes con «Crear una lista de deseos»; puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
   steps: [
     {
       id: 'abrir-lista',
-      text: 'Toca la lista a la que quieras añadir el regalo para abrirla. Si aún no tienes ninguna, crea una antes. No pulses la ✕ de la tarjeta: sirve para borrar la lista.',
+      text: 'Toca la lista a la que quieras añadir el regalo para abrirla. No pulses la ✕ de la tarjeta: sirve para borrar la lista.',
       target: 'pequenos.lista-tarjeta',
       completeOn: [{ type: 'appear', target: 'pequenos.regalo-anadir' }],
       skipIf: [{ type: 'appear', target: 'pequenos.regalo-anadir' }],
@@ -304,6 +442,14 @@ export const tutPequenosRegaloAnadir: TourDef = {
       manualNext: true,
     },
     {
+      id: 'descripcion',
+      text: 'La descripción es opcional: talla, color o cualquier detalle que ayude a elegir bien.',
+      target: 'pequenos.regalo-descripcion',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'enlace',
       text: 'Si quieres, pega el enlace del producto. Si parece un enlace de internet, PEPA intenta buscar sola la foto del producto. Es opcional.',
       target: 'pequenos.regalo-enlace',
@@ -312,8 +458,25 @@ export const tutPequenosRegaloAnadir: TourDef = {
       optional: true,
     },
     {
+      id: 'precio',
+      text: 'El precio también es opcional. Se escribe en euros, por ejemplo 24,90.',
+      target: 'pequenos.regalo-precio',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'foto',
+      text: 'Con «Fotografía» subes una foto tuya; si ya se encontró una sola, la sustituye. Es opcional. Después no se puede cambiar: para otra foto, borra el regalo y créalo de nuevo.',
+      target: 'pequenos.regalo-foto',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      native: true,
+    },
+    {
       id: 'conjunto',
-      text: 'Marca «Es un regalo conjunto» si varias personas pueden apuntarse a regalarlo entre todas. Si no, solo una persona podrá reservarlo.',
+      text: 'Marca «Es un regalo conjunto» si varias personas pueden apuntarse a regalarlo entre todas. Si no, solo una persona podrá reservarlo. Después no se puede cambiar.',
       target: 'pequenos.regalo-conjunto',
       completeOn: [],
       manualNext: true,
@@ -321,7 +484,7 @@ export const tutPequenosRegaloAnadir: TourDef = {
     },
     {
       id: 'guardar',
-      text: 'Pulsa «Añadir» para guardar el regalo. Yo no lo hago por ti: lo pulsas tú.',
+      text: 'Pulsa «Añadir» para guardar el regalo. Se guarda de verdad y yo no lo hago por ti: lo pulsas tú.',
       target: 'pequenos.regalo-guardar',
       completeOn: [{ type: 'event', name: 'pequenos.wishlist-item-added' }],
       sensitive: true,
@@ -337,11 +500,18 @@ export const tutPequenosRegaloReservar: TourDef = {
   group: 'Lista de deseos',
   title: 'Reservar un regalo',
   summary: 'Apúntate a regalar algo de la lista de otra persona, sin que lo vea quien lo recibe.',
-  version: 1,
+  version: 2,
   cardId: 'pg-lista-deseos',
   durationSec: 80,
   startPath: '/puntos',
   startDest: 'pequenos.deseos',
+  readyOn: ['pequenos.lista-nueva'],
+  needs: [
+    {
+      target: 'pequenos.lista-tarjeta',
+      message: 'Para este capítulo necesitas una lista de deseos de otra persona que tenga algún regalo (en tu propia lista no se puede reservar). Puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
   steps: [
     {
       id: 'abrir-lista',
@@ -352,7 +522,7 @@ export const tutPequenosRegaloReservar: TourDef = {
     },
     {
       id: 'secreto',
-      text: 'Si ves este aviso: en tu propia lista nunca ves quién reserva, y con una cuenta de niño o niña puedes reservar pero no ver las reservas de los demás.',
+      text: 'Si ves este aviso: en tu propia lista nunca ves quién reserva. Con una cuenta de niño o niña puedes reservar, pero la pantalla no enseña las reservas, ni las de los demás ni las tuyas.',
       target: 'pequenos.lista-secreto',
       completeOn: [],
       manualNext: true,
@@ -372,18 +542,92 @@ export const tutPequenosRegaloReservar: TourDef = {
       target: 'pequenos.regalo-reservar',
       completeOn: [{ type: 'event', name: 'pequenos.gift-reserved' }],
       sensitive: true,
+      missingText: 'No veo ningún regalo libre para reservar. En tu propia lista no se puede reservar: abre la lista de otra persona que tenga regalos.',
     },
   ],
   finishText: 'Reservado. Con una cuenta de adulto, «Deshacer mi reserva» lo deja libre otra vez si cambias de idea. Quien recibe el regalo no ve que lo has reservado tú.',
   next: ['pg-lista-deseos'],
 }
 
+export const tutPequenosListaCompartirEditar: TourDef = {
+  id: 'tut-pequenos-lista-compartir-editar',
+  module: 'pequenos',
+  group: 'Lista de deseos',
+  title: 'Compartir y editar una lista',
+  summary: 'Conoce cómo se comparte una lista con invitados sin cuenta y cambia su celebración y sus regalos.',
+  version: 1,
+  cardId: 'pg-lista-deseos',
+  durationSec: 90,
+  startPath: '/puntos',
+  startDest: 'pequenos.deseos',
+  readyOn: ['pequenos.lista-nueva'],
+  needs: [
+    {
+      target: 'pequenos.lista-tarjeta',
+      message: 'Para este capítulo necesitas tener alguna lista de deseos. Créala antes con «Crear una lista de deseos»; puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
+  steps: [
+    {
+      id: 'abrir-lista',
+      text: 'Toca la lista que quieras abrir. No pulses la ✕ de la tarjeta: sirve para borrar la lista.',
+      target: 'pequenos.lista-tarjeta',
+      completeOn: [{ type: 'appear', target: 'pequenos.lista-editar' }],
+      skipIf: [{ type: 'appear', target: 'pequenos.lista-editar' }],
+    },
+    {
+      id: 'compartir',
+      text: '«🔗 Compartir con invitados sin cuenta» crea un enlace único de esta lista: quien lo tenga ve los regalos y reserva con su nombre, sin cuenta. Al pulsarlo se genera y se comparte, así que decide tú cuándo. Yo no lo pulso.',
+      target: 'pequenos.lista-compartir',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'editar-lista',
+      text: 'Pulsa «✏️ Editar lista» para cambiar la celebración o su fecha. Para quién es y el año no se cambian: para eso, crea otra lista.',
+      target: 'pequenos.lista-editar',
+      completeOn: [
+        { type: 'click', target: 'pequenos.lista-editar' },
+        { type: 'appear', target: 'pequenos.lista-editar-celebracion' },
+      ],
+      skipIf: [{ type: 'appear', target: 'pequenos.lista-editar-celebracion' }],
+    },
+    {
+      id: 'celebracion',
+      text: 'Cambia la celebración si quieres. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'pequenos.lista-editar-celebracion',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Pulsa «Guardar cambios». Se guarda de verdad; si prefieres dejarla como estaba, cierra la ventana con ✕ o sal del tutorial.',
+      target: 'pequenos.lista-editar-guardar',
+      completeOn: [{ type: 'event', name: 'pequenos.wishlist-updated' }],
+      sensitive: true,
+    },
+    {
+      id: 'regalo',
+      text: 'Cada regalo tiene su ✏️ para cambiar nombre, descripción, enlace y precio. La foto y «regalo conjunto» no se cambian. Yo no lo pulso.',
+      target: 'pequenos.regalo-editar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+  ],
+  finishText: 'Eso es todo. Quien tenga el enlace de invitados puede ver la lista: trátalo como cualquier enlace que compartes. «Renovar enlace» crea uno nuevo.',
+  next: ['pg-lista-deseos'],
+}
+
 export const TOURS_PEQUENOS: TourDef[] = [
   visitaPequenos,
   tutPequenosDarPuntos,
-  tutPequenosSolicitar,
   tutPequenosRecompensaCrear,
+  tutPequenosSolicitar,
+  tutPequenosAprobar,
+  tutPequenosCaminoCarrera,
   tutPequenosListaDeseos,
   tutPequenosRegaloAnadir,
   tutPequenosRegaloReservar,
+  tutPequenosListaCompartirEditar,
 ]

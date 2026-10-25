@@ -28,6 +28,7 @@ import shoppingListBg from '@/assets/home/shopping-list-background.jpg'
 import agendaBg from '@/assets/home/agenda-background.jpg'
 import { formatTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 interface HomeCardDef {
   id: string
@@ -144,6 +145,7 @@ export function HomeScreen({ profile }: { profile: Profile }) {
     ;[next[index], next[target]] = [next[target], next[index]]
     setOrder(next)
     saveHomeCardOrder(next)
+    emitHelpEvent('inicio.card-moved') // para los tutoriales «Enséñame»: el nuevo orden YA está guardado
   }
 
   const orderedCards = shownIds.map((id) => cardsById.get(id)).filter((c): c is HomeCardDef => !!c)

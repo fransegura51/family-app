@@ -3,9 +3,9 @@ import { cleanOtpInput, OTP_LENGTH, RESEND_COOLDOWN_SECONDS } from '@/domain/otp
 
 // Casilla del código de seis cifras que llega por correo. Teclado numérico, autocompletado del código del correo/SMS en el móvil
 // (autocomplete="one-time-code") y solo cifras (admite pegar «482 913»).
-export function OtpCodeField({ value, onChange, label = 'Código de 6 cifras', autoFocus = false }: { value: string; onChange: (code: string) => void; label?: string; autoFocus?: boolean }) {
+export function OtpCodeField({ value, onChange, label = 'Código de 6 cifras', autoFocus = false, helpId }: { value: string; onChange: (code: string) => void; label?: string; autoFocus?: boolean; helpId?: string }) {
   return (
-    <label>
+    <label data-help-id={helpId}>
       {label}
       <input
         type="text"

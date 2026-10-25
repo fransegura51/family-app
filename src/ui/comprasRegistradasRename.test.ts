@@ -4,9 +4,13 @@ import { describe, expect, it } from 'vitest'
 import { COMPRAS_MENU_ITEM_META } from '@/state/comprasMenu'
 import finance from './FinanceScreen.tsx?raw'
 import shopping from './ShoppingScreen.tsx?raw'
-import comprasTour from '../help/tours/defs/g2/compras.ts?raw'
+import comprasTourMain from '../help/tours/defs/g2/compras.ts?raw'
+import comprasTourTickets from '../help/tours/defs/g2/comprasTickets.ts?raw'
 import comprasExplainer from '../help/explainers/g2/compras.ts?raw'
 import legacyHelp from '../help/legacy/legacyHelp.ts?raw'
+
+// Los capítulos de Compras viven en dos archivos (visita, lista y tiendas; y registrar compras): el texto se comprueba en los dos.
+const comprasTour = comprasTourMain + comprasTourTickets
 
 describe('Tickets → Compras registradas (solo textos visibles)', () => {
   it('el menú, las migas y las tarjetas de Compras usan «Compras registradas»; la clave interna no cambia', () => {
@@ -18,7 +22,7 @@ describe('Tickets → Compras registradas (solo textos visibles)', () => {
 
   it('«Subir ticket» → «Registrar compra» y «Tickets guardados» → «Historial de compras»', () => {
     expect(finance).toContain("'Registrar compra'}</h2>")
-    expect(finance).toContain('<h2 className="section-title">Historial de compras</h2>')
+    expect(finance).toContain('>Historial de compras</h2>')
     expect(finance).not.toContain("'Subir ticket'}</h2>")
     expect(finance).not.toContain('>Tickets guardados<')
   })

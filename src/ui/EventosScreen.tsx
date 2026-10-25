@@ -650,6 +650,8 @@ import { InvitationBackground, InvitationCanvasEditor, InvitationCanvasView, Inv
 import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/domain/invitationAutoCompose'
 import { formatDate, formatDateTime } from '@/domain/dateFormat'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useHelpDestinations } from '@/help/destinations'
+import { HelpDestMark } from '@/help/ui/HelpDest'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -841,6 +843,15 @@ export function EventosScreen() {
     setInitialModule(null)
     setShowGlobalProviders(false)
   })
+  // «Enséñame»: los capítulos de Eventos empiezan siempre desde la lista (estado limpio, sin evento ni módulo abierto).
+  useHelpDestinations({
+    'eventos.lista': () => {
+      setSelectedId(null)
+      setInitialModule(null)
+      setShowGlobalProviders(false)
+      setShowCreate(false)
+    },
+  })
   // Tercer nivel del breadcrumb ("Eventos / Boda de plata / Preparativos"): el módulo abierto vive como
   // estado LOCAL dentro de EventDetail (openModule), así que EventDetail avisa aquí arriba de su label
   // cada vez que cambia, en vez de subir todo ese estado — evita una reescritura grande de EventDetail
@@ -926,6 +937,7 @@ export function EventosScreen() {
         />
       ) : (
         <>
+          <HelpDestMark id="eventos.lista" />
           <button type="button" data-help-id="eventos.new-event" onClick={() => setShowCreate(true)}>
             + Nuevo evento
           </button>
@@ -2553,7 +2565,7 @@ function ManageEventModal({
           </form>
         )}
 
-        <strong style={{ fontSize: 13, display: 'block', marginTop: 16 }}>Secciones del evento</strong>
+        <strong style={{ fontSize: 13, display: 'block', marginTop: 16 }} data-help-id="eventos.manage-sections">Secciones del evento</strong>
         <p className="muted" style={{ fontSize: 12, margin: '2px 0 6px' }}>
           Los módulos que quites se ocultan, pero no se borra nada — puedes reactivarlos cuando quieras.
         </p>
@@ -2562,6 +2574,7 @@ function ManageEventModal({
         <button
           type="button"
           className="link-button"
+          data-help-id="eventos.manage-sections-save"
           onClick={handleSaveModules}
           disabled={savingModules}
           style={{ marginTop: 8 }}
@@ -3123,7 +3136,7 @@ function TaskEditModal({
                 }}
               />
             </label>
-            <label style={{ flex: '1 1 110px', minWidth: 0 }}>
+            <label style={{ flex: '1 1 110px', minWidth: 0 }} data-help-id="eventos.task-time">
               Hora (opcional)
               <input type="time" value={dueTime} disabled={!dueDate} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box' }} onChange={(e) => setDueTime(e.target.value)} />
             </label>
@@ -3227,7 +3240,7 @@ function TaskEditModal({
               </div>
             )}
           </div>
-          <label>
+          <label data-help-id="eventos.task-notes">
             Nota
             <textarea value={notes} maxLength={1000} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </label>
@@ -12143,7 +12156,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       )}
       {guests.length > 0 && (
         <div style={{ marginTop: 8 }}>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as EventGuestRsvpStatus | 'todos')}>
+          <select value={statusFilter} data-help-id="eventos.guest-filter" onChange={(e) => setStatusFilter(e.target.value as EventGuestRsvpStatus | 'todos')}>
             {GUEST_FILTER_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
@@ -12159,7 +12172,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <strong>{g.displayName}</strong>
                 <div>
-                  <button type="button" className="link-button" onClick={() => setInvitationGuest(g)}>
+                  <button type="button" className="link-button" data-help-id="eventos.guest-invitation" onClick={() => setInvitationGuest(g)}>
                     💌 Invitación
                   </button>
                   <ConfirmIconButton icon="✕" className="icon-button" ariaLabel="Borrar invitado" onConfirm={() => deleteEventGuest(g.id).then(reload)} />
@@ -12171,7 +12184,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
               </p>
               <GuestBreakdownSection guest={g} />
               <div className="filter-row" style={{ flexWrap: 'wrap' }}>
-                <select value={g.rsvpStatus} onChange={(e) => handleRsvpStatusChange(g, e.target.value as EventGuestRsvpStatus)}>
+                <select value={g.rsvpStatus} data-help-id="eventos.guest-status" onChange={(e) => handleRsvpStatusChange(g, e.target.value as EventGuestRsvpStatus)}>
                   {RSVP_STATUS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
@@ -12949,7 +12962,7 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
             </label>
           </div>
           {hasScope && (
-            <label>
+            <label data-help-id="eventos.guest-scope">
               A qué está invitado
               <select value={inviteScope} onChange={(e) => setInviteScope(e.target.value as EventGuestInviteScope)}>
                 {INVITE_SCOPE_OPTIONS.map((o) => (
@@ -12960,7 +12973,7 @@ function AddGuestModal({ event, onClose, onAdded }: { event: FamilyEvent; onClos
               </select>
             </label>
           )}
-          <label>
+          <label data-help-id="eventos.guest-notes">
             Notas (opcional)
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Alergia, comentario..." />
           </label>
@@ -13326,7 +13339,7 @@ function AddBudgetItemModal({
             Concepto
             <CategoryInputWithSuggestions id="budget-category-suggestions-add" value={category} onChange={setCategory} suggestions={categorySuggestions} />
           </label>
-          <label>
+          <label data-help-id="eventos.budget-category">
             Categoría
             <CategoryInputWithSuggestions
               id="budget-category-group-suggestions-add"
@@ -15457,7 +15470,7 @@ function InvitationModal({
           {loading ? 'Generando enlace de confirmación…' : rsvpUrl}
         </p>
 
-        <button type="button" onClick={handleShare} disabled={loading || sharing || !rsvpUrl} style={{ marginTop: 8 }}>
+        <button type="button" data-help-id="eventos.guest-share-invite" onClick={handleShare} disabled={loading || sharing || !rsvpUrl} style={{ marginTop: 8 }}>
           {sharing ? 'Compartiendo…' : '📤 Compartir invitación'}
         </button>
         {!loading && rsvpUrl && (

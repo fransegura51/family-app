@@ -1,15 +1,17 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Familia: visita guiada + tutoriales de editar una ficha, elegir secciones de un niño/invitado y ver el peso y las medidas.
-// Todo está comprobado contra src/ui/FamilyScreen.tsx y src/ui/BodyScreen.tsx. Ninguno envía invitaciones, borra fichas ni cambia contraseñas.
+// Familia: visita guiada («Conoce Familia») + capítulos de «Gestionar las fichas de la familia» (editar ficha y foto, elegir secciones) y de «Peso y medidas» (apuntar una medida, leer la
+// evolución, fijar un peso objetivo). Todo está comprobado contra src/ui/FamilyScreen.tsx, BodyScreen.tsx y AdultBodyView.tsx. Ninguno envía invitaciones, borra fichas ni cambia contraseñas.
+// «Añadir un miembro» (capítulo 1) vive en defs/famAnadirMiembro.ts y «Dar acceso a PEPA» (capítulo 4) en defs/g9/familia.ts. «Actividad reciente» no tiene tutorial propio: se enseña en esta
+// visita y sus límites están en la ficha «Ver qué se ha hecho en la app».
 
 export const visitaFamilia: TourDef = {
   id: 'visita-familia',
   kind: 'visit',
   module: 'familia',
-  version: 1,
+  version: 2,
   title: 'Conoce Familia',
-  summary: 'Las fichas de la familia, cómo se da acceso a PEPA y dónde está el peso y las medidas.',
+  summary: 'Las fichas de la familia, cómo se da acceso a PEPA, la actividad reciente y dónde está el peso y las medidas.',
   cardId: 'fam-anadir-miembro',
   durationSec: 100,
   startPath: '/familia',
@@ -39,7 +41,7 @@ export const visitaFamilia: TourDef = {
     },
     {
       id: 'acciones',
-      text: 'El botón ⋯ abre las acciones de esa ficha: «📷 Foto» y «✏️ Editar». Solo sale en las fichas que tú puedes gestionar, y la administración de la familia ve alguna acción más.',
+      text: 'El botón ⋯ abre las acciones de esa ficha: «📷 Foto» y «✏️ Editar». Solo sale en las fichas que tú puedes gestionar. La administración de la familia ve además «🔑 Generar código de acceso» y «🗑 Borrar».',
       target: 'family.member-actions',
       completeOn: [],
       manualNext: true,
@@ -47,7 +49,7 @@ export const visitaFamilia: TourDef = {
     },
     {
       id: 'dar-acceso',
-      text: 'En una ficha sin cuenta puede aparecer «🔑 Dar acceso a PEPA»: crea una invitación de un solo uso que caduca a las 24 horas, para que esa persona cree su propia cuenta. Tú decides cuándo; esta visita no la pulsa.',
+      text: 'En una ficha sin cuenta puede aparecer «🔑 Dar acceso a PEPA»: crea una invitación de un solo uso que caduca a las 24 horas. Si eres madre, padre o tutor de un menor, antes usas «👪 Es mi hijo/a». Esta visita no pulsa nada.',
       target: 'family.give-access',
       completeOn: [],
       manualNext: true,
@@ -55,7 +57,7 @@ export const visitaFamilia: TourDef = {
     },
     {
       id: 'anadir',
-      text: '«+ Añadir miembro» (solo la administración de la familia) crea una ficha nueva. Crear la ficha no crea ninguna cuenta. Si quieres practicarlo, está el tutorial «Añadir un miembro a la familia».',
+      text: '«+ Añadir miembro» (solo la administración de la familia) crea una ficha nueva. Crear la ficha no crea ninguna cuenta.',
       target: 'family.add-member',
       completeOn: [],
       manualNext: true,
@@ -63,7 +65,7 @@ export const visitaFamilia: TourDef = {
     },
     {
       id: 'actividad',
-      text: '«🕘 Actividad reciente» te lleva al registro de lo que se ha hecho en la app: quién cambió qué y cuándo.',
+      text: '«🕘 Actividad reciente» te lleva al registro de lo que se ha hecho en la app: quién cambió qué y cuándo. Solo cuenta miembros, eventos, tareas, productos de la lista, gastos y reglas automáticas.',
       target: 'family.activity-link',
       completeOn: [],
       manualNext: true,
@@ -77,22 +79,23 @@ export const visitaFamilia: TourDef = {
       manualNext: true,
     },
   ],
-  finishText: 'Ya conoces Familia. Cuando quieras practicar, pídeme un tutorial: añadir un miembro, editar una ficha o ver el peso y las medidas.',
+  finishText: 'Ya conoces Familia. Cuando quieras practicar, pídeme un tutorial: gestionar las fichas de la familia o apuntar peso y medidas.',
   next: ['fam-anadir-miembro', 'fam-editar-ficha', 'fam-peso-medidas'],
 }
 
 export const tutFamiliaEditarFicha: TourDef = {
   id: 'tut-familia-editar-ficha',
   module: 'familia',
-  group: 'Familia',
-  summary: 'Cambiar el nombre, el color, la fecha de nacimiento o el sexo de una ficha.',
+  group: 'Fichas',
+  summary: 'Cambiar la foto, el nombre, el color, la fecha de nacimiento o el sexo de una ficha.',
   access: { adultsOnly: true },
-  version: 1,
-  title: 'Editar la ficha de un miembro',
+  version: 2,
+  title: 'Editar una ficha y cambiar su foto',
   cardId: 'fam-editar-ficha',
-  durationSec: 90,
+  durationSec: 100,
   startPath: '/familia',
   startDest: 'familia.miembros',
+  readyOn: ['family.member-list'],
   steps: [
     {
       id: 'abrir-acciones',
@@ -106,8 +109,17 @@ export const tutFamiliaEditarFicha: TourDef = {
       skipIf: [{ type: 'appear', target: 'family.edit-name' }],
     },
     {
+      id: 'foto',
+      text: 'Con «📷 Foto» eliges una imagen de tu móvil o haces una foto, y se sube y se guarda al momento. Si ahora no quieres cambiarla, pulsa «Continuar sin foto».',
+      target: 'family.member-photo',
+      completeOn: [{ type: 'event', name: 'family.member-photo-uploaded' }],
+      native: true,
+      skipLabel: 'Continuar sin foto',
+      skipIf: [{ type: 'appear', target: 'family.edit-name' }],
+    },
+    {
       id: 'editar',
-      text: 'Pulsa «✏️ Editar». En ese mismo menú está «📷 Foto», por si lo que quieres cambiar es la foto.',
+      text: 'Pulsa «✏️ Editar». En el mismo menú, la administración ve «🗑 Borrar»: no lo pulses si no quieres borrar la ficha.',
       target: 'family.member-edit',
       completeOn: [
         { type: 'click', target: 'family.member-edit' },
@@ -134,7 +146,7 @@ export const tutFamiliaEditarFicha: TourDef = {
     },
     {
       id: 'nacimiento',
-      text: 'La fecha de nacimiento sirve para los cumpleaños y para Comunidad PEPA, que es solo para mayores de 18 años: sin fecha no se entra en Comunidad. En tu propia ficha es obligatoria.',
+      text: 'La fecha de nacimiento sirve para los cumpleaños y para Comunidad PEPA, que es solo para mayores de 18 años: sin fecha no se entra en Comunidad. Si no administras la familia, en tu propia ficha es obligatoria.',
       target: 'family.edit-birth',
       completeOn: [],
       manualNext: true,
@@ -171,21 +183,28 @@ export const tutFamiliaEditarFicha: TourDef = {
     },
   ],
   finishText: '¡Listo! La ficha se ha guardado. Puedes volver a editarla cuando quieras desde su ⋯.',
-  next: ['fam-codigo-acceso', 'fam-peso-medidas'],
+  next: ['fam-codigo-acceso', 'fam-invitado-limitado', 'fam-peso-medidas'],
 }
 
 export const tutFamiliaSecciones: TourDef = {
   id: 'tut-familia-secciones',
   module: 'familia',
-  group: 'Familia',
+  group: 'Fichas',
   summary: 'Elegir a qué secciones puede entrar un niño/a o un invitado/a (necesitas una ficha de ese tipo).',
   access: { familyAdmin: true },
-  version: 1,
+  version: 2,
   title: 'Elegir a qué secciones puede entrar un niño o un invitado',
   cardId: 'fam-invitado-limitado',
-  durationSec: 90,
+  durationSec: 80,
   startPath: '/familia',
   startDest: 'familia.miembros',
+  readyOn: ['family.member-list'],
+  needs: [
+    {
+      target: 'family.member-actions-limited',
+      message: 'Para este capítulo necesitas la ficha de un niño/a o de un invitado/a, y todavía no hay ninguna. Créala antes con «Añadir un miembro a la familia»; puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
   steps: [
     {
       id: 'abrir-acciones',
@@ -242,42 +261,200 @@ export const tutFamiliaSecciones: TourDef = {
   next: ['fam-codigo-acceso', 'fam-anadir-miembro'],
 }
 
+// ───────────── Peso y medidas
 export const tutFamiliaPesoMedidas: TourDef = {
   id: 'tut-familia-peso-medidas',
   module: 'familia',
-  group: 'Familia',
-  summary: 'Ver el peso y las medidas de cada persona y dónde se apuntan las nuevas.',
-  version: 1,
-  title: 'Ver el peso y las medidas',
+  group: 'Peso y medidas',
+  summary: 'Apunta el peso y la altura de una persona de la familia (se guarda de verdad al pulsar «Guardar»).',
+  version: 2,
+  title: 'Apuntar una medida',
   cardId: 'fam-peso-medidas',
-  durationSec: 60,
+  durationSec: 90,
   startPath: '/familia',
   startDest: 'familia.peso',
+  readyOn: ['body.members', 'body.measurement-form'],
   steps: [
     {
       id: 'persona',
-      text: 'Elige de quién quieres ver el peso y las medidas: toca su nombre. Al abrir, sale la primera ficha de la lista.',
+      text: 'Elige a quién apuntas la medida: toca su nombre. Al abrir, sale la primera ficha de la lista.',
+      target: 'body.members',
+      completeOn: [{ type: 'click', target: 'body.members' }],
+      manualNext: true,
+    },
+    {
+      id: 'formulario',
+      text: 'Este es el formulario. Cambia según la edad: a un bebé se le añade el perímetro cefálico y a una persona adulta, cintura, abdomen, brazo y pierna. Se guarda de verdad con «Guardar»; si solo practicas, sal antes.',
+      target: 'body.measurement-form',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'fecha',
+      text: 'La fecha viene puesta con hoy. Cámbiala solo si apuntas una medida de otro día.',
+      target: 'body.measure-date',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'peso',
+      text: 'Escribe el peso en kilos, por ejemplo 6,5. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'body.measure-weight',
+      completeOn: [{ type: 'entered', target: 'body.measure-weight', min: 1 }],
+      manualNext: true,
+    },
+    {
+      id: 'altura',
+      text: 'La altura es opcional: vale en centímetros (112) o en metros (1,12). Déjala vacía si hoy no la has medido.',
+      target: 'body.measure-height',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Cuando quieras, pulsa «Guardar». Yo no lo hago por ti. Si prefieres no apuntar nada, sal del tutorial.',
+      target: 'body.measure-save',
+      completeOn: [{ type: 'event', name: 'body.measurement-saved' }],
+      sensitive: true,
+    },
+  ],
+  finishText: '¡Apuntado! La medida ya está en la evolución de esa persona. Puedes corregirla con su ✏️ cuando quieras.',
+  next: ['fam-peso-medidas', 'fam-editar-ficha'],
+}
+
+export const tutFamiliaPesoEvolucion: TourDef = {
+  id: 'tut-familia-peso-evolucion',
+  module: 'familia',
+  group: 'Peso y medidas',
+  summary: 'Lee la evolución del peso y las medidas: percentiles, medidor de altura, gráfica y periodos.',
+  version: 1,
+  title: 'Leer la evolución',
+  cardId: 'fam-peso-medidas',
+  durationSec: 80,
+  startPath: '/familia',
+  startDest: 'familia.peso',
+  readyOn: ['body.members'],
+  steps: [
+    {
+      id: 'persona',
+      text: 'Elige de quién quieres ver la evolución: toca su nombre. Aquí no se cambia ni se guarda nada.',
       target: 'body.members',
       completeOn: [{ type: 'click', target: 'body.members' }],
       manualNext: true,
     },
     {
       id: 'evolucion',
-      text: 'Debajo ves la evolución según la edad: percentiles de la OMS para bebés, un medidor de altura para niños y gráficas para adultos. Los percentiles son orientativos.',
+      text: 'Esta zona cambia según la edad. Un bebé ve los percentiles de la OMS (orientativos), un niño o una niña un medidor de altura con su peso, y una persona adulta la gráfica del peso y sus medidas.',
+      target: 'body.evolution',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'pestanas-adulto',
+      text: 'En una persona adulta hay tres pestañas: ⚖️ Peso, 📏 Medidas y 📷 Fotos. Toca la que quieras ver.',
+      target: 'body.adult-tabs',
+      completeOn: [{ type: 'click', target: 'body.adult-tabs' }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'periodo',
+      text: 'Estos botones eligen el periodo de la gráfica: 1M, 3M, 6M, 1A o Todo. Prueba con otro.',
+      target: 'body.adult-ranges',
+      completeOn: [{ type: 'click', target: 'body.adult-ranges' }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'grafica',
+      text: 'Toca o desliza el dedo por la gráfica para ver el peso exacto de cada día. Si hay un peso objetivo, sale como una línea punteada con 🎯.',
+      target: 'body.adult-chart',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'corregir',
+      text: 'Para corregir una medida usa su ✏️; para quitarla, su botón de borrar (siempre pide confirmación). Yo no corrijo ni borro nada por ti.',
       completeOn: [],
       manualNext: true,
     },
+  ],
+  finishText: 'Eso es todo. Para apuntar una medida nueva, el formulario está justo debajo; para fijar un peso objetivo, pídeme el siguiente tutorial.',
+  next: ['fam-peso-medidas'],
+}
+
+export const tutFamiliaPesoObjetivo: TourDef = {
+  id: 'tut-familia-peso-objetivo',
+  module: 'familia',
+  group: 'Peso y medidas',
+  summary: 'Fija el peso que quieres conseguir y mira cuánto falta (solo en personas adultas).',
+  version: 1,
+  title: 'Fijar un peso objetivo',
+  cardId: 'fam-peso-medidas',
+  durationSec: 80,
+  startPath: '/familia',
+  startDest: 'familia.peso',
+  readyOn: ['body.members'],
+  steps: [
     {
-      id: 'registrar',
-      text: 'Aquí se apuntan medidas nuevas. No se guarda nada hasta que tú pulses «Guardar»; yo no lo pulso por ti.',
-      target: 'body.measurement-form',
+      id: 'persona',
+      text: 'El peso objetivo se fija en la pestaña ⚖️ Peso de una persona adulta. Toca su nombre. Si sale un medidor de altura o percentiles de bebé, elige a otra persona.',
+      target: 'body.members',
+      completeOn: [{ type: 'appear', target: 'body.goal' }],
+      skipIf: [{ type: 'appear', target: 'body.goal' }],
+    },
+    {
+      id: 'fijar',
+      text: 'Pulsa «🎯 Fijar un peso objetivo».',
+      target: 'body.goal-set',
+      completeOn: [
+        { type: 'click', target: 'body.goal-set' },
+        { type: 'appear', target: 'body.goal-input' },
+      ],
+      skipIf: [{ type: 'appear', target: 'body.goal-input' }],
+      optional: true,
+    },
+    {
+      id: 'cambiar',
+      text: 'Esta persona ya tiene un objetivo. Para cambiarlo, pulsa «✏️ Cambiar». No pulses «Quitar objetivo» si quieres conservarlo.',
+      target: 'body.goal-change',
+      completeOn: [
+        { type: 'click', target: 'body.goal-change' },
+        { type: 'appear', target: 'body.goal-input' },
+      ],
+      skipIf: [{ type: 'appear', target: 'body.goal-input' }],
+      optional: true,
+    },
+    {
+      id: 'valor',
+      text: 'Escribe el peso que quieres conseguir, en kilos (por ejemplo 68,5). Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'body.goal-input',
+      completeOn: [{ type: 'entered', target: 'body.goal-input', min: 1 }],
+      manualNext: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Pulsa «Guardar». Se guarda de verdad para esa persona. Yo no lo hago por ti. Si prefieres no fijarlo, pulsa «Cancelar» o sal del tutorial.',
+      target: 'body.goal-save',
+      completeOn: [{ type: 'event', name: 'body.goal-saved' }],
+      sensitive: true,
+      keepVisible: ['body.goal-input'], // «Cancelar» está en la misma fila y el texto lo nombra
+    },
+    {
+      id: 'progreso',
+      text: 'Ahora ves cuánto falta y una barra de progreso. «Quitar objetivo» lo borra: úsalo solo si quieres dejar de tenerlo.',
+      target: 'body.goal',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
   ],
-  finishText: 'Eso es todo: puedes cambiar de persona cuando quieras con sus nombres de arriba.',
-  next: ['fam-peso-medidas', 'fam-editar-ficha'],
+  finishText: '¡Listo! El objetivo sale como una línea punteada 🎯 en la gráfica. Puedes cambiarlo cuando quieras.',
+  next: ['fam-peso-medidas'],
 }
 
-export const TOURS_FAMILIA: TourDef[] = [visitaFamilia, tutFamiliaEditarFicha, tutFamiliaSecciones, tutFamiliaPesoMedidas]
+export const TOURS_FAMILIA: TourDef[] = [visitaFamilia, tutFamiliaEditarFicha, tutFamiliaSecciones, tutFamiliaPesoMedidas, tutFamiliaPesoEvolucion, tutFamiliaPesoObjetivo]

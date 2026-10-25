@@ -61,6 +61,12 @@ Deno.serve(async (req) => {
     familyId = verified.payload.familyId
     memberId = verified.payload.memberId
     profileId = verified.payload.profileId
+    // Uso único: un state ya usado no vale otra vez (0319). Si no se puede anotar, se rechaza.
+    const { data: firstUse } = await admin.rpc("consume_oauth_state", { p_sig: stateRaw.split(".")[2] })
+    if (firstUse !== true) {
+      console.warn("google_oauth_bad_state", "reused")
+      return back("error", "bad_state")
+    }
 
     // Defensa en profundidad: el miembro debe ser la ficha de quien inició el flujo y de esa familia.
     const { data: ownMember } = await admin

@@ -148,6 +148,12 @@ Deno.serve(async (req) => {
     }
     familyId = verified.payload.familyId
     profileId = verified.payload.profileId
+    // Uso único: un state ya usado no vale otra vez (0319). Si no se puede anotar, se rechaza.
+    const { data: firstUse } = await admin.rpc("consume_oauth_state", { p_sig: stateRaw.split(".")[2] })
+    if (firstUse !== true) {
+      console.warn("enablebanking_bad_state", "reused")
+      return back("error", "bad_state")
+    }
 
     // Defensa en profundidad: quien inició el flujo debe pertenecer (todavía) a esa familia.
     const { data: initiator } = await admin.from("profiles").select("family_id").eq("id", profileId).maybeSingle()

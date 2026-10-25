@@ -27,7 +27,7 @@ describe('2. no se duplica la identidad de dominio: FinanceScreen usa isRealInco
     // Corrección — ahora import junto a computePeriodFinancials (misma función compartida de
     // Resumen/Evolución temporal), pero isRealIncome se sigue importando de financeCompute, no
     // reimplementado.
-    expect(FS).toMatch(/import\s*\{\s*computePeriodFinancials,\s*isRealIncome\s*\}\s*from\s*'@\/domain\/financeCompute'/)
+    expect(FS).toMatch(/import\s*\{\s*computePeriodFinancials,\s*isRealIncome,\s*isRealSpending\s*\}\s*from\s*'@\/domain\/financeCompute'/)
     expect(FS).toMatch(/import\s*\{\s*isRefund\s*\}\s*from\s*'@\/domain\/refunds'/)
   })
 })
@@ -133,7 +133,8 @@ describe('9. Ahorro/Balance: solo cambia la etiqueta cuando es negativo, nunca l
 describe('12/13/N. Gráficos y ranking de categorías: siguen en gasto BRUTO, sin atribuir devoluciones', () => {
   it('EstadisticasTab (dónuts, D/N/Q, fijo/variable) sigue construyéndose solo con !e.isIncome (una devolución nunca entra)', () => {
     const b = body(FS, 'function EstadisticasTab(', 'function EvolucionTemporal(')
-    expect(b).toContain("const real = expenses.filter(\n    (e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= from && e.expenseDate <= to,\n  )")
+    // Una sola definición de gasto real (isRealSpending: real, no ingreso, no movimiento interno) para TODAS las estadísticas.
+    expect(b).toContain('const real = expenses.filter(\n    (e) => isRealSpending(e, categories) && e.expenseDate >= from && e.expenseDate <= to,\n  )')
     expect(b).not.toMatch(/isRefund|refundsTotal|netSpent/)
   })
 })

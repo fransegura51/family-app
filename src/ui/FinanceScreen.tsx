@@ -43,6 +43,7 @@ import {
 } from '@/data/finance'
 import { conceptsForWalletType, GOAL_EMOJI_OPTIONS } from '@/domain/kidWalletConcepts'
 import { listBankAccounts, listBankConnections, listBankTransactions, syncBankTransactions } from '@/data/bank'
+import { walletBalanceTrend, walletStartDate } from '@/domain/walletBalanceTrend'
 import {
   createForecastPayment,
   deleteForecastPayment,
@@ -163,10 +164,12 @@ import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
-import { DeletePurchaseDialog, NewWalletForm, WalletTools, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
+import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
 import { eur as cashEur, isManualMovement, MOVEMENT_LABELS, shortfallNotice, usableWallets, type CashMovement, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
+import { spendByPayment, spendByProof, totalOf, type SpendItem } from '@/domain/spendBreakdown'
+import { hasWithdrawalCategory as familyHasWithdrawalCategory, pendingWithdrawals } from '@/domain/cashWithdrawals'
 import { bankTransferMovementOf, CASH_WITHOUT_WALLET, allWalletLinkedExpenseIds, cashOnlyMovements, filterExpensesByCashView, isCashWithoutWallet, mergeCashListItems, walletCardInfo } from '@/domain/cashMovementsView'
 import { findExistingEconomyExpense, type DupExpense } from '@/domain/duplicateDetection'
 import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/purchasePayments'
@@ -176,7 +179,7 @@ import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmo
 import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
-import { computePeriodFinancials, isRealIncome } from '@/domain/financeCompute'
+import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
 // Fase 1F.C — "Comparado con el periodo anterior": reutiliza groupSpending (reparto por categoría con
 // el mismo criterio padre/hija que ya usa Pepa) y comparablePrevious (misma aritmética de mes contable
 // y misma regla de corte por tramo que ya usa la voz de Pepa) — nunca se reimplementan.
@@ -506,6 +509,8 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
   // lleve a la de la otra cuenta" — cada tarjeta manda a Banco ya
   // filtrado a esa cuenta en concreto.
   const [focusAccountId, setFocusAccountId] = useState<string | null>(null)
+  // Tocar una cartera en «Mis cuentas» abre Movimientos con esa cartera elegida (n: cada toque es una señal nueva aunque sea la misma cartera).
+  const [focusWallet, setFocusWallet] = useState<{ id: string; n: number } | null>(null)
   // Petición real: "donde ahora pone Economía, pones el círculo con
   // las tres rayas... es un desplegable de todos los demás categorías,
   // y ese lo deja con las categorías que tenía antes" — desplegable
@@ -659,6 +664,10 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           setFocusAccountId(accountId)
           setTab('Banco')
         }}
+        onSelectWallet={(walletId) => {
+          setFocusWallet((prev) => ({ id: walletId, n: (prev?.n ?? 0) + 1 }))
+          setTab('Movimientos')
+        }}
         onViewAll={() => setTab('Banco')}
       />
       {/* Petición real: "que venga solo en Estadísticas" — antes se veía
@@ -737,6 +746,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           accountsMode={accountsMode}
           myMemberId={myMemberId}
           onOpenNewMovement={() => setShowNewMovement(true)}
+          focusWallet={focusWallet}
         />
       )}
       {tab === 'Presupuesto Generales' && (
@@ -904,6 +914,32 @@ function OwnerBadge({ owner, size = 16, ring = false }: { owner: FamilyMember | 
   )
 }
 
+// Tarjeta de una cartera de efectivo: la MISMA en «Mis cuentas» (inicio de Economía) y en Movimientos, con el formato de las tarjetas de las cuentas bancarias
+// (color del titular o gris «común», avatar, saldo) más el icono 💶 y la indicación personal/familiar.
+function WalletCardButton({ wallet: w, members, active = false, onClick }: { wallet: CashWallet; members: FamilyMember[]; active?: boolean; onClick: () => void }) {
+  const info = walletCardInfo(w, members)
+  const owner = w.ownerMemberId ? (members.find((m) => m.id === w.ownerMemberId) ?? null) : null
+  return (
+    <button
+      type="button"
+      className={'account-card' + (active ? ' account-card-active' : '')}
+      aria-pressed={active}
+      style={{ background: owner ? toPastel(owner.color) : COMMON_ACCOUNT_COLOR, color: 'var(--text)' }}
+      onClick={onClick}
+    >
+      <div className="account-card-name">💶 {info.title}</div>
+      <div className="account-card-kind">{info.kind === 'personal' ? `Personal${info.holder ? ` · ${info.holder}` : ''}` : 'Familiar'}</div>
+      <div className="account-card-bottom">
+        <OwnerBadge owner={owner} size={36} />
+        <div className="account-card-balance" style={w.balance < 0 ? { color: '#c92a2a' } : undefined}>
+          {cashEur(w.balance)}
+        </div>
+      </div>
+      {w.balance < 0 && <div className="account-card-kind">por regularizar</div>}
+    </button>
+  )
+}
+
 // Carteras de efectivo en Movimientos: mismas tarjetas que las cuentas bancarias de «Mis cuentas» (color del dueño, icono, saldo). Tocar una filtra
 // Movimientos por esa cartera; tocarla otra vez (o «Ver todos los movimientos») vuelve a todos. El efectivo es opcional: sin carteras solo se ofrece crear una.
 export function CashWalletCards({
@@ -940,31 +976,9 @@ export function CashWalletCards({
         </p>
       )}
       <div className="account-cards-grid">
-        {wallets.map((w) => {
-          const info = walletCardInfo(w, members)
-          const owner = w.ownerMemberId ? (members.find((m) => m.id === w.ownerMemberId) ?? null) : null
-          const active = activeView === w.id
-          return (
-            <button
-              key={w.id}
-              type="button"
-              className={'account-card' + (active ? ' account-card-active' : '')}
-              aria-pressed={active}
-              style={{ background: owner ? toPastel(owner.color) : COMMON_ACCOUNT_COLOR, color: 'var(--text)' }}
-              onClick={() => onSelect(active ? null : w.id)}
-            >
-              <div className="account-card-name">💶 {info.title}</div>
-              <div className="account-card-kind">{info.kind === 'personal' ? `Personal${info.holder ? ` · ${info.holder}` : ''}` : 'Familiar'}</div>
-              <div className="account-card-bottom">
-                <OwnerBadge owner={owner} size={36} />
-                <div className="account-card-balance" style={w.balance < 0 ? { color: '#c92a2a' } : undefined}>
-                  {cashEur(w.balance)}
-                </div>
-              </div>
-              {w.balance < 0 && <div className="account-card-kind">por regularizar</div>}
-            </button>
-          )
-        })}
+        {wallets.map((w) => (
+          <WalletCardButton key={w.id} wallet={w} members={members} active={activeView === w.id} onClick={() => onSelect(activeView === w.id ? null : w.id)} />
+        ))}
         <button type="button" className="account-card account-card-add" data-help-id="finance.cash-add" onClick={() => setAdding(true)}>
           <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
           <span>Añadir cartera</span>
@@ -1019,23 +1033,28 @@ export function CashMovementRow({ movement: m, walletName, onDelete }: { movemen
   )
 }
 
-function AccountBalanceCards({
+export function AccountBalanceCards({
   onAddAccount,
   onSelectAccount,
+  onSelectWallet,
   onViewAll,
 }: {
   onAddAccount: () => void
   onSelectAccount: (accountId: string) => void
+  /** Tocar una cartera de efectivo abre Movimientos con esa cartera elegida. */
+  onSelectWallet?: (walletId: string) => void
   onViewAll: () => void
 }) {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
+  const [wallets, setWallets] = useState<CashWallet[]>([])
 
   function reload() {
-    Promise.all([listBankAccounts(), listFamilyMembers()])
-      .then(([a, m]) => {
+    Promise.all([listBankAccounts(), listFamilyMembers(), listWalletsSafe()])
+      .then(([a, m, w]) => {
         setAccounts(a)
         setMembers(m)
+        setWallets(w.filter((x) => x.archivedAt == null))
       })
       .catch(() => {})
   }
@@ -1093,6 +1112,11 @@ function AccountBalanceCards({
             </button>
           )
         })}
+        {/* Carteras de efectivo (si las hay): junto a las cuentas, con el mismo formato. Una cartera NO es una cuenta bancaria: al tocarla se abre
+            Movimientos con ella elegida (Banco y la sincronización no cambian). */}
+        {wallets.map((w) => (
+          <WalletCardButton key={w.id} wallet={w} members={members} onClick={() => onSelectWallet?.(w.id)} />
+        ))}
         {/* Petición real: "no me has puesto para poder agregar cuentas
             a esa pantalla" — entrada directa al formulario de conectar
             banco (ya en Banco), sin tener que saber que vive ahí. */}
@@ -1125,10 +1149,13 @@ function toDateStrLocal(d: Date): string {
 // "Todas" combinada por defecto, o una sola cuenta a la vez — no
 // pestañas independientes por cuenta (ver conversación real sobre
 // cómo estructurar varias cuentas).
-function BalanceTrendCard() {
+export function BalanceTrendCard() {
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [transactions, setTransactions] = useState<BankTransaction[]>([])
+  // Efectivo: las carteras y sus movimientos entran en la misma tendencia (cada cartera es una serie más, con clave «wallet:<id>»).
+  const [wallets, setWallets] = useState<CashWallet[]>([])
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [loading, setLoading] = useState(true)
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
@@ -1137,12 +1164,14 @@ function BalanceTrendCard() {
   const [customTo, setCustomTo] = useState(toDateStrLocal(new Date()))
 
   function reload() {
-    Promise.all([listBankAccounts(), listFamilyMembers(), listBankTransactions(), getFinanceMonthStartDay()])
-      .then(([a, m, t, monthStart]) => {
+    Promise.all([listBankAccounts(), listFamilyMembers(), listBankTransactions(), getFinanceMonthStartDay(), listWalletsSafe(), listAllMovementsSafe()])
+      .then(([a, m, t, monthStart, w, cm]) => {
         setAccounts(a)
         setMembers(m)
         setTransactions(t)
         setMonthStartDay(monthStart)
+        setWallets(w.filter((x) => x.archivedAt == null))
+        setCashMovements(cm)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -1156,7 +1185,7 @@ function BalanceTrendCard() {
 
   // Sin banco enlazado todavía, no hay nada que enseñar — igual que el
   // resto de tarjetas condicionales de la app.
-  if (loading || accounts.length === 0) return null
+  if (loading || (accounts.length === 0 && wallets.length === 0)) return null
 
   const [from, rawTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   // "Este mes" (u otro preset) puede terminar en el futuro — el saldo
@@ -1165,7 +1194,11 @@ function BalanceTrendCard() {
   // mes, como si el futuro ya se supiera).
   const todayStr = toDateStrLocal(new Date())
   const to = rawTo > todayStr ? todayStr : rawTo
-  const selectedAccounts = selectedAccountId ? accounts.filter((a) => a.id === selectedAccountId) : accounts
+  // Selección: null = todo (bancos + efectivo); «wallet:<id>» = una cartera; otro valor = una cuenta bancaria.
+  const selectedWalletId = selectedAccountId?.startsWith('wallet:') ? selectedAccountId.slice('wallet:'.length) : null
+  const selectedAccounts = selectedAccountId === null ? accounts : selectedWalletId ? [] : accounts.filter((a) => a.id === selectedAccountId)
+  const selectedWallets = selectedAccountId === null ? wallets : selectedWalletId ? wallets.filter((w) => w.id === selectedWalletId) : []
+  const walletCreatedOn = (w: CashWallet) => (w.createdAt ? w.createdAt.slice(0, 10) : null)
   const accountIds = new Set(selectedAccounts.map((a) => a.id))
   const txForBalance = transactions.map((t) => ({
     accountId: t.accountId,
@@ -1178,7 +1211,11 @@ function BalanceTrendCard() {
   // movimientos guardados — más atrás de ahí no hay forma de saberlo,
   // aunque se amplíe el plazo pedido (ver Banco → "Sincronizar
   // movimientos" para traer más histórico).
-  const effectiveFrom = earliest && earliest > from ? earliest : from
+  // Con solo efectivo seleccionado, el gráfico empieza donde empieza la cartera (antes no hay dato: no se inventa).
+  const walletStarts = selectedWallets.map((w) => walletStartDate({ id: w.id, openingBalance: w.openingBalance, createdOn: walletCreatedOn(w) }, cashMovements)).filter((d): d is string => d != null)
+  const earliestWallet = walletStarts.length > 0 ? walletStarts.reduce((a, b) => (a < b ? a : b)) : null
+  const chartStart = selectedAccounts.length > 0 ? earliest : earliestWallet
+  const effectiveFrom = chartStart && chartStart > from ? chartStart : from
 
   // Petición real: "que ponga Común, no el banco y la cuenta, así
   // ocupan menos sitio" — el chip identifica DE QUIÉN es la cuenta
@@ -1207,17 +1244,34 @@ function BalanceTrendCard() {
         effectiveFrom <= to ? balanceTrend([{ id: a.id, balance: a.balance }], txForBalance, effectiveFrom, to) : [],
     }
   })
-  const currentBalance = selectedAccounts.reduce((sum, a) => {
+  // Efectivo: una serie por cartera, con el color del titular en versión suave (coherente con su tarjeta y distinguible de su cuenta del banco).
+  const cashSeries = selectedWallets.map((w) => {
+    const owner = w.ownerMemberId ? (members.find((m) => m.id === w.ownerMemberId) ?? null) : null
+    return {
+      accountId: `wallet:${w.id}`,
+      label: `💶 ${w.name}`,
+      color: owner ? toPastel(owner.color, 'chart') : '#ced4da',
+      points: effectiveFrom <= to ? walletBalanceTrend({ id: w.id, openingBalance: w.openingBalance, createdOn: walletCreatedOn(w) }, cashMovements, effectiveFrom, to) : [],
+    }
+  })
+  const allSeries = [...series, ...cashSeries]
+  const currentBankBalance = selectedAccounts.reduce((sum, a) => {
     const s = series.find((s) => s.accountId === a.id)
     const last = s?.points[s.points.length - 1]
     return sum + (last ? last.balance : (a.balance ?? 0))
   }, 0)
-  const hasPoints = series.some((s) => s.points.length > 1)
+  const currentCashBalance = cashSeries.reduce((sum, s) => sum + (s.points[s.points.length - 1]?.balance ?? 0), 0)
+  const currentBalance = currentBankBalance + currentCashBalance
+  const hasPoints = allSeries.some((s) => s.points.length > 1)
+  // Aviso honesto: una cartera no tiene saldo antes de existir.
+  const walletLateStarts = selectedWallets
+    .map((w) => ({ w, start: walletStartDate({ id: w.id, openingBalance: w.openingBalance, createdOn: walletCreatedOn(w) }, cashMovements) }))
+    .filter((x): x is { w: CashWallet; start: string } => x.start != null && x.start > effectiveFrom && x.start <= to)
 
   return (
     <div className="card event-card">
       <strong>Tendencia del saldo</strong>
-      {accounts.length > 1 && (
+      {accounts.length + wallets.length > 1 && (
         <div className="filter-row" style={{ marginTop: 8 }}>
           <button
             type="button"
@@ -1239,6 +1293,19 @@ function BalanceTrendCard() {
               </button>
             )
           })}
+          {wallets.map((w) => {
+            const owner = w.ownerMemberId ? (members.find((m) => m.id === w.ownerMemberId) ?? null) : null
+            return (
+              <button
+                key={w.id}
+                type="button"
+                className={'chip' + (selectedAccountId === `wallet:${w.id}` ? ' chip-active' : '')}
+                onClick={() => setSelectedAccountId(`wallet:${w.id}`)}
+              >
+                <OwnerBadge owner={owner} size={16} /> 💶 {w.name}
+              </button>
+            )
+          })}
         </div>
       )}
       <DateFilterTab
@@ -1255,9 +1322,19 @@ function BalanceTrendCard() {
           más histórico desde Banco → Sincronizar movimientos).
         </p>
       )}
+      {walletLateStarts.map(({ w, start }) => (
+        <p key={w.id} className="muted" style={{ fontSize: 12 }}>
+          💶 {w.name}: se dibuja desde el {formatDate(start)}, cuando se creó (antes no hay dato: no se inventa su saldo).
+        </p>
+      ))}
       <p style={{ fontSize: 24, fontWeight: 700, margin: '10px 0 6px' }}>{currentBalance.toFixed(2)} €</p>
+      {selectedAccountId === null && cashSeries.length > 0 && selectedAccounts.length > 0 && (
+        <p className="muted" style={{ fontSize: 12, margin: '-2px 0 6px' }}>
+          Bancos {currentBankBalance.toFixed(2)} € + efectivo {currentCashBalance.toFixed(2)} €
+        </p>
+      )}
       {hasPoints ? (
-        <BalanceTrendChart series={series} />
+        <BalanceTrendChart series={allSeries} />
       ) : (
         <p className="muted">No hay movimientos guardados en este periodo para dibujar la tendencia.</p>
       )}
@@ -1269,7 +1346,8 @@ interface BalanceSeries {
   accountId: string
   label: string
   color: string
-  points: { date: string; balance: number }[]
+  // known === false: la cartera aún no existía ese día (el 0 solo sirve para apilar; no es un saldo).
+  points: { date: string; balance: number; known?: boolean }[]
 }
 
 // Petición real: "en los ejes datos, cantidad de euros en una y en la
@@ -1361,7 +1439,7 @@ function BalanceTrendChart({ series }: { series: BalanceSeries[] }) {
     if (bands.length > 1) {
       for (const b of [...bands].reverse()) {
         const mid = ((b.bottom[i] ?? 0) + (b.top[i] ?? 0)) / 2
-        boxes.push({ key: b.accountId, text: fmtEur(b.points[i]?.balance ?? 0), color: b.color, h: 14, desiredY: yAt(mid) - 7, y: 0 })
+        boxes.push({ key: b.accountId, text: b.points[i]?.known === false ? 'sin datos' : fmtEur(b.points[i]?.balance ?? 0), color: b.color, h: 14, desiredY: yAt(mid) - 7, y: 0 })
       }
     }
     boxes.sort((a, b) => a.desiredY - b.desiredY)
@@ -1779,7 +1857,7 @@ export function BankTab({
             aparece en Movimientos.
           </p>
           {activeAccountLabel && (
-            <div className="card event-card" style={{ marginBottom: 8 }}>
+            <div className="card event-card filter-banner">
               <strong>Cuenta: {activeAccountLabel}</strong>
               <button type="button" className="link-button" onClick={() => setActiveAccountId(null)}>
                 ✕ Ver todas las cuentas
@@ -1978,7 +2056,7 @@ function PendingSignal({ signal, onOpen }: { signal: PendingSpending; onOpen: ()
   )
 }
 
-function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
+export function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -2040,7 +2118,7 @@ function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter)
   const prevTo = toDateStr(new Date(fromMs - 86_400_000))
   const prevFrom = toDateStr(new Date(fromMs - spanMs))
   const prevReal = expenses.filter(
-    (e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= prevFrom && e.expenseDate <= prevTo,
+    (e) => e.kind === 'real' && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= prevFrom && e.expenseDate <= prevTo, // gasto + ingreso (para comparar); el gasto sale de isRealSpending
   )
   const prevSpent = prevReal.filter((e) => !e.isIncome).reduce((s, e) => s + e.amount, 0)
 
@@ -2875,7 +2953,7 @@ function CategoryDonutExplorer({
   )
 }
 
-function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
+export function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
@@ -2931,7 +3009,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
   // aquí también para que categorías, etiquetas, D/N/Q y Fijo/Variable
   // no lo cuenten.
   const real = expenses.filter(
-    (e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories) && e.expenseDate >= from && e.expenseDate <= to,
+    (e) => isRealSpending(e, categories) && e.expenseDate >= from && e.expenseDate <= to,
   )
   const totalReal = real.reduce((s, e) => s + e.amount, 0)
 
@@ -3088,7 +3166,7 @@ function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFi
 
       <PeriodComparison
         expenses={expenses}
-        isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}
+        isComparableSpend={(e) => isRealSpending(e, categories)}
         groupBy={(rows) => {
           const financeData = { expenses, categories, receipts: [], prices: [], products: [], storeNames: [], monthStartDay } as unknown as FinanceData
           return groupSpending(rows, financeData).map((g) => ({ ...g, icon: categories.find((c) => c.name === g.name)?.icon ?? null }))
@@ -3401,6 +3479,7 @@ export function ExpensesTab({
   accountsMode = 'compartido',
   myMemberId = null,
   onOpenNewMovement,
+  focusWallet = null,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
@@ -3413,6 +3492,8 @@ export function ExpensesTab({
   // AddExpenseToAnyCategoryInline de siempre (estado en el FinanceScreen padre) — nunca un formulario
   // ni un flujo nuevo.
   onOpenNewMovement?: () => void
+  /** Cartera que se debe mostrar elegida al abrir Movimientos (desde «Mis cuentas»). */
+  focusWallet?: { id: string; n: number } | null
 }) {
   // Piso compartido — solo tiene sentido elegir Individual/Común en modo
   // Separado; en Compartido no hay nada que separar (todo es una sola
@@ -3472,6 +3553,7 @@ export function ExpensesTab({
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([])
   const [cashView, setCashView] = useState<string | null>(null)
   const [cashError, setCashError] = useState<string | null>(null)
+  const [cashNotice, setCashNotice] = useState<string | null>(null)
   // Igual que las categorías sugeridas de Presupuesto Generales: se dan
   // de alta solas la primera vez, sin pedirlo — petición real: "los
   // ingresos también se deberían poder categorizar, como sueldo,
@@ -3638,6 +3720,15 @@ export function ExpensesTab({
   }, [scopeFilteredExpenses, activeAccountId, expenseAccountId, effectiveCashView, cashMovements])
   const walletLinkedIds = useMemo(() => allWalletLinkedExpenseIds(cashMovements), [cashMovements])
   const hasCashWithoutWallet = useMemo(() => expenses.some((e) => isCashWithoutWallet(e, walletLinkedIds)), [expenses, walletLinkedIds])
+  // Retiradas del cajero por asignar: solo si la familia ya tiene la categoría «Retirada de efectivo» (migración 0318). Últimos 90 días, y nunca las que ya están
+  // en Movimientos internos (la persona ya las gestionó).
+  const hasWithdrawalCategory = familyHasWithdrawalCategory(categories)
+  const withdrawalsPending = useMemo(() => {
+    if (!hasWithdrawalCategory) return []
+    const since = new Date()
+    since.setDate(since.getDate() - 90)
+    return pendingWithdrawals(expenses, walletLinkedIds, { exclude: (e) => isInternalTransferCategory(e.category, categories), sinceDate: toDateStr(since) })
+  }, [expenses, walletLinkedIds, categories, hasWithdrawalCategory])
   const walletWritable = activeWallet != null && (activeWallet.ownerMemberId == null || activeWallet.ownerMemberId === myMemberId)
 
   // Bug real: "en Movimientos salen 4349,63€ de ingresos, pero en
@@ -3650,7 +3741,7 @@ export function ExpensesTab({
   const monthTotal = useMemo(
     () =>
       accountFilteredExpenses
-        .filter((e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories))
+        .filter((e) => isRealSpending(e, categories))
         .reduce((sum, e) => sum + e.amount, 0),
     [accountFilteredExpenses, categories],
   )
@@ -3703,6 +3794,16 @@ export function ExpensesTab({
     setCashView(view)
     if (view != null) setActiveAccountId(null)
   }
+  // Llegada desde «Mis cuentas»: se elige esa cartera (una vez por toque).
+  const lastFocusWalletRef = useRef<number | null>(null)
+  useEffect(() => {
+    if (focusWallet && focusWallet.n !== lastFocusWalletRef.current) {
+      lastFocusWalletRef.current = focusWallet.n
+      setCashError(null)
+      setCashView(focusWallet.id)
+      setActiveAccountId(null)
+    }
+  }, [focusWallet])
 
   const memberById = new Map(members.map((m) => [m.id, m]))
   const accountById = new Map(accounts.map((a) => [a.id, a]))
@@ -3739,14 +3840,18 @@ export function ExpensesTab({
         onCreated={reload}
       />
       {effectiveCashView && (
-        <div className="card event-card" style={{ marginBottom: 8 }}>
-          <strong>{activeWallet ? `Cartera: ${activeWallet.name} · ${cashEur(activeWallet.balance)}` : 'Efectivo sin cartera'}</strong>
+        <div className="card event-card filter-banner">
+          <strong>{activeWallet ? `Cartera: ${activeWallet.name}` : 'Efectivo sin cartera'}</strong>
           <button type="button" className="link-button" onClick={() => pickCashView(null)}>
             ✕ Ver todos los movimientos
           </button>
         </div>
       )}
       {cashError && <p className="error">{cashError}</p>}
+      {cashNotice && <p className="points-badge">{cashNotice}</p>}
+      {hasWithdrawalCategory && (
+        <WithdrawalsToAssign withdrawals={withdrawalsPending} movements={cashMovements} wallets={wallets} myMemberId={myMemberId} onChanged={reload} onNotice={setCashNotice} />
+      )}
       {activeWallet && (
         <WalletTools
           key={activeWallet.id}
@@ -5090,14 +5195,14 @@ export function ReceiptsTab() {
   // El servidor deja las carteras coherentes, conserva siempre los movimientos bancarios originales y anota una foto para poder deshacerlo.
   const [deleteDialog, setDeleteDialog] = useState<{ receipt: Receipt; lines: string[] } | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [undo, setUndo] = useState<{ logId: string; text: string } | null>(null)
+  const [undo, setUndo] = useState<{ logIds: string[]; text: string } | null>(null)
 
   async function runDelete(receipt: Receipt) {
     setDeleting(true)
     try {
       const logId = await deletePurchaseSafely(receipt)
       // Honesto con la foto: se borra de verdad y deshacer NO la recupera (solo vuelve la compra, sin foto).
-      setUndo({ logId, text: receipt.storagePath ? 'Compra borrada. Si la deshaces, vuelve sin la foto del ticket (la foto ya se ha borrado).' : 'Compra borrada.' })
+      setUndo({ logIds: [logId], text: receipt.storagePath ? 'Compra borrada. Si la deshaces, vuelve sin la foto del ticket (la foto ya se ha borrado).' : 'Compra borrada.' })
       setDeleteDialog(null)
       reload()
     } catch (err) {
@@ -5123,11 +5228,12 @@ export function ReceiptsTab() {
     else setDeleteDialog({ receipt, lines: impact.lines })
   }
 
-  async function handleUndo(logId: string) {
+  async function handleUndo(logIds: string[]) {
     try {
-      const r = await restoreEconomyLog(logId)
+      let skipped = 0
+      for (const logId of logIds) skipped += (await restoreEconomyLog(logId)).skipped
       setUndo(null)
-      if (r.skipped > 0) setError(`Deshecho. ${r.skipped} movimiento(s) no se pudieron restaurar (cartera archivada o producto desaparecido).`)
+      if (skipped > 0) setError(`Deshecho. ${skipped} movimiento(s) no se pudieron restaurar (cartera archivada o producto desaparecido).`)
       reload()
     } catch (err) {
       setError(cashErrorText(err, 'No se pudo deshacer'))
@@ -5181,7 +5287,7 @@ export function ReceiptsTab() {
       {/* Petición real: "el aparato para subir tickets... arriba del
           todo" — antes iba al final de la lista. */}
       <ReceiptForm mode="add" onDone={reload} knownStores={knownStores} existingFolders={storeNames} categories={categories} members={members} />
-      {undo && <UndoNotice text={undo.text} onUndo={() => void handleUndo(undo.logId)} onDismiss={() => setUndo(null)} />}
+      {undo && <UndoNotice text={undo.text} onUndo={() => void handleUndo(undo.logIds)} onDismiss={() => setUndo(null)} />}
       {deleteDialog && (
         <DeletePurchaseDialog
           title={deleteDialog.receipt.store ?? 'Compra'}
@@ -5193,7 +5299,8 @@ export function ReceiptsTab() {
         />
       )}
       <PurchaseDuplicatesPanel
-        onLogged={(logId, text) => setUndo({ logId, text })}
+        onLogged={(logId, text) => setUndo({ logIds: [logId], text })}
+        onAutoLinked={(logIds) => setUndo({ logIds, text: logIds.length === 1 ? 'Se ha vinculado 1 compra con su pago del banco (un solo gasto; el movimiento del banco se conserva).' : `Se han vinculado ${logIds.length} compras con su pago del banco (un solo gasto cada una; los movimientos del banco se conservan).` })}
         expenses={allExpenseList}
         purchaseExpenseIds={new Set(receipts.map((x) => x.expenseId).filter((id): id is string => !!id))}
         cashLinkedExpenseIds={cashLinkedIds}
@@ -5207,6 +5314,9 @@ export function ReceiptsTab() {
           el total rápido mientras repasas las carpetas de abajo. */}
       <ReceiptSpendSummary
         receipts={displayReceipts}
+        payments={payments}
+        cashLinkedExpenseIds={cashLinkedIds}
+        expenseSource={(id) => allExpenseList.find((e) => e.id === id)?.source ?? null}
         knownStores={knownStores}
         storeNames={storeNames}
         preset={rangePreset}
@@ -5340,8 +5450,11 @@ export function ReceiptsTab() {
 // yo le ponga" — filtro de fecha con presets rápidos más un rango a
 // medida, cruzado con la tienda (o todas), sobre el mismo dato ya
 // cargado (sin ida y vuelta al servidor por cada cambio de filtro).
-function ReceiptSpendSummary({
+export function ReceiptSpendSummary({
   receipts,
+  payments = [],
+  cashLinkedExpenseIds = new Set<string>(),
+  expenseSource = () => null,
   knownStores,
   storeNames,
   preset,
@@ -5351,7 +5464,11 @@ function ReceiptSpendSummary({
   customTo,
   onCustomToChange,
 }: {
-  receipts: Receipt[]
+  receipts: (Receipt & { hasTicket?: boolean })[]
+  /** Pagos de cada compra (para repartir un pago mixto por medio de pago). */
+  payments?: PurchasePaymentRow[]
+  cashLinkedExpenseIds?: ReadonlySet<string>
+  expenseSource?: (expenseId: string) => string | null
   knownStores: string[]
   storeNames: string[]
   preset: SpendRangePreset
@@ -5363,6 +5480,8 @@ function ReceiptSpendSummary({
 }) {
   const [selectedStore, setSelectedStore] = useState('Todas')
   const [storeOpen, setStoreOpen] = useState(false)
+  // Desglose del mismo total (por justificante y por forma de pago), plegado por defecto: el resumen principal no crece.
+  const [showBreakdown, setShowBreakdown] = useState(false)
 
   const [from, to] = rangeForPreset(preset, customFrom, customTo)
   // Bug real reportado: al subir tickets de septiembre y octubre solo se veía el de octubre (el periodo «Mes contable» es el de arranque) y
@@ -5382,9 +5501,20 @@ function ReceiptSpendSummary({
     return canonicalStoreName(r.store, knownStores) === selectedStore
   })
   const total = filtered.reduce((sum, r) => sum + (r.totalAmount ?? 0), 0)
+  const spendItems: SpendItem[] = filtered.map((r) => ({
+    id: r.id,
+    amount: r.totalAmount ?? 0,
+    isManual: r.isManual === true,
+    hasFile: !!r.storagePath,
+    bankOnly: r.hasTicket === false,
+    paymentMethod: r.paymentMethod ?? null,
+    expenseId: r.expenseId,
+  }))
+  const byProof = showBreakdown ? spendByProof(spendItems) : null
+  const byPayment = showBreakdown ? spendByPayment(spendItems, { legs: payments, cashLinkedExpenseIds, expenseSource }) : null
 
   return (
-    <div className="card event-card">
+    <div className="card event-card" data-help-id="shopping.spend-summary">
       <strong>Cuánto he gastado</strong>
       <DateFilterTab
         preset={preset}
@@ -5418,14 +5548,29 @@ function ReceiptSpendSummary({
         )}
       </div>
       <p>
-        {total.toFixed(2)} € · {filtered.length} {filtered.length === 1 ? 'ticket' : 'tickets'}
+        {total.toFixed(2)} € · {filtered.length} {filtered.length === 1 ? 'compra' : 'compras'}{' '}
+        <button type="button" className="link-button" style={{ fontSize: 13 }} aria-expanded={showBreakdown} onClick={() => setShowBreakdown((v) => !v)}>
+          {showBreakdown ? 'Ocultar desglose' : 'Ver desglose'}
+        </button>
       </p>
+      {byProof && byPayment && (
+        <div className="muted" style={{ fontSize: 13, lineHeight: 1.5 }} data-help-id="shopping.spend-breakdown">
+          <div>
+            <strong>Por justificante:</strong> con ticket {byProof.withTicket.count} · {byProof.withTicket.amount.toFixed(2)} € — sin ticket {byProof.withoutTicket.count} · {byProof.withoutTicket.amount.toFixed(2)} €
+          </div>
+          <div>
+            <strong>Por forma de pago:</strong> banco {byPayment.bank.toFixed(2)} € — efectivo con cartera {byPayment.cashWithWallet.toFixed(2)} € · sin cartera {byPayment.cashWithoutWallet.toFixed(2)} €
+            {byPayment.other > 0.004 ? ` — otros / sin indicar ${byPayment.other.toFixed(2)} €` : ''}
+          </div>
+          <div style={{ fontSize: 12 }}>Son dos formas de ver el mismo total ({totalOf(spendItems).toFixed(2)} €): no se suman entre sí.</div>
+        </div>
+      )}
       {outsideRange.length > 0 && (
         <p className="muted" style={{ fontSize: 13 }}>
-          ℹ️ Estás viendo los tickets del periodo elegido en «📅 Fecha» ({from} → {to}). Hay {outsideRange.length}{' '}
-          {outsideRange.length === 1 ? 'ticket más guardado' : 'tickets más guardados'} en otras fechas.{' '}
+          ℹ️ Estás viendo las compras del periodo elegido en «📅 Fecha» ({from} → {to}). Hay {outsideRange.length}{' '}
+          {outsideRange.length === 1 ? 'compra más guardada' : 'compras más guardadas'} en otras fechas.{' '}
           <button type="button" className="link-button" onClick={showAllTickets}>
-            Ver todos mis tickets
+            Ver todas mis compras
           </button>
         </p>
       )}
@@ -7449,11 +7594,7 @@ export function BudgetsTab({
   // por categoría" de más abajo.
   const monthRealExpenses = scopedExpenses.filter(
     (e) =>
-      e.expenseDate >= periodFrom &&
-      e.expenseDate <= periodTo &&
-      !e.isIncome &&
-      e.kind === 'real' &&
-      !isInternalTransferCategory(e.category, categories),
+      e.expenseDate >= periodFrom && e.expenseDate <= periodTo && isRealSpending(e, categories),
   )
   // Piso compartido: ingresos compartidos a Común (ver
   // SharedBalanceCard para cómo se combinan con los gastos en "Saldo
@@ -7884,12 +8025,7 @@ export function BudgetsTab({
       {group === 'alimentacion' && (
         <PeriodComparison
           expenses={expenses}
-          isComparableSpend={(e) =>
-            e.kind === 'real' &&
-            !e.isIncome &&
-            !isInternalTransferCategory(e.category, categories) &&
-            isComprasExpense(e, categories, receiptByExpenseId.get(e.id) ?? null)
-          }
+          isComparableSpend={(e) => isRealSpending(e, categories) && isComprasExpense(e, categories, receiptByExpenseId.get(e.id) ?? null)}
           groupBy={(rows) => {
             const totals = new Map<string, number>()
             for (const e of rows) {

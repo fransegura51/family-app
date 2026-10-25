@@ -120,7 +120,7 @@ describe('formulario y datos de tickets: un NULL no se convierte en Alimentació
 
   it('un ticket sin categoría no pisa la categoría real del gasto enlazado ni la de un gasto del banco', () => {
     expect(receipts).toContain("...(input.category != null ? { category: input.category } : {})")
-    expect((receipts.match(/\.\.\.\(input\.category != null \? \{ category: input\.category \} : \{\}\)/g) ?? []).length).toBe(2)
+    expect((receipts.match(/\.\.\.\(input\.category != null \? \{ category: input\.category \} : \{\}\)/g) ?? []).length).toBe(3) // alta (unión a un gasto existente), edición del gasto enlazado y edición que une el gasto del banco
   })
 
   it('la fila del ticket no deja un « · » suelto cuando no hay categoría', () => {

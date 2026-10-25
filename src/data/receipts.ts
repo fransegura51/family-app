@@ -61,6 +61,27 @@ export async function listReceipts(): Promise<Receipt[]> {
   }))
 }
 
+// ¿Existe ya un gasto de esa misma compra (el del banco, uno ya enlazado al banco o apuntado a mano) al que unir este ticket, en vez de crear otro? Mismo criterio
+// (importe exacto, ±7 días, sin ticket propio ya enlazado) en el alta y en la edición, para que ningún camino deje la compra contada dos veces.
+async function findExistingExpenseForTicket(familyId: string, input: { amount: number; receiptDate: string; isManual: boolean }) {
+  const { data: candidates } = await supabase
+    .from('expenses')
+    .select('id, amount, expense_date, source')
+    .eq('family_id', familyId)
+    .in('source', input.isManual ? ['banco'] : [...TICKET_MATCH_SOURCES])
+    .eq('is_income', false)
+    .gte('expense_date', addDays(input.receiptDate, -TICKET_MATCH_WINDOW_DAYS))
+    .lte('expense_date', addDays(input.receiptDate, TICKET_MATCH_WINDOW_DAYS))
+  const candidateIds = (candidates ?? []).map((c) => c.id as string)
+  const { data: linkedRows } = candidateIds.length > 0 ? await supabase.from('receipts').select('expense_id').in('expense_id', candidateIds) : { data: [] }
+  const linkedIds = new Set((linkedRows ?? []).map((r) => r.expense_id as string))
+  return pickTicketExpenseMatch(
+    (candidates ?? []).map((c) => ({ id: c.id as string, amount: c.amount as number, expense_date: c.expense_date as string, source: c.source as string })),
+    { amount: input.amount, receiptDate: input.receiptDate },
+    linkedIds,
+  )
+}
+
 // Sube el archivo (foto/PDF) al bucket privado "receipts" bajo
 // <family_id>/, guarda sus datos a mano, y crea el gasto REAL asociado
 // (Skill 17) para que aparezca también en Dinero → Gastos. No hay OCR:
@@ -108,23 +129,7 @@ export async function uploadReceipt(input: {
     // duplicado por quedarse fuera del margen.
     // Orígenes: «banco», uno ya enlazado al banco sin ticket propio («ticket_banco», p. ej. un apunte a mano que el banco ya unió) o apuntado a mano
     // (ver domain/ticketExpenseMatch.ts). Se pide el conjunto de gastos que ya tienen ticket para no robarle el gasto a otro.
-    const { data: candidates } = await supabase
-      .from('expenses')
-      .select('id, amount, expense_date, source')
-      .eq('family_id', familyId)
-      .in('source', input.isManual ? ['banco'] : [...TICKET_MATCH_SOURCES])
-      .eq('is_income', false)
-      .gte('expense_date', addDays(input.receiptDate, -TICKET_MATCH_WINDOW_DAYS))
-      .lte('expense_date', addDays(input.receiptDate, TICKET_MATCH_WINDOW_DAYS))
-    const candidateIds = (candidates ?? []).map((c) => c.id as string)
-    const { data: linkedRows } = candidateIds.length > 0 ? await supabase.from('receipts').select('expense_id').in('expense_id', candidateIds) : { data: [] }
-    const linkedIds = new Set((linkedRows ?? []).map((r) => r.expense_id as string))
-    // Con ±7 días cabe más de un candidato del mismo importe exacto: se queda con el de fecha más cercana al ticket.
-    const match = !mayMatchExisting ? null : pickTicketExpenseMatch(
-      (candidates ?? []).map((c) => ({ id: c.id as string, amount: c.amount as number, expense_date: c.expense_date as string, source: c.source as string })),
-      { amount: input.totalAmount, receiptDate: input.receiptDate },
-      linkedIds,
-    )
+    const match = !mayMatchExisting ? null : await findExistingExpenseForTicket(familyId, { amount: input.totalAmount, receiptDate: input.receiptDate, isManual: input.isManual === true })
 
     if (match) {
       const { error: updateExpenseError } = await supabase
@@ -231,7 +236,7 @@ export async function updateReceipt(
 ): Promise<void> {
   const { data: existing, error: fetchError } = await supabase
     .from('receipts')
-    .select('expense_id, category')
+    .select('expense_id, category, is_manual, payment_method')
     .eq('id', id)
     .single()
   if (fetchError) throw fetchError
@@ -253,22 +258,34 @@ export async function updateReceipt(
       if (updateExpenseError) throw updateExpenseError
     } else {
       const familyId = await currentFamilyId()
-      const { data: expense, error: insertExpenseError } = await supabase
-        .from('expenses')
-        .insert({
-          family_id: familyId,
-          expense_date: input.receiptDate,
-          amount: input.totalAmount,
-          // Un gasto nuevo hereda la categoría del ticket (o la que se mande); un ticket pendiente (NULL) da un gasto pendiente, sin inventar nada.
-          category: input.category !== undefined ? input.category : existing.category,
-          store: input.store || null,
-          kind: 'real',
-          source: 'ticket',
-        })
-        .select('id')
-        .single()
-      if (insertExpenseError) throw insertExpenseError
-      expenseId = expense.id
+      // Antes de crear otro gasto: ¿ya existe el de esta compra (p. ej. el del banco)? Efectivo y pagos mixtos no se unen al banco por el total.
+      const method = input.paymentMethod !== undefined ? input.paymentMethod : (existing.payment_method as string | null)
+      const match = method === 'efectivo' || method === 'mixto' ? null : await findExistingExpenseForTicket(familyId, { amount: input.totalAmount, receiptDate: input.receiptDate, isManual: existing.is_manual === true })
+      if (match) {
+        const { error: matchError } = await supabase
+          .from('expenses')
+          .update({ source: sourceAfterTicketMatch(match.source), ...(input.category != null ? { category: input.category } : {}), store: input.store || null })
+          .eq('id', match.id)
+        if (matchError) throw matchError
+        expenseId = match.id
+      } else {
+        const { data: expense, error: insertExpenseError } = await supabase
+          .from('expenses')
+          .insert({
+            family_id: familyId,
+            expense_date: input.receiptDate,
+            amount: input.totalAmount,
+            // Un gasto nuevo hereda la categoría del ticket (o la que se mande); un ticket pendiente (NULL) da un gasto pendiente, sin inventar nada.
+            category: input.category !== undefined ? input.category : existing.category,
+            store: input.store || null,
+            kind: 'real',
+            source: 'ticket',
+          })
+          .select('id')
+          .single()
+        if (insertExpenseError) throw insertExpenseError
+        expenseId = expense.id
+      }
     }
   } else if (expenseId) {
     const { error: deleteExpenseError } = await supabase.from('expenses').delete().eq('id', expenseId)

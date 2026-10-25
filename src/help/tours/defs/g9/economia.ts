@@ -148,4 +148,50 @@ export const tutEconomiaConectarBanco: TourDef = {
   next: ['eco-pendientes', 'eco-categorias', 'eco-prevision'],
 }
 
-export const TOURS_G9_ECONOMIA: TourDef[] = [tutEconomiaClasificarPendientes, tutEconomiaConectarBanco]
+export const tutEconomiaCarterasEfectivo: TourDef = {
+  id: 'tut-economia-carteras-efectivo',
+  module: 'economia',
+  group: 'Efectivo',
+  summary: 'Dónde están las carteras de efectivo, sus tarjetas y las cinco operaciones (sin crear ni mover dinero por ti).',
+  version: 1,
+  title: 'Carteras de efectivo',
+  cardId: 'eco-efectivo',
+  durationSec: 100,
+  startPath: '/dinero',
+  startDest: 'economia.movimientos',
+  steps: [
+    {
+      id: 'tarjetas',
+      text: 'Aquí están las carteras de efectivo: una tarjeta por cartera, con su titular (o «Familiar») y su saldo. Son opcionales: puedes apuntar gastos en efectivo sin tener ninguna.',
+      target: 'finance.cash-wallets',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'anadir',
+      text: '«Añadir cartera» crea una personal (la tuya) o una familiar, con su saldo inicial. Yo solo te enseño dónde está: no creo ninguna.',
+      target: 'finance.cash-add',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'operaciones',
+      text: 'Al tocar una cartera, Movimientos enseña solo sus movimientos y salen las «Operaciones de efectivo»: entrada, salida, ajustar saldo, traspaso y retirada del banco. Si no tienes ninguna cartera, este paso se salta.',
+      target: 'finance.cash-tools',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'etiqueta',
+      text: 'Ojo: pagar desde una cartera no decide a quién corresponde el gasto. Eso lo dice la etiqueta del movimiento (por ejemplo «Común» aunque pague una persona).',
+      target: 'finance.cash-wallets',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Eso es todo. No he creado ni movido nada de efectivo: cuando quieras, hazlo tú desde «Añadir cartera» y las operaciones de cada cartera.',
+  next: ['eco-nuevo-movimiento', 'eco-banco'],
+}
+
+export const TOURS_G9_ECONOMIA: TourDef[] = [tutEconomiaClasificarPendientes, tutEconomiaConectarBanco, tutEconomiaCarterasEfectivo]

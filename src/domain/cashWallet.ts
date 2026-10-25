@@ -14,6 +14,8 @@ export interface CashWallet {
   ownerMemberId: string | null
   openingBalance: number
   archivedAt: string | null
+  /** Cuándo se creó (para no inventar saldos anteriores en el gráfico de tendencia). */
+  createdAt?: string | null
   /** Saldo actual (saldo inicial + movimientos). */
   balance: number
 }

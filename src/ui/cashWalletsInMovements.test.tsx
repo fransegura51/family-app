@@ -142,7 +142,8 @@ describe('Movimientos: tarjetas de efectivo', () => {
   it('tocar una cartera la filtra: sus compras, la retirada del banco y sus entradas; no las de otra cartera ni el resto', async () => {
     renderMovements()
     fireEvent.click(await screen.findByRole('button', { name: /Cartera de Jennifer/ }))
-    await waitFor(() => expect(screen.getByText(/Cartera: Cartera de Jennifer · 86,50/)).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Cartera: Cartera de Jennifer')).toBeTruthy()) // el saldo ya está en la tarjeta: no se repite en el recuadro
+    expect(screen.queryByText(/Cartera: Cartera de Jennifer ·/)).toBeNull()
     expect(storesShown().sort()).toEqual(['CAJERO', 'Mercado Puesto Panadería'].sort())
     // su entrada de saldo inicial sale en el mismo listado, sin ser gasto ni ingreso
     expect(screen.getByText(/Entrada de efectivo/)).toBeTruthy()
@@ -154,6 +155,7 @@ describe('Movimientos: tarjetas de efectivo', () => {
     renderMovements()
     fireEvent.click(await screen.findByRole('button', { name: /Cartera de Jennifer/ }))
     const ops = await screen.findByRole('group', { name: 'Operaciones de la cartera' })
+    expect(screen.getByRole('heading', { name: 'Operaciones de efectivo' })).toBeTruthy() // el título ya no repite el nombre de la cartera
     expect(within(ops).getAllByRole('button').map((b) => b.textContent)).toEqual(['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '🏦 Retirada del banco'])
     fireEvent.click(within(ops).getByRole('button', { name: '＋ Entrada' }))
     fireEvent.change(screen.getByLabelText(/Importe/), { target: { value: '5' } })
@@ -167,7 +169,7 @@ describe('Movimientos: tarjetas de efectivo', () => {
     await screen.findByText(/Ver todos los movimientos/)
     fireEvent.click(screen.getByRole('button', { name: /Cartera familiar/ }))
     await waitFor(() => expect(storesShown()).toEqual(['Kiosco']))
-    expect(screen.getByText(/Cartera: Cartera familiar · 20,00/)).toBeTruthy()
+    expect(screen.getByText('Cartera: Cartera familiar')).toBeTruthy()
     fireEvent.click(screen.getByText(/Ver todos los movimientos/))
     await waitFor(() => expect(storesShown()).toHaveLength(5))
     expect(screen.queryByRole('group', { name: 'Operaciones de la cartera' })).toBeNull()
@@ -224,6 +226,17 @@ describe('Movimientos: tarjetas de efectivo', () => {
     expect(await screen.findByText(/Controlar el efectivo es opcional/)).toBeTruthy()
     expect(screen.getByRole('button', { name: /Añadir cartera/ })).toBeTruthy()
     await waitFor(() => expect(storesShown()).toHaveLength(5))
+  })
+
+  it('llegar desde «Mis cuentas» con una cartera ya elegida: Movimientos sale filtrado por ella, con sus herramientas', async () => {
+    render(
+      <MemoryRouter>
+        <ExpensesTab myMemberId="jenni" focusWallet={{ id: 'jenni-w', n: 1 }} />
+      </MemoryRouter>,
+    )
+    await waitFor(() => expect(screen.getByText(/Cartera: Cartera de Jennifer/)).toBeTruthy())
+    expect(storesShown().sort()).toEqual(['CAJERO', 'Mercado Puesto Panadería'].sort())
+    expect(await screen.findByRole('group', { name: 'Operaciones de la cartera' })).toBeTruthy()
   })
 
   it('la cartera de otra persona se puede mirar pero no tiene herramientas', async () => {

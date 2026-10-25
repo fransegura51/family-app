@@ -69,9 +69,8 @@ describe('Compras (Estadística compras) — "Comparado con el periodo anterior"
   // una compra"; hacía falta además isComprasExpense (domain/finance.ts), la misma función que ahora usa
   // también "Total Registrado en Compras" — nunca dos definiciones independientes que puedan divergir.
   it('encadena el filtro genérico de "gasto real" Y ADEMÁS isComprasExpense — no basta con ser un gasto real, tiene que ser una COMPRA', () => {
-    expect(callSite).toContain("e.kind === 'real' &&")
-    expect(callSite).toContain('!e.isIncome &&')
-    expect(callSite).toContain('!isInternalTransferCategory(e.category, categories) &&')
+    // «gasto real» (real, no ingreso, no movimiento interno) = la definición única isRealSpending, la misma de todas las estadísticas.
+    expect(callSite).toContain('isRealSpending(e, categories) &&')
     expect(callSite).toContain('isComprasExpense(e, categories, receiptByExpenseId.get(e.id) ?? null)')
   })
 

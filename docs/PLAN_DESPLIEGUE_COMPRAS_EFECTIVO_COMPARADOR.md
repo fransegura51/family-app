@@ -194,3 +194,17 @@ Riesgos conocidos, no bloqueantes pero a vigilar:
 2. Aprobar los requisitos.
 3. Si las carteras personales de los adultos deben verse entre sí en modo «compartido» (hoy sí, como las cuentas bancarias; en modo privado, cada uno ve la suya y las familiares).
 4. Si se quiere una pantalla de «Operaciones recientes» para deshacer más tarde y una de revisión de equivalencias compartidas (no hechas).
+
+---
+
+## Anexo (25/10/2026) — bloque de correcciones tras la validación en iPhone
+
+Contiene: estadísticas con una sola definición de gasto real, carteras en «Mis cuentas» y «Tendencia del saldo», conciliación automática compra ↔ banco, «Ver desglose» de «Cuánto he gastado», recuadros de filtro compactos y retiradas de efectivo.
+
+**Orden y riesgos (nada de esto está desplegado ni aplicado):**
+
+1. **Cliente (push a master)** — no necesita migración. Efectos al publicar y abrir «Compras registradas»: los **15 avisos históricos** (`docs/INFORME_CONCILIACION_15_AVISOS.md`) se vincularán solos, con aviso y «Deshacer» (ensayado en transacción revertida: 15/15, gasto jun–ago −1.387,67 €, movimientos bancarios idénticos). Si se prefiere revisarlos a mano, publicar con `autoLink={false}` en `PurchaseDuplicatesPanel`.
+2. **Migración `0318_cash_withdrawals.sql`** (opcional, después): crea «Retirada de efectivo», permite repartir una retirada entre carteras y vincular una entrada ya apuntada. Ensayada entera (migración + 11 comprobaciones) en una transacción revertida sobre producción. Reversión: `supabase/rollbacks/0318_cash_withdrawals_down.sql`. Hasta aplicarla, el cliente no ofrece las retiradas.
+3. **Función bancaria**: v19 sin cambios. No hay que redesplegar nada.
+
+**Comprobación después de publicar:** que los 15 casos pasen a un solo gasto (Resumen de junio–agosto baja 1.387,67 €), que «Deshacer» devuelva el apunte del banco, y que no queden avisos de duplicados en Compras registradas salvo casos dudosos.

@@ -8462,3 +8462,14 @@ details[open] > summary > .review-chevron {
   font-size: 11px;
   opacity: 0.75;
 }
+
+/* Recuadro del filtro activo (cuenta en Banco, cartera en Movimientos): una sola línea compacta; el saldo ya está en la tarjeta de arriba. */
+.filter-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}

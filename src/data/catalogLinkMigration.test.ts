@@ -113,6 +113,8 @@ describe('Fase 2: rollback y aislamiento', () => {
       '/src/data/finance.ts',
       '/src/data/foodTypes.ts',
       '/src/domain/cancelledCharge.ts',
+      // Retirada de efectivo (migración 0318, preparada): hasWithdrawalCategory decide por catalog_key, nunca por el nombre visible.
+      '/src/domain/cashWithdrawals.ts',
       '/src/domain/financeTestData.ts',
       '/src/domain/productClass.ts',
       '/src/domain/refunds.ts',

@@ -25,7 +25,7 @@ export function cashErrorText(err: unknown, fallback: string): string {
 
 export async function listWallets(): Promise<CashWallet[]> {
   const [{ data: wallets, error }, { data: balances }] = await Promise.all([
-    supabase.from('cash_wallets').select('id, name, owner_member_id, opening_balance, archived_at').order('created_at'),
+    supabase.from('cash_wallets').select('id, name, owner_member_id, opening_balance, archived_at, created_at').order('created_at'),
     supabase.from('cash_wallet_balances').select('wallet_id, balance'),
   ])
   if (error) throw error
@@ -36,6 +36,7 @@ export async function listWallets(): Promise<CashWallet[]> {
     ownerMemberId: w.owner_member_id,
     openingBalance: Number(w.opening_balance),
     archivedAt: w.archived_at,
+    createdAt: w.created_at ?? null,
     balance: byId.get(w.id) ?? Number(w.opening_balance),
   }))
 }
@@ -256,5 +257,20 @@ export async function dismissDuplicate(expenseA: string, expenseB: string): Prom
   const familyId = await currentFamilyId()
   const [a, b] = expenseA < expenseB ? [expenseA, expenseB] : [expenseB, expenseA]
   const { error } = await supabase.from('purchase_duplicate_decisions').upsert({ family_id: familyId, expense_a: a, expense_b: b }, { onConflict: 'expense_a,expense_b' })
+  if (error) throw error
+}
+
+// ─── Retiradas de efectivo del banco (migración 0318: sin aplicar hasta autorización; el cliente solo ofrece estas acciones si la familia tiene la categoría nueva) ───
+
+/** Confirma una retirada del banco: la reparte entre carteras (suma ≤ lo retirado) o, sin partes, solo la clasifica «sin cartera». Devuelve lo que queda sin asignar. */
+export async function assignWithdrawal(expenseId: string, parts: readonly { walletId: string; amount: number }[]): Promise<number> {
+  const { data, error } = await supabase.rpc('cash_assign_withdrawal', { p_expense: expenseId, p_parts: parts.map((p) => ({ wallet_id: p.walletId, amount: p.amount })) })
+  if (error) throw error
+  return Number(data ?? 0)
+}
+
+/** La entrada de efectivo ya estaba apuntada a mano: el cargo del banco se vincula a ELLA (no se crea otra entrada). Se puede deshacer con unlinkBankMovement. */
+export async function adoptEntryAsWithdrawal(expenseId: string, movementId: string): Promise<void> {
+  const { error } = await supabase.rpc('cash_adopt_entry_as_withdrawal', { p_expense: expenseId, p_movement: movementId })
   if (error) throw error
 }

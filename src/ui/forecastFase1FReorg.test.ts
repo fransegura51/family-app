@@ -157,7 +157,7 @@ describe('Fase 1F.C — "Comparado con el periodo anterior"', () => {
 
   it('excluye movimientos internos y solo cuenta gasto real (nunca ingresos) — Economía pasa el mismo filtro de siempre como isComparableSpend', () => {
     const callSite = body(FS, '<PeriodComparison', '/>')
-    expect(callSite).toContain("isComparableSpend={(e) => e.kind === 'real' && !e.isIncome && !isInternalTransferCategory(e.category, categories)}")
+    expect(callSite).toContain('isComparableSpend={(e) => isRealSpending(e, categories)}')
   })
 
   it('anterior=0 nunca da un porcentaje infinito: se marca "Nuevo gasto en este periodo"', () => {

@@ -102,7 +102,7 @@ describe('state firmado: las 4 funciones lo usan de verdad', () => {
       const s = src(name)
       expect(s, name).toContain('signOAuthState(')
       expect(s, name).not.toMatch(/state\s*=\s*btoa\(/)
-      expect(s, name).toContain('OAUTH_STATE_SECRET')
+      expect(s, name).toContain('loadStateSecret(')
     }
   })
   it('los callbacks comprueban que el usuario del state pertenece a esa familia', () => {

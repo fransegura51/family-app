@@ -129,6 +129,7 @@ export function CommunityLayout() {
         ariaLabel={menuOpen ? 'Cerrar menú de Comunidad' : 'Abrir menú de Comunidad'}
         controls="community-menu"
         expanded={menuOpen}
+        helpId="comunidad.menu"
         onClick={() => {
           // El desplegable se abre pegado a la cabecera (arriba del todo): si el botón se toca con la página desplazada, se sube para que no se abra fuera de la vista.
           if (!menuOpen) window.scrollTo({ top: 0, behavior: 'smooth' })

@@ -72,8 +72,8 @@ describe('Familia → Añadir un miembro (formulario real)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Añadir' })) // la persona guarda
     await waitFor(() => expect(data.addMember).toHaveBeenCalledTimes(1))
     expect(data.addMember).toHaveBeenCalledWith(expect.objectContaining({ name: 'Eric', memberType: 'baby' }))
-    await says(/La ficha está creada/)
-    expect(within(panel()).getByText(/Yo no envío ninguna invitación por ti/)).toBeTruthy()
+    // Un bebé no tiene cuenta: PEPA no ofrece darle acceso, así que el paso «¿dar acceso ahora?» se omite solo y se llega al final.
+    await says(/yo no envío ninguna invitación por ti/i)
   })
 
   it('NO avanza mientras se escribe el nombre (ni con 2 letras): solo al terminar (✓ del teclado, intro, tocar fuera) o con «Siguiente»; lo escrito no se pierde', async () => {
@@ -110,18 +110,19 @@ describe('Familia → Añadir un miembro (formulario real)', () => {
     expect(within(panel()).getByText(/Elige qué es esta persona/)).toBeTruthy() // seguimos en «tipo», no en «color»
   })
 
-  it('explica cada tipo de miembro (comprobado contra los permisos reales) y distingue administrar la familia de administrar la aplicación PEPA', async () => {
+  it('nombra los cinco tipos de miembro sin repetir la explicación larga (esa vive en «Entiende cómo funciona»)', async () => {
     run('fam-anadir-miembro', '/familia', <AddMemberForm onAdded={() => undefined} existingMembers={[]} />)
     await says(/Escribe su nombre/)
     typeAndLeave(screen.getByLabelText('Nombre'), 'Eric')
     await says(/Elige qué es esta persona/)
-    const details = within(panel()).getByText('Qué significa cada tipo').closest('details')!
-    expect(details.hasAttribute('open')).toBe(false) // no satura la tarjeta
-    const text = details.textContent ?? ''
+    const text = within(panel()).getByText(/Elige qué es esta persona/).textContent ?? ''
     for (const t of ['Administrador/a', 'Adulto', 'Niño/a', 'Bebé', 'Invitado/a']) expect(text).toContain(t)
-    expect(text).toMatch(/No es lo mismo que administrar la aplicación PEPA/)
-    expect(text).toMatch(/no tiene cuenta propia/) // bebé
-    expect(text).toMatch(/limitar a qué secciones/) // niño
+    expect(text).toMatch(/solo tiene ficha, sin cuenta/) // bebé
+    expect(text).toMatch(/limitar las secciones/) // niño e invitado
+    expect(within(panel()).queryByText('Qué significa cada tipo')).toBeNull() // el desplegable largo ya no está en el tutorial
+    const { EXPLAINER_BY_ID } = await import('@/help/explainers')
+    const exp = EXPLAINER_BY_ID.get('exp-familia-tipos-de-miembro')!
+    expect(JSON.stringify(exp.sections)).toMatch(/Administrar la aplicación PEPA es otra cosa/) // la distinción vive en la explicación
   })
 
   it('los datos opcionales se explican con sus controles reales y el de secciones solo aparece para Niño/a e Invitado/a', async () => {
@@ -185,12 +186,14 @@ describe('Familia → Añadir un miembro (formulario real)', () => {
 })
 
 describe('Compras → Añadir un producto (formulario real)', () => {
-  it('guía por el nombre, la tienda (opcional) y «Añadir»; termina solo cuando el producto se guarda', async () => {
+  it('guía por el nombre, la tienda (opcional), cantidad/prioridad/foto (opcionales) y «Añadir»; termina solo cuando el producto se guarda', async () => {
     run('com-anadir-producto', '/compras', <AddShoppingItemForm suggestions={[]} knownStores={['Mercadona']} hideHeading onAdded={() => undefined} />)
     await says(/Escribe el producto/)
     typeAndLeave(screen.getByLabelText('Nombre'), 'Leche')
     await says(/pon la tienda/)
     expect(within(panel()).getByRole('button', { name: /Siguiente/ })).toBeTruthy()
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
+    await says(/Cantidad y Unidad/) // ejemplo: 2 kg; Prioridad y foto son opcionales
     fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
     await says(/Pulsa «Añadir»/)
     expect(data.addItem).not.toHaveBeenCalled()
@@ -212,35 +215,43 @@ describe('Compras → Añadir un producto (formulario real)', () => {
 })
 
 describe('Calendario → Crear un evento (formulario real)', () => {
-  it('guía por título, fecha, opciones y «Crear evento»; termina solo cuando el evento se crea de verdad', async () => {
+  it('el capítulo 1 guía por título, fecha, hora y «Todo el día» sin guardar nada; el último capítulo guarda y solo termina cuando el evento se crea de verdad', async () => {
     run('cal-crear-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
+    await says(/sin hora, sin «Todo el día» y sin recordatorio/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
     await says(/Escribe cómo se llama el evento/)
     typeAndLeave(screen.getByLabelText('Título'), 'Dentista de Eric')
     await says(/Aquí eliges el día/)
     expect(document.querySelector('[data-help-id="calendar.event-date"]')).toBeTruthy()
     fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ })) // fecha predeterminada: «Siguiente» sin tocarla
-    await says(/hora de inicio/)
-    fireEvent.click(within(panel()).getByRole('button', { name: /Saltar opciones/ }))
-    await says(/Aquí eliges para quién es el evento/)
-    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ })) // sin personas: «Toda la familia», sin puntos (el paso de puntos se omite)
-    await says(/«Categoría» agrupa/)
-    fireEvent.click(within(panel()).getByRole('button', { name: /Saltar opciones/ }))
+    await says(/«Empieza» es la hora de inicio/)
+    expect(data.createEvent).not.toHaveBeenCalled() // el capítulo 1 no guarda nada
+    cleanup()
+
+    // Capítulo 7: guarda de verdad, y solo termina cuando la pantalla confirma que se guardó.
+    run('tut-calendario-guardar-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
+    await says(/Este capítulo guarda de verdad/)
+    typeAndLeave(screen.getByLabelText('Título'), 'Dentista de Eric')
+    await says(/Elige el día/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
+    await says(/Con título y fecha ya se puede guardar/)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
     await says(/pulsa «Crear evento»/)
     expect(within(panel()).queryByRole('button', { name: /Siguiente/ })).toBeNull()
     expect(data.createEvent).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Crear evento' }))
     await waitFor(() => expect(data.createEvent).toHaveBeenCalledTimes(1))
     expect(data.createEvent).toHaveBeenCalledWith(expect.objectContaining({ title: 'Dentista de Eric' }))
-    await says(/Tu evento ya está en el calendario/)
+    await says(/Ya sabes crear un evento/)
   })
 
-  it('sin título el formulario real no se guarda (validación real) y el tutorial no avanza', async () => {
-    run('cal-crear-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
-    await says(/Escribe cómo se llama el evento/)
+  it('sin título el formulario real no se guarda (validación real) y el capítulo no avanza', async () => {
+    run('tut-calendario-guardar-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
+    await says(/Este capítulo guarda de verdad/)
     fireEvent.click(screen.getByRole('button', { name: 'Crear evento' })) // título vacío: la validación del navegador lo impide
     await act(async () => {})
     expect(data.createEvent).not.toHaveBeenCalled()
-    expect(within(panel()).getByText(/Escribe cómo se llama el evento/)).toBeTruthy()
+    expect(within(panel()).getByText(/Este capítulo guarda de verdad/)).toBeTruthy()
   })
 })
 
@@ -347,8 +358,8 @@ describe('el marcador no se mueve del control con el teclado de iOS (Compras, Fa
 
   it('Calendario · paso «Título»: igual', async () => {
     const vv = keyboard()
-    run('cal-crear-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
-    await says(/Escribe cómo se llama el evento/)
+    run('tut-calendario-guardar-evento', '/calendario', <AddEventForm members={[]} events={[]} categories={[]} defaultDate="2026-11-05" hideHeading onAdded={() => undefined} onManageCategories={() => undefined} />)
+    await says(/Este capítulo guarda de verdad/)
     await waitFor(() => expect(marked()).toBe('calendar.event-title'))
     const title = screen.getByLabelText('Título') as HTMLInputElement
     for (const step of [() => title.focus(), () => vv.set({ height: 400, offsetTop: 90 }), () => vv.set({ height: 768, offsetTop: 0 })]) {
@@ -375,7 +386,8 @@ describe('Familia · guardado, error y reintento (datos simulados, nada real)', 
     expect(within(panel()).queryByText(/La ficha está creada/)).toBeNull()
     expect((screen.getByLabelText('Nombre') as HTMLInputElement).value).toBe('Prueba') // lo escrito no se pierde con el error
     fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
-    await says(/La ficha está creada/)
+    await says(/PEPA pregunta si quieres darle acceso/)
+    expect(screen.getByText(/¿Quieres darle acceso a PEPA ahora\?/)).toBeTruthy() // la pantalla real ofrece el acceso; el tutorial no lo da por ti
     expect(data.addMember).toHaveBeenCalledTimes(2)
     expect(data.addMember).toHaveBeenLastCalledWith(expect.objectContaining({ name: 'Prueba' }))
   })
@@ -398,7 +410,9 @@ describe('Familia · guardado, error y reintento (datos simulados, nada real)', 
     fireEvent.click(within(panel()).getByRole('button', { name: /Saltar datos opcionales/ }))
     await says(/pulsa «Añadir»/)
     fireEvent.click(screen.getByRole('button', { name: 'Añadir' }))
-    await says(/La ficha está creada/)
+    await says(/PEPA pregunta si quieres darle acceso/) // «Ficha creada: ¿dar acceso ahora?» solo se explica (Niño/a no es bebé)
+    fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ }))
+    await says(/yo no envío ninguna invitación por ti/)
     fireEvent.click(within(panel()).getByRole('button', { name: /Repetir/ }))
     await says(/Escribe su nombre|Pulsa «\+ Añadir miembro»/)
     cleanup()

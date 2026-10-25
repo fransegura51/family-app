@@ -21,6 +21,7 @@ import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
 import { formatDate } from '@/domain/dateFormat'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 function toDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -187,6 +188,7 @@ export function BodyTab() {
             </div>
           )}
 
+          <div data-help-id="body.evolution">
           {variant === 'baby' ? (
             <BabyGrowthView
               member={member}
@@ -211,6 +213,7 @@ export function BodyTab() {
               onGoalSaved={(kg) => setMembers((list) => list.map((x) => (x.id === member.id ? { ...x, weightGoalKg: kg } : x)))}
             />
           )}
+          </div>
 
           <MeasurementForm memberId={member.id} mode={variant === 'baby' ? 'baby' : variant === 'kid' ? 'kid' : 'general'} onSaved={reload} />
 
@@ -439,6 +442,7 @@ function MeasurementForm({
         await updateBodyMeasurement(initial.id, { date, ...values })
       } else {
         await addBodyMeasurement({ memberId, date, ...values })
+        emitHelpEvent('body.measurement-saved') // para los tutoriales «Enséñame»: la medida YA está guardada
         setWeightKg('')
         setHeightCm('')
         setHeadCm('')
@@ -458,15 +462,15 @@ function MeasurementForm({
   return (
     <form onSubmit={handleSubmit} className={initial ? 'member-form' : 'card member-form'} {...(initial ? {} : { 'data-help-id': 'body.measurement-form' })}>
       {!initial && <h2>Registrar {mode === 'baby' || mode === 'kid' ? 'una medida' : 'peso y medidas'}</h2>}
-      <label>
+      <label {...(initial ? {} : { 'data-help-id': 'body.measure-date' })}>
         Fecha
         <DateField value={date} max={toDateStr(new Date())} onChange={setDate} placeholder="Seleccionar fecha" required />
       </label>
-      <label>
+      <label {...(initial ? {} : { 'data-help-id': 'body.measure-weight' })}>
         Peso (kg)
         <input type="text" inputMode="decimal" value={weightKg} onChange={(e) => setWeightKg(e.target.value)} />
       </label>
-      <label>
+      <label {...(initial ? {} : { 'data-help-id': 'body.measure-height' })}>
         Altura (en cm, p. ej. 112 — también vale 1,12 m — opcional)
         <input type="text" inputMode="decimal" value={heightCm} onChange={(e) => setHeightCm(e.target.value)} />
       </label>
@@ -498,7 +502,7 @@ function MeasurementForm({
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
-        <button type="submit" disabled={saving}>
+        <button type="submit" disabled={saving} {...(initial ? {} : { 'data-help-id': 'body.measure-save' })}>
           {saving ? 'Guardando…' : initial ? 'Guardar cambios' : 'Guardar'}
         </button>
         {onCancel && (

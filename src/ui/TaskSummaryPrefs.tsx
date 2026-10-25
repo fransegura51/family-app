@@ -34,7 +34,7 @@ export function TaskSummaryPrefs({ prefs, onSave }: { prefs: NotificationPrefs; 
       </label>
       {prefs.taskTodayEnabled && (
         <>
-          <TimeSelect24 label="Hora del aviso de tareas de hoy" value={prefs.taskTodayTime} onChange={(v) => void onSave({ taskTodayTime: v })} />
+          <TimeSelect24 label="Hora del aviso de tareas de hoy" value={prefs.taskTodayTime} onChange={(v) => void onSave({ taskTodayTime: v })} helpId="notifications.task-today-time" />
           <p className="muted task-summary-help">Un resumen de las tareas de hoy que todavía no están hechas.</p>
         </>
       )}

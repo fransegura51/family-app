@@ -224,7 +224,7 @@ export function DocumentsScreen() {
               <h2 className="section-title" style={{ margin: 0 }}>
                 Subir documento
               </h2>
-              <button type="button" className="modal-close" onClick={() => setUploading(false)} aria-label="Cerrar">
+              <button type="button" className="modal-close" data-help-id="documentos.subir-cerrar" onClick={() => setUploading(false)} aria-label="Cerrar">
                 ✕
               </button>
             </div>

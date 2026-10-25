@@ -211,7 +211,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       )}
 
       {isAdult && pendingApprovals.length > 0 && (
-        <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+        <div className="card" style={{ padding: 8, marginBottom: 8 }} data-help-id="pequenos.solicitudes">
           <strong style={{ fontSize: 13 }}>🔔 Solicitudes pendientes de aprobar ({pendingApprovals.length})</strong>
           {pendingApprovals.map((r) => (
             <RedemptionDecisionRow key={r.id} redemption={r} memberName={members.find((m) => m.id === r.memberId)?.name ?? '—'} onChanged={reload} setError={setError} />
@@ -220,7 +220,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
       )}
 
       {pendingToEnjoy.length > 0 && (
-        <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+        <div className="card" style={{ padding: 8, marginBottom: 8 }} data-help-id="pequenos.premios-pendientes">
           <strong style={{ fontSize: 13 }}>🎁 Premios pendientes de disfrutar</strong>
           {pendingToEnjoy.map((r) => (
             <div key={r.id} className="inline-fields" style={{ alignItems: 'center', marginTop: 4 }}>
@@ -251,7 +251,7 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
           </button>
         )}
         {isAdult && (
-          <button type="button" className="link-button" onClick={() => setShowParticipants((v) => !v)}>
+          <button type="button" className="link-button" data-help-id="pequenos.quien-participa" onClick={() => setShowParticipants((v) => !v)}>
             ⚙️ Quién participa
           </button>
         )}
@@ -453,7 +453,7 @@ function ParticipantsPanel({
   }
 
   return (
-    <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+    <div className="card" style={{ padding: 8, marginBottom: 8 }} data-help-id="pequenos.participantes">
       <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
         Quién aparece en "Puntos por persona". Desactivar a alguien no borra nada de su historial — solo deja de verse mientras esté así.
       </p>
@@ -494,7 +494,7 @@ function ModeSettingsPanel({ mode, onChanged, setError }: { mode: RewardMode; on
   }
 
   return (
-    <div className="card" style={{ padding: 8, marginBottom: 8 }}>
+    <div className="card" style={{ padding: 8, marginBottom: 8 }} data-help-id="pequenos.modo-panel">
       <p className="muted" style={{ margin: '0 0 6px', fontSize: 12 }}>
         Cómo se mide el progreso de todos — es un ajuste de toda la familia, no de cada niño/a por separado.
       </p>
@@ -528,6 +528,7 @@ function RedemptionDecisionRow({
     setError(null)
     try {
       await decideRewardRedemption(redemption.id, status)
+      emitHelpEvent('pequenos.request-decided') // para los tutoriales «Enséñame»: la decisión YA está guardada
       onChanged()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo decidir'))
@@ -539,7 +540,7 @@ function RedemptionDecisionRow({
         {redemption.rewardEmoji ? `${redemption.rewardEmoji} ` : ''}
         {redemption.rewardTitle} · {memberName} · ⭐ {redemption.pointsSpent}
       </span>
-      <button type="button" className="link-button" onClick={() => void decide('aprobada')}>
+      <button type="button" className="link-button" data-help-id="pequenos.aprobar" onClick={() => void decide('aprobada')}>
         ✓ Aprobar
       </button>
       <ConfirmButton label="✕ Rechazar" confirmMessage={`¿Rechazar esta solicitud de «${redemption.rewardTitle}»? Sus puntos quedarán libres otra vez.`} onConfirm={() => decide('rechazada')} />
@@ -561,11 +562,11 @@ const TROPHY_EMOJI: Record<RewardMonthlyResult['trophy'], string> = {
 // Historial, Trofeos) comparten el mismo patrón ya usado en el resto de la app (cabecera
 // "▸/▾ título" + contenido en un `.card` anidado, ver EventosScreen "💰 Ofertas"): un único
 // componente evita repetir ese patrón tres veces con el riesgo de que uno se desincronice del resto.
-function RewardsSubsection({ title, defaultOpen, children }: { title: string; defaultOpen: boolean; children: ReactNode }) {
+function RewardsSubsection({ title, defaultOpen, children, helpId }: { title: string; defaultOpen: boolean; children: ReactNode; helpId?: string }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
     <div style={{ marginTop: 8 }}>
-      <button type="button" className="link-button" onClick={() => setOpen((v) => !v)}>
+      <button type="button" className="link-button" data-help-id={helpId} onClick={() => setOpen((v) => !v)}>
         {open ? '▾' : '▸'} {title}
       </button>
       {open && <div className="card" style={{ padding: 8, marginTop: 4 }}>{children}</div>}
@@ -681,7 +682,7 @@ function MemberRewardsPanel({
 
       {/* Encargo "Reorganización de fichas" (punto 3) — plegado por defecto, mismos datos e igual
           funcionamiento que antes (solo cambia el envoltorio visual). */}
-      <RewardsSubsection title="📜 Historial" defaultOpen={false}>
+      <RewardsSubsection title="📜 Historial" defaultOpen={false} helpId="pequenos.historial">
         {history.length === 0 && grants.length === 0 ? (
           <p className="muted" style={{ fontSize: 12 }}>
             Todavía no hay movimientos.
@@ -769,7 +770,7 @@ function GivePointsForm({ member, onClose, onGiven, setError }: { member: Family
   }
 
   return (
-    <form className="card member-form" style={{ padding: 8, marginBottom: 6 }} onSubmit={submit}>
+    <form className="card member-form" style={{ padding: 8, marginBottom: 6 }} onSubmit={submit} data-help-id="pequenos.dar-puntos-form">
       <p className="muted" style={{ margin: 0, fontSize: 13 }}>
         Dar puntos a {member.name}
       </p>

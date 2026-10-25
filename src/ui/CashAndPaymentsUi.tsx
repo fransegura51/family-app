@@ -57,7 +57,7 @@ export function PaymentSection({
     ) : null
 
   return (
-    <div className="day-modal-group" style={{ marginTop: 6 }}>
+    <div className="day-modal-group" data-help-id="shopping.receipt-payment" style={{ marginTop: 6 }}>
       {single ? (
         <>
           <label>

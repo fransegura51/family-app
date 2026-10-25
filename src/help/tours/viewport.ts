@@ -80,6 +80,62 @@ export function freeZone(side: 'top' | 'bottom', areaHeight: number, panelHeight
   return side === 'top' ? { top: margin * 2 + panelHeight, bottom: areaHeight } : { top: 0, bottom: areaHeight - bottomOffset - panelHeight - margin }
 }
 
+export type PanelMode = 'full' | 'compact' | 'pill'
+export const COMPACT_HEIGHT = 170
+export const PILL_HEIGHT = 56
+
+export interface PanelPlanInput {
+  areaHeight: number
+  /** Altura de la tarjeta COMPLETA (medida). */
+  fullHeight: number
+  bottomOffset: number
+  /** Zonas (relativas al área visible) que la tarjeta NO puede tapar: el control resaltado y los `keepVisible`. */
+  protect: Span[]
+  /** Zonas de hojas o diálogos propios de la app abiertos que no son el objetivo (sus opciones deben seguir pulsables). */
+  guard: Span[]
+  current: 'top' | 'bottom'
+  /** Lado elegido a mano con «↕ Mover» para este paso. */
+  manual?: 'top' | 'bottom' | null
+  margin?: number
+}
+
+export interface PanelPlan {
+  side: 'top' | 'bottom'
+  mode: PanelMode
+  /** Ninguna colocación evita taparlo todo: se usa la menos mala (píldora) y queda el botón «↕ Mover». */
+  unsatisfiable: boolean
+}
+
+/**
+ * Dónde y cómo se pinta la tarjeta del tutorial. Función pura. Prueba, en este orden, y se queda con la PRIMERA que no tapa nada de lo que hay que dejar a la vista:
+ * lado actual completa → otro lado completa → lado actual compacta → otro compacta → píldora en cada lado. Con un lado elegido a mano solo se prueba ese lado (completa, compacta, píldora).
+ * Si ninguna sirve, devuelve la que menos tapa (la píldora) con `unsatisfiable: true`.
+ */
+export function planPanel(i: PanelPlanInput): PanelPlan {
+  const margin = i.margin ?? 8
+  const heights: Record<PanelMode, number> = { full: Math.max(i.fullHeight, 1), compact: Math.min(Math.max(i.fullHeight, 1), COMPACT_HEIGHT), pill: PILL_HEIGHT }
+  const rectOf = (side: 'top' | 'bottom', mode: PanelMode): Span =>
+    side === 'top' ? { top: margin, bottom: margin + heights[mode] } : { top: i.areaHeight - i.bottomOffset - heights[mode], bottom: i.areaHeight - i.bottomOffset }
+  const cost = (side: 'top' | 'bottom', mode: PanelMode) => [...i.protect, ...i.guard].reduce((n, s) => n + overlap(rectOf(side, mode), s), 0)
+  const other = i.current === 'top' ? 'bottom' : 'top'
+  const modes: PanelMode[] = ['full', 'compact', 'pill']
+  const candidates: Array<['top' | 'bottom', PanelMode]> = i.manual
+    ? modes.map((m) => [i.manual as 'top' | 'bottom', m])
+    : [
+        [i.current, 'full'],
+        [other, 'full'],
+        [i.current, 'compact'],
+        [other, 'compact'],
+        [i.current, 'pill'],
+        [other, 'pill'],
+      ]
+  for (const [side, mode] of candidates) if (cost(side, mode) === 0) return { side, mode, unsatisfiable: false }
+  // Ninguna vale: la píldora que menos tape.
+  const pills = candidates.filter(([, m]) => m === 'pill')
+  const best = pills.reduce((a, b) => (cost(b[0], 'pill') < cost(a[0], 'pill') ? b : a), pills[0])
+  return { side: best[0], mode: 'pill', unsatisfiable: true }
+}
+
 function isScrollable(el: HTMLElement): boolean {
   const oy = window.getComputedStyle(el).overflowY
   return (oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight + 1

@@ -1,33 +1,30 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Calendario → Crear un evento. Recorre los controles REALES de «+ Nuevo evento»: el botón flotante, el título, la fecha, las demás opciones (en dos grupos que se pueden saltar),
-// «¿Para quién?» con sus puntos (paso propio, fuera de las opciones secundarias) y «Crear evento». Nunca guarda por la persona: el último paso solo señala el botón y espera a que la
-// aplicación confirme que el evento se ha creado. Los pasos opcionales cuyo control no existe en ese momento (p. ej. la hora en un evento de «Todo el día», o los puntos con «Toda
-// la familia») se omiten solos. Orden = orden de la pantalla, para no saltar arriba y abajo.
+// Calendario → «Crear eventos y tareas», capítulo 1: crear un evento (nombre, fecha, hora y «Todo el día»). Es el primer capítulo de la serie `ser-calendario-crear` y conserva el
+// identificador del antiguo piloto `cal-crear-evento`. Arranca con el formulario de «+ Nuevo evento» ya abierto (`startDest`), señala los controles REALES y NO guarda nada: termina
+// cerrando el formulario sin guardar. El único capítulo que guarda es el último (`tut-calendario-guardar-evento`). La tarea se crea casi igual con «+ Nueva tarea» (sin hora, sin
+// «Todo el día» y sin recordatorio): se dice aquí una sola vez y cada capítulo anota lo que cambia en una tarea. Una tarea tampoco rellena sola los datos al repetir un título.
 export const calCrearEvento: TourDef = {
   id: 'cal-crear-evento',
   module: 'calendario',
-  summary: 'Crear un evento con fecha, hora, personas, repetición y recordatorio.',
-  group: 'Eventos y tareas',
-  version: 3,
-  title: 'Crear un evento en el calendario',
+  summary: 'Crear un evento: el título, la fecha, la hora y «Todo el día». Aquí se explica también en qué se diferencia una tarea.',
+  group: 'Crear eventos y tareas',
+  version: 4,
+  title: 'Crear un evento: nombre, fecha y hora',
   cardId: 'cal-crear-evento',
-  durationSec: 100,
+  durationSec: 80,
   startPath: '/calendario',
+  startDest: 'calendario.nuevo-evento',
   steps: [
     {
-      id: 'abrir',
-      text: 'Vamos a crear un evento. Pulsa el botón «+ Nuevo evento».',
-      target: 'calendar.new-event',
-      completeOn: [
-        { type: 'click', target: 'calendar.new-event' },
-        { type: 'appear', target: 'calendar.event-title' },
-      ],
-      skipIf: [{ type: 'appear', target: 'calendar.event-title' }],
+      id: 'intro',
+      text: 'Vamos a crear un evento: ya tienes abierto el formulario de «+ Nuevo evento». Una tarea se crea casi igual con «+ Nueva tarea», pero sin hora, sin «Todo el día» y sin recordatorio. Si algo cambia en una tarea, te lo aviso.',
+      completeOn: [],
+      manualNext: true,
     },
     {
       id: 'titulo',
-      text: 'Escribe cómo se llama el evento, por ejemplo «Dentista de Eric». Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      text: 'Escribe cómo se llama el evento, por ejemplo «Dentista de Eric». Si repites un título que ya usaste, PEPA copia la hora, la repetición, los avisos y para quién era; puedes cambiarlo. Al terminar, pulsa ✓ en el teclado o «Siguiente».',
       target: 'calendar.event-title',
       completeOn: [{ type: 'entered', target: 'calendar.event-title', min: 2 }],
       manualNext: true,
@@ -39,95 +36,30 @@ export const calCrearEvento: TourDef = {
       completeOn: [{ type: 'confirmed', target: 'calendar.event-date' }],
       manualNext: true,
     },
-    // ── Otras opciones (1/2): se pueden recorrer o saltar de golpe. Ninguna es obligatoria.
     {
       id: 'hora',
-      text: 'Si quieres, pon aquí la hora de inicio y, si hace falta, la de fin. Es opcional.',
+      text: '«Empieza» es la hora de inicio y «Termina (opcional)» la de fin. Ponerla es opcional, pero ojo: sin hora y sin «Todo el día», el evento se guarda a las 00:00 y así se verá.',
       target: 'calendar.event-time',
       completeOn: [],
       manualNext: true,
       optional: true,
-      group: 'opciones-1',
     },
     {
       id: 'todo-el-dia',
-      text: '«Todo el día» sirve para eventos sin hora, como un cumpleaños o un viaje. Al marcarlo desaparecen las horas.',
+      text: '«Todo el día» sirve para eventos sin hora, como un cumpleaños o un viaje. Al marcarlo desaparecen las horas. Una tarea nunca lleva hora ni «Todo el día».',
       target: 'calendar.event-allday',
       completeOn: [],
       manualNext: true,
-      optional: true,
-      group: 'opciones-1',
     },
     {
-      id: 'privado',
-      text: '«Privado»: si lo marcas, solo tú verás este evento. Nadie más de la familia lo ve.',
-      target: 'calendar.event-private',
-      completeOn: [],
+      id: 'cerrar-formulario',
+      text: 'No se ha guardado nada. Cierra el formulario con la ✕ para descartarlo, o sigue con el siguiente capítulo: más opciones del mismo formulario.',
+      target: 'calendar.event-close',
+      completeOn: [{ type: 'click', target: 'calendar.event-close' }],
       manualNext: true,
       optional: true,
-      group: 'opciones-1',
-    },
-    {
-      id: 'repeticion',
-      text: '«Repetición» hace que el evento se repita (cada semana, cada mes…). Tócalo para ver las opciones; puedes dejarlo en «No se repite».',
-      target: 'calendar.event-repeat',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-      group: 'opciones-1',
-    },
-    {
-      id: 'recordatorio',
-      text: '«Recordatorio» te avisa antes del evento. Tócalo para elegir cuánto antes; puedes poner varios o ninguno.',
-      target: 'calendar.event-reminder',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-      group: 'opciones-1',
-    },
-    // ── Para quién y puntos: paso propio, no es una opción secundaria.
-    {
-      id: 'quien',
-      text: 'Aquí eliges para quién es el evento. Puedes asignarlo a una persona y poner los puntos que recibirá cuando corresponda. Si eliges «Toda la familia», no hay puntos porque no hay una persona destinataria.',
-      target: 'calendar.event-who',
-      completeOn: [],
-      manualNext: true,
-    },
-    {
-      id: 'puntos',
-      text: 'Con una sola persona elegida aparece este campo: los puntos que ganará al marcar el evento como «Hecho». Es opcional; puedes dejarlo en 0.',
-      target: 'calendar.event-points',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-    },
-    // ── Otras opciones (2/2)
-    {
-      id: 'categoria',
-      text: '«Categoría» agrupa el evento con un color, por ejemplo «Salud» o «Cole». Es opcional; el engranaje ⚙️ sirve para gestionarlas.',
-      target: 'calendar.event-category',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-      group: 'opciones-2',
-    },
-    {
-      id: 'extras',
-      text: 'Con estos iconos puedes añadir una ubicación, una foto o un archivo, y una nota. Cada uno se abre al tocarlo.',
-      target: 'calendar.event-extras',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-      group: 'opciones-2',
-    },
-    {
-      id: 'guardar',
-      text: 'Cuando lo tengas, pulsa «Crear evento». Yo no lo hago por ti: lo pulsas tú.',
-      target: 'calendar.event-save',
-      completeOn: [{ type: 'event', name: 'calendar.event-created' }],
-      sensitive: true,
     },
   ],
-  finishText: '¡Listo! Tu evento ya está en el calendario. Si quieres cambiarlo más tarde, toca el evento.',
+  finishText: 'Ya sabes lo básico de un evento. Sigue con las personas y las categorías, las repeticiones, los recordatorios… o ve al último capítulo para guardar uno de verdad.',
   next: ['cal-crear-tarea', 'cal-recordatorio', 'cal-repeticion'],
 }

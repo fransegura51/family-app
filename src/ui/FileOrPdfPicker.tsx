@@ -39,7 +39,7 @@ function FileSourceSheet({
 }) {
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal-sheet" role="dialog" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" role="dialog" aria-label={title} data-help-id="shopping.receipt-source-sheet" onClick={(e) => e.stopPropagation()}>
         <h3 style={{ margin: '0 0 8px' }}>{title}</h3>
         <div className="event-list">
           <button type="button" className="link-button" style={{ display: 'block', width: '100%', textAlign: 'left' }} onClick={onPickCamera}>

@@ -99,7 +99,7 @@ export function HomeCarouselForm() {
     </label>
   )
   return (
-    <div className="carousel-settings-form">
+    <div className="carousel-settings-form" data-help-id="inicio.carrusel-form">
       {row(prefs.enabled, (v) => update({ enabled: v }), 'Mostrar el carrusel en Inicio', off ? 'Está oculto. Márcalo para volver a verlo.' : undefined)}
       <div className="carousel-settings-parts" aria-disabled={off}>
         {row(prefs.shopping, (v) => update({ shopping: v }), '🛒 Lista de la compra', undefined, off)}
@@ -107,7 +107,7 @@ export function HomeCarouselForm() {
         {communityVisible && row(prefs.community, (v) => update({ community: v }), '🏡 Comunidad PEPA', 'Publicaciones recientes, comentadas y preguntas sin responder.', off)}
         {row(prefs.photos, (v) => update({ photos: v }), '📷 Fotografías de la Galería PEPA', 'Hasta 5, siempre después de las tarjetas útiles.', off)}
         {prefs.photos && !off && (
-          <fieldset className="carousel-photo-mode">
+          <fieldset className="carousel-photo-mode" data-help-id="inicio.carrusel-fotos">
             <legend>Qué fotografías se enseñan</legend>
             <label className="carousel-setting">
               <input type="radio" name="carousel-photo-mode" checked={prefs.photoMode === 'random'} onChange={() => update({ photoMode: 'random' })} />
@@ -147,7 +147,7 @@ export function HomeCarouselSettingsModal({ onClose, returnFocusRef }: { onClose
           </button>
         </header>
         <HomeCarouselForm />
-        <button type="button" className="carousel-settings-done" onClick={onClose}>
+        <button type="button" className="carousel-settings-done" data-help-id="inicio.carrusel-listo" onClick={onClose}>
           Listo
         </button>
       </div>

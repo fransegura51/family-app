@@ -2659,13 +2659,13 @@ export function InvitationCanvasEditor({ event, onClose, onSaved }: { event: Fam
               >
                 {zoomMode === 'fit' ? '🔍+ Editar' : '🔍− Completa'}
               </button>
-              <button type="button" className="link-button" onClick={handleUndo} disabled={history.length === 0}>
+              <button type="button" className="link-button" data-help-id="eventos.invitation-undo" onClick={handleUndo} disabled={history.length === 0}>
                 ↩️ Deshacer
               </button>
               <button type="button" className="link-button" onClick={handleRedo} disabled={future.length === 0}>
                 ↪️ Rehacer
               </button>
-              <button type="button" className="link-button" onClick={handlePrettify}>
+              <button type="button" className="link-button" data-help-id="eventos.invitation-pepa" onClick={handlePrettify}>
                 ✨ Pepa, hazla bonita
               </button>
               <button type="button" className="link-button" onClick={() => togglePanel('pepa')}>

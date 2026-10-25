@@ -5,6 +5,7 @@ import { authErrorMessage } from '@/domain/authErrors'
 import { isCompleteOtp } from '@/domain/otpCode'
 import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
 import { PasswordField } from '@/ui/PasswordField'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // «Cambiar correo»: lo usa Configuración → Seguridad → Mi cuenta y la ficha PROPIA de Familia (misma lógica, un solo sitio). Solo cada persona cambia SU correo:
 // no hay forma de cambiar el de otra (la administradora no puede por serlo). Todo lo hace Supabase Auth:
@@ -62,6 +63,7 @@ export function ChangeEmailPanel({ onChanged, compact = false }: { onChanged?: (
       cooldown.restart()
       await refresh()
       setMessage('Te hemos mandado un código de 6 cifras a la dirección nueva. Hasta que lo confirmes, sigues entrando con tu correo de siempre.')
+      emitHelpEvent('cuentas.correo-codigo-enviado') // para los tutoriales «Enséñame»: el cambio YA está pedido y el código YA se mandó (no el cambio de correo en sí)
     } catch (err) {
       setError(authErrorMessage(err, 'No se pudo pedir el cambio de correo. Inténtalo de nuevo.'))
     }
@@ -125,14 +127,14 @@ export function ChangeEmailPanel({ onChanged, compact = false }: { onChanged?: (
 
       {showing && !pending && (
         <form onSubmit={handleRequest} className="member-form">
-          <label>
+          <label data-help-id="seguridad.correo-nuevo">
             Correo nuevo
             <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" required autoFocus />
           </label>
-          <PasswordField label="Tu contraseña actual (para comprobar que eres tú)" value={password} onChange={setPassword} autoComplete="current-password" />
+          <PasswordField label="Tu contraseña actual (para comprobar que eres tú)" value={password} onChange={setPassword} autoComplete="current-password" helpId="seguridad.correo-contrasena-actual" />
           {error && <p className="error">{error}</p>}
           <div className="inline-fields">
-            <button type="submit" disabled={busy || !newEmail || !password}>
+            <button type="submit" disabled={busy || !newEmail || !password} data-help-id="seguridad.correo-codigo-boton">
               {busy ? 'Enviando…' : 'Enviar código'}
             </button>
             <button type="button" className="link-button" onClick={() => { setOpen(false); setError(null) }}>
@@ -148,13 +150,13 @@ export function ChangeEmailPanel({ onChanged, compact = false }: { onChanged?: (
             <strong>Cambio pendiente:</strong> {pending} <span className="muted">(todavía sin confirmar)</span>
           </p>
           <form onSubmit={(e) => handleConfirm('new', e)}>
-            <OtpCodeField value={codeNew} onChange={setCodeNew} label={`Código enviado a ${normalizeEmail(pending)}`} />
+            <OtpCodeField value={codeNew} onChange={setCodeNew} label={`Código enviado a ${normalizeEmail(pending)}`} helpId="seguridad.correo-codigo-nuevo" />
             <button type="submit" disabled={busy || !isCompleteOtp(codeNew)}>
               {busy ? 'Comprobando…' : 'Confirmar código'}
             </button>
           </form>
           <form onSubmit={(e) => handleConfirm('current', e)} style={{ marginTop: 8 }}>
-            <OtpCodeField value={codeCurrent} onChange={setCodeCurrent} label="Código enviado a tu correo de siempre (si te ha llegado)" />
+            <OtpCodeField value={codeCurrent} onChange={setCodeCurrent} label="Código enviado a tu correo de siempre (si te ha llegado)" helpId="seguridad.correo-codigo-actual" />
             <button type="submit" disabled={busy || !isCompleteOtp(codeCurrent)}>
               {busy ? 'Comprobando…' : 'Confirmar este código'}
             </button>

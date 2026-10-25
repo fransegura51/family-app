@@ -26,6 +26,7 @@ import { OtpCodeField, useResendCooldown } from '@/ui/OtpCodeField'
 import { PASSWORD_MISMATCH_MESSAGE, passwordsMatch } from '@/domain/passwordForm'
 import { NewPasswordFields, PasswordField } from '@/ui/PasswordField'
 import { PinRecoveryPanel } from '@/ui/PinRecoveryPanel'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Configuración → Seguridad, en dos apartados que se entienden sin saber de informática:
 //  · Correo y contraseña: con qué correo entras, si está confirmado, cambiar el correo y la contraseña, y qué hacer si se olvida la contraseña.
@@ -118,6 +119,7 @@ function ChangePasswordPanel({ email, onClose }: { email: string | null; onClose
       setNext('')
       setConfirm('')
       setDone(true)
+      emitHelpEvent('cuentas.contrasena-cambiada') // para los tutoriales «Enséñame»: la contraseña YA está cambiada (nunca se lee ni se guarda lo escrito)
     } catch (err) {
       setError(authErrorMessage(err, 'No se pudo cambiar la contraseña. Inténtalo de nuevo.'))
     }
@@ -192,18 +194,27 @@ function ChangePasswordPanel({ email, onClose }: { email: string | null; onClose
 
   return (
     <form onSubmit={handleSubmit} className="member-form">
-      <PasswordField label="Contraseña actual" value={current} onChange={setCurrent} autoComplete="current-password" />
-      <NewPasswordFields password={next} confirm={confirm} onPasswordChange={setNext} onConfirmChange={setConfirm} passwordLabel="Contraseña nueva" confirmLabel="Repetir contraseña nueva" />
+      <PasswordField label="Contraseña actual" value={current} onChange={setCurrent} autoComplete="current-password" helpId="seguridad.contrasena-actual" />
+      <NewPasswordFields
+        password={next}
+        confirm={confirm}
+        onPasswordChange={setNext}
+        onConfirmChange={setConfirm}
+        passwordLabel="Contraseña nueva"
+        confirmLabel="Repetir contraseña nueva"
+        passwordMark={{ 'data-help-id': 'seguridad.contrasena-nueva' }}
+        confirmMark={{ 'data-help-id': 'seguridad.contrasena-repetir' }}
+      />
       {error && <p className="error">{error}</p>}
       <div className="inline-fields">
-        <button type="submit" disabled={busy || !current || !next}>
+        <button type="submit" disabled={busy || !current || !next} data-help-id="seguridad.contrasena-guardar">
           {busy ? 'Guardando…' : 'Cambiar contraseña'}
         </button>
         <button type="button" className="link-button" onClick={onClose}>
           Cancelar
         </button>
       </div>
-      <button type="button" className="link-button" onClick={sendCode} disabled={busy || !email}>
+      <button type="button" className="link-button" onClick={sendCode} disabled={busy || !email} data-help-id="seguridad.contrasena-olvido">
         No recuerdo mi contraseña actual
       </button>
     </form>
@@ -283,6 +294,7 @@ function PersonalLockCard() {
       setEnabled(true)
       setMode('idle')
       announcePinChanged()
+      emitHelpEvent('cuentas.pin-activado') // para los tutoriales «Enséñame»: el PIN YA está activado (el aviso no lleva el PIN)
     } catch (err) {
       setError(errorMessage(err, 'No se pudo activar el PIN'))
     } finally {
@@ -373,8 +385,8 @@ function PersonalLockCard() {
 
   const pinFields = (label: string) => (
     <>
-      <PasswordField numeric label={label} value={pin} onChange={setPin} required={false} />
-      <PasswordField numeric label="Repite el PIN" value={pinConfirm} onChange={setPinConfirm} required={false} />
+      <PasswordField numeric label={label} value={pin} onChange={setPin} required={false} helpId="seguridad.pin-nuevo" />
+      <PasswordField numeric label="Repite el PIN" value={pinConfirm} onChange={setPinConfirm} required={false} helpId="seguridad.pin-repite" />
     </>
   )
 
@@ -396,7 +408,7 @@ function PersonalLockCard() {
           {pinFields('Nuevo PIN (4-6 dígitos)')}
           {error && <p className="error">{error}</p>}
           <div className="inline-fields">
-            <button type="submit" disabled={saving}>
+            <button type="submit" disabled={saving} data-help-id="seguridad.pin-guardar">
               {saving ? 'Guardando…' : 'Activar PIN'}
             </button>
             <button type="button" className="link-button" onClick={() => open('idle')}>
@@ -465,7 +477,7 @@ function PersonalLockCard() {
               </button>
             </>
           ) : (
-            <button type="button" className="link-button" onClick={() => open('setup')}>
+            <button type="button" className="link-button" onClick={() => open('setup')} data-help-id="seguridad.pin-activar">
               Activar PIN
             </button>
           )}
@@ -496,7 +508,7 @@ function PersonalLockCard() {
 
           {addingPasskey ? (
             <form onSubmit={handleAddPasskey} className="member-form" style={{ marginTop: 8 }}>
-              <label>
+              <label data-help-id="seguridad.huella-nombre">
                 Nombre de este dispositivo (opcional)
                 <input type="text" value={passkeyLabel} onChange={(e) => setPasskeyLabel(e.target.value)} placeholder="Mi móvil" autoFocus />
               </label>
@@ -512,7 +524,7 @@ function PersonalLockCard() {
             </form>
           ) : (
             <div style={{ marginTop: 8 }}>
-              <button type="button" className="link-button" onClick={() => setAddingPasskey(true)}>
+              <button type="button" className="link-button" onClick={() => setAddingPasskey(true)} data-help-id="seguridad.huella-activar">
                 + Activar huella/Face ID en este dispositivo
               </button>
               {passkeyError && <p className="error">{passkeyError}</p>}

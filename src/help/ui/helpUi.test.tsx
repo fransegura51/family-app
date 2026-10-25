@@ -337,7 +337,7 @@ describe('permisos: la Ayuda explica restricciones y no ofrece botones que no va
     app(ADULT, <Opener q="crear un evento" />)
     fireEvent.click(screen.getByText('abrir'))
     const panel = await screen.findByRole('complementary')
-    expect(within(panel).getByRole('button', { name: /Enséñame/ })).toBeTruthy()
+    expect(within(panel).getAllByRole('button', { name: /Enséñame/ }).length).toBeGreaterThan(0)
   })
 })
 

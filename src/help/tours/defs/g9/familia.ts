@@ -1,33 +1,45 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Familia (grupo g9): dar acceso con un código de invitación, ver la actividad reciente y, para Comunidad, completar la fecha de nacimiento. Marcas `data-help-id` en
-// src/ui/FamilyScreen.tsx, src/ui/AccessInvitePanel.tsx y src/ui/ActivityScreen.tsx.
-// «Dar acceso» SOLO se señala: generar el código crea una invitación real, así que lo pulsa siempre la administración (el tutorial no espera ni exige ese clic; solo avanza con «Siguiente»
-// o cuando el código aparece). Lo de la fecha de nacimiento sí guarda, y espera el aviso `family.member-updated` que lanza la pantalla tras guardar.
+// Familia (grupo g9): capítulo «Dar acceso a PEPA» de «Gestionar las fichas de la familia» y, para Comunidad, completar la fecha de nacimiento (tutComunidadSinAcceso, que es de Comunidad).
+// Marcas `data-help-id` en src/ui/FamilyScreen.tsx y src/ui/AccessInvitePanel.tsx. El flujo REAL de entrada de la otra persona es «¿No tienes cuenta? Tengo una invitación»
+// (LoginScreen): primero la invitación y después la cuenta.
+// «Dar acceso» SOLO se señala: generar el código crea una invitación real, así que lo pulsa siempre la persona (el tutorial no espera ni exige ese clic; solo avanza con «Siguiente»
+// o cuando el código aparece). Pueden darlo la administración de la familia (en cualquier ficha sin cuenta, menos bebés) y una madre/padre/tutor que haya indicado «👪 Es mi hijo/a»
+// (solo en la ficha de su hijo/a menor): por eso el capítulo no se limita a la administración (domain/guardianship.ts · canGiveAccess). El servidor lo vuelve a comprobar.
+// Lo de la fecha de nacimiento sí guarda, y espera el aviso `family.member-updated` que lanza la pantalla tras guardar.
 
 export const tutFamiliaCodigoAcceso: TourDef = {
   id: 'tut-familia-codigo-acceso',
   module: 'familia',
-  group: 'Familia',
-  summary: 'Dónde se genera el código de invitación para que un familiar cree su cuenta (sin generarlo por ti).',
-  access: { familyAdmin: true },
-  version: 1,
-  title: 'Dar acceso a PEPA a un miembro',
+  group: 'Fichas',
+  summary: 'Dónde se crea la invitación para que un familiar cree su cuenta y qué hace esa persona con ella (sin crearla por ti).',
+  access: { adultsOnly: true },
+  version: 2,
+  title: 'Dar acceso a PEPA',
   cardId: 'fam-codigo-acceso',
   durationSec: 100,
   startPath: '/familia',
   startDest: 'familia.miembros',
+  readyOn: ['family.member-list'],
   steps: [
     {
       id: 'fichas',
-      text: 'Para dar acceso, la persona primero tiene que tener su ficha (si no, usa «+ Añadir miembro»). Las que aún no tienen cuenta ponen «Sin acceso a PEPA». Aquí solo señalo: no genero ningún código.',
+      text: 'Dar acceso es crear una invitación de un solo uso para una ficha. La ficha tiene que existir antes (si no, «+ Añadir miembro»). Las que no tienen cuenta ponen «Sin acceso a PEPA». Aquí solo señalo: no creo ninguna invitación.',
       target: 'family.member-list',
       completeOn: [],
       manualNext: true,
     },
     {
+      id: 'hijo',
+      text: 'Si eres madre, padre o tutor de un menor, empieza por «👪 Es mi hijo/a» en su ficha. Es una declaración tuya que PEPA no comprueba con documentos, y te pide confirmar que eres tú. Después podrás darle acceso, aunque no administres la familia.',
+      target: 'family.guardian-declare',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'boton',
-      text: 'En su ficha sale «🔑 Dar acceso a PEPA» (también en su ⋯, como «🔑 Generar código de acceso»). Crea un código de invitación de un solo uso. Púlsalo tú si quieres; si no, «Siguiente».',
+      text: 'En su ficha sale «🔑 Dar acceso a PEPA». Crea una invitación real de un solo uso; si ya había una vigente, te enseña esa. Púlsalo tú si quieres; si no, «Siguiente».',
       target: 'family.give-access',
       completeOn: [{ type: 'appear', target: 'family.access-code' }],
       manualNext: true,
@@ -35,7 +47,7 @@ export const tutFamiliaCodigoAcceso: TourDef = {
     },
     {
       id: 'codigo',
-      text: 'Este es el código: caduca a las 24 horas y vale una sola vez. Si ves «Copiar», «Compartir» o «WhatsApp», sirven para mandárselo a esa persona. Pulsa «Siguiente».',
+      text: 'Este es el código: caduca a las 24 horas y vale una sola vez. «📋 Copiar», «📤 Compartir» y «💬 WhatsApp» lo mandan con las instrucciones. «🔄 Generar otra» deja sin valor esta (pide confirmación).',
       target: 'family.access-code',
       completeOn: [],
       manualNext: true,
@@ -43,77 +55,20 @@ export const tutFamiliaCodigoAcceso: TourDef = {
     },
     {
       id: 'cuenta',
-      text: 'La otra persona abre PEPA, elige «¿No tienes cuenta? Tengo una invitación», escribe el código y crea su correo y contraseña. Su cuenta queda enlazada a su ficha, sin compartir contraseñas.',
+      text: 'La otra persona abre PEPA y elige «¿No tienes cuenta? Tengo una invitación». Primero escribe el código y después crea su correo y su contraseña. Su cuenta queda unida a su ficha, sin compartir contraseñas.',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. Si todas las fichas ya tienen cuenta, no sale el botón. Cuando quieras invitar a alguien, genera el código tú desde su ficha.',
-  next: ['fam-anadir-miembro', 'fam-invitado-limitado', 'fam-actividad'],
-}
-
-export const tutFamiliaActividad: TourDef = {
-  id: 'tut-familia-actividad',
-  module: 'familia',
-  group: 'Familia',
-  summary: 'Mira quién ha hecho qué y cuándo en la app.',
-  version: 1,
-  title: 'Ver la actividad reciente',
-  cardId: 'fam-actividad',
-  durationSec: 80,
-  startPath: '/familia',
-  startDest: 'familia.miembros',
-  paths: ['/familia', '/actividad'],
-  steps: [
-    {
-      id: 'enlace',
-      text: 'Pulsa «🕘 Actividad reciente».',
-      target: 'family.activity-link',
-      completeOn: [
-        { type: 'click', target: 'family.activity-link' },
-        { type: 'route', path: '/actividad' },
-      ],
-    },
-    {
-      id: 'intro',
-      text: 'Aquí ves quién hizo qué y cuándo. Los cambios seguidos de lo mismo se juntan en una sola línea.',
-      target: 'actividad.intro',
-      completeOn: [],
-      manualNext: true,
-    },
-    {
-      id: 'lista',
-      text: 'Cada tarjeta es una acción reciente. Se nombra el evento, el producto o la persona cuando tu cuenta puede verlo; lo que ya se borró o es privado de otra persona no se puede nombrar.',
-      target: 'actividad.lista',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-    },
-    {
-      id: 'mas',
-      text: '«Ver más antiguas» carga las acciones anteriores, si las hay.',
-      target: 'actividad.mas',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-    },
-    {
-      id: 'limites',
-      text: 'Solo se registran miembros, eventos, tareas, productos de la lista, gastos y reglas de automatización. Lo que hace un proceso automático, como la sincronización con Google, sale como «Un proceso automático de PEPA».',
-      completeOn: [],
-      manualNext: true,
-    },
-  ],
-  finishText: '¡Listo! Ya sabes dónde mirar qué ha pasado en la app. Puedes volver a Familia cuando quieras desde el menú.',
-  next: ['fam-anadir-miembro', 'fam-editar-ficha'],
+  finishText: 'Eso es todo. Si todas las fichas ya tienen cuenta, no sale el botón. Cuando quieras invitar a alguien, hazlo tú desde su ficha: yo no creo ninguna invitación.',
+  next: ['fam-anadir-miembro', 'fam-invitado-limitado', 'fam-editar-ficha'],
 }
 
 export const tutComunidadSinAcceso: TourDef = {
   id: 'tut-comunidad-sin-acceso',
   module: 'comunidad',
-  group: 'Comunidad',
   summary: 'Si Comunidad no te deja entrar, añade tu fecha de nacimiento en tu ficha de Familia.',
-  version: 1,
+  version: 2,
   title: 'Completar la fecha de nacimiento para Comunidad',
   cardId: 'com2-sin-acceso',
   durationSec: 100,
@@ -122,25 +77,23 @@ export const tutComunidadSinAcceso: TourDef = {
   steps: [
     {
       id: 'motivo',
-      text: 'Comunidad PEPA es solo para mayores de 18 años, y sin fecha de nacimiento en tu ficha no se entra. Vamos a ver si la tienes. Si eres menor de 18, Comunidad no está disponible para tu cuenta.',
+      text: 'Comunidad PEPA es solo para personas de 18 años cumplidos, y sin fecha de nacimiento en tu ficha no se entra. Vamos a mirar tu ficha. Si eres menor de 18, Comunidad no está disponible para tu cuenta. La fecha se guarda de verdad al final.',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'abrir-acciones',
-      text: 'Pulsa el ⋯ de tu propia ficha.',
-      target: 'family.member-actions',
-      completeOn: [
-        { type: 'click', target: 'family.member-actions' },
-        { type: 'click', target: 'family.member-actions-limited' },
-        { type: 'appear', target: 'family.member-edit' },
-      ],
+      text: 'Busca TU ficha, la que lleva tu nombre, y pulsa su ⋯ (no el de otra persona).',
+      target: 'family.own-member-row',
+      completeOn: [{ type: 'appear', target: 'family.member-edit' }],
       skipIf: [{ type: 'appear', target: 'family.edit-birth' }],
+      missingText: 'No encuentro tu ficha enlazada a esta cuenta. Pídele a quien administra tu familia que revise tu fecha de nacimiento.',
     },
     {
       id: 'editar',
       text: 'Pulsa «✏️ Editar».',
       target: 'family.member-edit',
+      missingText: 'Con esta cuenta no puedes editar tu propia ficha. Pídele a quien administra tu familia que ponga tu fecha de nacimiento.',
       completeOn: [
         { type: 'click', target: 'family.member-edit' },
         { type: 'appear', target: 'family.edit-birth' },
@@ -166,4 +119,4 @@ export const tutComunidadSinAcceso: TourDef = {
   next: ['com2-que-es', 'fam-editar-ficha'],
 }
 
-export const TOURS_G9_FAMILIA: TourDef[] = [tutFamiliaCodigoAcceso, tutFamiliaActividad, tutComunidadSinAcceso]
+export const TOURS_G9_FAMILIA: TourDef[] = [tutFamiliaCodigoAcceso, tutComunidadSinAcceso]

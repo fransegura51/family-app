@@ -402,7 +402,7 @@ export function MenuManager({
           <button type="button" className="link-button" onClick={() => setDishSheet({ mode: 'new', sectionLabel: '', kind: 'heading' })}>
             + Encabezado o nota
           </button>
-          <button type="button" className="link-button" onClick={() => setImporting({ forcedSection: null })}>
+          <button type="button" className="link-button" data-help-id="eventos.menu-import" onClick={() => setImporting({ forcedSection: null })}>
             📷 Importar menú
           </button>
           {(mode === 'familia' || mode === 'mixto') && (
@@ -662,7 +662,7 @@ export function DishSheet({
             <AutoGrowTextarea value={name} onChange={setName} ariaLabel={isDishKind ? 'Nombre del plato' : 'Texto del elemento'} disabled={saving} />
           </div>
           {isDishKind && (
-            <label>
+            <label data-help-id="eventos.dish-section">
               Sección
               <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={saving}>
                 <option value="">Sin sección</option>
@@ -679,7 +679,7 @@ export function DishSheet({
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} disabled={saving} />
           </label>
           {isDishKind && (
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }} data-help-id="eventos.dish-nobuy">
               <input type="checkbox" checked={!requiresPurchase} onChange={(e) => setRequiresPurchase(!e.target.checked)} disabled={saving} />
               No hay que comprarlo (sigue en el menú, sin carrito ni compra)
             </label>

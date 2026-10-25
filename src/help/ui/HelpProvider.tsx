@@ -14,6 +14,7 @@ import { rankHelpWithAi } from '@/help/aiClient'
 import { clearDestination, closeOpenMenus, requestDestination, revealDestination, waitForDestination } from '@/help/destinations'
 import { HelpNudges } from '@/help/ui/HelpNudges'
 import { getTour, hasTour } from '@/help/tours/registry'
+import { SERIES_BY_ID, chaptersOf } from '@/help/tours/series'
 import type { TourNextOption } from '@/help/tours/TourRunner'
 import type { HelpCard, HelpGo, HelpModuleId } from '@/help/types'
 import { primeHelpVoice, speakHelp, stopHelpSpeech } from '@/help/voice'
@@ -42,6 +43,8 @@ interface OpenOptions {
   moduleId?: HelpModuleId
   area?: HelpArea
   explainerId?: string
+  /** Serie de «Enséñame» que se abre desplegada (con su botón de recorrido completo y sus capítulos). */
+  seriesId?: string
 }
 
 export interface HelpApi {
@@ -58,12 +61,18 @@ export interface HelpApi {
   focusModule: HelpModuleId | null
   /** Área que se está viendo dentro de la Ayuda (conversación, Conoce esta sección, Enséñame, Cómo funciona, Soporte). */
   area: HelpArea
-  setArea: (a: HelpArea) => void
+  setArea: (a: HelpArea, seriesId?: string) => void
   /** Explicación «Cómo funciona PEPA» abierta (null = la lista). */
   explainerId: string | null
   openExplainer: (id: string | null) => void
   /** ¿Puede esta persona hacer este tutorial/visita (acceso al módulo y a la acción)? */
   canDoTour: (tourId: string) => boolean
+  /** Serie de «Enséñame» desplegada al abrir el área (null = ninguna). */
+  learnSeriesId: string | null
+  /** Abre «Enséñame» ya en una serie (desde una ficha, la búsqueda o un acceso contextual). */
+  openLearn: (seriesId: string) => void
+  /** ¿Puede esta persona hacer esta serie (acceso al módulo, regla propia y al menos un capítulo)? */
+  canDoSeries: (seriesId: string) => boolean
   /** ¿Puede esta persona ver esta explicación «Cómo funciona PEPA»? */
   canExplain: (explainerId: string) => boolean
   accessOf: (doc: SearchDoc) => HelpAccessResult
@@ -104,6 +113,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
   const [focusModule, setFocusModule] = useState<HelpModuleId | null>(null)
   const [area, setAreaState] = useState<HelpArea>('chat')
   const [explainerId, setExplainerId] = useState<string | null>(null)
+  const [learnSeriesId, setLearnSeriesId] = useState<string | null>(null)
   const [speakingText, setSpeakingText] = useState<string | null>(null)
   // Tutorial «Enséñame» en marcha (null = ninguno) y un contador para reiniciar el mismo si se elige otra vez.
   const [activeTour, setActiveTour] = useState<string | null>(null)
@@ -234,6 +244,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       setFocusModule(opts?.moduleId ?? null)
       setAreaState(opts?.area ?? 'chat')
       setExplainerId(opts?.explainerId ?? null)
+      setLearnSeriesId(opts?.seriesId ?? null)
       if (opts?.cardId) showCard(opts.cardId)
       else if (opts?.query) ask(opts.query)
     },
@@ -249,11 +260,13 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
     setFocusModule(null)
     setAreaState('chat')
     setExplainerId(null)
+    setLearnSeriesId(null)
   }, [])
 
-  const setArea = useCallback((a: HelpArea) => {
+  const setArea = useCallback((a: HelpArea, seriesId?: string) => {
     setAreaState(a)
     if (a !== 'how') setExplainerId(null)
+    setLearnSeriesId(a === 'learn' ? (seriesId ?? null) : null)
   }, [])
   const openExplainer = useCallback((id: string | null) => {
     setExplainerId(id)
@@ -267,6 +280,30 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
     if (mod && moduleAccess(mod, ctxRef.current).status !== 'allowed') return false
     return ruleResult(t.access, ctxRef.current).status === 'allowed'
   }, [])
+
+  const canDoSeries = useCallback(
+    (seriesId: string) => {
+      const ser = SERIES_BY_ID.get(seriesId)
+      if (!ser) return false
+      const mod = HELP_MODULE_BY_ID.get(ser.module)
+      if (mod && moduleAccess(mod, ctxRef.current).status !== 'allowed') return false
+      if (ruleResult(ser.access, ctxRef.current).status !== 'allowed') return false
+      return chaptersOf(ser).some((c) => canDoTour(c.id))
+    },
+    [canDoTour],
+  )
+  const openLearn = useCallback(
+    (seriesId: string) => {
+      primeHelpVoice()
+      ensureCommunity()
+      setPanelOpen(true)
+      setFocusModule(SERIES_BY_ID.get(seriesId)?.module ?? null)
+      setAreaState('learn')
+      setExplainerId(null)
+      setLearnSeriesId(seriesId)
+    },
+    [ensureCommunity],
+  )
 
   const canExplain = useCallback((id: string) => {
     const e = EXPLAINER_BY_ID.get(id)
@@ -309,13 +346,15 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
 
   const canStartTour = useCallback((card: HelpCard) => Boolean(card.tour) && hasTour(card.tour) && canDoTour(card.tour!) && canOfferActions(card, cardAccess(card, HELP_MODULE_BY_ID.get(card.module), ctxRef.current)), [canDoTour])
   const startTourById = useCallback((tourId: string) => {
-    if (!getTour(tourId)) return
+    // El identificador puede ser uno antiguo (enlace, ficha, progreso): se resuelve por alias al capítulo que lo sustituye.
+    const t = getTour(tourId)
+    if (!t) return
     setPanelOpen(false)
     closeOpenMenus()
     stopHelpSpeech()
     setSpeakingText(null)
     setTourRun((n) => n + 1)
-    setActiveTour(tourId)
+    setActiveTour(t.id)
   }, [])
 
   const startTour = useCallback(
@@ -331,7 +370,8 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
 
   // Fin de un tutorial: cierra su capa. Si era el recorrido de bienvenida, se recuerda que ya se ha visto (o que se ha dejado).
   const onTourClosed = useCallback((tourId: string, reason: 'completed' | 'exited') => {
-    setActiveTour(null)
+    // Solo se cierra si sigue siendo ese capítulo: al pasar a otro («Siguiente capítulo») el nuevo no se pisa.
+    setActiveTour((cur) => (cur === tourId ? null : cur))
     if (tourId === 'bienvenida') setWelcomeState(reason === 'completed' ? 'done' : 'skipped')
   }, [])
 
@@ -360,6 +400,9 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       explainerId,
       openExplainer,
       canDoTour,
+      learnSeriesId,
+      openLearn,
+      canDoSeries,
       canExplain,
       accessOf,
       accessOfCard,
@@ -381,7 +424,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
       speakingText,
       ensureCommunity,
     }),
-    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, area, setArea, explainerId, openExplainer, canDoTour, canExplain, accessOf, accessOfCard, search, suggest, ask, showCard, openHelp, minimize, closeHelp, goTo, goToPlace, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
+    [ctx, profile.id, voiceMode, panelOpen, session, location.pathname, focusModule, area, setArea, explainerId, openExplainer, learnSeriesId, openLearn, canDoSeries, canDoTour, canExplain, accessOf, accessOfCard, search, suggest, ask, showCard, openHelp, minimize, closeHelp, goTo, goToPlace, startTour, startTourById, activeTour, canStartTour, speak, stopSpeaking, speakingText, ensureCommunity],
   )
 
   const runningTour = activeTour ? getTour(activeTour) : undefined

@@ -149,7 +149,8 @@ describe('resalta el control real y espera la acción REAL de la persona', () =>
   it('un paso ya cumplido al llegar (el formulario ya está abierto) se omite solo', async () => {
     setup(undefined, { startOpen: true })
     await stepText('Escribe el nombre.')
-    expect(within(panel()).getByText('Paso 2 de 5')).toBeTruthy()
+    // El paso omitido no cuenta: se muestra «Paso 1 de 4», no «Paso 2 de 5».
+    expect(within(panel()).getByText('Paso 1 de 4')).toBeTruthy()
   })
 
   it('un campo ya relleno al llegar cuenta como hecho', async () => {
@@ -178,7 +179,7 @@ describe('pasos informativos, opcionales y sensibles', () => {
     await toInfo()
     fireEvent.click(within(panel()).getByRole('button', { name: /Siguiente/ })) // → paso opcional (control inexistente)
     await stepText('Pulsa guardar.') // se omitió «extra»
-    expect(within(panel()).getByText('Paso 5 de 5')).toBeTruthy()
+    expect(within(panel()).getByText('Paso 3 de 3')).toBeTruthy() // los omitidos no cuentan (ni el primero ni el opcional)
   })
 
   it('SEGURIDAD: en el paso de guardar, pulsar el botón NO completa el tutorial; solo lo hace el aviso de que la aplicación guardó; y no hay «Siguiente»', async () => {
@@ -244,7 +245,7 @@ describe('atrás, pausa, reinicio y salida', () => {
     await stepText('Escribe el nombre.')
     fireEvent.click(within(panel()).getByRole('button', { name: /Reiniciar/ }))
     await stepText('Escribe el nombre.') // el formulario sigue abierto: el primer paso se omite de nuevo
-    expect(within(panel()).getByText('Paso 2 de 5')).toBeTruthy()
+    expect(within(panel()).getByText('Paso 1 de 4')).toBeTruthy()
   })
 
   it('Salir cierra el tutorial, lo avisa y no deja ninguna capa en pantalla', async () => {
@@ -264,7 +265,7 @@ describe('si la pantalla cambia o el control no existe: salida comprensible, sin
   it('control necesario inexistente → mensaje claro con «Empezar de nuevo», «Ver los pasos escritos» y «Salir»', async () => {
     const t: TourDef = { ...TOUR, steps: [{ id: 'x', text: 'Pulsa el botón fantasma.', target: 'test.no-existe', completeOn: [{ type: 'click', target: 'test.no-existe' }] }] }
     const { onPick, onClose } = setup(undefined, { tour: t })
-    await waitFor(() => expect(within(panel()).getByText(/No encuentro este control/)).toBeTruthy())
+    await waitFor(() => expect(within(panel()).getByText(/no veo en tu pantalla el control/)).toBeTruthy())
     fireEvent.click(within(panel()).getByRole('button', { name: /Ver los pasos escritos/ }))
     expect(onPick).toHaveBeenCalledWith({ kind: 'card', id: 'ficha-prueba', label: 'Tutorial de prueba' })
     fireEvent.click(within(panel()).getByRole('button', { name: '✕ Salir' }))
@@ -274,7 +275,7 @@ describe('si la pantalla cambia o el control no existe: salida comprensible, sin
   it('si el control aparece después (se terminaba de cargar), el tutorial se recupera solo', async () => {
     const t: TourDef = { ...TOUR, steps: [{ id: 'x', text: 'Pulsa abrir.', target: 'test.field', completeOn: [{ type: 'click', target: 'test.field' }] }] }
     setup(undefined, { tour: t })
-    await waitFor(() => expect(within(panel()).getByText(/No encuentro este control/)).toBeTruthy())
+    await waitFor(() => expect(within(panel()).getByText(/no veo en tu pantalla el control/)).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Abrir' })) // aparece el campo
     await waitFor(() => expect(within(panel()).getByText('Pulsa abrir.')).toBeTruthy())
   })

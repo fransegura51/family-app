@@ -26,7 +26,8 @@ const targetsOf = (t: TourDef): string[] =>
 describe('tutoriales registrados', () => {
   it('hay tutoriales, con identificadores únicos, y los tres pilotos pedidos están', () => {
     expect(new Set(TOUR_IDS).size).toBe(TOUR_IDS.length)
-    for (const id of ['cal-crear-evento', 'com-anadir-producto', 'fam-anadir-miembro']) expect(TOUR_IDS, id).toContain(id)
+    // Los tres pilotos de B4 siguen siendo accesibles con su identificador (como capítulo o, si se fusionaron, por alias).
+    for (const id of ['cal-crear-evento', 'com-anadir-producto', 'fam-anadir-miembro']) expect(getTour(id), id).toBeTruthy()
   })
 
   it('cada tutorial cuelga de una ficha de Ayuda que lo ofrece («Enséñame»), y cada «Enséñame» de una ficha lleva a un tutorial registrado', () => {
@@ -103,10 +104,20 @@ describe('tutoriales registrados', () => {
     for (const t of ['inicio.carrusel', 'nav.menu', 'nav.tab.calendario', 'nav.tab.compras', 'nav.help']) expect(targets).toContain(t)
   })
 
-  it('el tutorial de Familia no envía invitaciones: el texto lo dice y el último paso solo espera la ficha creada', () => {
+  it('el tutorial de Familia no envía invitaciones: el texto lo dice, el paso que guarda solo espera la ficha creada y lo que sale después es informativo', () => {
     const t = getTour('fam-anadir-miembro')!
     expect(t.finishText).toMatch(/no envío ninguna invitación/i)
-    expect(t.steps[t.steps.length - 1].completeOn).toEqual([{ type: 'event', name: 'family.member-added' }])
+    const save = t.steps.find((s) => s.id === 'guardar')!
+    expect(save.completeOn).toEqual([{ type: 'event', name: 'family.member-added' }])
+    expect(save.sensitive).toBe(true)
+    // «Ficha creada: ¿dar acceso ahora?» solo se explica: nunca se espera ni se pulsa «Sí, dar acceso» por la persona.
+    const after = t.steps.slice(t.steps.indexOf(save) + 1)
+    expect(after.length).toBeGreaterThan(0)
+    for (const s of after) {
+      expect(s.sensitive).toBeFalsy()
+      expect(s.completeOn.some((c) => c.type === 'click')).toBe(false)
+    }
+    expect(t.access).toEqual({ familyAdmin: true }) // «+ Añadir miembro» solo lo ve la administración de la familia
   })
 })
 
@@ -127,38 +138,43 @@ describe('B4-UX01..06 · reglas de calidad de los recorridos', () => {
       }
   })
 
+  // Calendario: los antiguos pilotos de evento y de tarea (13 + 10 pasos) son ahora los siete capítulos de «Crear eventos y tareas» (series/a.ts); `cal-crear-tarea` es un alias de su capítulo 1.
+  const CREAR = ['cal-crear-evento', 'tut-calendario-para-quien', 'tut-calendario-evento-repetitivo', 'tut-calendario-evento-recordatorio', 'tut-calendario-puntos', 'tut-calendario-ubicacion-adjuntos', 'tut-calendario-guardar-evento']
+
   it('cada paso de opción con control que puede no existir es opcional (se omite solo, sin marco huérfano)', () => {
-    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
+    for (const id of CREAR) {
       const t = getTour(id)!
-      for (const s of t.steps.filter((x) => x.group || x.id === 'puntos')) expect(s.optional, `${id}/${s.id}`).toBe(true)
+      expect(t.steps[0].optional, `${id}: el primer paso nunca es opcional`).toBeFalsy()
+      for (const s of t.steps.filter((x) => x.group || /^cerrar/.test(x.id))) expect(s.optional, `${id}/${s.id}`).toBe(true)
     }
+    expect(getTour('cal-crear-evento')!.steps.find((s) => s.id === 'hora')!.optional).toBe(true) // no existe con «Todo el día»
+    expect(getTour('tut-calendario-puntos')!.steps.find((s) => s.id === 'puntos')!.missingText).toMatch(/UNA sola persona/) // sin una persona no hay campo: se explica
   })
 
-  it('los tutoriales de evento y tarea explican persona, puntos y «Toda la familia», y piden los puntos solo para una persona', () => {
-    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
-      const t = getTour(id)!
-      const who = t.steps.find((s) => s.id === 'quien')!
-      expect(who.text).toMatch(/una persona/)
-      expect(who.text).toMatch(/puntos/)
-      expect(who.text).toMatch(/Toda la familia/)
-      expect(t.steps.find((s) => s.id === 'puntos')!.text).toMatch(/una sola persona/)
-    }
+  it('los capítulos de personas y de puntos explican persona, puntos y «Toda la familia», y piden los puntos solo para una persona', () => {
+    const who = getTour('tut-calendario-puntos')!.steps
+    expect(who.find((s) => s.id === 'quien')!.text).toMatch(/UNA persona/)
+    expect(who.find((s) => s.id === 'lista')!.text).toMatch(/Toda la familia/)
+    expect(who.find((s) => s.id === 'lista')!.text).toMatch(/puntos/)
+    const personas = getTour('tut-calendario-para-quien')!.steps
+    expect(personas.find((s) => s.id === 'lista')!.text).toMatch(/Toda la familia/)
+    expect(personas.find((s) => s.id === 'lista')!.text).toMatch(/nombre de un miembro/)
   })
 
   it('el paso de la fecha avanza al confirmar la selección y también se puede pasar con «Siguiente»', () => {
-    for (const id of ['cal-crear-evento', 'cal-crear-tarea']) {
+    for (const id of ['cal-crear-evento', 'tut-calendario-guardar-evento']) {
       const f = getTour(id)!.steps.find((s) => s.id === 'fecha')!
       expect(f.completeOn).toEqual([{ type: 'confirmed', target: f.target }])
       expect(f.manualNext).toBe(true)
     }
   })
 
-  it('el recorrido del evento enseña, cuando existen, todas las opciones reales del formulario', () => {
-    const targets = getTour('cal-crear-evento')!.steps.map((s) => s.target)
-    for (const t of ['calendar.event-time', 'calendar.event-allday', 'calendar.event-private', 'calendar.event-repeat', 'calendar.event-reminder', 'calendar.event-who', 'calendar.event-points', 'calendar.event-category', 'calendar.event-extras'])
+  it('la serie «Crear eventos y tareas» enseña, entre todos sus capítulos, todas las opciones reales del formulario del evento', () => {
+    const targets = CREAR.flatMap((id) => getTour(id)!.steps.map((s) => s.target))
+    for (const t of ['calendar.event-time', 'calendar.event-allday', 'calendar.event-private', 'calendar.event-repeat', 'calendar.event-reminder', 'calendar.event-who', 'calendar.event-points', 'calendar.event-category', 'calendar.event-location', 'calendar.event-attachment', 'calendar.event-note'])
       expect(targets).toContain(t)
-    // ningún paso apunta al título por error (era el fallo del paso de «opciones»)
-    expect(getTour('cal-crear-evento')!.steps.filter((s) => s.target === 'calendar.event-title')).toHaveLength(1)
+    // ningún paso apunta al título por error y solo se pide una vez en cada capítulo
+    for (const id of CREAR) expect(getTour(id)!.steps.filter((s) => s.target === 'calendar.event-title').length, id).toBeLessThanOrEqual(1)
   })
 })
 

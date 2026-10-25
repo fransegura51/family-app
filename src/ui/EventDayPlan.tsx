@@ -313,7 +313,7 @@ function DayPlanEditSheet({ target, onClose, onSave }: { target: EditTarget; onC
               Quitar la hora
             </button>
           )}
-          <label>
+          <label data-help-id="eventos.moment-note">
             Nota (opcional)
             <textarea value={draft.note} rows={3} onChange={(e) => setDraft({ ...draft, note: e.target.value })} disabled={saving} />
           </label>

@@ -187,8 +187,8 @@
 }
 
 .tour-btn-primary {
-  background: var(--primary, #4c6ef5);
-  border-color: var(--primary, #4c6ef5);
+  background: var(--help-primary, #3b5bdb);
+  border-color: var(--help-primary, #3b5bdb);
   color: #fff;
 }
 
@@ -211,3 +211,70 @@
   text-align: left;
 }
 
+
+/* ---- Mover la tarjeta, modo «píldora» y capítulos */
+.tour-move {
+  margin-left: auto;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 18px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tour-move + .tour-exit {
+  margin-left: 6px;
+}
+
+.tour-move:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+/* Píldora: una sola línea con el texto del paso y tres botones; deja casi toda la pantalla libre (selector de cámara/archivos abierto, o control que no hay que tapar). */
+.tour-panel-pill {
+  padding: 6px 8px;
+  overflow: hidden;
+}
+
+.tour-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tour-pill-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tour-pill-btn {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border, #cfd6e6);
+  background: var(--card-bg, #fff);
+  color: var(--text, #1c1f26);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tour-pill-btn:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}

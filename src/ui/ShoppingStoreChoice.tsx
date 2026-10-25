@@ -47,7 +47,7 @@ export function StoreChoiceBar({
   if (stores.length === 0) return null
   const summary = choice.split ? storeSummaryText(storeSummary(choice, keys, stores)) : ''
   return (
-    <div className="store-choice-bar">
+    <div className="store-choice-bar" data-help-id="lineas-compra.tienda">
       <label htmlFor={`${uid}-general`} className="store-choice-general">
         <span>{hideSplit ? 'Tienda por defecto' : choice.split ? 'Tienda para el resto' : 'Tienda para todo'}</span>
         <select id={`${uid}-general`} value={choice.general} onChange={(e) => onChange(setGeneralStore(choice, e.target.value))}>

@@ -42,7 +42,8 @@ describe('Tres bloques plegables independientes (RewardsSubsection), cada uno co
   })
 
   it('📜 Historial — plegado por defecto', () => {
-    expect(UI).toContain('<RewardsSubsection title="📜 Historial" defaultOpen={false}>')
+    // (lleva además la marca de Ayuda `helpId`, que no cambia nada visible)
+    expect(UI).toContain('<RewardsSubsection title="📜 Historial" defaultOpen={false} helpId="pequenos.historial">')
   })
 
   it('🏆 Trofeos — plegado por defecto, se mantiene oculto por completo sin trofeos (comportamiento ya existente, no tocado)', () => {

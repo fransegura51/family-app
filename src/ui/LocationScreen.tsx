@@ -87,6 +87,10 @@ export function LocationScreen({ role, profileId }: { role: FamilyRole; profileI
     'ubicacion.inicio': () => setTab('Inicio'),
     'ubicacion.mapa': () => setTab('Ubicación'),
     'ubicacion.reglas': () => setTab('Reglas'),
+    // Las tres pestañas de debajo del mapa viven dentro de «Ubicación»: aquí se abre esa pestaña principal y LocationTab elige la interna (mismo destino).
+    'ubicacion.lugares': () => setTab('Ubicación'),
+    'ubicacion.estoy-aqui': () => setTab('Ubicación'),
+    'ubicacion.compartir': () => setTab('Ubicación'),
   })
   // Petición real: "el formato que has hecho ahora para meter todas
   // las pestañas me gusta mucho, aplícalo a toda la aplicación" —
@@ -330,6 +334,12 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
   // cada persona) el contenido se reparte en estas 3 pestañas en vez de ir todo seguido en una sola
   // pantalla larga.
   const [panelTab, setPanelTab] = useState<'lugares' | 'estoy-aqui' | 'compartir'>('lugares')
+  // «Llévame» y tutoriales de la Ayuda: las tres pestañas internas tampoco son rutas.
+  useHelpDestinations({
+    'ubicacion.lugares': () => setPanelTab('lugares'),
+    'ubicacion.estoy-aqui': () => setPanelTab('estoy-aqui'),
+    'ubicacion.compartir': () => setPanelTab('compartir'),
+  })
   // Petición real: "que me marque la ruta hasta Madrid como en Google Maps" — el trazado de la
   // última ruta calculada, para dibujarla en LocationMap. Llega de dos sitios: tocar "ver tiempo en
   // coche" en un lugar guardado (PlaceRow, aquí abajo, prop onRoute) o pedírselo a Pepa por voz
@@ -611,6 +621,10 @@ function LocationTab({ isAdmin, profileId }: { isAdmin: boolean; profileId: stri
         </button>
       </div>
 
+      {panelTab === 'lugares' && <HelpDestMark id="ubicacion.lugares" />}
+      {panelTab === 'estoy-aqui' && <HelpDestMark id="ubicacion.estoy-aqui" />}
+      {panelTab === 'compartir' && <HelpDestMark id="ubicacion.compartir" />}
+
       {panelTab === 'lugares' && (
         <div>
           {/* Petición real: "lo de añadir otro lo pones arriba para que se vea lo primero y debajo
@@ -757,9 +771,9 @@ function EstoyAquiTab({ onPlaceAdded }: { onPlaceAdded: () => void }) {
   }
 
   return (
-    <div className="card member-form">
+    <div className="card member-form" data-help-id="ubicacion.estoy-aqui-card">
       <p className="muted">Comparte dónde estás ahora mismo, o guarda este sitio como lugar frecuente.</p>
-      <button type="button" onClick={handleShareHere} disabled={sharing}>
+      <button type="button" onClick={handleShareHere} disabled={sharing} data-help-id="ubicacion.estoy-aqui-boton">
         {sharing ? 'Obteniendo tu ubicación…' : '📍 Compartir mi ubicación actual'}
       </button>
       {shareNotice && <p className="muted">{shareNotice}</p>}
@@ -775,7 +789,7 @@ function EstoyAquiTab({ onPlaceAdded }: { onPlaceAdded: () => void }) {
       <p className="muted" style={{ marginTop: 14 }}>
         Seleccionar un lugar favorito
       </p>
-      <div className="inline-fields">
+      <div className="inline-fields" data-help-id="ubicacion.quick-add">
         <button type="button" className="link-button" onClick={() => handleQuickAdd('Casa')} disabled={addingQuick !== null}>
           {addingQuick === 'Casa' ? 'Guardando…' : '🏠 Añadir este sitio como «Casa»'}
         </button>
@@ -1113,7 +1127,7 @@ function PlaceRow({
 
   if (editing) {
     return (
-      <form onSubmit={handleSaveEdit} className="card member-form">
+      <form onSubmit={handleSaveEdit} className="card member-form" data-help-id="ubicacion.lugar-editar-form">
         <label>
           Nombre
           <input type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required />
@@ -1139,7 +1153,7 @@ function PlaceRow({
         {editMoveTo && <p className="muted">El lugar se moverá a tu posición actual cuando pulses «Guardar cambios».</p>}
         {editError && <p className="error">{editError}</p>}
         <div className="inline-fields">
-          <button type="submit" disabled={editSaving}>
+          <button type="submit" disabled={editSaving} data-help-id="ubicacion.lugar-editar-guardar">
             {editSaving ? 'Guardando…' : 'Guardar cambios'}
           </button>
           <button type="button" className="link-button" onClick={() => setEditing(false)}>
@@ -1204,7 +1218,7 @@ function PlaceRow({
             .
           </p>
         )}
-        <button type="button" className="link-button" onClick={startEditing} style={{ marginTop: 6 }}>
+        <button type="button" className="link-button" onClick={startEditing} style={{ marginTop: 6 }} data-help-id="ubicacion.lugar-editar">
           ✎ Editar
         </button>
       </div>
@@ -1349,7 +1363,7 @@ function RulesTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      <div className="event-list">
+      <div className="event-list" data-help-id="ubicacion.rule-list">
         {visibleRules.map((rule) => (
           <div key={rule.id} className="card task-card">
             <div className="task-card-main">
@@ -1365,6 +1379,7 @@ function RulesTab() {
             <button
               type="button"
               className="task-toggle"
+              data-help-id="ubicacion.rule-state"
               onClick={() => toggleAutomationRule(rule.id, !rule.active).then(reload)}
             >
               {rule.active ? 'Activa' : 'Pausada'}

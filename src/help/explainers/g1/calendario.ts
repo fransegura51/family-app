@@ -14,7 +14,7 @@ export const expCalendarioRepeticiones: HelpExplainer = {
       heading: 'Una sola ficha, muchos días',
       paragraphs: [
         'Cuando eliges una «Repetición», PEPA no crea una copia por cada día. Guarda un solo evento o tarea con una regla (por ejemplo, «cada semana, hasta el 20 de diciembre») y calcula los días que hay que pintar cada vez que abres el calendario.',
-        'Los preajustes son: «Todos los días», «Todos los días laborables» (de lunes a viernes), «Todas las semanas», «Cada 2 semanas», «Todos los meses» y «Todos los años». Con «Personalizado…» eliges la frecuencia y, si es semanal, los días de la semana.',
+        'Los preajustes son: «Ninguno» (no se repite), «Todos los días», «Todos los días laborables» (de lunes a viernes), «Todas las semanas», «Cada 2 semanas», «Todos los meses» y «Todos los años». Con «Personalizado…» eliges la frecuencia y, si es semanal, los días de la semana.',
       ],
       example: 'Ejemplo inventado: «Fútbol de Eric» empieza el martes 3 de noviembre con «Todas las semanas». Saldrá también el 10, el 17 y el 24 de noviembre, siempre en martes.',
     },
@@ -57,10 +57,11 @@ export const expCalendarioRepeticiones: HelpExplainer = {
   ],
   verified: V,
   basedOn: ['src/domain/recurrence.ts', 'src/domain/calendar.ts', 'src/data/calendar.ts', 'src/ui/CalendarScreen.tsx', 'supabase/migrations/0154_fix_recurring_reminder_occurrences.sql'],
-  tour: 'tut-calendario-editar-evento',
+  tour: 'tut-calendario-cambiar-serie',
   go: { path: '/calendario' },
   labels: [
     'Repetición',
+    'Ninguno',
     'Todos los días',
     'Todos los días laborables',
     'Todas las semanas',
@@ -260,6 +261,7 @@ export const expCalendarioQuienRecibeAvisos: HelpExplainer = {
   ],
   verified: V,
   basedOn: ['src/domain/eventRecipients.ts', 'src/ui/NotifyFamilyCheckbox.tsx', 'src/ui/TaskNotifyModeCard.tsx', 'src/domain/notificationPrefs.ts', 'supabase/migrations/0261_family_notification_recipients.sql'],
+  tour: 'tut-calendario-para-quien',
   go: { path: '/menu-organizar', dest: 'config.avisos' },
   labels: ['¿A quién avisamos de tareas y eventos?', 'Todos los miembros activos', 'Solo los miembros asignados', 'Aviso a toda la familia'],
   cardIds: ['cal-para-quien', 'cal-recordatorio', 'not-resumen-tareas'],
@@ -300,7 +302,7 @@ export const expCalendarioPrivadoFamiliar: HelpExplainer = {
   limits: [
     'Un privado puede tener a otra persona en «¿Para quién?», pero esa persona no lo verá ni recibirá avisos de él.',
     'Una cuenta sin acceso a la sección Calendario no ve nada del calendario, ni compartido ni privado.',
-    'El icono 📤 manda el título, la fecha y la nota como texto fuera de PEPA; lo que hagan con él después ya no depende de PEPA. También sale en un evento privado.',
+    'El icono 📤 manda el título y la fecha como texto fuera de PEPA (la nota no va en él); lo que hagan con él después ya no depende de PEPA. También sale en un evento privado.',
     'Si no ves un evento que otra persona dice haber creado, lo normal es que sea privado o que tu cuenta no tenga acceso a Calendario.',
   ],
   ifWrong: [
@@ -316,10 +318,105 @@ export const expCalendarioPrivadoFamiliar: HelpExplainer = {
     'supabase/migrations/0261_family_notification_recipients.sql',
     'supabase/functions/sync-calendar-to-google-cron/index.ts',
   ],
+  tour: 'tut-calendario-para-quien',
   go: { path: '/calendario' },
   labels: ['🔒 Privado — Solo yo puedo verlo', '¿Para quién?', 'Aviso a toda la familia', 'Notas privadas'],
   cardIds: ['cal-privado', 'cal-para-quien', 'cal-compartir'],
   synonyms: ['privado', 'solo yo', 'quién ve mi evento', 'evento secreto', 'por qué no veo un evento', 'compartido', 'personal', 'nota privada'],
+}
+
+export const expCalendarioQueHaceAlCrear: HelpExplainer = {
+  id: 'exp-calendario-que-hace-pepa-al-crear',
+  module: 'calendario',
+  title: 'Qué hace PEPA por ti al crear un evento o una tarea',
+  summary: 'Las cosas que PEPA decide o rellena sola al guardar: la hora 00:00, la persona, los datos de un título repetido, «Tarea» y «No realizada».',
+  sections: [
+    {
+      heading: 'La hora',
+      paragraphs: [
+        'En un evento, la hora es opcional. Si no pones hora y tampoco marcas «Todo el día», PEPA lo guarda a las 00:00 y así se muestra; los recordatorios cuentan desde esa hora.',
+        'Una tarea no tiene hora ni «Todo el día» ni recordatorio: se guarda solo con su día y en la fila pone «Tarea». Si es de un día pasado y no está hecha, pone «No realizada» (se calcula al mirar, no hace falta que nadie abra la app a medianoche).',
+      ],
+    },
+    {
+      heading: 'Para quién',
+      paragraphs: [
+        'Un evento o tarea nuevo empieza asignado a tu persona (la ficha de la familia enlazada a tu cuenta). Si creas desde el «+ Añadir» de la columna de alguien en la vista Familiar, empieza con esa persona. Si tu cuenta no tiene ficha, no se preselecciona a nadie y el formulario lo avisa.',
+        'Si no marcas a nadie y el título contiene el nombre de un miembro de la familia como palabra completa, PEPA asigna el apunte a esa persona al guardar, sin fijarse en mayúsculas ni tildes. Si salen varios nombres, usa el primero de la lista de la familia.',
+      ],
+      example: 'Ejemplo inventado: si en «¿Para quién?» no hay nadie marcado y escribes «Dentista de Eric», se guarda para Eric y no para «Toda la familia».',
+    },
+    {
+      heading: 'Si repites un título (solo eventos)',
+      paragraphs: [
+        'Al escribir en «Nuevo evento» un título igual a otro que ya tenías, PEPA copia del más reciente la hora de inicio y de fin, «Todo el día», la repetición y los recordatorios. También copia las personas y los puntos, pero solo si tú todavía no has tocado «¿Para quién?». La fecha se queda como estaba y todo se puede cambiar antes de guardar.',
+        'Las tareas no rellenan nada solas.',
+      ],
+    },
+    {
+      heading: 'Privado por defecto en Personal',
+      paragraphs: ['Si creas un evento o una tarea desde la vista Personal, la casilla «🔒 Privado — Solo yo puedo verlo» ya viene marcada. Puedes desmarcarla antes de guardar.'],
+    },
+  ],
+  limits: [
+    'Si ya habías puesto la hora y después escribes un título que coincide con uno anterior, la hora (y la repetición y los recordatorios) se sustituyen por los del anterior. Revísalos antes de guardar.',
+    'El autorrelleno no copia la categoría, la ubicación, el adjunto ni la nota.',
+    'La asignación por el nombre del título solo ocurre al guardar y solo si no hay nadie marcado; no se ve en el formulario antes.',
+    'Los puntos solo existen con una única persona marcada en «¿Para quién?».',
+  ],
+  ifWrong: [
+    'Si un evento ha salido a las 00:00 sin querer, ábrelo, pon la hora (o marca «Todo el día») y guarda.',
+    'Si se ha asignado a una persona que no querías porque su nombre estaba en el título, ábrelo y cambia «¿Para quién?».',
+    'Si lo que PEPA hace no se parece a lo explicado aquí, puede ser un fallo técnico: cuéntalo en el buzón de Sugerencias (Ayuda) con un ejemplo.',
+  ],
+  verified: '2026-10-25',
+  basedOn: ['src/ui/CalendarScreen.tsx', 'src/domain/voiceQuery.ts', 'src/domain/calendar.ts'],
+  tour: 'cal-crear-evento',
+  go: { path: '/calendario', dest: 'calendario.nuevo-evento' },
+  labels: ['Todo el día', '¿Para quién?', 'Tarea', 'No realizada', '🔒 Privado — Solo yo puedo verlo'],
+  cardIds: ['cal-crear-evento', 'cal-crear-tarea', 'cal-para-quien'],
+  synonyms: ['por qué sale a las 00:00', 'se ha asignado solo', 'autorrelleno', 'repite el título', 'hora por defecto', 'qué hace pepa al guardar', 'no realizada', 'privado en personal'],
+}
+
+export const expCalendarioContenidoCompartir: HelpExplainer = {
+  id: 'exp-calendario-contenido-compartir',
+  module: 'calendario',
+  title: 'Qué manda el icono 📤 de un evento o una tarea',
+  summary: 'El texto que sale al compartir un apunte, qué NO incluye (la nota) y a dónde va según tu móvil.',
+  sections: [
+    {
+      heading: 'El texto que se manda',
+      paragraphs: [
+        'Es texto sencillo: el título, la fecha (con la hora, si no es de todo el día) y, solo si el apunte tuviera una descripción, esa descripción. En algo que se repite, la fecha es la del día que estás viendo.',
+        'Lo que escribes en «Nota» al crear o editar un apunte, la ubicación, las personas y los puntos NO van en ese texto.',
+      ],
+      example: 'Ejemplo inventado: «Dentista de Eric», el jueves a las 17:00, con la nota «llevar el carnet». Se manda el título y la fecha con la hora, sin la nota.',
+    },
+    {
+      heading: 'A dónde va',
+      paragraphs: [
+        'Si tu móvil tiene menú de compartir, se abre para que elijas app y persona. Si no, PEPA copia el texto al portapapeles y avisa con «Copiado al portapapeles.». Y si tampoco puede, sale una ventana para copiarlo a mano o mandarlo por WhatsApp o correo.',
+        'Esto sale de PEPA: lo que haga después quien lo reciba ya no depende de PEPA.',
+      ],
+    },
+    {
+      heading: 'Dónde está el icono',
+      paragraphs: ['Lo tienen los eventos y las tareas propios en las filas del calendario y en las tarjetas de la vista Familiar; también un apunte privado. No lo tienen los cumpleaños ni las citas de calendarios enlazados, y las notas personales tienen el suyo, que manda su texto.'],
+    },
+  ],
+  limits: [
+    'Si quieres que la otra persona vea la nota, tendrás que escribírsela aparte: hoy el 📤 de un evento o de una tarea no la incluye.',
+    'En los bloques de las vistas 3 días y Día no hay icono 📤: ábrelo desde la lista del día o desde la vista Familiar.',
+    'No se manda un archivo de calendario (.ics): es solo texto, para que cualquier app de mensajería lo acepte.',
+  ],
+  ifWrong: ['Si el texto que ves al compartir no se parece a lo explicado aquí, puede ser un fallo técnico: cuéntalo en el buzón de Sugerencias (Ayuda) con el nombre del apunte.'],
+  verified: '2026-10-25',
+  basedOn: ['src/ui/CalendarScreen.tsx', 'src/services/share.ts', 'src/ui/ShareFallbackModal.tsx'],
+  tour: 'tut-calendario-compartir',
+  go: { path: '/calendario' },
+  labels: ['Copiado al portapapeles.', 'Nota'],
+  cardIds: ['cal-compartir', 'cal-privado'],
+  synonyms: ['qué se comparte', 'compartir evento', 'la nota no se comparte', 'mandar por whatsapp', 'texto del evento', 'compartir tarea'],
 }
 
 export const EXPLAINERS_CALENDARIO: HelpExplainer[] = [
@@ -328,4 +425,6 @@ export const EXPLAINERS_CALENDARIO: HelpExplainer[] = [
   expCalendarioRecordatorios,
   expCalendarioQuienRecibeAvisos,
   expCalendarioPrivadoFamiliar,
+  expCalendarioQueHaceAlCrear,
+  expCalendarioContenidoCompartir,
 ]

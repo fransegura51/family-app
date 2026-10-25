@@ -125,7 +125,8 @@ describe('Evento completo (AddEventForm/EditEventForm) — conserva TODO su comp
     const form = slice(CALENDAR_SRC, 'function EditEventForm({', 'function AddEventForm({')
     expect(form).toContain("const isTask = event.kind === 'task'")
     expect(form).toContain('{!isTask && (')
-    expect(form).toContain('<CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
+    // (la marca de la Ayuda `helpId` se añadió para los tutoriales; no cambia nada de la función)
+    expect(form).toContain('<CategoryDropdown helpId="calendar.edit-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />')
   })
 
   it('EditEventForm: Repetición se ofrece para Evento Y Tarea por igual (RecurrenceControl entre los dos bloques {!isTask && ...}, dentro de ninguno)', () => {

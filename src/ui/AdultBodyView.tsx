@@ -5,6 +5,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import type { BodyMeasurement, BodyPhoto, FamilyMember } from '@/domain/types'
 import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { formatDate } from '@/domain/dateFormat'
+import { emitHelpEvent } from '@/help/tours/helpBus'
 
 // Vista de adultos de Peso y medidas, con un diseño más profesional:
 // peso actual con su tendencia, objetivo con barra de progreso, IMC con
@@ -243,6 +244,7 @@ export function AdultBodyView({
     setGoalError(null)
     try {
       await updateMemberWeightGoal(member.id, kg)
+      emitHelpEvent('body.goal-saved') // para los tutoriales «Enséñame»: el objetivo YA está guardado
       onGoalSaved(kg)
       setEditingGoal(false)
     } catch (err) {
@@ -270,7 +272,7 @@ export function AdultBodyView({
 
   return (
     <div>
-      <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }}>
+      <div className="segmented" role="tablist" style={{ margin: '4px 0 12px' }} data-help-id="body.adult-tabs">
         {tabs.map(([key, label]) => (
           <button key={key} type="button" role="tab" aria-selected={tab === key} className={tab === key ? 'segmented-active' : ''} onClick={() => setTab(key)}>
             {label}
@@ -302,11 +304,11 @@ export function AdultBodyView({
               </p>
             )}
 
-            <div className="adult-goal">
+            <div className="adult-goal" data-help-id="body.goal">
               {editingGoal ? (
                 <div className="recipe-inline-row" style={{ marginTop: 8 }}>
-                  <input type="text" inputMode="decimal" placeholder="Peso objetivo en kg" value={goalText} onChange={(e) => setGoalText(e.target.value)} aria-label="Peso objetivo" autoFocus />
-                  <button type="button" onClick={submitGoal}>
+                  <input type="text" inputMode="decimal" placeholder="Peso objetivo en kg" value={goalText} onChange={(e) => setGoalText(e.target.value)} aria-label="Peso objetivo" autoFocus data-help-id="body.goal-input" />
+                  <button type="button" onClick={submitGoal} data-help-id="body.goal-save">
                     Guardar
                   </button>
                   <button type="button" className="link-button" onClick={() => setEditingGoal(false)}>
@@ -331,6 +333,7 @@ export function AdultBodyView({
                       type="button"
                       className="link-button"
                       style={{ fontSize: 12, padding: 0 }}
+                      data-help-id="body.goal-change"
                       onClick={() => {
                         setGoalText(String(goal).replace('.', ','))
                         setEditingGoal(true)
@@ -348,6 +351,7 @@ export function AdultBodyView({
                   type="button"
                   className="link-button"
                   style={{ padding: '8px 0 0', fontSize: 13 }}
+                  data-help-id="body.goal-set"
                   onClick={() => {
                     setGoalText('')
                     setEditingGoal(true)
@@ -376,8 +380,8 @@ export function AdultBodyView({
             </div>
           )}
 
-          <div className="card" style={{ padding: 12 }}>
-            <div className="adult-ranges" role="tablist" aria-label="Periodo">
+          <div className="card" style={{ padding: 12 }} data-help-id="body.adult-chart">
+            <div className="adult-ranges" role="tablist" aria-label="Periodo" data-help-id="body.adult-ranges">
               {(Object.keys(RANGE_DAYS) as RangeKey[]).map((r) => (
                 <button key={r} type="button" role="tab" aria-selected={range === r} className={range === r ? 'adult-range-active' : ''} onClick={() => setRange(r)}>
                   {r}

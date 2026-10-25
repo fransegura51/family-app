@@ -12,7 +12,7 @@ export const expConfiguracionAjustesPersonalesFamiliares: HelpExplainer = {
     {
       heading: 'Los tuyos',
       paragraphs: [
-        'Son tuyos el orden del menú, el de las tarjetas de Inicio, los colores, los menús de cada sección, cómo te contesta Pepa, tus horarios de avisos, tus filtros temporales («📅 Filtros temporales»), tu mes contable («📅 Inicio del mes contable») y cómo ves el calendario.',
+        'Son tuyos el orden del menú, el de las tarjetas de Inicio, los colores, los accesos que sacas de los menús ☰ a la pantalla («📌 Sacar»), cómo te contesta Pepa, tus horarios de avisos, tus filtros temporales («📅 Filtros temporales»), tu mes contable («📅 Inicio del mes contable») y cómo ves el calendario.',
         'Cada persona de la familia puede tener los suyos distintos sin afectar a los demás. Se guardan en tu cuenta, así que los ves igual en tu móvil y en tu ordenador.',
       ],
       example: 'Ejemplo inventado: Ana pone «Economía» entre las cuatro secciones fijas abajo y Luis no. Cada uno ve su barra como la dejó.',
@@ -55,7 +55,7 @@ export const expConfiguracionAjustesPersonalesFamiliares: HelpExplainer = {
     'src/state/prefs/prefsRegistry.ts',
     'docs/CONFIG_01_SINCRONIZACION_PREFERENCIAS.md',
   ],
-  tour: 'tut-configuracion-orden-menu',
+  tour: 'tut-configuracion-colores',
   go: { path: '/menu-organizar' },
   labels: [
     '📅 Filtros temporales',
@@ -67,7 +67,7 @@ export const expConfiguracionAjustesPersonalesFamiliares: HelpExplainer = {
     'Aplicar ahora',
     'Reintentar ahora',
   ],
-  cardIds: ['cfg-que-hay', 'cfg-sincronizacion', 'cfg-nombre-familia'],
+  cardIds: ['cfg-que-hay', 'cfg-sincronizacion', 'cfg-nombre-familia', 'cfg-bebe-a-nino'],
   synonyms: ['ajustes personales', 'ajustes de la familia', 'por qué no me deja cambiar', 'mi menú en otro móvil', 'sincronizar', 'solo yo veo este orden', 'quién puede cambiar la configuración'],
 }
 
@@ -109,7 +109,7 @@ export const expConfiguracionAvisos: HelpExplainer = {
   limits: [
     'Los avisos del móvil dependen también de los ajustes del propio teléfono (batería, no molestar). En iPhone, desde la web, hay que añadir PEPA a la pantalla de inicio para recibirlos.',
     'La hora de los avisos de las reglas «Todos los días a una hora» es la de España peninsular, aunque tu zona horaria sea otra.',
-    'No hay un botón para marcar todos los avisos como leídos de golpe.',
+    'Si quieres dejar todos los avisos leídos de golpe, usa «Marcar todas como leídas» en la campana 🔔 de Inicio (y «Marcar todas como no leídas» para lo contrario).',
   ],
   ifWrong: [
     'Si no te llegan al móvil: en Configuración → «Avisos», mira «🔔 Avisos en este móvil». Si dice que están bloqueados, hay que permitirlos en los ajustes del teléfono; PEPA no puede hacerlo sola. Cuando estén activados, pulsa «Mandarme un aviso de prueba».',
@@ -137,6 +137,8 @@ export const expConfiguracionAvisos: HelpExplainer = {
     'Todos los miembros activos',
     'Solo los miembros asignados',
     'Mandarme un aviso de prueba',
+    'Marcar todas como leídas',
+    'Marcar todas como no leídas',
   ],
   cardIds: ['not-activar', 'not-campana', 'not-resumen-tareas'],
   synonyms: ['por qué no me llegan los avisos', 'notificaciones', 'resumen de tareas', 'a qué hora llega el aviso', 'campana', 'avisos del móvil', 'quién recibe los avisos'],

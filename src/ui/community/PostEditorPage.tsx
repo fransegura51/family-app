@@ -565,7 +565,7 @@ export function PostEditorPage() {
       )}
 
       {/* Sección */}
-      <div id="ce-field-section" className="ce-field">
+      <div id="ce-field-section" className="ce-field" data-help-id="comunidad.editor-section">
         <span className="ce-label" id="ce-section-label">
           ¿En qué sección va?
         </span>
@@ -601,7 +601,7 @@ export function PostEditorPage() {
       </div>
 
       {/* Tema (solo los de la sección) */}
-      <div id="ce-field-topic" className="ce-field">
+      <div id="ce-field-topic" className="ce-field" data-help-id="comunidad.editor-topic">
         <label className="ce-label" htmlFor="ce-topic">
           Tema
         </label>

@@ -24,7 +24,7 @@ export function buildIndex(cards: HelpCard[], legacy: HelpDocEntry[]): IndexedDo
       fields: {
         title: significantTokens(card.title),
         synonyms: significantTokens(card.synonyms.join(' ')),
-        body: significantTokens([card.quick, ...(card.steps ?? []), card.more ?? '', card.limits ?? ''].join(' ')),
+        body: significantTokens([card.quick, ...(card.steps ?? []), card.more ?? '', card.limitsInternal ? '' : (card.limits ?? '')].join(' ')),
       },
     })
   }

@@ -1,0 +1,282 @@
+import type { TourDef } from '@/help/tours/types'
+
+// Cuentas (serie `ser-cuentas-proteger`, «Proteger mi cuenta»): PIN y huella, contraseña y correo. Comprobado contra src/ui/SecuritySettings.tsx, ChangeEmailPanel.tsx, PinRecoveryPanel.tsx,
+// AppLockScreen.tsx, DeleteAccountCard.tsx, LoginScreen.tsx y MenuSettingsScreen.tsx (SignOutCard).
+// REGLA: el tutorial NUNCA escribe, ve ni guarda un PIN, una contraseña ni un código: lo hace la persona. Solo se espera el aviso de «guardado» que la pantalla lanza DESPUÉS de que el
+// servidor confirma (sin ningún dato). Cerrar sesión, «He olvidado mi PIN», entrar con una invitación y borrar la cuenta NO se guían: están en la visita y en las explicaciones de Cuentas.
+
+const info = { completeOn: [] as never[], manualNext: true }
+
+export const visitaCuentas: TourDef = {
+  id: 'visita-cuentas',
+  kind: 'visit',
+  module: 'cuentas',
+  title: 'Conoce tu cuenta',
+  summary: 'Dónde están el correo, la contraseña, el PIN, cerrar sesión y borrar la cuenta, y cómo se entra en PEPA.',
+  version: 2,
+  cardId: 'cue-entrar',
+  durationSec: 100,
+  startPath: '/menu-organizar',
+  startDest: 'config.seguridad',
+  steps: [
+    {
+      id: 'tema',
+      text: 'Lo de tu cuenta está en dos temas de Configuración: «Seguridad» (el que tienes abierto) y «Mi cuenta». Esta visita solo te enseña dónde está cada cosa; no cambia nada.',
+      target: 'config.group-seguridad',
+      ...info,
+    },
+    {
+      id: 'correo',
+      text: '«Correo y contraseña»: con qué correo entras y cómo cambiarlos (con códigos de 6 cifras). Cada persona gestiona lo suyo: nadie puede cambiar el correo o la contraseña de otra.',
+      target: 'seguridad.correo-contrasena',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'bloqueo',
+      text: '«Bloqueo personal»: un PIN opcional de 4 a 6 dígitos para abrir PEPA, y la huella o Face ID si tu dispositivo la admite. Si olvidas el PIN, «He olvidado mi PIN» (o «¿Has olvidado tu PIN?» en la pantalla de bloqueo) lo recupera con tu contraseña o un código del correo.',
+      target: 'seguridad.bloqueo',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'mi-cuenta',
+      text: '«Mi cuenta», un poco más abajo: «Cerrar sesión» (solo en este móvil; no hay una lista de sesiones de otros dispositivos) y «Borrar mi cuenta», que no se puede deshacer y pide escribir BORRAR.',
+      target: 'config.group-cuenta',
+      ...info,
+    },
+    {
+      id: 'entrar',
+      text: 'Para entrar en PEPA hace falta cuenta, y se crea con una invitación en la pantalla de entrada: «¿No tienes cuenta? Tengo una invitación». Esa pantalla solo se ve con la sesión cerrada, así que no puedo recorrerla contigo.',
+      ...info,
+    },
+  ],
+  finishText: 'Eso es todo. Si quieres practicar, abre «Proteger mi cuenta». Cómo se entra, el PIN olvidado y borrar la cuenta están explicados en «Entiende cómo funciona».',
+  next: ['cue-pin', 'cue-correo-contrasena', 'cue-cerrar-sesion'],
+}
+
+export const tutCuentasPin: TourDef = {
+  id: 'tut-cuentas-pin',
+  module: 'cuentas',
+  group: 'Cuenta',
+  summary: 'Poner un PIN de 4 a 6 números para abrir PEPA, y dónde está la huella o Face ID.',
+  version: 2,
+  title: 'Poner un PIN y la huella',
+  cardId: 'cue-pin',
+  durationSec: 110,
+  startPath: '/menu-organizar',
+  startDest: 'config.seguridad',
+  readyOn: ['seguridad.bloqueo'],
+  steps: [
+    {
+      id: 'bloqueo',
+      text: 'Esta tarjeta es tu «Bloqueo personal»: un PIN de 4 a 6 números que se pide al abrir PEPA. Es opcional y solo de tu cuenta. El PIN lo escribes tú: yo no lo veo ni lo escribo. Se guarda de verdad al pulsar «Activar PIN»; si practicas, pulsa «Cancelar».',
+      target: 'seguridad.bloqueo',
+      ...info,
+    },
+    {
+      id: 'activar',
+      text: 'Si aún no tienes PIN, pulsa «Activar PIN». Solo abre el formulario; no guarda nada.',
+      target: 'seguridad.pin-activar',
+      completeOn: [
+        { type: 'click', target: 'seguridad.pin-activar' },
+        { type: 'appear', target: 'seguridad.pin-nuevo' },
+      ],
+      skipIf: [{ type: 'appear', target: 'seguridad.pin-nuevo' }],
+      optional: true,
+    },
+    {
+      id: 'nuevo',
+      text: 'Escribe en «Nuevo PIN» entre 4 y 6 números que recuerdes. Con el ojo puedes verlos. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.pin-nuevo',
+      completeOn: [{ type: 'entered', target: 'seguridad.pin-nuevo', min: 4 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'repite',
+      text: 'Repítelo en «Repite el PIN». Tienen que ser iguales; si no, PEPA no lo guarda. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.pin-repite',
+      completeOn: [{ type: 'entered', target: 'seguridad.pin-repite', min: 4 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Cuando estés conforme, pulsa «Activar PIN»: es lo que lo guarda de verdad. Yo no lo hago por ti; si te lo piensas mejor, pulsa «Cancelar» o «Salir».',
+      target: 'seguridad.pin-guardar',
+      completeOn: [{ type: 'event', name: 'cuentas.pin-activado' }],
+      sensitive: true,
+      optional: true,
+    },
+    {
+      id: 'acciones',
+      text: 'Con un PIN puesto, aquí salen «Cambiar PIN» y «Desactivar PIN» (los dos piden el PIN actual; al desactivarlo se borran también las huellas) y «He olvidado mi PIN». Aquí solo te los señalo.',
+      target: 'seguridad.pin-acciones',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'huella',
+      text: 'Con un PIN activado, aquí puedes añadir la huella o Face ID de este dispositivo. Es un extra: el PIN siempre sirve, y si la huella falla o la quitas, sigues entrando con él.',
+      target: 'seguridad.huella',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'huella-abrir',
+      text: 'Si quieres verlo, pulsa «+ Activar huella/Face ID en este dispositivo». Solo abre un formulario; no guarda nada.',
+      target: 'seguridad.huella-activar',
+      completeOn: [
+        { type: 'click', target: 'seguridad.huella-activar' },
+        { type: 'appear', target: 'seguridad.huella-nombre' },
+      ],
+      skipIf: [{ type: 'appear', target: 'seguridad.huella-nombre' }],
+      optional: true,
+    },
+    {
+      id: 'huella-nombre',
+      text: 'Puedes darle un nombre a este dispositivo (es opcional). Al pulsar «Activar», el móvil te pide la huella o Face ID. Yo no lo hago por ti; si no quieres, pulsa «Cancelar».',
+      target: 'seguridad.huella-nombre',
+      ...info,
+      optional: true,
+    },
+  ],
+  finishText: 'Listo. Si has puesto un PIN, se pedirá al abrir PEPA y al volver tras un minuto o más fuera. Si olvidas el PIN, mira «Si olvido mi PIN: cómo se recupera» en «Entiende cómo funciona».',
+  next: ['cue-correo-contrasena', 'cue-olvide-pin'],
+}
+
+export const tutCuentasCambiarContrasena: TourDef = {
+  id: 'tut-cuentas-cambiar-contrasena',
+  module: 'cuentas',
+  group: 'Cuenta',
+  summary: 'Cambiar tu contraseña sabiendo la actual, y qué hacer si no la recuerdas.',
+  version: 1,
+  title: 'Cambiar mi contraseña',
+  cardId: 'cue-correo-contrasena',
+  durationSec: 90,
+  startPath: '/menu-organizar',
+  startDest: 'config.seguridad',
+  readyOn: ['seguridad.cambiar-contrasena'],
+  steps: [
+    {
+      id: 'abrir',
+      text: 'Pulsa «🔑 Cambiar contraseña». Solo abre el formulario. La contraseña la escribes tú: yo no la veo ni la escribo. Se guarda de verdad al final, con «Cambiar contraseña»; si practicas, pulsa «Cancelar».',
+      target: 'seguridad.cambiar-contrasena',
+      completeOn: [
+        { type: 'click', target: 'seguridad.cambiar-contrasena' },
+        { type: 'appear', target: 'seguridad.contrasena-actual' },
+      ],
+      skipIf: [{ type: 'appear', target: 'seguridad.contrasena-actual' }],
+    },
+    {
+      id: 'actual',
+      text: 'Escribe tu contraseña actual. Con el ojo puedes verla. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.contrasena-actual',
+      completeOn: [{ type: 'entered', target: 'seguridad.contrasena-actual', min: 1 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'olvido',
+      text: 'Si no la recuerdas, está «No recuerdo mi contraseña actual»: te manda un código de 6 cifras a tu correo y, al confirmarlo, eliges una nueva sin saber la anterior. Aquí solo te lo señalo.',
+      target: 'seguridad.contrasena-olvido',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'nueva',
+      text: 'Escribe la contraseña nueva: 6 caracteres o más, y que no uses en otros sitios. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.contrasena-nueva',
+      completeOn: [{ type: 'entered', target: 'seguridad.contrasena-nueva', min: 6 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'repetir',
+      text: 'Repítela en «Repetir contraseña nueva». Si no coinciden, PEPA te avisa y no deja guardar.',
+      target: 'seguridad.contrasena-repetir',
+      completeOn: [{ type: 'entered', target: 'seguridad.contrasena-repetir', min: 6 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Cuando estés conforme, pulsa «Cambiar contraseña». Desde ese momento entrarás con la nueva. Yo no lo hago por ti; si te lo piensas mejor, pulsa «Cancelar» o «Salir».',
+      target: 'seguridad.contrasena-guardar',
+      completeOn: [{ type: 'event', name: 'cuentas.contrasena-cambiada' }],
+      sensitive: true,
+      optional: true,
+    },
+  ],
+  finishText: 'Listo. Desde ahora entras con la contraseña nueva en todos tus dispositivos. Elige siempre una que no uses en otros sitios.',
+  next: ['cue-pin', 'cue-entrar'],
+}
+
+export const tutCuentasCorreoContrasena: TourDef = {
+  id: 'tut-cuentas-correo-contrasena',
+  module: 'cuentas',
+  group: 'Cuenta',
+  summary: 'Cambiar el correo con el que entras, con tu contraseña y códigos de 6 cifras.',
+  version: 2,
+  title: 'Cambiar mi correo',
+  cardId: 'cue-correo-contrasena',
+  durationSec: 100,
+  startPath: '/menu-organizar',
+  startDest: 'config.seguridad',
+  readyOn: ['seguridad.cambiar-correo'],
+  steps: [
+    {
+      id: 'tarjeta',
+      text: 'Aquí ves con qué correo entras y si está confirmado. Cada persona cambia solo el suyo. Para cambiarlo hacen falta tu contraseña y códigos de 6 cifras; hasta confirmarlos, sigues entrando con el correo de siempre.',
+      target: 'seguridad.correo-contrasena',
+      ...info,
+    },
+    {
+      id: 'abrir',
+      text: 'Pulsa «✉️ Cambiar correo». Solo abre el formulario; mandar el código sí es de verdad. Si solo practicas, pulsa «Cancelar» o «Salir» antes de enviarlo.',
+      target: 'seguridad.cambiar-correo',
+      completeOn: [
+        { type: 'click', target: 'seguridad.cambiar-correo' },
+        { type: 'appear', target: 'seguridad.correo-nuevo' },
+      ],
+      skipIf: [{ type: 'appear', target: 'seguridad.correo-nuevo' }],
+      optional: true,
+    },
+    {
+      id: 'correo',
+      text: 'Escribe el correo nuevo: tiene que ser uno al que puedas entrar para leer el código. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.correo-nuevo',
+      completeOn: [{ type: 'entered', target: 'seguridad.correo-nuevo', min: 5 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'contrasena',
+      text: 'Escribe tu contraseña actual, para comprobar que eres tú. Yo no la veo ni la escribo. Cuando termines, pulsa ✓ en el teclado o «Siguiente».',
+      target: 'seguridad.correo-contrasena-actual',
+      completeOn: [{ type: 'entered', target: 'seguridad.correo-contrasena-actual', min: 1 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'enviar',
+      text: 'Pulsa «Enviar código»: te llega un código de 6 cifras a la dirección nueva, y eso pone el cambio en marcha de verdad. Yo no lo hago por ti; si no quieres, pulsa «Cancelar» o «Salir».',
+      target: 'seguridad.correo-codigo-boton',
+      completeOn: [{ type: 'event', name: 'cuentas.correo-codigo-enviado' }],
+      sensitive: true,
+      optional: true,
+    },
+    {
+      id: 'codigos',
+      text: 'Cuando te llegue, escribe el código en su casilla y pulsa «Confirmar código». Si también te llega uno a tu correo de siempre, escríbelo en la casilla de abajo: entonces hacen falta los dos.',
+      target: 'seguridad.correo-codigo-nuevo',
+      ...info,
+      optional: true,
+    },
+  ],
+  finishText: 'Hasta que confirmes los códigos sigues entrando con tu correo de siempre. Si no llegan, mira en «no deseado» o usa «Reenviar códigos» pasado un minuto: los anteriores dejan de valer.',
+  next: ['cue-pin', 'cue-entrar'],
+}
+
+export const TOURS_F_CUENTAS: TourDef[] = [visitaCuentas, tutCuentasPin, tutCuentasCambiarContrasena, tutCuentasCorreoContrasena]

@@ -4,6 +4,7 @@ import type { HelpModuleId } from '@/help/types'
 import { HelpAnswer } from '@/help/ui/HelpAnswer'
 import { useHelp } from '@/help/ui/helpContext'
 import { PepaFace } from '@/help/ui/PepaFace'
+import { searchSeries, type SeriesHit } from '@/help/tours/series/search'
 import { HelpAreaTabs, HelpHowArea, HelpLearnArea, HelpSectionArea, HelpSupportArea } from '@/help/ui/HelpAreas'
 import '@/help/ui/help.css'
 
@@ -82,7 +83,17 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
   }
   // Sugerencias mientras se escribe: las fichas verificadas más relevantes (pocas). Tocar una abre directamente su respuesta y cierra el teclado para que se vea.
   const typed = useDeferredValue(text)
-  const suggestions = useMemo(() => (typed.trim().length >= 2 ? help.suggest(typed) : []), [typed, help])
+  const allSuggestions = useMemo(() => (typed.trim().length >= 2 ? help.suggest(typed) : []), [typed, help])
+  // Tutoriales «Enséñame» que encajan con lo escrito: llevan al capítulo concreto (o a la serie si encaja entera).
+  const tutorialHits = useMemo(() => (typed.trim().length >= 3 ? searchSeries(typed, { canDoSeries: help.canDoSeries, canDoChapter: help.canDoTour }).slice(0, 2) : []), [typed, help.canDoSeries, help.canDoTour])
+  // En total no más de cuatro: los tutoriales que encajan ocupan su sitio y las fichas se quedan con el resto.
+  const suggestions = allSuggestions.slice(0, 4 - tutorialHits.length)
+  const openTutorialHit = (h: SeriesHit) => {
+    if (h.chapters.length > 0) help.startTourById(h.chapters[0].id)
+    else help.openLearn(h.series.id)
+    setText('')
+    inputRef.current?.blur()
+  }
   const pickSuggestion = (cardId: string) => {
     help.showCard(cardId)
     setText('')
@@ -215,7 +226,7 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
       )}
 
       <form className="help-ask" onSubmit={submit} ref={formRef} data-help-id="ayuda.pregunta">
-        {suggestions.length > 0 && text.trim().length >= 2 && (
+        {(suggestions.length > 0 || tutorialHits.length > 0) && text.trim().length >= 2 && (
           <ul id="help-suggestions" className="help-suggestions" role="listbox" aria-label="Sugerencias de la Ayuda">
             {suggestions.map((h) =>
               h.doc.kind === 'card' ? (
@@ -235,6 +246,14 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
                 </li>
               ) : null,
             )}
+            {tutorialHits.map((h) => (
+              <li key={`tour:${h.series.id}`} role="presentation">
+                <button type="button" role="option" aria-selected="false" className="help-suggestion help-suggestion-tour" onMouseDown={(e) => e.preventDefault()} onClick={() => openTutorialHit(h)}>
+                  <span className="help-suggestion-title">🎓 {h.chapters.length > 0 ? `Enséñame: ${h.chapters[0].title}` : `Tutorial: ${h.series.title}`}</span>
+                  <span className="help-suggestion-module">{h.chapters.length > 0 ? h.series.title : HELP_MODULE_BY_ID.get(h.series.module)?.label}</span>
+                </button>
+              </li>
+            ))}
           </ul>
         )}
         <label htmlFor="help-q">¿Qué quieres hacer o saber?</label>
@@ -246,7 +265,7 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
             enterKeyHint="search"
             autoComplete="off"
             role="combobox"
-            aria-expanded={suggestions.length > 0 && text.trim().length >= 2}
+            aria-expanded={(suggestions.length > 0 || tutorialHits.length > 0) && text.trim().length >= 2}
             aria-controls="help-suggestions"
             aria-autocomplete="list"
             value={text}

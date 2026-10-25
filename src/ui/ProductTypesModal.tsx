@@ -130,7 +130,7 @@ export function ProductTypesModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-sheet" data-help-id="shopping.classes-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2 className="section-title" style={{ margin: 0 }}>
             ⚙️ Clasificaciones de productos

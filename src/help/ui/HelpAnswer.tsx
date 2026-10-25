@@ -10,7 +10,8 @@ import { HELP_FEEDBACK_ENABLED } from '@/help/feedback'
 import { HelpFeedback } from '@/help/ui/HelpFeedback'
 import { HelpVideo } from '@/help/ui/HelpVideo'
 import { explainersForCard } from '@/help/ui/HelpAreas'
-import { TOURS } from '@/help/tours/registry'
+import { TOURS, getTour } from '@/help/tours/registry'
+import { seriesOfChapter } from '@/help/tours/series'
 import { useHelp } from '@/help/ui/helpContext'
 import '@/help/ui/help.css'
 
@@ -62,7 +63,11 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
   // «¿Cómo funciona?»: explicaciones de comportamiento (área «Cómo funciona PEPA») que citan esta ficha y que esta persona puede ver.
   const explainers = restricted ? [] : explainersForCard(card.id).filter((e) => help.canExplain(e.id))
   // Otros tutoriales «Enséñame» que cuelgan de esta ficha (además del suyo propio): solo si esta persona puede hacerlos.
-  const moreTours = restricted || !actions ? [] : TOURS.filter((t) => t.kind !== 'visit' && t.cardId === card.id && t.id !== card.tour && help.canDoTour(t.id)).slice(0, 3)
+  const ownTour = card.tour ? getTour(card.tour) : undefined // el identificador de la ficha puede ser uno antiguo: se compara el capítulo que lo sustituye
+  const moreTours = restricted || !actions ? [] : TOURS.filter((t) => t.kind !== 'visit' && t.cardId === card.id && t.id !== ownTour?.id && help.canDoTour(t.id)).slice(0, 3)
+  // Si el capítulo forma parte de un tutorial con varios capítulos, el botón nombra el capítulo y hay otro para ver el tutorial entero.
+  const ownSeries = ownTour ? seriesOfChapter(ownTour.id) : undefined
+  const ownMulti = Boolean(ownSeries && ownSeries.chapters.length > 1 && help.canDoSeries(ownSeries.id))
 
   return (
     <article className={`help-answer${compact ? ' help-answer-compact' : ''}`} aria-label={card.title}>
@@ -115,8 +120,13 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
         )}
         {actions && help.canStartTour(card) && (
           <button type="button" className="help-btn" onClick={() => help.startTour(card)}>
-            Enséñame
-            {card.tour && getTourProgress(card.tour)?.status === 'completed' ? ' ✓' : ''}
+            {ownMulti && ownTour ? `Enséñame: ${ownTour.title}` : 'Enséñame'}
+            {ownTour && getTourProgress(ownTour.id)?.status === 'completed' ? ' ✓' : ''}
+          </button>
+        )}
+        {actions && ownMulti && ownSeries && (
+          <button type="button" className="help-btn" onClick={() => help.openLearn(ownSeries.id)}>
+            Ver todo el tutorial
           </button>
         )}
         {moreTours.map((t) => (
@@ -126,8 +136,8 @@ export function HelpAnswer({ hit, compact = false }: { hit: SearchHit; compact?:
           </button>
         ))}
         {explainers.map((e) => (
-          <button key={e.id} type="button" className="help-btn" onClick={() => help.openExplainer(e.id)}>
-            ¿Cómo funciona?
+          <button key={e.id} type="button" className="help-btn" onClick={() => help.openExplainer(e.id)} aria-label={`¿Cómo funciona? ${e.title}`}>
+            {explainers.length > 1 ? `¿Cómo funciona? ${e.title}` : '¿Cómo funciona?'}
           </button>
         ))}
       </div>

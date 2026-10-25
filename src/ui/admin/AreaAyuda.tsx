@@ -107,7 +107,7 @@ export function AreaAyuda() {
         id="tutoriales"
         title="Tutoriales y vídeos"
         summary="Vídeos publicados, tutoriales «Enséñame» disponibles y los que faltan"
-        badge={`${inventory.reduce((n, r) => n + r.visits.length, 0)} visitas · ${inventory.reduce((n, r) => n + r.tutorials.length, 0)} Enséñame · ${EXPLAINERS.length} explicaciones · ${Object.keys(HELP_VIDEOS).length} vídeos`}
+        badge={`${inventory.reduce((n, r) => n + r.visits.length, 0)} visitas · ${inventory.reduce((n, r) => n + r.series.length, 0)} tutoriales ({inventory.reduce((n, r) => n + r.tutorials.length, 0)} capítulos) · ${EXPLAINERS.length} explicaciones · ${Object.keys(HELP_VIDEOS).length} vídeos`}
       >
         <h4 className="section-title" style={{ marginTop: 0 }}>
           Catálogo maestro por sección
@@ -116,9 +116,20 @@ export function AreaAyuda() {
         <ul className="admin-plain-list">
           {inventory.map((r) => (
             <li key={r.module.id} className="card">
-              {r.module.icon} <strong>{r.module.label}</strong> — {SECTION_STATUS_TEXT[r.status]} · visitas {r.visits.length} · tutoriales {r.tutorials.length} · explicaciones {r.explainers} · fichas {r.cards}
+              {r.module.icon} <strong>{r.module.label}</strong> — {SECTION_STATUS_TEXT[r.status]} · visitas {r.visits.length} · tutoriales {r.series.length} ({r.tutorials.length} capítulos){r.planned.length > 0 ? ` · planificados ${r.planned.length}` : ''} · explicaciones {r.explainers} · fichas {r.cards}
             </li>
           ))}
+        </ul>
+        <h4 className="section-title">Recorridos planificados ({inventory.reduce((n, r) => n + r.planned.length, 0)})</h4>
+        <p className="muted">Funciones que todavía no están terminadas o validadas: no se ofrecen a las familias y no tienen tutorial hasta que se cumpla lo que se indica.</p>
+        <ul className="admin-plain-list">
+          {inventory.flatMap((r) =>
+            r.planned.map((p) => (
+              <li key={p.id} className="card">
+                🗓 <strong>{p.title}</strong> <span className="muted">({r.module.label})</span> — {p.summary} <span className="muted">Falta: {p.blockedBy}</span>
+              </li>
+            )),
+          )}
         </ul>
         <h4 className="section-title">Tutoriales «Enséñame» y visitas registrados ({health.toursAvailable.length})</h4>
         {health.toursAvailable.length > 0 ? (

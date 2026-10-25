@@ -1,7 +1,9 @@
 import type { TourDef } from '@/help/tours/types'
 
-// La cocina de Pepa (/alimentacion): visita guiada y tutoriales «Enséñame». Todo se apoya en marcas `data-help-id` que existen en src/ui/AlimentacionScreen.tsx, CocinarTab.tsx,
-// KitchenMenuShoppingSheet.tsx, ShoppingLinesSheet.tsx y recipeEditor/RecipeEditorFields.tsx. Ningún tutorial borra, comparte, publica ni usa la IA.
+// La cocina de Pepa (/alimentacion): visita guiada («Conoce…») y los capítulos de sus tres tutoriales «Enséñame» — «Planificar la semana» (menú), «Mis recetas» y «¿Qué cocino hoy?».
+// Todo se apoya en marcas `data-help-id` que existen en src/ui/AlimentacionScreen.tsx, CocinarTab.tsx, KitchenMenuShoppingSheet.tsx, ShoppingLinesSheet.tsx, ShoppingStoreChoice.tsx y
+// recipeEditor/RecipeEditorFields.tsx. Ningún capítulo borra, comparte, publica ni usa la IA por la persona. El menú tiene cinco comidas (Desayuno, Comida, Merienda, Cena y Snack) y se puede
+// cambiar de semana; en el visor de una receta, − / + cambian solo lo que se ve (la receta guardada no se modifica).
 
 export const visitaCocina: TourDef = {
   id: 'visita-cocina',
@@ -9,7 +11,7 @@ export const visitaCocina: TourDef = {
   module: 'cocina',
   title: 'Conoce La cocina de Pepa',
   summary: 'Un paseo por la portada, el menú semanal, las recetas y «¿Qué cocino hoy?».',
-  version: 1,
+  version: 2,
   cardId: 'coc-menu-semanal',
   durationSec: 80,
   startPath: '/alimentacion',
@@ -24,7 +26,7 @@ export const visitaCocina: TourDef = {
     },
     {
       id: 'menu',
-      text: 'Menú semanal: ves los 7 días a partir de hoy, cada uno con desayuno, comida, merienda y cena. En cada hueco apuntas una receta guardada o un texto libre, como «Fruta de temporada».',
+      text: 'Menú semanal: ves siete días seguidos, cada uno con Desayuno, Comida, Merienda, Cena y Snack, y pasas de semana con las flechas. En cada hueco apuntas una receta guardada o un texto libre, como «Fruta de temporada».',
       target: 'cocina.inicio-menu',
       completeOn: [],
       manualNext: true,
@@ -32,7 +34,7 @@ export const visitaCocina: TourDef = {
     },
     {
       id: 'recetas',
-      text: 'Recetas: aquí guardas las de la familia. Puedes buscarlas, marcar ⭐ Favoritos, filtrar, y con «+ Nueva receta» escribir la tuya, buscarla en internet o traerla desde un enlace.',
+      text: 'Recetas: aquí guardas las de la familia. Puedes buscarlas, filtrarlas o ver solo las ⭐ Favoritos, y con «+ Nueva receta» escribir la tuya, buscarla en internet o traerla desde un enlace.',
       target: 'cocina.inicio-recetas',
       completeOn: [],
       manualNext: true,
@@ -56,30 +58,39 @@ export const visitaCocina: TourDef = {
     },
     {
       id: 'compras',
-      text: 'Cuando haya platos en el menú, el 🛒 de cada día o de cada plato y «🛒 Añadir semana a Compras» pasan los ingredientes a la lista de la compra. Los revisas antes: no se guarda nada hasta que lo confirmes.',
+      text: 'Cuando haya platos en el menú, el 🛒 pasa sus ingredientes a la lista de la compra: el de cada plato, el de cada día o «🛒 Añadir semana a Compras». Los revisas antes de confirmar.',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. Si quieres, enséñame a añadir un plato al menú, a crear una receta o a pasar el menú a Compras.',
+  finishText: 'Eso es todo. Si quieres, enséñame a planificar la semana, a guardar recetas o a decidir qué cocinar hoy.',
   next: ['coc-menu-semanal', 'coc-receta', 'coc-menu-a-compras', 'coc-que-cocino-hoy'],
 }
 
+// ───────────── Planificar la semana
 export const tutCocinaMenuPlato: TourDef = {
   id: 'tut-cocina-menu-plato',
   module: 'cocina',
   group: 'Menú semanal',
-  title: 'Añadir un plato al menú semanal',
-  summary: 'Apunta una receta o un texto libre en el desayuno, la comida, la merienda o la cena de un día.',
-  version: 1,
+  title: 'Apuntar un plato en el menú',
+  summary: 'Elige la semana y apunta una receta o un texto libre en el desayuno, la comida, la merienda, la cena o el snack de un día.',
+  version: 2,
   cardId: 'coc-menu-semanal',
-  durationSec: 60,
+  durationSec: 90,
   startPath: '/alimentacion',
   startDest: 'cocina.menu',
+  readyOn: ['cocina.menu-dia'],
   steps: [
     {
+      id: 'semana',
+      text: 'Arriba ves la semana. «‹ Anterior» y «Siguiente ›» cambian de semana, y «Volver a hoy» te trae de vuelta. Toca la que quieras o, si es esta semana, pulsa el «Siguiente» de esta tarjeta.',
+      target: 'cocina.menu-semana-nav',
+      completeOn: [{ type: 'click', target: 'cocina.menu-semana-nav' }],
+      manualNext: true,
+    },
+    {
       id: 'anadir',
-      text: 'Cada día tiene hueco para desayuno, comida, merienda y cena. Pulsa «+ Añadir» en el hueco donde quieras poner un plato. Te señalo el primero que hay libre.',
+      text: 'Cada día tiene cinco huecos: Desayuno, Comida, Merienda, Cena y Snack. Pulsa «+ Añadir» en el hueco donde quieras un plato. Te señalo el primero que hay libre.',
       target: 'cocina.menu-anadir',
       completeOn: [
         { type: 'click', target: 'cocina.menu-anadir' },
@@ -99,23 +110,106 @@ export const tutCocinaMenuPlato: TourDef = {
     },
     {
       id: 'guardar',
-      text: 'Pulsa «OK» para apuntarlo en el menú. Yo no lo pulso: lo decides tú. Si no quieres guardarlo, pulsa ✕ o sal del tutorial.',
+      text: 'Pulsa «OK» para apuntarlo en el menú. Se guarda de verdad y yo no lo pulso: lo decides tú. Si no quieres guardarlo, pulsa ✕ o sal del tutorial.',
       target: 'cocina.menu-ok',
       completeOn: [{ type: 'event', name: 'cocina.menu-entry-added' }],
       sensitive: true,
     },
+    {
+      id: 'cambiar',
+      text: 'En un hueco con plato salen tres iconos: 🛒 manda sus ingredientes a Compras, ✏️ cambia la receta o el texto y 🗑 lo quita del menú (pide confirmación). Yo no los pulso por ti.',
+      target: 'cocina.menu-acciones',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
   ],
-  finishText: '¡Listo! El plato ya está en el menú. Con el lápiz cambias la receta o el texto, y con el 🛒 mandas sus ingredientes a Compras.',
+  finishText: '¡Listo! El plato ya está en el menú. Con el lápiz lo cambias y con la papelera lo quitas; para pasar sus ingredientes a la compra, mira el siguiente tutorial.',
   next: ['coc-menu-a-compras', 'coc-receta'],
 }
 
+export const tutCocinaMenuACompras: TourDef = {
+  id: 'tut-cocina-menu-a-compras',
+  module: 'cocina',
+  group: 'Menú semanal',
+  title: 'Pasar los ingredientes del menú a Compras',
+  summary: 'Revisa los ingredientes de la semana (o de un día) y elige cuáles añadir a la lista de la compra.',
+  version: 2,
+  cardId: 'coc-menu-a-compras',
+  durationSec: 100,
+  startPath: '/alimentacion',
+  startDest: 'cocina.menu',
+  readyOn: ['cocina.menu-dia'],
+  needs: [
+    {
+      target: 'cocina.menu-semana-compras',
+      message: 'Para este capítulo el menú necesita algún plato con receta (con ingredientes) o escrito a mano en esta semana. Apunta uno con «Apuntar un plato en el menú» o cambia de semana; puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
+  steps: [
+    {
+      id: 'abrir',
+      text: 'Pulsa «🛒 Añadir semana a Compras», arriba, o el 🛒 de un día concreto. Se abre una hoja de revisión: todavía no se guarda nada.',
+      target: 'cocina.menu-semana-compras',
+      completeOn: [
+        { type: 'click', target: 'cocina.menu-semana-compras' },
+        { type: 'click', target: 'cocina.menu-dia-compras' },
+        { type: 'appear', target: 'lineas-compra.hoja' },
+      ],
+      skipIf: [{ type: 'appear', target: 'lineas-compra.hoja' }],
+    },
+    {
+      id: 'personas',
+      text: 'En «Personas» eliges para cuántas se calcula la compra. Empieza con las personas de la familia que comen en casa; cámbialo si hoy sois más o menos.',
+      target: 'cocina.compras-personas',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'revisar',
+      text: 'Cada fila es un ingrediente con su cantidad ya sumada. Los que ya estaban en tu lista salen sin marcar, para no duplicarlos. Los platos escritos a mano van aparte, en «Escritos a mano». Desmarca lo que ya tengas.',
+      target: 'lineas-compra.lista',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'marcar',
+      text: '«Marcar todo» y «Desmarcar todo» te ahorran tocar fila por fila.',
+      target: 'lineas-compra.marcar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'tienda',
+      text: 'Si ya tienes tiendas habituales en Compras, aquí eliges una para todo o marcas «Repartir entre varias tiendas» y eliges la de cada producto. Es opcional.',
+      target: 'lineas-compra.tienda',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'confirmar',
+      text: 'Cuando estés de acuerdo, pulsa «Añadir N a Compras». Esto SÍ escribe en la lista de la compra de la familia. Yo no lo pulso: decides tú. Si no quieres, pulsa «Cancelar» o sal del tutorial.',
+      target: 'lineas-compra.confirmar',
+      completeOn: [{ type: 'event', name: 'cocina.menu-added-to-shopping' }],
+      sensitive: true,
+    },
+  ],
+  finishText: 'Hecho. Los productos ya están en la lista de la compra de la familia. En Compras puedes seguir ajustándolos.',
+  next: ['coc-menu-semanal', 'coc-receta'],
+}
+
+// ───────────── Mis recetas
 export const tutCocinaRecetaEscribir: TourDef = {
   id: 'tut-cocina-receta-escribir',
   module: 'cocina',
   group: 'Recetas',
-  title: 'Crear una receta escribiéndola',
-  summary: 'Escribe el título, las raciones, los ingredientes y la preparación de una receta tuya.',
-  version: 1,
+  title: 'Escribir una receta',
+  summary: 'Escribe el título, la foto, las raciones, los ingredientes y la preparación de una receta tuya.',
+  version: 2,
   cardId: 'coc-receta',
   durationSec: 110,
   startPath: '/alimentacion',
@@ -123,7 +217,7 @@ export const tutCocinaRecetaEscribir: TourDef = {
   steps: [
     {
       id: 'abrir',
-      text: 'Vamos a escribir una receta. Pulsa «+ Nueva receta». No se guarda nada hasta que pulses «Crear receta».',
+      text: 'Vamos a escribir una receta. Pulsa «+ Nueva receta». No se guarda nada hasta que pulses «Crear receta»; si solo practicas, sal del tutorial antes.',
       target: 'cocina.receta-nueva',
       completeOn: [
         { type: 'click', target: 'cocina.receta-nueva' },
@@ -133,7 +227,7 @@ export const tutCocinaRecetaEscribir: TourDef = {
     },
     {
       id: 'modo',
-      text: 'Hay tres formas de empezar. Hoy usamos «✍️ Escribirla», que ya viene marcada. «🔍 Buscar» y «🔗 Enlace» traen la receta de internet: no las usamos ahora.',
+      text: 'Hay tres formas de empezar. Hoy usamos «✍️ Escribirla», que ya viene marcada. «🔍 Buscar» y «🔗 Enlace» traen la receta de internet: se explican en el capítulo siguiente.',
       target: 'cocina.receta-modo',
       completeOn: [],
       manualNext: true,
@@ -147,8 +241,17 @@ export const tutCocinaRecetaEscribir: TourDef = {
       manualNext: true,
     },
     {
+      id: 'foto',
+      text: 'La foto sale en la cabecera de la receta. Puedes subir una tuya con «Añadir foto» o usar una de internet con «🌐 Usar una foto de internet». Es opcional.',
+      target: 'cocina.receta-foto',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      native: true,
+    },
+    {
       id: 'raciones',
-      text: 'Si quieres, pon para cuántas personas es. Es opcional, pero sin raciones las cantidades no se pueden ajustar luego al pasar el menú a Compras.',
+      text: 'Si quieres, pon para cuántas personas es. Es opcional, pero sin raciones las cantidades no se pueden recalcular para otro número de personas.',
       target: 'cocina.receta-raciones',
       completeOn: [],
       manualNext: true,
@@ -156,7 +259,7 @@ export const tutCocinaRecetaEscribir: TourDef = {
     },
     {
       id: 'etiquetas',
-      text: 'Las etiquetas (Postres, Vegetariano, Rápidas…) ayudan a encontrarla después con los filtros. Toca las que quieras o escribe una nueva. Es opcional.',
+      text: 'Las etiquetas (Postres, Vegetariano, Rápidas…) ayudan a encontrarla después con los filtros. Si le pones la etiqueta «Favoritos», saldrá al tocar ⭐ Favoritos. Es opcional.',
       target: 'cocina.receta-etiquetas',
       completeOn: [],
       manualNext: true,
@@ -179,91 +282,190 @@ export const tutCocinaRecetaEscribir: TourDef = {
     },
     {
       id: 'guardar',
-      text: 'Cuando la tengas, pulsa «Crear receta». Yo no lo hago por ti: lo pulsas tú.',
+      text: 'Cuando la tengas, pulsa «Crear receta». Se guarda de verdad y yo no lo hago por ti: lo pulsas tú.',
       target: 'cocina.receta-guardar',
       completeOn: [{ type: 'event', name: 'cocina.recipe-created' }],
       sensitive: true,
     },
   ],
-  finishText: '¡Listo! La receta ya está en Recetas. Ábrela para añadir sus ingredientes a Compras o editarla cuando quieras.',
+  finishText: '¡Listo! La receta ya está en Recetas. Ábrela para ver sus ingredientes, mandarlos a Compras o editarla cuando quieras.',
   next: ['coc-menu-semanal', 'coc-menu-a-compras'],
 }
 
-export const tutCocinaMenuACompras: TourDef = {
-  id: 'tut-cocina-menu-a-compras',
+export const tutCocinaRecetaInternet: TourDef = {
+  id: 'tut-cocina-receta-internet',
   module: 'cocina',
-  group: 'Menú semanal',
-  title: 'Pasar los ingredientes del menú a Compras',
-  summary: 'Revisa los ingredientes de la semana (o de un día) y elige cuáles añadir a la lista de la compra.',
+  group: 'Recetas',
+  title: 'Traer una receta de internet',
+  summary: 'Busca una receta por su nombre o importa una desde un enlace, revísala y guárdala.',
   version: 1,
-  cardId: 'coc-menu-a-compras',
-  durationSec: 100,
+  cardId: 'coc-receta',
+  durationSec: 110,
   startPath: '/alimentacion',
-  startDest: 'cocina.menu',
+  startDest: 'cocina.recetas',
   steps: [
     {
-      id: 'requisito',
-      text: 'Para esto el menú necesita algún plato con receta (con ingredientes) o escrito a mano. Si todavía no tienes ninguno, haz antes «Añadir un plato al menú semanal».',
-      target: 'cocina.menu-dia',
+      id: 'abrir',
+      text: 'Pulsa «+ Nueva receta». Leer una receta de internet no guarda nada: la receta se guarda de verdad solo cuando pulses «Crear receta» al final. Si solo practicas, sal antes.',
+      target: 'cocina.receta-nueva',
+      completeOn: [
+        { type: 'click', target: 'cocina.receta-nueva' },
+        { type: 'appear', target: 'cocina.receta-titulo' },
+      ],
+      skipIf: [{ type: 'appear', target: 'cocina.receta-titulo' }],
+    },
+    {
+      id: 'modo',
+      text: 'En «¿Cómo quieres empezar?» toca «🔍 Buscar» para encontrarla por su nombre, o «🔗 Enlace» si ya tienes la dirección de la receta. Después pulsa «Siguiente».',
+      target: 'cocina.receta-modo',
       completeOn: [],
       manualNext: true,
     },
     {
-      id: 'abrir',
-      text: 'Pulsa «🛒 Añadir semana a Compras», arriba, o el 🛒 de un día concreto. Se abre una hoja de revisión: todavía no se guarda nada.',
-      target: 'cocina.menu-semana-compras',
-      completeOn: [
-        { type: 'click', target: 'cocina.menu-semana-compras' },
-        { type: 'click', target: 'cocina.menu-dia-compras' },
-        { type: 'appear', target: 'lineas-compra.hoja' },
-      ],
-      skipIf: [{ type: 'appear', target: 'lineas-compra.hoja' }],
+      id: 'titulo',
+      text: 'Con «Buscar», escribe arriba el nombre de lo que buscas (por ejemplo «Lentejas»). Con «Enlace», el título sirve por si la página no lo trae. Cuando termines, pulsa ✓ o «Siguiente».',
+      target: 'cocina.receta-titulo',
+      completeOn: [{ type: 'entered', target: 'cocina.receta-titulo', min: 2 }],
+      manualNext: true,
     },
     {
-      id: 'personas',
-      text: 'En «Personas» eliges para cuántas se calcula la compra. Empieza con las personas de la familia que comen en casa; cámbialo si hoy sois más o menos.',
-      target: 'cocina.compras-personas',
-      completeOn: [],
+      id: 'buscar',
+      text: 'Pulsa «Buscar receta»: mira en Cookpad, FatSecret y Wikibooks. Depende de webs de terceros y a veces no encuentra nada. Si no sale ninguna, pulsa «Siguiente» y escríbela tú.',
+      target: 'cocina.receta-buscar-boton',
+      completeOn: [{ type: 'appear', target: 'cocina.receta-candidatas' }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'candidatas',
+      text: 'Elige cuál es la tuya: cada una dice de qué web viene. Al tocarla se trae su texto completo y te la enseño para que la revises.',
+      target: 'cocina.receta-candidatas',
+      completeOn: [{ type: 'appear', target: 'cocina.receta-usar' }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'enlace',
+      text: 'Pega aquí la dirección de la receta y, cuando termines, pulsa ✓ o «Siguiente».',
+      target: 'cocina.receta-enlace',
+      completeOn: [{ type: 'entered', target: 'cocina.receta-enlace', min: 8 }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'importar',
+      text: 'Pulsa «Importar receta»: PEPA lee la página y te enseña lo que ha encontrado. No siempre se puede leer; si falla, escríbela tú.',
+      target: 'cocina.receta-enlace-importar',
+      completeOn: [{ type: 'appear', target: 'cocina.receta-usar' }],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'usar',
+      text: 'Revisa lo encontrado y pulsa «Usar esta receta»: rellena el formulario con sus ingredientes y pasos. Todavía no se ha guardado nada.',
+      target: 'cocina.receta-usar',
+      completeOn: [{ type: 'click', target: 'cocina.receta-usar' }],
       manualNext: true,
       optional: true,
     },
     {
       id: 'revisar',
-      text: 'Cada fila es un ingrediente con su cantidad ya sumada. Los que ya estaban en tu lista salen sin marcar, para no duplicarlos. Desmarca lo que ya tengas en casa.',
-      target: 'lineas-compra.lista',
+      text: 'Lo importado puede traer fallos o estar en inglés: repasa los ingredientes y los pasos y corrige lo que haga falta. Las raciones se rellenan solo si la fuente las dice claro.',
+      target: 'cocina.receta-ingredientes',
       completeOn: [],
       manualNext: true,
-      optional: true,
     },
     {
-      id: 'marcar',
-      text: '«Marcar todo» y «Desmarcar todo» te ahorran tocar fila por fila.',
-      target: 'lineas-compra.marcar',
-      completeOn: [],
-      manualNext: true,
-      optional: true,
-    },
-    {
-      id: 'confirmar',
-      text: 'Cuando estés de acuerdo, pulsa «Añadir N a Compras». Esto SÍ escribe en la lista de la compra de la familia. Yo no lo pulso: decides tú. Si no quieres, pulsa «Cancelar».',
-      target: 'lineas-compra.confirmar',
-      completeOn: [{ type: 'event', name: 'cocina.menu-added-to-shopping' }],
+      id: 'guardar',
+      text: 'Cuando esté bien, pulsa «Crear receta». Se guarda de verdad y yo no lo hago por ti: lo pulsas tú.',
+      target: 'cocina.receta-guardar',
+      completeOn: [{ type: 'event', name: 'cocina.recipe-created' }],
       sensitive: true,
     },
   ],
-  finishText: 'Hecho. Los productos ya están en la lista de la compra de la familia. En Compras puedes seguir ajustándolos.',
-  next: ['coc-menu-semanal', 'coc-receta'],
+  finishText: '¡Listo! La receta ya está en Recetas. Si una web no se deja leer, siempre puedes escribirla tú.',
+  next: ['coc-receta', 'coc-menu-a-compras'],
 }
 
+export const tutCocinaRecetaUsar: TourDef = {
+  id: 'tut-cocina-receta-usar',
+  module: 'cocina',
+  group: 'Recetas',
+  title: 'Encontrar y usar una receta',
+  summary: 'Filtra tus recetas, ábrelas, cambia las raciones para ver otras cantidades y manda los ingredientes a Compras.',
+  version: 1,
+  cardId: 'coc-receta',
+  durationSec: 90,
+  startPath: '/alimentacion',
+  startDest: 'cocina.recetas',
+  readyOn: ['cocina.recetas-lista'],
+  needs: [
+    {
+      target: 'cocina.receta-fila',
+      message: 'Para este capítulo necesitas tener alguna receta guardada (o quitar los filtros si los has puesto). Crea una con «Escribir una receta»; puedes ver este capítulo solo leyéndolo.',
+    },
+  ],
+  steps: [
+    {
+      id: 'filtros',
+      text: 'Con «🎚️ Filtros» buscas por ingrediente (por ejemplo «huevos») o por etiqueta. Pruébalo si quieres; «Quitar filtros» los borra.',
+      target: 'cocina.recetas-filtros',
+      completeOn: [{ type: 'click', target: 'cocina.recetas-filtros' }],
+      manualNext: true,
+    },
+    {
+      id: 'favoritos',
+      text: '«⭐ Favoritos» enseña solo las recetas que llevan la etiqueta «Favoritos». Para marcar una como favorita, ponle esa etiqueta al editarla.',
+      target: 'cocina.recetas-favoritos',
+      completeOn: [{ type: 'click', target: 'cocina.recetas-favoritos' }],
+      manualNext: true,
+    },
+    {
+      id: 'abrir',
+      text: 'Toca una receta de la lista para abrirla. Si no ves ninguna, quita los filtros.',
+      target: 'cocina.receta-fila',
+      completeOn: [{ type: 'appear', target: 'cocina.receta-ficha' }],
+      skipIf: [{ type: 'appear', target: 'cocina.receta-ficha' }],
+    },
+    {
+      id: 'raciones',
+      text: 'Con − y + cambias para cuántas personas ves las cantidades. Solo cambia lo que ves: la receta guardada no se modifica. Sin raciones indicadas no se puede; «Indicar raciones» te lleva a editarla.',
+      target: 'cocina.receta-escalar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'compras',
+      text: 'El 🛒 manda ingredientes de esta receta a la lista de la compra: te deja elegir cuáles antes de añadirlos. Yo no lo pulso por ti.',
+      target: 'cocina.receta-compras',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'acciones',
+      text: 'En esta misma fila están 📤 compartir, ✏️ editar y ✕ borrar (pide confirmación). Yo no los pulso por ti. Cierra la receta con la ✕ de arriba.',
+      target: 'cocina.receta-acciones',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+  ],
+  finishText: 'Eso es todo. Para pasar los ingredientes de toda la semana a la compra, mira el tutorial del menú.',
+  next: ['coc-menu-a-compras', 'coc-receta'],
+}
+
+// ───────────── ¿Qué cocino hoy?
 export const tutCocinaQueCocino: TourDef = {
   id: 'tut-cocina-que-cocino',
   module: 'cocina',
   group: '¿Qué cocino hoy?',
   title: 'Buscar qué cocinar con lo que tengo',
   summary: 'Escribe los ingredientes que tienes y mira qué recetas salen, sin usar la IA.',
-  version: 1,
+  version: 2,
   cardId: 'coc-que-cocino-hoy',
-  durationSec: 80,
+  durationSec: 90,
   startPath: '/alimentacion',
   startDest: 'cocina.cocinar',
   steps: [
@@ -273,6 +475,14 @@ export const tutCocinaQueCocino: TourDef = {
       target: 'cocina.cocinar-tengo',
       completeOn: [{ type: 'entered', target: 'cocina.cocinar-tengo', min: 3 }],
       manualNext: true,
+    },
+    {
+      id: 'voz',
+      text: 'Si tu móvil lo permite, «🎤 Decirlo con la voz» escribe por ti lo que digas. Es opcional.',
+      target: 'cocina.cocinar-voz',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
     },
     {
       id: 'personas',
@@ -290,10 +500,18 @@ export const tutCocinaQueCocino: TourDef = {
     },
     {
       id: 'resultados',
-      text: 'Aquí salen tus recetas guardadas que se pueden hacer (con lo que te faltaría; sal, aceite o agua no cuentan) y recetas de internet. Nada se guarda solo.',
+      text: 'Aquí salen tus recetas guardadas que se pueden hacer (con lo que te faltaría; sal, aceite, agua, pimienta o vinagre no cuentan) y recetas de internet. Nada se guarda solo.',
       target: 'cocina.cocinar-resultados',
       completeOn: [],
       manualNext: true,
+    },
+    {
+      id: 'guardar-web',
+      text: 'En una receta de internet, «🔗 Ver» abre su página y «💾 Guardar en mis recetas» la revisa contigo antes de guardarla. Yo no la guardo por ti.',
+      target: 'cocina.cocinar-guardar-web',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
     },
     {
       id: 'ia',
@@ -304,8 +522,16 @@ export const tutCocinaQueCocino: TourDef = {
       optional: true,
     },
   ],
-  finishText: 'Eso es todo. Si una receta de internet te gusta, «💾 Guardar en mis recetas» la revisa contigo antes de guardarla.',
+  finishText: 'Eso es todo. Si una receta te gusta, guárdala en Recetas; así la tendrás siempre a mano.',
   next: ['coc-receta', 'coc-menu-semanal'],
 }
 
-export const TOURS_COCINA: TourDef[] = [visitaCocina, tutCocinaMenuPlato, tutCocinaRecetaEscribir, tutCocinaMenuACompras, tutCocinaQueCocino]
+export const TOURS_COCINA: TourDef[] = [
+  visitaCocina,
+  tutCocinaMenuPlato,
+  tutCocinaMenuACompras,
+  tutCocinaRecetaEscribir,
+  tutCocinaRecetaInternet,
+  tutCocinaRecetaUsar,
+  tutCocinaQueCocino,
+]

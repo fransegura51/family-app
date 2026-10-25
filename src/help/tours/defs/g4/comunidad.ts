@@ -1,39 +1,39 @@
 import type { TourDef, TourStep } from '@/help/tours/types'
 
-// Comunidad PEPA (g4): visita guiada y tutorial del alias, registrados. Los tutoriales de las pantallas interiores (publicación, editor) están en comunidadPendientes.ts SIN registrar:
-// el motor da por «fuera de ruta» todo lo que no sea exactamente la ruta de partida y la lista de rutas conocidas (src/help/routes.ts) solo trae '/comunidad' (no /comunidad/p/:id,
-// /comunidad/nueva…). Hasta que eso se amplíe, esos recorridos se pausarían al primer toque. Nada de lo de aquí publica, comenta, valora, propone temas, borra, denuncia ni comparte.
+// Comunidad PEPA (g4): la visita guiada y el capítulo del alias. Los capítulos que pasan por las pantallas interiores (publicación, editor) están en comunidadPendientes.ts y llevan
+// `paths: ['/comunidad/*']` (el motor acepta el comodín: src/help/tours/paths.ts). Nada de lo de aquí publica, comenta, valora, propone temas, borra, denuncia ni comparte.
+// Serie «Participar en Comunidad» (src/help/tours/series/e.ts): alias → leer y guardar → publicar (hasta el borrador) → receta a mi Cocina → denunciar o bloquear.
 
 export const comunidadVisita: TourDef = {
   id: 'visita-comunidad',
   kind: 'visit',
   module: 'comunidad',
   title: 'Conoce Comunidad',
-  summary: 'Un paseo por Comunidad PEPA: secciones, buscador, barra de herramientas y qué es público.',
+  summary: 'Un paseo por Comunidad PEPA: secciones, buscador, menú ☰, barra de herramientas y qué es público.',
   access: { community: true },
-  version: 1,
+  version: 2,
   cardId: 'com2-que-es',
   durationSec: 110,
   startPath: '/comunidad',
   steps: [
     {
       id: 'intro',
-      text: 'Comunidad PEPA es un sitio para compartir recetas, consejos y conversación con otras familias. Es solo para personas adultas. Te enseño la portada; no voy a publicar nada.',
+      text: 'Comunidad PEPA es un sitio para compartir recetas, consejos y conversación con otras familias. Es solo para personas con cuenta de PEPA y 18 años cumplidos. Te enseño la portada; no voy a publicar nada.',
       completeOn: [],
       manualNext: true,
     },
     {
-      id: 'secciones',
-      text: 'Hay dos secciones: «Recetas y cocina» y «Hogar y familia». Toca una para ver sus publicaciones.',
-      target: 'comunidad.sections',
+      id: 'menu',
+      text: 'El botón ☰ de arriba abre el menú de Comunidad: Portada, «Recetas y cocina» y «Hogar y familia». Con «📌 Sacar» dejas a la vista, en la pantalla, los accesos que más usas.',
+      target: 'comunidad.menu',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
     {
-      id: 'buscar',
-      text: 'Con el buscador encuentras publicaciones por palabras. Para leer y buscar no necesitas alias.',
-      target: 'comunidad.search',
+      id: 'secciones',
+      text: 'Hay dos secciones: «Recetas y cocina» y «Hogar y familia». Toca una para ver sus publicaciones. Debajo, el buscador encuentra publicaciones por palabras; para leer y buscar no necesitas alias.',
+      target: 'comunidad.sections',
       completeOn: [],
       manualNext: true,
       optional: true,
@@ -64,7 +64,7 @@ export const comunidadVisita: TourDef = {
     },
     {
       id: 'normas',
-      text: 'Aquí están las normas de Comunidad. Léelas con calma: te dicen qué se puede publicar y qué no, y cómo denunciar o bloquear.',
+      text: 'Aquí están las normas de Comunidad: qué se puede publicar y qué no, y cómo denunciar o bloquear. Al final de la portada, «💡 Propón un tema» te deja sugerir qué te gustaría leer.',
       target: 'comunidad.rules-link',
       completeOn: [],
       manualNext: true,
@@ -77,13 +77,13 @@ export const comunidadVisita: TourDef = {
       manualNext: true,
     },
   ],
-  finishText: '¡Eso es la portada de Comunidad! Si quieres, te enseño a elegir tu alias.',
-  next: ['com2-alias', 'com2-publicar', 'com2-que-es'],
+  finishText: '¡Eso es la portada de Comunidad! Si quieres, te enseño a elegir tu alias y a participar paso a paso.',
+  next: ['com2-alias', 'com2-publicar', 'com2-sin-acceso'],
 }
 
 const crearBoton = (id: string): TourStep => ({
   id,
-  text: 'Pulsa «✍️ Crear publicación». La primera vez, PEPA te pide el alias antes de abrir el editor. Si ya tienes alias, te lleva directo a escribir: en ese caso pulsa «Salir».',
+  text: 'Pulsa «✍️ Crear publicación». La primera vez, PEPA te pide el alias antes de abrir el editor. Tu alias se guarda de verdad al final, con «Guardar y continuar»: si solo practicas, sal del tutorial antes.',
   target: 'comunidad.create-post',
   completeOn: [
     { type: 'click', target: 'comunidad.create-post' },
@@ -96,13 +96,15 @@ export const comunidadElegirAlias: TourDef = {
   id: 'tut-comunidad-elegir-alias',
   module: 'comunidad',
   summary: 'Elegir tu alias público y aceptar las normas de Comunidad (solo si aún no lo has hecho).',
-  group: 'Mi perfil',
   access: { community: true },
-  version: 1,
-  title: 'Elegir mi alias y aceptar las normas',
+  version: 2,
+  title: 'Mi alias y las normas',
   cardId: 'com2-alias',
   durationSec: 100,
   startPath: '/comunidad',
+  // «Crear publicación» te lleva al editor cuando ya tienes alias: el capítulo no debe pausarse por cambiar de pantalla dentro de Comunidad.
+  paths: ['/comunidad/*'],
+  readyOn: ['comunidad.create-post'],
   steps: [
     crearBoton('crear'),
     {
@@ -111,6 +113,7 @@ export const comunidadElegirAlias: TourDef = {
       target: 'comunidad.alias-input',
       completeOn: [],
       manualNext: true,
+      missingText: 'No sale el cuadro del alias porque ya tienes uno. Para cambiarlo: Mi perfil → Mis ajustes → «Cambiar alias o icono». Puedes salir de este capítulo.',
     },
     {
       id: 'sugerir',
@@ -148,13 +151,13 @@ export const comunidadElegirAlias: TourDef = {
     },
     {
       id: 'guardar',
-      text: 'Cuando lo tengas, pulsa «Guardar y continuar». Yo no lo pulso por ti.',
+      text: 'Cuando lo tengas, pulsa «Guardar y continuar». Yo no lo pulso por ti. Si prefieres no guardarlo ahora, sal del tutorial.',
       target: 'comunidad.alias-save',
       completeOn: [{ type: 'event', name: 'comunidad.alias-saved' }],
       sensitive: true,
     },
   ],
-  finishText: 'Tu alias ya está guardado. Se abrirá el editor de una publicación nueva, pero no se publica nada hasta que tú pulses «Publicar». Puedes cambiar el alias cuando quieras desde Mi perfil.',
+  finishText: 'Tu alias ya está guardado. Se abrirá el editor de una publicación nueva, pero no se publica nada hasta que tú pulses «Publicar». Para cambiar el alias cuando quieras: Mi perfil → Mis ajustes → «Cambiar alias o icono».',
   next: ['com2-publicar', 'com2-alias'],
 }
 

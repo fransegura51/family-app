@@ -53,7 +53,7 @@ export function NotificationsCard() {
       <h2>🔔 Avisos en este móvil</h2>
 
       {permission === 'unsupported' && (
-        <p className="muted">
+        <p className="muted" data-help-id="notifications.unsupported">
           Este navegador no permite avisos. En iPhone hay que añadir PEPA a la pantalla de inicio (Compartir, Añadir a
           pantalla de inicio) y abrirla desde ahí.
         </p>
@@ -61,7 +61,7 @@ export function NotificationsCard() {
 
       {permission === 'denied' && (
         <>
-          <p className="muted">Los avisos están bloqueados en este móvil, y la app no puede cambiarlo sola. Para activarlos:</p>
+          <p className="muted" data-help-id="notifications.blocked">Los avisos están bloqueados en este móvil, y la app no puede cambiarlo sola. Para activarlos:</p>
           <StepsList />
         </>
       )}

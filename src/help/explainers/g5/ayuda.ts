@@ -102,6 +102,7 @@ export const expAyudaResenas: HelpExplainer = {
     'supabase/migrations/0290_app_reviews.sql',
     'supabase/migrations/0291_app_reviews_low_star_alert.sql',
   ],
+  tour: 'tut-ayuda-resenas',
   go: { path: '/resenas' },
   labels: ['Contar qué me gusta y qué no', 'Guardar comentario', 'Quitar mi valoración', 'Lo que me gusta', 'Lo que no me gusta', '📋 Valorar cada sección (opcional)'],
   cardIds: ['ini-resenas', 'ini-sugerencias'],

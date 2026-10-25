@@ -18,6 +18,7 @@ export function ConfirmButton({
   className = 'link-button',
   ariaLabel,
   style,
+  helpId,
 }: {
   onConfirm: () => void
   // Casi siempre texto; acepta nodo (p. ej. icono + texto en columnas alineadas) cuando el sitio que
@@ -32,6 +33,8 @@ export function ConfirmButton({
   // izquierda) — ConfirmButton se quedaba centrado por .link-button, desalineado del resto del menú. Solo
   // se aplica al botón SIN confirmar; Confirmar/Cancelar (fila aparte, otro layout) no lo necesitan.
   style?: CSSProperties
+  // Marca `data-help-id` del botón (tutoriales «Enséñame»): se pinta solo en el botón inicial, no cambia nada visible ni el comportamiento.
+  helpId?: string
 }) {
   const [confirming, setConfirming] = useState(false)
 
@@ -50,7 +53,7 @@ export function ConfirmButton({
   }
 
   return (
-    <button type="button" className={className} style={style} onClick={() => setConfirming(true)} aria-label={ariaLabel}>
+    <button type="button" className={className} style={style} onClick={() => setConfirming(true)} aria-label={ariaLabel} data-help-id={helpId}>
       {label}
     </button>
   )

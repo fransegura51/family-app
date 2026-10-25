@@ -129,6 +129,13 @@ export const expNotificacionesCampana: HelpExplainer = {
       ],
     },
     {
+      heading: 'Cómo se ordenan los avisos',
+      paragraphs: [
+        'Van en dos bloques, siempre en este orden: «Personales» arriba y «Otras notificaciones» debajo (los recordatorios del calendario, por ejemplo). Dentro de cada bloque, de más reciente a más antiguo. Tocando el título de un bloque se pliega.',
+        'Los avisos nuevos van en negrita con un punto azul; los leídos, con letra normal. Arriba se cuentan por separado, por ejemplo «3 nuevas · 12 leídas».',
+      ],
+    },
+    {
       heading: 'Qué borra «Eliminar» y qué no',
       paragraphs: [
         'Con «Seleccionar» eliges avisos y pulsas «Eliminar (n)»; te pide confirmar con «Sí, eliminar». Solo desaparece el aviso, en todos tus dispositivos.',
@@ -186,6 +193,7 @@ export const expDocumentosAvisosVencimiento: HelpExplainer = {
       paragraphs: [
         'Es la regla general de los eventos compartidos del Calendario. Por defecto, llegan a la persona asignada (si tiene cuenta) y a los administradores de la familia. Un administrador puede cambiarlo en Configuración, en «¿A quién avisamos de tareas y eventos?», para avisar a todos o solo a los asignados.',
         'Si el documento no tiene persona, por defecto el aviso llega a los administradores.',
+        'Pero si el documento es restringido («Solo yo» o «Elegir personas» en «¿Quién puede ver este documento?»), su evento «Vence: …» es privado de quien lo subió: solo esa persona lo ve en su Calendario y recibe esos avisos. Ni la administración ni el resto de la familia lo ven.',
       ],
     },
     {
@@ -201,6 +209,7 @@ export const expDocumentosAvisosVencimiento: HelpExplainer = {
     'Si guardas un documento que vence en pocos días, el aviso de «30 días» ya habría pasado. Según la regla del servidor, ese aviso atrasado se envía enseguida en lugar de perderse; no he podido comprobarlo en un móvil real.',
     '«Detectar caducidad» puede fallar o no encontrar fecha: depende de la IA, de que esté activada y de su límite de uso, y solo la pueden usar cuentas de personas adultas. Entonces se escribe la fecha a mano.',
     'No hay avisos de caducidad para documentos cuya fecha no se haya puesto aquí.',
+    'Un documento restringido solo lo cambia o borra quien lo subió. Si esa persona se olvida de la fecha, nadie más recibe el aviso.',
   ],
   ifWrong: [
     'Si no te llega el aviso del móvil, mira Configuración → «🔔 Avisos» en ese móvil, y si el aviso está en la campana de Inicio.',
@@ -347,8 +356,8 @@ export const expContactosCompartir: HelpExplainer = {
 export const expCumpleanosOrigen: HelpExplainer = {
   id: 'exp-cumpleanos-origen',
   module: 'cumpleanos',
-  title: 'De dónde salen los cumpleaños y si avisan',
-  summary: 'Cumpleaños junta las fechas de Familia y de Contactos. Aquí ves cómo las ordena y por qué no manda avisos.',
+  title: 'De dónde salen los cumpleaños y cómo avisan',
+  summary: 'Cumpleaños junta las fechas de Familia y de Contactos. Aquí ves cómo las ordena y cuándo te avisa PEPA: cada día a las 09:00, de los de hoy y de mañana.',
   sections: [
     {
       heading: 'De dónde salen',
@@ -368,8 +377,11 @@ export const expCumpleanosOrigen: HelpExplainer = {
     {
       heading: 'Cuándo avisan',
       paragraphs: [
-        'No avisan: no he encontrado en el código ninguna notificación ni aviso de campana por cumpleaños. Se ven en esta pantalla y en el Calendario, como «Cumpleaños de …».',
+        'Cada día a las 09:00 (en tu zona horaria; si no has elegido ninguna, la de Madrid) PEPA manda un solo aviso con los cumpleaños de hoy y de mañana de la familia y de tus contactos, con la edad que cumplen. Le llega a cada persona de la familia que tiene cuenta.',
+        'El aviso aparece en la campana de Inicio y, si has activado los avisos en ese móvil, también como notificación. Si ese día no hay ningún cumpleaños, no se manda nada. Es para todos los cumpleaños, no solo para los favoritos.',
+        'Además, los cumpleaños se ven en esta pantalla y en el Calendario, como «Cumpleaños de …».',
       ],
+      example: 'Ejemplo inventado: el 11 de octubre a las 09:00 te llega «Hoy: Luis (40 años). Mañana: Ana (8 años)».',
     },
     {
       heading: 'Quitar o cambiar una fecha',
@@ -383,14 +395,16 @@ export const expCumpleanosOrigen: HelpExplainer = {
     'Según las reglas de la base de datos, en las fichas de Familia solo la administración puede guardar cambios directos. Para el resto, el cambio de fecha o de favorito de una persona de Familia puede no guardarse sin mostrar error; con los contactos sí puede cualquiera. No lo he probado con una cuenta que no sea administradora.',
     'Una persona nacida un 29 de febrero se cuenta, en los años que no son bisiestos, el 1 de marzo en esta lista, y el Calendario solo la pinta los 29 de febrero. Es lo que muestra el código; no lo he probado en vivo.',
     'No hay botón para añadir un cumpleaños desde esta pantalla.',
+    'No he encontrado un ajuste propio para apagar solo este aviso. La hora exacta de llegada tiene un margen de hasta una hora desde las 09:00 y no la he comprobado en un móvil real. A quien nació un 29 de febrero se le avisa el 28 en los años que no son bisiestos.',
   ],
   ifWrong: [
+    'Si no te llega el aviso de las 09:00, mira Configuración → «🔔 Avisos» en ese móvil y si el aviso está en la campana de Inicio.',
     'Si alguien no sale, mira que tenga fecha en su ficha de Familia o en Contactos.',
     'Si cambias una fecha y vuelve a salir la antigua, puede que tu cuenta no pueda editar esa ficha: pídeselo a quien administre la familia.',
     'Si la fecha está bien guardada pero la lista o el Calendario muestran otra cosa, es un posible fallo técnico: cuéntanoslo en Sugerencias.',
   ],
   verified: V,
-  basedOn: ['src/ui/BirthdaysScreen.tsx', 'src/domain/birthdays.ts', 'src/data/family.ts', 'src/data/contacts.ts', 'src/ui/ContactsScreen.tsx', 'src/ui/CalendarScreen.tsx', 'supabase/migrations/0001_init.sql', 'supabase/migrations/0054_birthday_favorites.sql'],
+  basedOn: ['src/ui/BirthdaysScreen.tsx', 'src/domain/birthdays.ts', 'src/data/family.ts', 'src/data/contacts.ts', 'src/ui/ContactsScreen.tsx', 'src/ui/CalendarScreen.tsx', 'supabase/migrations/0001_init.sql', 'supabase/migrations/0054_birthday_favorites.sql', 'supabase/migrations/0315_birthday_reminders.sql'],
   tour: 'tut-cumpleanos-cambiar-fecha',
   go: { path: '/cumpleanos' },
   labels: ['¡Hoy!', 'Marca alguno con ⭐ para que aparezca aquí.', 'Nadie tiene fecha de nacimiento guardada todavía', '🎂 Añadir cumpleaños', '¿Quitar el cumpleaños de'],

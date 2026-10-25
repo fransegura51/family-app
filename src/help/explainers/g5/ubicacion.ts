@@ -55,6 +55,7 @@ export const expUbicacionCompartir: HelpExplainer = {
     'supabase/migrations/0029_location_history_and_member_photos.sql',
     'supabase/migrations/0058_place_visits.sql',
   ],
+  tour: 'tut-ubicacion-compartir-movil',
   go: { path: '/ubicacion', dest: 'ubicacion.mapa' },
   labels: ['👥 Compartir ubicación', '¿Quién puede compartir?', 'Este dispositivo', '¿Quién lleva este dispositivo?', 'Dejar de compartir', 'Ubicación no compartida', 'Última posición conocida'],
   cardIds: ['ubi-ver', 'ubi-compartir-movil'],
@@ -85,7 +86,7 @@ export const expUbicacionAvisos: HelpExplainer = {
     {
       heading: 'Las reglas de la pestaña Reglas',
       paragraphs: [
-        'En «Nueva regla» eliges «Al llegar a un lugar», «Al salir de un lugar» o «Todos los días a una hora», un mensaje y, si quieres, «Para quién». En las reglas de lugar, «Para quién» filtra de quién es el movimiento que dispara el aviso; el aviso llega a la familia igualmente.',
+        'En «Nueva regla» eliges «Al llegar a un lugar», «Al salir de un lugar» o «Todos los días a una hora», un mensaje y, si quieres, «Para quién». En las reglas de lugar, «Para quién» filtra de quién es el movimiento que dispara el aviso; el aviso llega a la familia igualmente. En la de hora diaria, «Para quién» no filtra nada: el aviso llega a toda la familia.',
         'La regla de hora diaria se comprueba en hora de España peninsular y avisa dentro de los 30 minutos siguientes a la hora fijada, una vez al día. «Silenciar 1h» la calla una hora; «Activa/Pausada» la pausa sin borrarla.',
         'Las reglas que crea el interruptor 🔔 de cada lugar no salen en «Reglas»: se gestionan desde el propio lugar.',
       ],
@@ -95,7 +96,7 @@ export const expUbicacionAvisos: HelpExplainer = {
     'No es instantáneo: necesita al menos dos lecturas separadas por 60 segundos o más, y el móvil debe estar mandando su posición.',
     'La primera vez que PEPA recibe la posición de alguien para una regla, solo apunta dónde está; no avisa.',
     'No avisa si la persona no tiene la ubicación activada, ni si su móvil no manda posición (por ejemplo, con la web cerrada).',
-    'Editar un lugar no cambia sus coordenadas: para moverlo hay que borrarlo y crearlo de nuevo.',
+    'Para mover un lugar no hace falta borrarlo: edítalo con «✎ Editar» y usa «📍 Mover el lugar a donde estoy ahora» estando en el sitio (no se mueve hasta «Guardar cambios»).',
     'Si el aviso no se entrega a la primera, PEPA lo reintenta varias veces durante unos 30 minutos.',
   ],
   ifWrong: [
@@ -124,6 +125,7 @@ export const expUbicacionAvisos: HelpExplainer = {
     'Silenciar 1h',
     'Crear regla',
     '✎ Editar',
+    '📍 Mover el lugar a donde estoy ahora',
     '🔔 Avisos en este móvil',
   ],
   cardIds: ['ubi-lugares', 'ubi-permiso-android', 'not-activar'],
@@ -174,6 +176,7 @@ export const expUbicacionAppCerrada: HelpExplainer = {
     'docs/APP_NATIVA.md',
     'docs/APP_IOS.md',
   ],
+  tour: 'tut-ubicacion-permiso-android',
   go: { path: '/menu-organizar', dest: 'config.avisos' },
   labels: ['📍 Falta un permiso para los avisos con la app cerrada', 'Abrir ajustes de PEPA', 'Última posición conocida'],
   cardIds: ['ubi-permiso-android', 'ubi-lugares'],

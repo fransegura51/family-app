@@ -997,7 +997,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
             </button>
           </div>
 
-          <div className="month-grid" onTouchStart={monthSwipe.onTouchStart} onTouchEnd={monthSwipe.onTouchEnd}>
+          <div className="month-grid" data-help-id="calendar.month-grid" onTouchStart={monthSwipe.onTouchStart} onTouchEnd={monthSwipe.onTouchEnd}>
             {WEEKDAY_LABELS.map((w) => (
               <div key={w} className="month-grid-weekday">
                 {w}
@@ -1087,7 +1087,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
           {/* Vista Mes tal y como estaba antes de las franjas de color —
               un puntito por apunte, se conserva a petición de la familia
               como alternativa más compacta. */}
-          <div className="month-grid" onTouchStart={monthSwipe.onTouchStart} onTouchEnd={monthSwipe.onTouchEnd}>
+          <div className="month-grid" data-help-id="calendar.month-grid" onTouchStart={monthSwipe.onTouchStart} onTouchEnd={monthSwipe.onTouchEnd}>
             {WEEKDAY_LABELS.map((w) => (
               <div key={w} className="month-grid-weekday">
                 {w}
@@ -1354,6 +1354,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               <button
                 type="button"
                 className="modal-close"
+                data-help-id="calendar.event-close"
                 onClick={() => {
                   setAddingEvent(false)
                   setAddingEventMemberId(null)
@@ -1390,7 +1391,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
               <h2 className="section-title" style={{ margin: 0 }}>
                 Nueva tarea
               </h2>
-              <button type="button" className="modal-close" onClick={() => setAddingTask(false)} aria-label="Cerrar">
+              <button type="button" className="modal-close" data-help-id="calendar.task-close" onClick={() => setAddingTask(false)} aria-label="Cerrar">
                 ✕
               </button>
             </div>
@@ -1680,8 +1681,8 @@ function DayModal({
             ventana, que se abra debajo y se siga viendo el
             calendario de arriba, para poder cambiar de día rápido
             tocando arriba"). */}
-        <div className="month-nav" style={{ margin: 0 }}>
-          <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+        <div className="month-nav" data-help-id="calendar.day-nav" style={{ margin: 0 }}>
+          <button type="button" className="link-button" data-help-id="calendar.day-prev" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
             ‹
           </button>
           <DateJumpControl dateStr={selectedDate} onJump={onJumpToDate}>
@@ -1693,7 +1694,7 @@ function DayModal({
               })}
             </h2>
           </DateJumpControl>
-          <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+          <button type="button" className="link-button" data-help-id="calendar.day-next" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
             ›
           </button>
         </div>
@@ -2034,14 +2035,14 @@ function PersonalView({
 
   return (
     <div>
-      <div className="month-nav" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
-        <button type="button" className="link-button" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
+      <div className="month-nav" data-help-id="calendar.day-nav" onTouchStart={swipeHandlers.onTouchStart} onTouchEnd={swipeHandlers.onTouchEnd}>
+        <button type="button" className="link-button" data-help-id="calendar.day-prev" onClick={() => onNavigateDay(-1)} aria-label="Día anterior">
           ‹
         </button>
         <DateJumpControl dateStr={selectedDate} onJump={onJumpToDate}>
           <strong>{new Date(selectedDate + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' })}</strong>
         </DateJumpControl>
-        <button type="button" className="link-button" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
+        <button type="button" className="link-button" data-help-id="calendar.day-next" onClick={() => onNavigateDay(1)} aria-label="Día siguiente">
           ›
         </button>
       </div>
@@ -2821,7 +2822,12 @@ function AgendaRow({ entry }: { entry: AgendaEntry }) {
   const translateX = liveX ?? openX
 
   return (
-    <div className="agenda-row-outer" data-agenda-event-id={entry.isExternal ? undefined : entry.id} data-agenda-date={entry.date}>
+    <div
+      className="agenda-row-outer"
+      data-agenda-event-id={entry.isExternal ? undefined : entry.id}
+      data-agenda-date={entry.date}
+      {...(entry.recurring && !entry.isExternal && entry.onEdit ? { 'data-help-id': 'calendar.entry-recurring' } : {})}
+    >
       {canDelete && (
         <div className="agenda-row-delete-behind">
           <button type="button" className="agenda-row-delete-btn" onClick={handleDeleteTap} aria-label={`Eliminar ${entry.title}`}>
@@ -3238,7 +3244,7 @@ function MemberFilterDropdown({
               <h2 className="section-title" style={{ margin: 0 }}>
                 Filtrar por persona
               </h2>
-              <button type="button" className="modal-close" onClick={() => setOpen(false)} aria-label="Cerrar">
+              <button type="button" className="modal-close" data-help-id="calendar.filter-close" onClick={() => setOpen(false)} aria-label="Cerrar">
                 ✕
               </button>
             </div>
@@ -3730,6 +3736,12 @@ function RecurrenceControl({
 // AddEventForm y EditEventForm; quien la usa decide cuándo subir el
 // archivo (en el propio handleSubmit, junto con crear/guardar el
 // evento).
+type ExtrasChipMarks = Record<'location' | 'attachment' | 'note', { 'data-help-id': string }>
+// Marcas de la Ayuda de los tres iconos, una por formulario (nuevo evento, nueva tarea, editar): literales a propósito para que las pruebas comprueben que existen.
+const EVENT_EXTRAS_MARKS: ExtrasChipMarks = { location: { 'data-help-id': 'calendar.event-location' }, attachment: { 'data-help-id': 'calendar.event-attachment' }, note: { 'data-help-id': 'calendar.event-note' } }
+const TASK_EXTRAS_MARKS: ExtrasChipMarks = { location: { 'data-help-id': 'calendar.task-location' }, attachment: { 'data-help-id': 'calendar.task-attachment' }, note: { 'data-help-id': 'calendar.task-note' } }
+const EDIT_EXTRAS_MARKS: ExtrasChipMarks = { location: { 'data-help-id': 'calendar.edit-location' }, attachment: { 'data-help-id': 'calendar.edit-attachment' }, note: { 'data-help-id': 'calendar.edit-note' } }
+
 function EventExtrasFields({
   locationLabel,
   onLocationLabelChange,
@@ -3742,6 +3754,7 @@ function EventExtrasFields({
   note,
   onNoteChange,
   helpId,
+  chipMarks,
 }: {
   locationLabel: string
   onLocationLabelChange: (v: string) => void
@@ -3755,6 +3768,8 @@ function EventExtrasFields({
   onNoteChange: (v: string) => void
   /** Marca del tutorial «Enséñame» para la fila de iconos (ubicación, adjunto, nota). */
   helpId?: string
+  /** Marcas de la Ayuda para cada uno de los tres iconos (ubicación, adjunto, nota). */
+  chipMarks?: ExtrasChipMarks
 }) {
   const [locating, setLocating] = useState(false)
   const [showMap, setShowMap] = useState(false)
@@ -3814,6 +3829,7 @@ function EventExtrasFields({
         <button
           type="button"
           className={'chip' + (openSections.has('location') ? ' chip-active' : '')}
+          {...chipMarks?.location}
           onClick={() => toggleSection('location')}
         >
           📍 Ubicación
@@ -3821,6 +3837,7 @@ function EventExtrasFields({
         <button
           type="button"
           className={'chip' + (openSections.has('attachment') ? ' chip-active' : '')}
+          {...chipMarks?.attachment}
           onClick={() => toggleSection('attachment')}
         >
           📷📎 Adjunto
@@ -3828,6 +3845,7 @@ function EventExtrasFields({
         <button
           type="button"
           className={'chip' + (openSections.has('note') ? ' chip-active' : '')}
+          {...chipMarks?.note}
           onClick={() => toggleSection('note')}
         >
           📝 Nota
@@ -4107,7 +4125,7 @@ function EditEventForm({
               </label>
             </div>
           )}
-          <label className="checkbox-label">
+          <label className="checkbox-label" data-help-id="calendar.edit-allday">
             <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
             Todo el día
           </label>
@@ -4138,7 +4156,7 @@ function EditEventForm({
         </FieldDropdown>
       )}
       <WhoDropdown helpId="calendar.edit-who" members={members} selected={selectedMembers} onToggle={toggleMember} />
-      <CategoryDropdown categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
+      <CategoryDropdown helpId="calendar.edit-category" categories={categories} selected={categoryId} onChange={setCategoryId} onManageCategories={onManageCategories} />
       {/* Puntos: solo tiene sentido cuando el evento es de una sola
           persona — para un niño, o también para un adulto si se quiere
           (petición real: "cuando le asignemos un evento a un niño...
@@ -4152,6 +4170,8 @@ function EditEventForm({
         </label>
       )}
       <EventExtrasFields
+        helpId="calendar.edit-extras"
+        chipMarks={EDIT_EXTRAS_MARKS}
         locationLabel={locationLabel}
         onLocationLabelChange={setLocationLabel}
         coords={coords}
@@ -4470,6 +4490,7 @@ export function AddEventForm({
       )}
       <EventExtrasFields
         helpId="calendar.event-extras"
+        chipMarks={EVENT_EXTRAS_MARKS}
         locationLabel={locationLabel}
         onLocationLabelChange={setLocationLabel}
         coords={coords}
@@ -4635,6 +4656,7 @@ export function AddTaskForm({
       )}
       <EventExtrasFields
         helpId="calendar.task-extras"
+        chipMarks={TASK_EXTRAS_MARKS}
         locationLabel={locationLabel}
         onLocationLabelChange={setLocationLabel}
         coords={coords}

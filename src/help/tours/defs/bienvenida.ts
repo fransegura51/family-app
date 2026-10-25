@@ -1,13 +1,13 @@
 import type { TourDef } from '@/help/tours/types'
 
 // Recorrido de bienvenida (1-2 minutos, opcional): Inicio, navegación, Calendario, Compras y Ayuda. Señala controles reales de la barra y del menú; solo pasos informativos,
-// ningún dato se crea ni se guarda. Los pasos de secciones a las que la cuenta no tiene acceso se omiten solos (`optional`).
+// ningún dato se crea ni se guarda. Los pasos de secciones a las que la cuenta no tiene acceso se omiten solos (`optional`). Es el ÚNICO capítulo de la serie «Primeros pasos» (src/help/tours/series/e.ts):
+// conserva su identificador porque HelpProvider y HelpNudges lo arrancan por él y recuerdan si ya se vio. También es la puerta de la antigua «La tarjeta PEPA te avisa» (aliases/e.ts).
 export const bienvenida: TourDef = {
   id: 'bienvenida',
   module: 'inicio',
   summary: 'Un repaso de 1 o 2 minutos por PEPA: Inicio, el menú, Calendario, Compras y la Ayuda.',
-  group: 'Primeros pasos',
-  version: 1,
+  version: 2,
   title: 'Recorrido de bienvenida',
   cardId: 'ayu-usar',
   durationSec: 90,
@@ -15,8 +15,14 @@ export const bienvenida: TourDef = {
   paths: ['/'],
   steps: [
     {
+      id: 'hola',
+      text: 'Hola, soy Pepa. Te hago un repaso rápido de PEPA, sobre la propia app. No voy a crear ni guardar nada: solo te enseño dónde está cada cosa.',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
       id: 'inicio',
-      text: 'Hola, soy Pepa. Esto es Inicio: el resumen del día, con la compra pendiente, lo que hay hoy en el calendario y las fotos de la familia.',
+      text: 'Esto es Inicio: el resumen del día, con la compra pendiente, lo que hay hoy en el calendario y las fotos de la familia. Si hay algo de Eventos que necesita atención, arriba sale «PEPA te avisa».',
       target: 'inicio.carrusel',
       completeOn: [],
       manualNext: true,

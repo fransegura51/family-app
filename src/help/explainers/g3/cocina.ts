@@ -11,7 +11,7 @@ export const expCocinaMenuACompras: HelpExplainer = {
     {
       heading: 'Qué platos entran',
       paragraphs: [
-        'Puedes pasar a Compras la semana entera (los 7 días que ves en el Menú semanal), un día o un solo plato.',
+        'Puedes pasar a Compras la semana entera (los 7 días que estés viendo en el Menú semanal), un día o un solo plato.',
         'Un plato con receta guardada aporta los ingredientes de esa receta. Un plato escrito a mano aporta un solo producto con ese texto: PEPA no se inventa ingredientes. Si repites el mismo texto varias veces, sale una sola vez.',
         'Una receta que no tiene ingredientes no aporta nada, y los huecos vacíos tampoco.',
       ],
@@ -42,7 +42,7 @@ export const expCocinaMenuACompras: HelpExplainer = {
     },
   ],
   limits: [
-    'El menú solo muestra 7 días a partir de hoy, así que «semana» significa esos 7 días.',
+    'El menú enseña siete días seguidos y se cambia de semana con «‹ Anterior» y «Siguiente ›» (y «Volver a hoy»): «semana» significa esos 7 días que estás viendo, no una semana de calendario de lunes a domingo.',
     'Las cantidades dependen de lo que esté escrito en la receta: «un puñado» o «al gusto» no se pueden sumar ni ajustar.',
     'Si dos ingredientes se llaman distinto («tomate» y «tomates triturados»), PEPA los trata como productos diferentes.',
   ],

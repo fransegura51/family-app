@@ -7,7 +7,7 @@ export const visitaCalendario: TourDef = {
   id: 'visita-calendario',
   kind: 'visit',
   module: 'calendario',
-  version: 1,
+  version: 2,
   title: 'Conoce el Calendario',
   summary: 'Las vistas, el filtro por persona, el día elegido y los botones para crear eventos y tareas.',
   cardId: 'cal-vistas',
@@ -16,7 +16,7 @@ export const visitaCalendario: TourDef = {
   steps: [
     {
       id: 'menu',
-      text: 'Este es el Calendario de toda la familia. Con «☰ Menú» cambias de vista: Inicio, Mes, Semana, 3 días, Día, Familiar, Agenda y Personal (tus notas privadas).',
+      text: 'Este es el Calendario de toda la familia. Con «☰ Menú» cambias de vista: Inicio, Mes, Semana, 3 días, Día, Familiar, Agenda y Personal (lo tuyo y tus notas privadas). Allí también puedes «📌 Sacar» las que más uses como botones.',
       target: 'calendar.menu',
       completeOn: [],
       manualNext: true,
@@ -39,7 +39,7 @@ export const visitaCalendario: TourDef = {
     },
     {
       id: 'dia',
-      text: 'Aquí ves los eventos y tareas del día elegido. Toca otro día del mes para cambiarlo, o toca la fecha para saltar a un día concreto. Si no hay nada, dice «Nada este día.»',
+      text: 'Aquí ves los eventos y tareas del día elegido. Para cambiarlo, toca otro día del mes o usa las flechas ‹ › de este panel; toca la fecha para saltar a un día concreto. Si no hay nada, dice «Nada este día.»',
       target: 'calendar.day-panel',
       completeOn: [],
       manualNext: true,
@@ -47,7 +47,7 @@ export const visitaCalendario: TourDef = {
     },
     {
       id: 'hecho',
-      text: 'El círculo de cada evento o tarea lo marca como hecho (✓); si lo tocas otra vez, vuelve a quedar pendiente. Ahora no hace falta tocarlo: es solo para que lo reconozcas.',
+      text: 'El círculo de cada apunte lo marca como hecho (✓); si lo tocas otra vez, queda pendiente. Junto al título puedes ver 🔒 (privado), 📷 📎 📝 (foto, archivo, nota); a la derecha, la hora, «Todo el día», «Tarea» o «No realizada». No lo toques ahora.',
       target: 'calendar.entry-complete',
       completeOn: [],
       manualNext: true,
@@ -63,19 +63,19 @@ export const visitaCalendario: TourDef = {
     },
     {
       id: 'nuevo-evento',
-      text: '«+ Nuevo evento» crea una cita con fecha, hora, repetición, recordatorio y para quién es. No se guarda nada hasta que pulses «Crear evento».',
+      text: '«+ Nuevo evento» crea una cita con fecha, hora, repetición, recordatorio, personas, puntos, ubicación, adjuntos y nota. No se guarda nada hasta que pulses «Crear evento».',
       target: 'calendar.new-event',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'nueva-tarea',
-      text: '«+ Nueva tarea» sirve para cosas por hacer. Solo piden título y fecha; pueden repetirse y dar puntos, pero no llevan hora ni recordatorio.',
+      text: '«+ Nueva tarea» sirve para cosas por hacer. Solo piden título y fecha; pueden repetirse y dar puntos, pero no llevan hora, «Todo el día» ni recordatorio.',
       target: 'calendar.new-task',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es el Calendario. Cuando quieras, te enseño paso a paso a crear un evento, una tarea o a cambiar de vista.',
-  next: ['cal-crear-evento', 'cal-crear-tarea', 'cal-hecho'],
+  finishText: 'Eso es el Calendario. Cuando quieras, te enseño paso a paso a moverte por él, a crear eventos y tareas y a gestionarlos.',
+  next: ['cal-vistas', 'cal-crear-evento', 'cal-hecho'],
 }

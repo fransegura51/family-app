@@ -1,3 +1,4 @@
+import { legacyIdsOf } from '@/help/tours/aliases'
 import { prefSet } from '@/state/prefs/prefsWrite'
 
 // Preferencias de la Ayuda de la persona (B3/B4). Viajan con la cuenta entre dispositivos por el sistema de preferencias existente (CONFIG-01) en cuanto la migración de la
@@ -64,7 +65,7 @@ export interface TourProgress {
   version: number
 }
 
-export function getTourProgress(tourId: string): TourProgress | null {
+function readProgress(tourId: string): TourProgress | null {
   const raw = read(tourProgressKey(tourId))
   if (!raw) return null
   try {
@@ -75,6 +76,33 @@ export function getTourProgress(tourId: string): TourProgress | null {
   }
 }
 
+const RANK: Record<TourStatus, number> = { dismissed: 0, started: 1, completed: 2 }
+
+// Progreso de un tutorial/capítulo. Si el capítulo sustituye a tutoriales antiguos (alias, src/help/tours/aliases), cuenta también lo que se había hecho con el identificador antiguo:
+// quien ya completó «tut-compras-tiendas» sigue viéndolo como hecho aunque ahora sea un capítulo. Gana lo más avanzado (completado > empezado > descartado) y, a igual estado, lo más reciente.
+export function getTourProgress(tourId: string): TourProgress | null {
+  let best = readProgress(tourId)
+  for (const old of legacyIdsOf(tourId)) {
+    const p = readProgress(old)
+    if (p && (!best || RANK[p.status] > RANK[best.status] || (RANK[p.status] === RANK[best.status] && p.at > best.at))) best = p
+  }
+  return best
+}
+
 export function setTourProgress(tourId: string, progress: TourProgress): void {
   prefSet(tourProgressKey(tourId), JSON.stringify(progress))
+}
+
+// «Empezado» o «descartado» NUNCA pisan un «completado» de la misma versión (repetir un recorrido hecho y salir a mitad no debe quitar el ✓). Un completado de una versión anterior sí se
+// puede sustituir (la interfaz cambió y se vuelve a ofrecer).
+export function markTourProgress(tourId: string, status: Exclude<TourStatus, 'completed'>, version: number): void {
+  const cur = getTourProgress(tourId)
+  if (cur?.status === 'completed' && cur.version >= version) return
+  setTourProgress(tourId, { status, at: new Date().toISOString().slice(0, 10), version })
+}
+
+/** ¿Completado con la versión actual? (✓). */
+export function isTourDone(tourId: string, version: number): boolean {
+  const p = getTourProgress(tourId)
+  return p?.status === 'completed' && p.version >= version
 }

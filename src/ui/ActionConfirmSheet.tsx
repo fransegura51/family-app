@@ -86,8 +86,13 @@ export function ActionConfirmSheet({
           </p>
         ))}
 
-        {view.choices.map((choice, choiceIndex) => (
-          <div key={choice.id} className="action-confirm-choice" {...(choiceIndex === 0 ? { 'data-help-id': 'pepa.tarjeta-opciones' } : {})}>
+        {/* Cada opción lleva su propia marca para los tutoriales: «Para» (pepa.tarjeta-opcion-member) y «Guardar como» (pepa.tarjeta-opcion-kind) de un evento o una tarea. */}
+        {view.choices.map((choice) => (
+          <div
+            key={choice.id}
+            className="action-confirm-choice"
+            {...(choice.id === 'member' ? { 'data-help-id': 'pepa.tarjeta-opcion-member' } : choice.id === 'kind' ? { 'data-help-id': 'pepa.tarjeta-opcion-kind' } : {})}
+          >
             <span className="muted">{choice.label}</span>
             <div className="filter-row" role="radiogroup" aria-label={choice.label}>
               {choice.options.map((option) => (

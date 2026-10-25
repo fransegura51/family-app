@@ -111,3 +111,13 @@ describe('pedir ayuda a Pepa por voz', () => {
     expect(spoken).toContain('Primero,')
   })
 })
+
+// 25/10/2026: «cuando le digo necesito ayuda con compras, que me lleve a compras directamente, sin la pantalla de “toca para hablar”».
+import voiceCaptureSrc from '@/ui/VoiceCapture.tsx?raw'
+describe('ayuda por voz: ir directo a la pantalla', () => {
+  it('al pedir ayuda se cierra la ventana de hablar y se va ya a la pantalla (también con recorrido, sin esperar a que Pepa termine)', () => {
+    expect(voiceCaptureSrc).toContain('wentToHelp: outcome.kind === \'help\'')
+    expect(voiceCaptureSrc).toMatch(/if \(wentToHelp\) \{[\s\S]*?close\(\)[\s\S]*?output\.speakOnly\(spoken\)[\s\S]*?runAfterSpeech\(\)/)
+    expect(voiceCaptureSrc).toMatch(/if \(help && tourId\) \{[\s\S]*?help\.goToPlace\(outcome\.go, outcome\.title\)[\s\S]*?afterSpeechRef\.current/)
+  })
+})

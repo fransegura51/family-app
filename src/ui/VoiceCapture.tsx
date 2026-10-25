@@ -948,7 +948,9 @@ export function VoiceCapture() {
       const help = helpRef.current
       const tourId = outcome.tourId
       if (help && tourId) {
-        // Con recorrido guiado: primero Pepa dice su frase corta y, al terminar, empieza el «Enséñame» (si arrancara antes, cortaría la voz). El recorrido lleva solo a su pantalla de partida.
+        // Con recorrido guiado: la persona llega ya a la pantalla (sin esperar a que Pepa termine de hablar) y, al terminar de hablar, empieza el «Enséñame» (si arrancara antes,
+        // cortaría la voz). 25/10/2026: «que me lleve directamente a la pantalla de compras».
+        help.goToPlace(outcome.go, outcome.title)
         afterSpeechRef.current = () => {
           // Si se está hablando con Pepa por voz, cada paso del recorrido también se dice en voz alta.
           if (modeRef.current === 'voice' && help.voiceMode !== 'voice') help.setVoiceMode('voice')
@@ -975,9 +977,9 @@ export function VoiceCapture() {
   // Un turno de "Hablar con PEPA". PRIORIDAD: si hay una acción pendiente, la frase se
   // interpreta primero CONTRA ella (sí/añadir/guardar/cancelar... son órdenes, no datos); solo
   // si claramente no le pertenece pasa al router general.
-  async function talkTurn(text: string): Promise<{ spoken: string; closedPending: boolean }> {
+  async function talkTurn(text: string): Promise<{ spoken: string; closedPending: boolean; wentToHelp: boolean }> {
     const reply = await handleDialogReply(text)
-    if (reply.handled) return { spoken: reply.message ?? '', closedPending: false }
+    if (reply.handled) return { spoken: reply.message ?? '', closedPending: false, wentToHelp: false }
 
     const hadPending = pendingBlockingCount() > 0
     const outcome = await runTalk(text, { ...talkDeps, help: helpForTalk })
@@ -994,7 +996,7 @@ export function VoiceCapture() {
       spoken = `${outcome.text} He cerrado lo que tenía pendiente, sin guardar nada.`
     }
     applyTalkOutcome(outcome)
-    return { spoken, closedPending }
+    return { spoken, closedPending, wentToHelp: outcome.kind === 'help' }
   }
 
   // Respuesta escrita en la barra de una tarjeta abierta.
@@ -1029,7 +1031,16 @@ export function VoiceCapture() {
       // los botones de siempre. Consultar responde; escribir siempre sale como
       // tarjeta de confirmación.
       if (panelModeRef.current === 'talk') {
-        const { spoken } = await talkTurn(text)
+        const { spoken, wentToHelp } = await talkTurn(text)
+        if (wentToHelp) {
+          // «Necesito ayuda con compras»: se cierra la ventana «Toca para hablar» y la persona se queda directamente en la pantalla de esa sección, mientras Pepa la explica
+          // (por voz si tiene la voz activada; si no, con un aviso breve). Después, si había recorrido «Enséñame», empieza (25/10/2026).
+          close()
+          if (modeRef.current !== 'voice') showToast(spoken, 6000)
+          await output.speakOnly(spoken)
+          runAfterSpeech()
+          return
+        }
         setStatus('done')
         await respond(spoken)
         runAfterSpeech()

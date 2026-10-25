@@ -121,3 +121,56 @@ describe('ayuda por voz: ir directo a la pantalla', () => {
     expect(voiceCaptureSrc).toMatch(/if \(help && tourId\) \{[\s\S]*?help\.goToPlace\(outcome\.go, outcome\.title\)[\s\S]*?afterSpeechRef\.current/)
   })
 })
+
+// 25/10/2026: «recorrido completo» y «por capítulos» por voz (las series de tutoriales de la Ayuda).
+import { SERIES, chaptersOf } from '@/help/tours/series'
+import { looksLikeCourseRequest, startsLikeHelpRequest } from '@/help/talkHelp'
+describe('recorrido completo y capítulos por voz', () => {
+  const comprasSeries = SERIES.filter((s) => s.module === 'compras')
+  const lista = comprasSeries.find((s) => /lista/i.test(s.title))!
+
+  it('reconoce las frases de recorrido completo y de capítulos, y no se cuela en otras', () => {
+    for (const t of ['recorrido completo de compras', 'dame el recorrido completo de la lista', 'por capítulos', 'qué capítulos hay de compras', 'capítulo dos de la lista', 'enséñame el tutorial de compras'])
+      expect(looksLikeCourseRequest(t), t).toBe(true)
+    for (const t of ['añade leche', 'tarea sacar la basura', 'qué cenamos hoy']) expect(looksLikeCourseRequest(t), t).toBe(false)
+    for (const t of ['recorrido completo de compras', 'capítulos de la lista', 'por capítulos de compras']) expect(startsLikeHelpRequest(t), t).toBe(true)
+  })
+
+  it('«recorrido completo de preparar y usar la lista» empieza la serie por su primer capítulo', () => {
+    expect(lista).toBeTruthy()
+    const answer = answerHelpRequest(`recorrido completo de ${lista.title}`, apiFor(ADMIN))
+    if (!answer || answer.kind !== 'go') throw new Error('debería empezar el recorrido')
+    expect(answer.go.path).toBe('/compras')
+    expect(answer.tourId).toBe(chaptersOf(lista)[0].id)
+    expect(answer.text).toContain('recorrido completo')
+  })
+
+  it('«capítulo dos de la lista» empieza justo el segundo capítulo', () => {
+    const answer = answerHelpRequest(`capítulo dos de ${lista.title}`, apiFor(ADMIN))
+    if (!answer || answer.kind !== 'go') throw new Error('debería empezar el capítulo')
+    expect(answer.tourId).toBe(chaptersOf(lista)[1].id)
+    expect(answer.text).toContain('Capítulo 2')
+  })
+
+  it('«por capítulos» dice los capítulos y lleva a la pantalla, sin empezar ninguno', () => {
+    const answer = answerHelpRequest(`capítulos de ${lista.title}`, apiFor(ADMIN))
+    if (!answer || answer.kind !== 'go') throw new Error('debería listar capítulos')
+    expect(answer.tourId).toBeUndefined()
+    expect(answer.text).toContain(`${chaptersOf(lista).length} capítulos`)
+    expect(answer.text).toContain('capítulo 2 de')
+  })
+
+  it('con varias series en la sección y sin decir cuál, dice los nombres y lleva a la pantalla', () => {
+    expect(comprasSeries.length).toBeGreaterThan(1)
+    const answer = answerHelpRequest('recorrido completo de compras', apiFor(ADMIN))
+    if (!answer || answer.kind !== 'go') throw new Error('debería listar los recorridos')
+    expect(answer.tourId).toBeUndefined()
+    expect(answer.text).toContain('Tengo estos recorridos'.replace('Tengo', 'tengo'))
+    expect(answer.go.path).toBe('/compras')
+  })
+
+  it('si la cuenta no puede hacer ninguna, lo dice en lugar de llevarte a ningún sitio', () => {
+    const answer = answerHelpRequest('recorrido completo de compras', { ...apiFor(ADMIN), canDoTour: () => false })
+    expect(answer?.kind).toBe('say')
+  })
+})

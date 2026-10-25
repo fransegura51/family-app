@@ -4,6 +4,8 @@ import { cardsOfModule, HELP_MODULE_BY_ID } from '@/help/catalog'
 import type { SearchResponse } from '@/help/search/searchEngine'
 import type { HelpCard, HelpGo, HelpModuleId } from '@/help/types'
 import { TOURS } from '@/help/tours/registry'
+import { SERIES, chaptersOf, type TutorialSeries } from '@/help/tours/series'
+import { searchSeries, seriesProgress } from '@/help/tours/series/search'
 
 // «Necesito ayuda con compras» en «Hablar con PEPA»: Pepa lleva a esa pantalla y EXPLICA por voz lo que cuenta la Ayuda («Pepa te acompaña»). Nada se inventa: el texto sale
 // de las fichas y del resumen del módulo del catálogo de la Ayuda (src/help/catalog), con los mismos permisos que la Ayuda (src/help/access.ts).
@@ -15,6 +17,8 @@ export interface TalkHelpApi {
   accessOfCard(card: HelpCard): HelpAccessResult
   /** ¿Puede esta cuenta hacer ese recorrido «Enséñame» / «Conoce esta sección»? */
   canDoTour(tourId: string): boolean
+  /** ¿Puede esta cuenta hacer esa serie de tutoriales (recorrido completo por capítulos)? Sin indicar, se permite lo que permitan sus capítulos. */
+  canDoSeries?(seriesId: string): boolean
 }
 
 export type TalkHelpAnswer =
@@ -54,8 +58,27 @@ const FILLER = new Set([
   'como', 'funciona', 'funcionan', 'usa', 'usar', 'uso', 'explicame', 'ensename', 'sirve', 'sirven', 'puedo', 'hacer', 'mi', 'por', 'favor', 'pepa', 'a', 'al', 'y', 'es', 'son',
 ])
 
+// «Recorrido completo de compras», «enséñame todo de la cocina», «por capítulos», «capítulo dos de la lista»: pedir el tutorial entero o un capítulo suelto (25/10/2026).
+const COURSE_WORDS = /\b(?:recorrido|recorridos|tutorial|tutoriales|curso|capitulos?|por partes)\b/
+const COURSE_COMPLETE = /\b(?:completo|completa|entero|entera|todo|desde el principio|de principio a fin)\b/
+const COURSE_CHAPTER_N = /\b(?:capitulo\s+(\w+)|(primer|primero|segundo|tercer|tercero|cuarto|quinto|sexto|septimo|octavo|noveno|decimo|ultimo)\s+capitulo)\b/
+const COURSE_TOPIC_NOISE = new Set([
+  'recorrido', 'recorridos', 'tutorial', 'tutoriales', 'curso', 'capitulo', 'capitulos', 'por', 'partes', 'completo', 'completa', 'entero', 'entera', 'todo', 'desde', 'principio',
+  'fin', 'de', 'a', 'dame', 'dime', 'quiero', 'ver', 'hacer', 'el', 'la', 'los', 'las', 'del', 'un', 'una', 'en', 'con', 'ensename', 'ensenanos', 'pepa', 'por favor', 'cuales', 'que',
+  'hay', 'tienes', 'empieza', 'empezar', 'ponme', 'pon', 'primer', 'primero', 'segundo', 'tercer', 'tercero', 'cuarto', 'quinto', 'sexto', 'septimo', 'octavo', 'noveno', 'decimo',
+  'ultimo', 'uno', 'dos', 'tres', 'cinco', 'siete', 'ocho', 'nueve', 'diez', 'cuatro', 'seis', 'me', 'te', 'lo', 'y', 'al', 'sobre', 'para',
+])
+const NUMBER_WORDS: Record<string, number> = {
+  uno: 1, primer: 1, primero: 1, dos: 2, segundo: 2, tres: 3, tercer: 3, tercero: 3, cuatro: 4, cuarto: 4, cinco: 5, quinto: 5, seis: 6, sexto: 6, siete: 7, septimo: 7, ocho: 8,
+  octavo: 8, nueve: 9, noveno: 9, diez: 10, decimo: 10,
+}
+
+export function looksLikeCourseRequest(text: string): boolean {
+  return COURSE_WORDS.test(normalize(text))
+}
+
 export function looksLikeHelpRequest(text: string): boolean {
-  return HELP_INTENT.test(normalize(text))
+  return HELP_INTENT.test(normalize(text)) || looksLikeCourseRequest(text)
 }
 
 // Pedir ayuda desde la PRIMERA palabra («necesito ayuda con…», «explícame…», «cómo funciona…»): solo así gana a Economía, Cocina y Ubicación, que reconocen frases con
@@ -63,8 +86,12 @@ export function looksLikeHelpRequest(text: string): boolean {
 const HELP_OPENER =
   /^(?:(?:oye|hola|vale|pepa|por favor)\s+)*(?:(?:necesito|quiero|dame)\s+ayuda|ayuda\b|ayudame|ayudanos|como\s+(?:funciona|funcionan|se usa|se utiliza|se usan|uso|se maneja)|explicame|explicanos|ensename|ensenanos|para que sirve|para que sirven|que puedo hacer (?:en|con)|no se (?:usar|como))/
 
+// «Recorrido completo de…», «capítulos de…», «enséñame todo de…» desde la primera palabra.
+const COURSE_OPENER = /^(?:(?:oye|hola|vale|pepa|por favor|dame|dime|quiero|ponme|pon|empieza)\s+)*(?:el\s+|los\s+|un\s+)?(?:recorrido|recorridos|tutorial|tutoriales|curso|capitulos?|por capitulos|el capitulo|ensename todo|ensenanos todo)\b/
+
 export function startsLikeHelpRequest(text: string): boolean {
-  return HELP_OPENER.test(normalize(text).trim())
+  const n = normalize(text).trim()
+  return HELP_OPENER.test(n) || COURSE_OPENER.test(n)
 }
 
 export function moduleMentioned(text: string): HelpModuleId | null {
@@ -178,11 +205,112 @@ function fromCard(card: HelpCard, api: TalkHelpApi): TalkHelpAnswer {
   return { kind: 'go', text: `${mod ? `En ${mod.label}. ` : ''}${spokenCard(card)}`, go, title: card.title, moduleId: card.module }
 }
 
+function minutesText(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60))
+  return `unos ${m} minuto${m === 1 ? '' : 's'}`
+}
+
+function chapterNumber(text: string): number | null {
+  const m = COURSE_CHAPTER_N.exec(normalize(text))
+  if (!m) return null
+  const w = (m[1] ?? m[2] ?? '').trim()
+  if (w === 'ultimo') return Infinity
+  if (/^\d+$/.test(w)) return Number(w)
+  return NUMBER_WORDS[w] ?? null
+}
+
+// Recorrido completo / capítulos de una serie de tutoriales, por voz. null = la frase no es de esto.
+function answerCourseRequest(text: string, api: TalkHelpApi): TalkHelpAnswer | null {
+  if (!looksLikeCourseRequest(text)) return null
+  const n = normalize(text)
+  const moduleId = moduleMentioned(text)
+  const canSeries = api.canDoSeries ?? (() => true)
+  const topic = n
+    .replace(/[^a-z0-9 ]+/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w && !COURSE_TOPIC_NOISE.has(w))
+  const topicText = (moduleId ? topic.filter((w) => !MODULE_WORDS.find(([id]) => id === moduleId)?.[1].test(w)) : topic).join(' ')
+
+  let pool: TutorialSeries[] = SERIES.filter((s) => (!moduleId || s.module === moduleId) && canSeries(s.id) && chaptersOf(s).some((c) => api.canDoTour(c.id)))
+  if (pool.length === 0) {
+    return { kind: 'say', text: moduleId ? 'De esa sección no tengo recorridos que puedas hacer con tu cuenta.' : '¿De qué sección quieres el recorrido? Por ejemplo: «recorrido completo de compras».' }
+  }
+  if (topicText.length >= 3) {
+    const ranked = searchSeries(topicText, { canDoSeries: (id) => pool.some((s) => s.id === id), canDoChapter: api.canDoTour })
+    if (ranked.length > 0) pool = ranked.filter((r) => r.score === ranked[0].score).map((r) => r.series)
+  }
+  const mod = HELP_MODULE_BY_ID.get(pool[0].module)
+  const modLabel = mod?.label ?? 'esa sección'
+  const modPath = mod?.path ?? '/'
+
+  // Varias series posibles y no se ha dicho cuál: se dicen los nombres y se lleva a la pantalla.
+  if (pool.length > 1) {
+    const names = pool.map((s) => s.title)
+    return {
+      kind: 'go',
+      text: `En ${modLabel} tengo estos recorridos: ${names.join('; ')}. Dime, por ejemplo, «recorrido completo de ${names[0].toLowerCase()}» o «capítulos de ${names[0].toLowerCase()}».`,
+      go: { path: modPath },
+      title: modLabel,
+      moduleId: pool[0].module,
+    }
+  }
+
+  const series = pool[0]
+  const chapters = chaptersOf(series).filter((c) => api.canDoTour(c.id))
+  const go: HelpGo = { path: modPath }
+  const number = chapterNumber(text)
+
+  // «Capítulo dos de la lista»: empieza justo ese capítulo.
+  if (number !== null) {
+    const idx = number === Infinity ? chapters.length - 1 : number - 1
+    const chapter = chapters[idx]
+    if (!chapter) return { kind: 'say', text: `«${series.title}» tiene ${chapters.length} capítulo${chapters.length === 1 ? '' : 's'}; no hay un capítulo ${number}.` }
+    return {
+      kind: 'go',
+      text: `Capítulo ${idx + 1} de ${chapters.length} de «${series.title}»: ${sentence(chapter.title)} Te lo enseño en pantalla, paso a paso.`,
+      go,
+      title: chapter.title,
+      moduleId: series.module,
+      tourId: chapter.id,
+    }
+  }
+
+  // «Por capítulos» / «qué capítulos hay»: se dicen los capítulos (sin empezar ninguno) para elegir.
+  if (/\bcapitulos?\b|\bpor partes\b/.test(n) && !COURSE_COMPLETE.test(n)) {
+    const list = chapters.map((c, i) => `${i + 1}, ${plainTitle(c.title)}`).join('; ')
+    return {
+      kind: 'go',
+      text: `«${series.title}» tiene ${chapters.length} capítulo${chapters.length === 1 ? '' : 's'}: ${list}. Dime, por ejemplo, «capítulo 2 de ${series.title.toLowerCase()}» para empezar por ese, o «recorrido completo» para hacerlo entero.`,
+      go,
+      title: series.title,
+      moduleId: series.module,
+    }
+  }
+
+  // Recorrido completo: desde el principio, o por donde se quedó.
+  const prog = seriesProgress(series, api.canDoTour)
+  const first = chapters[0]
+  const startAt = prog.complete || !prog.started ? first : (prog.next ?? first)
+  const resumed = startAt.id !== first.id
+  return {
+    kind: 'go',
+    text: resumed
+      ? `Sigo con «${series.title}» por donde lo dejaste: ${sentence(startAt.title)} Te lo enseño en pantalla, paso a paso.`
+      : `Empiezo el recorrido completo de «${series.title}»: ${chapters.length} capítulo${chapters.length === 1 ? '' : 's'}, ${minutesText(chapters.reduce((t, c) => t + c.durationSec, 0))}. Te lo enseño en pantalla, paso a paso.`,
+    go,
+    title: series.title,
+    moduleId: series.module,
+    tourId: startAt.id,
+  }
+}
+
 const NOT_SURE = `¿Con qué necesitas ayuda? Puedo explicarte, por ejemplo: ${['Compras', 'Calendario', 'La cocina', 'Economía', 'Eventos', 'Ubicación'].join(', ')}. Dime «necesito ayuda con compras» y te llevo y te lo cuento.`
 
 /** null = la frase no pide ayuda (sigue el camino de siempre). */
 export function answerHelpRequest(text: string, api: TalkHelpApi): TalkHelpAnswer | null {
   if (!looksLikeHelpRequest(text)) return null
+  const course = answerCourseRequest(text, api)
+  if (course) return course
   const moduleId = moduleMentioned(text)
   const topic = topicOf(text, moduleId)
 

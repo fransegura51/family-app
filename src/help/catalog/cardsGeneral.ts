@@ -126,7 +126,7 @@ export const CARDS_GENERAL: HelpCard[] = [
     module: 'pepa',
     title: 'Pedirle ayuda a Pepa por voz',
     synonyms: ['necesito ayuda', 'ayudame con', 'como funciona', 'explicame', 'ayuda por voz', 'que me lleve y me explique', 'pepa explica'],
-    quick: 'Dile a PEPA, por ejemplo, «necesito ayuda con compras», «cómo funciona el calendario» o «necesito ayuda para crear un evento». Te lleva a esa pantalla y te explica por voz lo mismo que cuenta esta Ayuda.',
+    quick: 'Dile a PEPA, por ejemplo, «necesito ayuda con compras», «cómo funciona el calendario» o «necesito ayuda para crear un evento». Te lleva a esa pantalla y te explica por voz lo mismo que cuenta esta Ayuda. También puedes pedir «recorrido completo de compras» (el tutorial entero), «capítulos de la lista» (te los dice) o «capítulo dos de la lista» (empieza justo ese).',
     tour: 'tut-pepa-pedir-ayuda',
     state: 'disponible',
     limits: 'Explica las secciones y las funciones que tiene la Ayuda, y solo las que tu cuenta puede usar. Si pides ayuda sin decir con qué, te pregunta.',

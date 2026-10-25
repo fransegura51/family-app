@@ -819,7 +819,7 @@ export function VoiceCapture() {
   helpRef.current = helpApi
   const helpForTalk = () => {
     const help = helpRef.current
-    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard, canDoTour: help.canDoTour } : null
+    return help ? { ctx: help.ctx, search: help.search, accessOfCard: help.accessOfCard, canDoTour: help.canDoTour, canDoSeries: help.canDoSeries } : null
   }
   // Lo que se hace cuando Pepa termina de hablar (p. ej. empezar el recorrido «Enséñame» que ha pedido la persona).
   const afterSpeechRef = useRef<(() => void) | null>(null)

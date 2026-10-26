@@ -571,7 +571,7 @@ export interface ProductPrice {
   unit: string | null
   recordedDate: string
   receiptId: string | null
-  /** Formato del envase de esta compra (6 × 330 ml…), si se conoce (migración 0320). */
+  /** Formato del envase de esta compra (6 × 330 ml…), si se conoce (migración 0323). */
   pack?: PackFormat | null
 }
 

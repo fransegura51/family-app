@@ -1,13 +1,13 @@
-// Contrato de la migración PREPARADA 0320 (formato del envase en product_prices, COMP-2). Se ensayó en una transacción REVERTIDA sobre la base real:
+// Contrato de la migración PREPARADA 0323 (formato del envase en product_prices, COMP-2). Se ensayó en una transacción REVERTIDA sobre la base real:
 // 1.188 precios con huella idéntica antes y después, formato válido aceptado, formato a medias / cantidad cero / unidad desconocida rechazados.
 import { describe, expect, it } from 'vitest'
 
-const FILES = import.meta.glob(['/supabase/pending-migrations/0320_product_price_pack_format.sql', '/supabase/migrations/0320_product_price_pack_format.sql', '/supabase/rollbacks/0320_product_price_pack_format_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const UP = Object.entries(FILES).find(([k]) => k.endsWith('0320_product_price_pack_format.sql'))?.[1] as string
-const DOWN = Object.entries(FILES).find(([k]) => k.endsWith('0320_product_price_pack_format_down.sql'))?.[1] as string
+const FILES = import.meta.glob(['/supabase/pending-migrations/0323_product_price_pack_format.sql', '/supabase/migrations/0323_product_price_pack_format.sql', '/supabase/rollbacks/0323_product_price_pack_format_down.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const UP = Object.entries(FILES).find(([k]) => k.endsWith('0323_product_price_pack_format.sql'))?.[1] as string
+const DOWN = Object.entries(FILES).find(([k]) => k.endsWith('0323_product_price_pack_format_down.sql'))?.[1] as string
 const code = (sql: string) => sql.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n')
 
-describe('migración 0320 · formato del envase', () => {
+describe('migración 0323 · formato del envase', () => {
   it('existe con su reversión', () => {
     expect(UP).toBeTruthy()
     expect(DOWN).toBeTruthy()

@@ -23,6 +23,7 @@ import { listEventCompletions } from '@/data/calendar'
 import { listFamilyMembers } from '@/data/family'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { RaceTrack } from '@/ui/RaceTrack'
+import { createRaceDecorator, currentMonthInSpain, januaryVariantInSpain } from '@/ui/raceDecor'
 import { MiCamino } from '@/ui/MiCamino'
 import { GrantHistoryItem } from '@/ui/PointGrantHistory'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
@@ -95,6 +96,15 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   const [milestonesSeen, setMilestonesSeen] = useState<RewardMilestoneSeen[]>([])
   const [celebrating, setCelebrating] = useState<{ memberId: string; memberName: string; milestone: number } | null>(null)
   const [monthlyResults, setMonthlyResults] = useState<RewardMonthlyResult[]>([])
+
+  // Decoración mensual de la Carrera (PEPA-CARRERA-DECOR): una capa de adornos de temporada (nieve, hojas, carnaval…) que
+  // solo se dibuja en el modo Carrera. El mes sale SOLO de la fecha local de España (Europe/Madrid) — nadie lo elige — y se
+  // vuelve a comprobar cada media hora por si la pantalla se queda abierta al cambiar de mes. No lee puntos ni datos.
+  const [raceDecorator] = useState(() => createRaceDecorator())
+  useEffect(() => {
+    const timer = setInterval(() => raceDecorator.setMonth(currentMonthInSpain(), januaryVariantInSpain()), 30 * 60 * 1000)
+    return () => clearInterval(timer)
+  }, [raceDecorator])
 
   // reloadQuiet vuelve a leer todo SIN pantalla de «Cargando…»: tras corregir o anular puntos, el adulto se queda
   // con el Historial abierto en el mismo sitio en vez de volver a empezar.
@@ -280,8 +290,8 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
               <>
                 {/* «Mi Camino» (PEPA-MICAMINO) — el modo Camino ya no repite la pista V6 de la Carrera:
                     muestra el recorrido circular de los tres mundos con el total de puntos GANADOS de
-                    cada niño. Carrera sigue mostrando la pista V6 tal cual, sin tocarla. */}
-                {mode === 'camino' ? <MiCamino runners={raceRunners} /> : <RaceTrack runners={raceRunners} />}
+                    cada niño. Carrera mantiene la pista V6 y le suma la decoración del mes. */}
+                {mode === 'camino' ? <MiCamino runners={raceRunners} /> : <RaceTrack runners={raceRunners} decorator={raceDecorator} />}
                 {/* COR-1 — la pista mide los puntos GANADOS en el mes (o en total, en Camino), nunca
                     el saldo canjeable: gastar puntos en un canje no la hace retroceder. */}
                 <p className="muted" style={{ fontSize: 11, margin: '4px 0 10px' }}>

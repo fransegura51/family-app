@@ -63,7 +63,20 @@ interface PhotoCacheEntry {
   requestedPath: string | null
 }
 
-export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
+// Decoración mensual (opcional): una capa independiente que pinta adornos de temporada (nieve, hojas, carnaval…) sin tocar el paisaje,
+// la pista, los corredores ni los puntos. Si no se pasa `decorator`, la Carrera es exactamente la de siempre. Ver src/ui/raceDecor/index.js
+// (el contrato completo) y los comentarios «decoración» de abajo, donde se llama a cada gancho.
+export interface RaceDecorator {
+  drawBack(ctx: CanvasRenderingContext2D, env: unknown): void
+  drawFront(ctx: CanvasRenderingContext2D, env: unknown): void
+  drawHills?(ctx: CanvasRenderingContext2D, env: unknown): void
+  drawScenery?(ctx: CanvasRenderingContext2D, env: unknown): void
+  drawGround?(ctx: CanvasRenderingContext2D, env: unknown): void
+  fauna?(ctx: CanvasRenderingContext2D, env: unknown, type: string, f: unknown): boolean
+  frozen?(): boolean
+}
+
+export function RaceTrack({ runners, decorator }: { runners: RaceTrackMember[]; decorator?: RaceDecorator }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const badgeRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -103,6 +116,8 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
   // propio canvas y la posición de las insignias DOM se actualizan directamente, sin pasar por React.
   const runnersRef = useRef(runners)
   runnersRef.current = runners
+  const decoratorRef = useRef(decorator)
+  decoratorRef.current = decorator
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -115,6 +130,10 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
     let H = 540
     let dpr = 1
     const display: Record<string, number> = {}
+    const anchors: { i: number; x: number; y: number; size: number; bush: boolean }[] = []
+    let lastDt = 1 / 60
+    let curEnv: unknown = null
+    const markers: { x: number; y: number; w: number; h: number }[] = []
     let camera = { min: 0, max: 30 }
     let t = 0
     let last = 0
@@ -131,7 +150,10 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
       canvas!.height = Math.round(H * dpr)
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
-    const resizeObserver = new ResizeObserver(resize)
+    const resizeObserver = new ResizeObserver(() => {
+      resize()
+      if (reduced) draw()
+    })
     resizeObserver.observe(wrap)
     resize()
 
@@ -175,6 +197,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
     }
 
     function scenery() {
+      anchors.length = 0
       const ground = H * 0.47
       const horizon = H * 0.31
       const sky = ctx!.createLinearGradient(0, 0, 0, ground)
@@ -195,9 +218,10 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
       for (let x = 0; x <= W + 12; x += 12) ctx!.lineTo(x, ground - 24 + Math.sin(x * 0.014 + 2) * 13)
       ctx!.lineTo(W, ground)
       ctx!.fill()
+      decoratorRef.current?.drawHills?.(ctx!, curEnv)
       if (!reduced) {
         for (let i = 0; i < 5; i++) {
-          const x = (((i * 227 + 53 - t * (2.3 + i * 0.3)) % (W + 260)) + (W + 260)) % (W + 260) - 70
+          const x = ((((i * (W + 260)) / 5 + 53 - t * 2.6) % (W + 260)) + (W + 260)) % (W + 260) - 70
           const y = 25 + ((i * 29) % 64)
           const r = 12 + ((i * 7) % 14)
           ellipse(x, y, r * 1.15, r * 0.72, '#fff')
@@ -213,6 +237,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
         const x = (((i * 97 + Math.sin(seed) * 46 - offset * (0.23 + 0.12 * (i % 3))) % (W + 220)) + (W + 220)) % (W + 220) - 105
         const y = ground - 4 + Math.sin(seed * 2) * 5
         const size = (0.8 + (Math.sin(seed * 4) + 1) * 0.34) * (H / 380) ** 0.12
+        anchors.push({ i, x, y, size, bush: i % 4 === 0 || i % 7 === 0 })
         if (i % 4 === 0 || i % 7 === 0) {
           const rr = 13 + size * 10
           ellipse(x, y - rr * 0.35, rr * 1.45, rr * 0.7, i % 2 ? '#2f9151' : '#56aa51')
@@ -260,6 +285,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
           circle(fx, fy, rr * 0.55, '#efc74b')
         }
       }
+      decoratorRef.current?.drawScenery?.(ctx!, curEnv)
     }
 
     function laneTop(x: number) {
@@ -344,6 +370,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
     }
 
     function track() {
+      markers.length = 0
       const poly = (a: (x: number) => number, b: (x: number) => number, color: string) => {
         ctx!.fillStyle = color
         ctx!.beginPath()
@@ -389,6 +416,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
         ctx!.restore()
         rounded(x - 17, laneTop(x) + 6, 34, 21, 6, '#a74f3d')
         text(String(v), x, laneTop(x) + 16, 12, '#fff')
+        markers.push({ x, y: laneTop(x) + 6, w: 34, h: 21 })
       }
       return { mid: laneMid(W / 2), bottom: laneBottom(W / 2) }
     }
@@ -424,6 +452,7 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
       }
       const dir = e.dir
       const scale = Math.max(0.55, Math.min(0.82, W / 900))
+      if (decoratorRef.current?.fauna?.(ctx!, curEnv, e.type, { age, u, dir, scale, phase: e.phase, g })) return
       ctx!.save()
       if (e.type === 'bird') {
         const x = dir === 1 ? -38 + (W + 76) * u : W + 38 - (W + 76) * u
@@ -522,9 +551,16 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
 
     function draw() {
       ctx!.clearRect(0, 0, W, H)
+      const decor = decoratorRef.current
+      const env = decor
+        ? { W, H, t, dt: lastDt, reduced, ground: H * 0.47, laneTop, laneMid, laneBottom, camera, offset: camera.min * 10, anchors, markers, runnerCount: runnersRef.current.length }
+        : null
+      curEnv = env
       scenery()
       track()
+      if (decor && env) decor.drawGround?.(ctx!, env)
       wildlife()
+      if (decor && env) decor.drawBack(ctx!, env)
       const list = runnersRef.current
       // El número de corredores ya encoge el sprite dentro de runner() (laneHeight se reparte entre
       // todos) — aquí solo se ajusta por el ANCHO real de pantalla, nunca una segunda vez por cantidad.
@@ -536,14 +572,22 @@ export function RaceTrack({ runners }: { runners: RaceTrackMember[] }) {
         const phase = reduced ? 0 : t * (Math.PI * 2 / 1.44) + i * 1.15
         runner(x, y, phase, laneOf[r.member.id] ?? i, size, r.member)
       })
+      const decorFront = decoratorRef.current
+      if (decorFront && env) decorFront.drawFront(ctx!, env)
       positionBadges()
     }
 
     function tick(ms: number) {
       if (destroyed) return
+      if (decoratorRef.current?.frozen?.()) {
+        last = ms
+        if (!reduced) raf = requestAnimationFrame(tick)
+        return
+      }
       if (!last) last = ms
       const dt = Math.min(0.06, (ms - last) / 1000)
       last = ms
+      lastDt = dt
       if (!reduced) t += dt
       const list = runnersRef.current
       for (const r of list) {

@@ -989,6 +989,31 @@ Origen: avisos de personas que ya usan la app (captura del estado de funciones) 
 
 ---
 
+## Decoración mensual de la Carrera (PEPA-CARRERA-DECOR)
+
+Encargo del usuario (2026-10-26): «han quedado todos perfectos, incorpóralo en la Carrera en PEPA», a partir del prototipo
+`PEPA_CARRERA_MENSUAL_12_MESES_V2.html` (carpeta `PEPA - Prototipos`, revisado mes a mes con la usuaria). Rama
+`carrera-decoracion`, **sin publicar** (ni migraciones ni cambios de datos: es solo dibujo).
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| CARRERA-DECOR-1 | La decoración es una capa independiente: la Carrera acepta un `decorator` OPCIONAL y sin él es la de siempre | Sí (2026-10-26) | Sí — `RaceTrack.tsx` recibe `decorator?` y llama a ganchos opcionales (colinas, fin del paisaje, suelo, detrás/delante de corredores, fauna); no importa nada de la decoración. Código en `src/ui/raceDecor/` (un archivo por mes en `months/`) | Sí — `raceDecorUi.test.ts`; capturas con la Carrera real de la app: sin decorador, igual que antes | No |
+| CARRERA-DECOR-2 | El mes lo decide solo la fecha de España (Europe/Madrid); en enero, 1-6 Reyes Magos y 7-31 niños en la nieve | Sí | Sí — `currentMonthInSpain`/`januaryVariantInSpain`; `RewardsScreen` crea un decorador al abrir y revisa el mes cada 30 min | Sí — `raceDecor.test.mjs` (fronteras de fecha: 31 dic 23:30 UTC ya es enero en Madrid, 1 y 6 vs 7 de enero) | No |
+| CARRERA-DECOR-3 | Doce meses revisados con la usuaria (nieve, carnaval, primavera, aguaceros, flores, verano, vacaciones, fiesta, cole, Halloween, otoño, Navidad) | Sí | Sí — ver `NOTAS_REVISION.md` del prototipo y la ficha de Ayuda «Decoración de temporada de la Carrera» | Sí — 60 pruebas sin navegador (doce meses × escritorio/móvil/estrecho × 1-3 corredores, movimiento reducido, cambiar de mes 600 veces) y capturas de noviembre y diciembre sobre la Carrera real | No |
+| CARRERA-DECOR-4 | Nada tapa corredores, nombres ni números de posición | Sí | Sí — lo trasero se pinta detrás de los corredores; lo delantero solo en el cielo alto y la franja de abajo; las etiquetas de distancia se recortan del área de dibujo | Sí — pruebas de zona (y < 0,225·H o > 0,935·H) y de recorte par/impar de las etiquetas | No |
+| CARRERA-DECOR-5 | Solo en modo Carrera: Mi Camino y los puntos no se tocan | Sí | Sí — `mode === 'camino' ? <MiCamino/> : <RaceTrack decorator/>`; la decoración nunca lee puntos, miembros ni datos | Sí — `raceDecorUi.test.ts`, `miCaminoUi.test.ts`, `rewardsScreenTrackUi.test.ts` (actualizados al nuevo JSX) | No |
+| CARRERA-DECOR-6 | Cambios en el paisaje real pedidos o necesarios: (a) nubes con velocidad y separación uniformes (ya no se juntan en una «nube rara»); (b) con «reducir movimiento» el lienzo ya no se queda en blanco | Sí | Sí — (a) afecta a todos los meses y también sin decoración; (b) es la corrección de un fallo que había en la Carrera publicada (ResizeObserver borraba el único fotograma) | Sí — captura sin decoración confirma el paisaje intacto salvo las nubes; prueba de texto de ambos cambios | No |
+| CARRERA-DECOR-7 | La ardilla sale los doce meses y la mariposa del paisaje se cambia por un pajarillo en enero, febrero, noviembre y diciembre (mismo recorrido y tiempos) | Sí | Sí — gancho `fauna` | Sí — prueba (solo meses 0, 1, 10, 11; pájaro y conejo nunca) | No |
+| CARRERA-DECOR-8 | Rendimiento y limpieza en móvil | Sí | Sí — un solo bucle (el de la Carrera), partículas con tope reducido en pantallas estrechas, uno de cada dos objetos del prado en móvil, movimiento reducido = un fotograma estático, errores de la decoración atrapados (nunca rompen la Carrera) | Sí — prueba de coste (< 6 ms por fotograma de JavaScript con contexto simulado) | No |
+
+**Pendiente (honesto)**: (1) **no publicado**: está en la rama `carrera-decoracion`; (2) no probado todavía con la sesión real de la familia en la
+app ni en un iPhone/Android físicos (se ha probado la Carrera real de la app en un navegador de escritorio con corredores de mentira);
+(3) las capturas de los doce meses se revisaron sobre el prototipo; sobre la Carrera real solo se han mirado noviembre y diciembre;
+(4) el prototipo queda como referencia visual (`PEPA - Prototipos`), no forma parte del repositorio. Nada pasa a **Aprobado** sin
+confirmación expresa del usuario.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

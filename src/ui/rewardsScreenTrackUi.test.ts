@@ -9,7 +9,7 @@ const BODY = UI.slice(UI.indexOf('export function RewardsScreen'), UI.indexOf('\
 
 describe('Carrera animada V6 — una sola pista compartida, con los corredores reales', () => {
   it('RaceTrack se pinta UNA sola vez (no por tarjeta), con los participantes reales', () => {
-    expect(BODY).toContain('<RaceTrack runners={raceRunners} />')
+    expect(BODY).toContain('<RaceTrack runners={raceRunners} decorator={raceDecorator} />')
     // Nunca la vieja pista provisional de un carril por tarjeta.
     expect(BODY).not.toContain('<div className="rewards-track">')
     expect(BODY).not.toContain('<div className="rewards-track-marker"')

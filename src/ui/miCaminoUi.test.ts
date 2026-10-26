@@ -14,7 +14,7 @@ const CSS = readFileSync('src/ui/styles.css', 'utf8')
 
 describe('Mi Camino — dónde aparece', () => {
   it('el modo Camino enseña Mi Camino y la Carrera conserva la pista V6 intacta', () => {
-    expect(REWARDS).toContain("mode === 'camino' ? <MiCamino runners={raceRunners} /> : <RaceTrack runners={raceRunners} />")
+    expect(REWARDS).toContain("mode === 'camino' ? <MiCamino runners={raceRunners} /> : <RaceTrack runners={raceRunners} decorator={raceDecorator} />")
     expect(REWARDS).toContain("import { MiCamino } from '@/ui/MiCamino'")
     expect(REWARDS).toContain("import { RaceTrack } from '@/ui/RaceTrack'")
   })

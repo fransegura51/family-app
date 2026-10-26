@@ -246,6 +246,21 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
 
   // ───────────────────────── Economía
   {
+    id: 'compras-comparar-precios',
+    module: 'Compras',
+    name: 'Comparar precios (productos comunes y formatos)',
+    state: 'parcial',
+    works: 'Quinta subsección «Comparar precios»: Resultados (cada producto común con todas sus presentaciones normalizadas a €/kg, €/l o €/ud, con precio del paquete, fecha y diferencia con la más económica) y Emparejar (cola priorizada de artículos, sugerencias que reutilizan las reglas de identidad y las decisiones de la familia, buscador de cualquier producto común o artículo, crear, separar, deshacer y «no emparejar»); formato del envase al registrar la compra (por línea, para todos los artículos del ticket, o fotografiando el envase).',
+    missing: 'Sin publicar: requiere aplicar las migraciones 0323 (formato del envase en product_prices) y 0324 (productos comunes) y, para fotografiar envases, desplegar la función analyze-package-photo. Pendiente de validar en iPhone y Android.',
+    limits: 'Son precios históricos pagados por la familia, no ofertas de hoy. Un producto sin formato conocido no se compara. La lectura del envase con IA tiene tope diario por familia y las fotos no se guardan.',
+    verification: 'probada',
+    verificationNote: 'Cálculos, emparejamiento, pantallas y migraciones con pruebas; la lectura con IA se prueba solo en su validación (el modelo real no se llama desde las pruebas).',
+    reviewed: '2026-10-26',
+    evidence: ['src/ui/CompareScreen.tsx', 'src/domain/commonProducts.ts', 'src/ui/PackFormatsPanel.tsx', 'supabase/functions/_shared/ai/purposes/packagePhoto.ts'],
+    tests: ['src/domain/commonProducts.test.ts', 'src/domain/commonContext.test.ts', 'src/ui/compareScreen.test.tsx', 'src/ui/packFormatsPanel.test.tsx', 'src/domain/packagePhotoAi.test.ts', 'src/domain/packFormat.test.ts'],
+    help: { module: 'compras', terms: ['comparar precios', 'producto comun', 'emparejar', 'formato del envase'] },
+  },
+  {
     id: 'economia-movimientos',
     module: 'Economía',
     name: 'Movimientos, estadísticas, presupuestos y saldo entre personas',

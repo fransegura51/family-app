@@ -274,3 +274,20 @@ export async function recordProductPurchase(input: {
   if (priceError) throw priceError
   return { productId: product.id }
 }
+
+// ─── EAN (auxiliar) ───
+
+/** Códigos de barras ya guardados por artículo. Sin la migración, vacío. */
+export async function listProductEansSafe(): Promise<Map<string, string>> {
+  try {
+    const rows = await fetchAllRows<{ id: string; ean: string | null }>((from, to) => supabase.from('products').select('id, ean').not('ean', 'is', null).order('id').range(from, to))
+    return new Map(rows.filter((r) => r.ean).map((r) => [r.id, r.ean as string]))
+  } catch {
+    return new Map()
+  }
+}
+
+export async function setProductEan(productId: string, ean: string | null): Promise<void> {
+  const { error } = await supabase.from('products').update({ ean }).eq('id', productId)
+  if (error) throw error
+}

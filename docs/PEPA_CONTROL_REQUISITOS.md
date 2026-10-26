@@ -937,6 +937,27 @@ Antes de aplicar la 0322 se comprobó el estado real: 954 gastos, 24 etiquetas, 
 
 **Pendiente**: validación real en iPhone/Android; el justificante de Amazon de 6,99 € sin gasto; los 1.200 € (destino del dinero). Nada pasa a Aprobado sin confirmación expresa.
 
+## Comparar precios: quinta subsección, productos comunes, formatos del envase y fotografía (COMP-2, COMP-3, 26/10/2026)
+
+**Estado: DESARROLLADO Y PROBADO EN LOCAL; NO PUBLICADO** (rama `comparador`, sin subir a producción). Migraciones **0323** (formato del envase) y **0324** (productos comunes y EAN) **PREPARADAS, SIN APLICAR**; función de IA `analyze-package-photo` **escrita, SIN DESPLEGAR**. Implementado, pendiente de validación real; sin Aprobar. El cliente tolera la ausencia de las migraciones (sin 0324 «Emparejar» avisa de que aún no está disponible; sin 0323 las compras se guardan sin formato) y la lectura de envases avisa de que aún no está activada.
+
+Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada en lugar de revisar 470 fichas; un artículo pertenece a UN producto común (no se emparejan de dos en dos); `product_equivalences` (decisión «mismo producto» / «distinto» de la familia) y el aprendizaje compartido se reutilizan sin cambios y los productos comunes solo añaden «comparables»; los productos comunes entran en el comparador de siempre (`RelationContext.commonOf`), así que la ficha, el listado y la lista de la compra los ven igual.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COMP-3a | Quinta subsección «Comparar precios» (Resultados / Emparejar), con las otras cuatro intactas; el comparador general deja de estar escondido en Historial (se conserva el historial individual y la línea compacta bajo cada producto) | **Implementado y probado** | `compareScreen.test.tsx` (20), `compactPriceLine.test.tsx`, destino `compras.comparar` y `compras.comparar.emparejar` |
+| COMP-3b | Productos comunes: proponer, aceptar, buscar cualquiera, crear, corregir, separar, recordar; conservar nombres, formatos y precios originales | **Implementado y probado** | `commonProducts.test.ts` (20), `commonContext.test.ts` (6); migración 0324 ensayada REVERTIDA en producción: un artículo solo en un producto común, artículo de otra familia rechazado, nombre repetido rechazado, otra familia no ve ni borra, borrar el grupo no toca artículos (huella de `products` idéntica) |
+| COMP-3c | Mismo producto frente a comparable; sin propagar equivalencias dudosas; leche entera ≠ semidesnatada, con ≠ sin alcohol, con ≠ sin lactosa | **Implementado y probado** | variantes críticas en `suggestCommons`; solo se asigna solo un artículo IDÉNTICO a otro ya agrupado; una decisión «distinto» de la familia manda |
+| COMP-3d | «Emparejar»: cola priorizada por frecuencia (pesada por el precio), gasto, coincidencias y utilidad entre tiendas; filtros por tienda (cualquier número) y texto; no excluye productos no alimentarios; se puede dejar a medias | **Implementado y probado** | `pairingQueue`; al crear un producto común ofrece artículos parecidos para unir de una vez |
+| COMP-3e | Comparar formatos distintos por €/kg, €/l o €/ud: precio total, fecha, tienda, formato, cantidad total y diferencia con la más económica; sin sobrescribir el histórico; sin mezclar unidades | **Implementado y probado** | el ejemplo del encargo (6 × 1 l, 1 × 1,5 l, 1 × 1 l, 12 × 500 ml) ordena Hiperber 0,953 €/l, Otra tienda 1,00, Mercadona 1,05, Consum 1,10; el precio del paquete se enseña aparte |
+| COMP-3f | Formato del envase al registrar la compra: acceso discreto en cada línea, «Completar formatos de todos los artículos», «Ahora no», reutilizar lo confirmado, sin bloquear; compras con y sin ticket | **Implementado y probado** | `packFormatsPanel.test.tsx` (19), `packFormat.test.ts` (41); el mismo formulario sirve para «Sin ticket» |
+| COMP-3g | Fotografiar el envase (1 a 3 fotos), proponer los datos, confirmar y corregir; sin inventar; EAN solo auxiliar; fotos no guardadas | **Implementado y probado en local; función de IA SIN desplegar** | `packagePhotoAi.test.ts` (12), `packPhoto.test.ts` (6), `packFormatsPanel.test.tsx`: una lectura dudosa no rellena nada, un total impreso incoherente baja la confianza, un EAN con dígito de control incorrecto se descarta. El modelo real **no** se ha llamado |
+| COMP-3h | Coste de la IA | **Estimado, sin medir** | ver `docs/EVALUACION_COMPARADOR_PRECIOS.md` |
+| COMP-3i | Aislamiento entre familias y permisos | **Probado en la base real (transacción revertida)** | RLS por familia en las tres tablas nuevas, guardas de familia, `anon` sin acceso |
+| COMP-3j | Histórico: aprovechar tickets, nombres, formatos y equivalencias sin borrar ni alterar | **Implementado** | el formato del nombre se lee al comparar (sin escribir); lo indicado a mano solo escribe las columnas nuevas; nunca el precio |
+
+**Pendiente antes de publicar**: autorización para aplicar 0323 y 0324 y desplegar `analyze-package-photo`; validar en iPhone y Android (no se ha comprobado en pantalla real); probar la lectura de envases con fotos reales y medir su coste real; comprobar con datos reales cuántos artículos se agrupan.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos

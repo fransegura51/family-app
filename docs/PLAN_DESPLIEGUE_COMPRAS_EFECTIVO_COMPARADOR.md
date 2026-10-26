@@ -211,13 +211,16 @@ Contiene: estadísticas con una sola definición de gasto real, carteras en «Mi
 
 **Estado final del anexo (25/10/2026):** migración 0318 aplicada (huellas de gastos, movimientos bancarios, carteras, movimientos de cartera: idénticas antes y después; +7 categorías «Retirada de efectivo»); cliente publicado en el commit 637fa7d (build y deploy en verde); función bancaria v19 sin cambios. **Pendiente de comprobar tras abrir «Compras registradas» en el iPhone:** que se crean 15 anotaciones «bank_expense_merged», que desaparecen 15 apuntes duplicados del banco, que el gasto de junio–agosto baja 1.387,67 € y que 14 compras quedan con la etiqueta «Comun». Para deshacerlo: «Deshacer» en el aviso (o restore_economy_log por anotación).
 
-## Anexo 26/10/2026 — segundo bloque (EFE-5, ETQ-1, COMP-2): orden de publicación
+## Anexo 26/10/2026 — Banco y etiquetas publicados; comparador pendiente
 
-**No publicado.** Hay commits locales con el cliente nuevo y dos migraciones preparadas en `supabase/pending-migrations/` (con su reversión en `supabase/rollbacks/`). Orden obligatorio, porque el cliente nuevo tolera la ausencia de las migraciones pero lo ideal es aplicarlas primero:
+**Publicado el 26/10/2026**: Banco y efectivo y etiquetas con reparto, con la migración `0322_expense_tag_shares.sql` aplicada (renumerada: la 0319 de producción es de otra sesión). Ver el registro de requisitos (EFE-5, ETQ-1, EST-2).
 
-1. `0319_expense_tag_shares.sql` — tabla `expense_tag_shares` (+ archivo de repartos de movimientos borrados), `set_expense_tags`, tres disparadores sobre `expenses` (reescalar, archivar al borrar, recuperar al reinsertar) y `link_purchase_to_bank_expense` (con el reparto). Ensayada en transacción revertida; no cambia ningún dato existente (las etiquetas actuales son la etiqueta principal `tag_id`).
-2. `0320_product_price_pack_format.sql` — cuatro columnas opcionales en `product_prices` y una comprobación; 1.188 precios con huella idéntica antes y después.
-3. Subir los ratchets de numeración (4 archivos de prueba) a 320 al mover los ficheros a `supabase/migrations/`.
-4. Publicar el cliente y comprobar el despliegue.
+**NO publicado — comparador (rama `comparador`)**. Orden obligatorio cuando se autorice:
 
-Comprobaciones tras publicar: crear un movimiento con 3 etiquetas (iguales y en %) y comprobar que Estadísticas → Etiquetas suma cada parte y el total no cambia; registrar una compra con un producto ya comprado en otra tienda y comprobar que pregunta el formato (y que «Ahora no» guarda igual); abrir Economía y comprobar que la cartera sale una sola vez, junto a las cuentas.
+1. `0323_product_price_pack_format.sql` — cuatro columnas opcionales en `product_prices` y una comprobación. Ensayada: 1.188 precios con huella idéntica antes y después.
+2. `0324_common_products.sql` — tablas `common_products`, `common_product_members`, `common_product_skips`, columna opcional `products.ean`, guardas de familia, RLS y privilegios mínimos. Ensayada en transacción revertida (aislamiento entre familias incluido).
+3. Mover los ficheros a `supabase/migrations/` y subir la numeración de las pruebas (4 archivos) a 324.
+4. Desplegar la función `analyze-package-photo` (lectura de envases). Sin ella el cliente funciona y avisa de que la lectura no está activada.
+5. Publicar el cliente (rama `comparador` → `master`) y comprobar el despliegue.
+
+Comprobaciones tras publicar: «Comparar precios» aparece en el menú de Compras; agrupar dos artículos en «Emparejar» y ver el resultado en «Resultados» (con «Deshacer»); registrar una compra con un producto y abrir «📏 Formato del envase» (a mano y, si la función está desplegada, con foto); comprobar que una compra sin formatos se guarda igual.

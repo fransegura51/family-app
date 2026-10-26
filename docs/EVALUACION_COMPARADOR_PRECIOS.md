@@ -41,3 +41,20 @@ Por diseño, pocas: el formato se pregunta solo si el producto (o un equivalente
 3. Si en 2–3 meses el listado «Dónde habéis pagado menos» sigue vacío, **retirar** la petición de formato y dejar solo la ficha de evolución de precios.
 
 Esta propuesta **no está implementada**: queda para decidir.
+
+## Actualización 26/10/2026 — nuevo diseño con productos comunes (sin publicar)
+
+La evaluación anterior concluía que el cuello de botella era **reconocer que dos productos son el mismo**, no el tamaño. El nuevo diseño ataca justo eso:
+
+* **Productos comunes**: un artículo pertenece a un solo grupo (por ejemplo «Leche semidesnatada») y se compara con todos los demás del grupo por €/l, €/kg o €/ud, aunque cambien tienda, marca y envase. Ya no hace falta emparejar de dos en dos.
+* **Cola «Emparejar»** priorizada, con búsqueda de cualquier producto o artículo, sin límite de tiendas y sin excluir productos no alimentarios.
+* **Formatos**: al registrar la compra (por línea, para todos los artículos o con foto del envase).
+* **Qué se espera**: con 470 artículos y la mayoría de Mercadona/Hiperber, agrupar los ~40–60 más comprados que existen en las dos tiendas (leche, cerveza, picos, croissants, galletas, queso…) bastaría para tener las primeras comparaciones útiles. **No está medido**: depende de cuánto agrupe la familia y de que los formatos se completen; se evaluará con datos reales tras publicar.
+
+### Coste estimado de «Fotografiar envase» (no medido)
+
+* La función usa la IA que PEPA ya tiene (`ai_config`: Gemini, modelo `gemini-flash-lite-latest`) con su control de interruptor, cuenta adulta y registro de uso; el **tope propio es 40 lecturas al día por familia**.
+* Una lectura = de 1 a 3 imágenes reducidas en el móvil (del orden de 300–1.300 tokens de entrada por imagen) + unos 700 tokens de instrucciones y unos 150 de salida: unos **3.000 tokens de entrada y 150 de salida como máximo**.
+* Los precios públicos de los modelos Flash-Lite varían según la versión y las fuentes consultadas no coinciden (de 0,10 $ a 0,30 $ por millón de tokens de entrada y de 0,40 $ a 2,50 $ por millón de salida; hay que confirmarlo en la página oficial de precios de Google antes de fiarse). Con el precio más alto citado, una lectura costaría **alrededor de 0,0013 $ (≈ 0,1 céntimo)**; con el más bajo, **≈ 0,0004 $**. El máximo diario por familia (40 lecturas) quedaría por debajo de **0,06 $**.
+* Hoy la IA corre en el nivel gratuito de Google AI Studio, así que el coste directo sería cero mientras no se supere su límite.
+* Para gastar lo mínimo: las fotos se reducen en el móvil, solo se llama cuando la persona pulsa «📷 Fotografiar envase», un formato ya confirmado se reutiliza en las compras siguientes (no se vuelve a preguntar) y el EAN, cuando se lee, se guarda aparte como ayuda. **No se guardan las fotos.**

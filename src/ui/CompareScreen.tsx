@@ -775,7 +775,7 @@ export function ComparePricesTab() {
   if (!data)
     return (
       <>
-        <HelpDestMark id={view === 'resultados' ? 'compras.comparar' : 'compras.comparar.emparejar'} />
+        {view === 'resultados' ? <HelpDestMark id="compras.comparar" /> : <HelpDestMark id="compras.comparar.emparejar" />}
         <p className="muted">{error ?? 'Cargando precios…'}</p>
       </>
     )
@@ -785,7 +785,7 @@ export function ComparePricesTab() {
 
   return (
     <div data-help-id="compare.tab">
-      <HelpDestMark id={view === 'resultados' ? 'compras.comparar' : 'compras.comparar.emparejar'} />
+      {view === 'resultados' ? <HelpDestMark id="compras.comparar" /> : <HelpDestMark id="compras.comparar.emparejar" />}
       <div className="chip-row" role="group" aria-label="Comparar precios" data-help-id="compare.tabs" style={{ marginBottom: 8 }}>
         <button type="button" className={view === 'resultados' ? 'chip chip-active' : 'chip'} aria-pressed={view === 'resultados'} onClick={() => setView('resultados')}>
           Resultados

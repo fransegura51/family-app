@@ -7,7 +7,7 @@ import type { PackFormat, PackSource } from '@/domain/packFormat'
 import type { PackUnit } from '@/domain/productSize'
 import type { Product, ProductPrice } from '@/domain/types'
 
-// El formato del envase (migración 0323) es opcional: si la base aún no tiene las columnas, todo sigue como antes (sin formato).
+// El formato del envase (migración 0330) es opcional: si la base aún no tiene las columnas, todo sigue como antes (sin formato).
 const isMissingColumn = (err: { code?: string; message?: string } | null) => !!err && (err.code === '42703' || err.code === 'PGRST204' || /pack_(count|amount|unit|source)/.test(err.message ?? ''))
 
 interface PackColumns {
@@ -269,7 +269,7 @@ export async function recordProductPurchase(input: {
     ...(input.date ? { recorded_date: input.date } : {}),
   }
   let { error: priceError } = await supabase.from('product_prices').insert(input.pack ? { ...row, ...packToRow(input.pack) } : row)
-  // Sin la migración 0323 la compra se guarda igual, sin el formato.
+  // Sin la migración 0330 la compra se guarda igual, sin el formato.
   if (input.pack && isMissingColumn(priceError)) ({ error: priceError } = await supabase.from('product_prices').insert(row))
   if (priceError) throw priceError
   return { productId: product.id }

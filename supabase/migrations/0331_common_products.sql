@@ -1,4 +1,4 @@
--- 0324 · Productos comunes para el comparador de precios (COMP-3)
+-- 0331 · Productos comunes para el comparador de precios (COMP-3)
 --
 -- Un PRODUCTO COMÚN agrupa artículos de distintas tiendas, marcas y formatos que se pueden comparar entre sí (LECHE SEMIDESNATADA: pack 6 × 1 l de Mercadona,
 -- botella 1,5 l de Hiperber…). Cada artículo pertenece a UN solo producto común; no se emparejan los artículos de dos en dos. Lo que ya existía NO se duplica:

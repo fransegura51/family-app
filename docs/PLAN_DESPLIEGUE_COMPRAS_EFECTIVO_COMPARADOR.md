@@ -215,12 +215,4 @@ Contiene: estadísticas con una sola definición de gasto real, carteras en «Mi
 
 **Publicado el 26/10/2026**: Banco y efectivo y etiquetas con reparto, con la migración `0322_expense_tag_shares.sql` aplicada (renumerada: la 0319 de producción es de otra sesión). Ver el registro de requisitos (EFE-5, ETQ-1, EST-2).
 
-**NO publicado — comparador (rama `comparador`)**. Orden obligatorio cuando se autorice:
-
-1. `0323_product_price_pack_format.sql` — cuatro columnas opcionales en `product_prices` y una comprobación. Ensayada: 1.188 precios con huella idéntica antes y después.
-2. `0324_common_products.sql` — tablas `common_products`, `common_product_members`, `common_product_skips`, columna opcional `products.ean`, guardas de familia, RLS y privilegios mínimos. Ensayada en transacción revertida (aislamiento entre familias incluido).
-3. Mover los ficheros a `supabase/migrations/` y subir la numeración de las pruebas (4 archivos) a 324.
-4. Desplegar la función `analyze-package-photo` (lectura de envases). Sin ella el cliente funciona y avisa de que la lectura no está activada.
-5. Publicar el cliente (rama `comparador` → `master`) y comprobar el despliegue.
-
-Comprobaciones tras publicar: «Comparar precios» aparece en el menú de Compras; agrupar dos artículos en «Emparejar» y ver el resultado en «Resultados» (con «Deshacer»); registrar una compra con un producto y abrir «📏 Formato del envase» (a mano y, si la función está desplegada, con foto); comprobar que una compra sin formatos se guarda igual.
+**Comparador — publicado el 27/10/2026** (rama `comparador`): migraciones `0330_product_price_pack_format` y `0331_common_products` aplicadas (renumeradas porque otra sesión aplicó antes una 0323 y una 0324), función `analyze-package-photo` desplegada y cliente publicado. Orden seguido: comprobar conflictos con las migraciones de producción → aplicar 0330 y 0331 con huellas antes/después → desplegar la función → pruebas completas → publicar → comprobar el despliegue.

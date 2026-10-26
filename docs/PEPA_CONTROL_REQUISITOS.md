@@ -937,11 +937,13 @@ Antes de aplicar la 0322 se comprobó el estado real: 954 gastos, 24 etiquetas, 
 
 **Pendiente**: validación real en iPhone/Android; el justificante de Amazon de 6,99 € sin gasto; los 1.200 € (destino del dinero). Nada pasa a Aprobado sin confirmación expresa.
 
-## Comparar precios: quinta subsección, productos comunes, formatos del envase y fotografía (COMP-2, COMP-3, 26/10/2026)
+## Comparar precios: quinta subsección, productos comunes, formatos del envase y fotografía (COMP-2, COMP-3, 27/10/2026)
 
-**Estado: DESARROLLADO Y PROBADO EN LOCAL; NO PUBLICADO** (rama `comparador`, sin subir a producción). Migraciones **0323** (formato del envase) y **0324** (productos comunes y EAN) **PREPARADAS, SIN APLICAR**; función de IA `analyze-package-photo` **escrita, SIN DESPLEGAR**. Implementado, pendiente de validación real; sin Aprobar. El cliente tolera la ausencia de las migraciones (sin 0324 «Emparejar» avisa de que aún no está disponible; sin 0323 las compras se guardan sin formato) y la lectura de envases avisa de que aún no está activada.
+**Estado: PUBLICADO el 27/10/2026 (ver commit y despliegue en el informe); migraciones `0330_product_price_pack_format` y `0331_common_products` APLICADAS en producción (se renumeraron: 0323 y 0324 ya las había aplicado otra sesión); función de IA `analyze-package-photo` DESPLEGADA** (responde 401 sin sesión; **no se ha podido llamar con el proveedor real de IA** porque hace falta una sesión de usuario: no se entran credenciales ajenas). Implementado, pendiente de validación real en iPhone y Android; sin Aprobar.
 
-Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada en lugar de revisar 470 fichas; un artículo pertenece a UN producto común (no se emparejan de dos en dos); `product_equivalences` (decisión «mismo producto» / «distinto» de la familia) y el aprendizaje compartido se reutilizan sin cambios y los productos comunes solo añaden «comparables»; los productos comunes entran en el comparador de siempre (`RelationContext.commonOf`), así que la ficha, el listado y la lista de la compra los ven igual.
+Comprobado al aplicar: huellas de `product_prices` (1.230 líneas) y de `products` (488) idénticas antes y después, `product_equivalences` (7) intacta, tablas nuevas vacías, `anon` sin acceso, 3 políticas por familia. El comparador no modifica nada de Banco y efectivo, de las etiquetas con reparto ni de OAuth/Enable Banking (rama `banco-capa-proveedor`): no comparten archivos de código.
+
+Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada en lugar de revisar 470 fichas; un artículo pertenece a UN producto común (no se emparejan de dos en dos); `product_equivalences` y el aprendizaje compartido se reutilizan sin cambios y los productos comunes solo añaden «comparables»; los productos comunes entran en el comparador de siempre (`RelationContext.commonOf`).
 
 | ID | Requisito | Estado | Evidencia |
 |---|---|---|---|
@@ -951,12 +953,12 @@ Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada 
 | COMP-3d | «Emparejar»: cola priorizada por frecuencia (pesada por el precio), gasto, coincidencias y utilidad entre tiendas; filtros por tienda (cualquier número) y texto; no excluye productos no alimentarios; se puede dejar a medias | **Implementado y probado** | `pairingQueue`; al crear un producto común ofrece artículos parecidos para unir de una vez |
 | COMP-3e | Comparar formatos distintos por €/kg, €/l o €/ud: precio total, fecha, tienda, formato, cantidad total y diferencia con la más económica; sin sobrescribir el histórico; sin mezclar unidades | **Implementado y probado** | el ejemplo del encargo (6 × 1 l, 1 × 1,5 l, 1 × 1 l, 12 × 500 ml) ordena Hiperber 0,953 €/l, Otra tienda 1,00, Mercadona 1,05, Consum 1,10; el precio del paquete se enseña aparte |
 | COMP-3f | Formato del envase al registrar la compra: acceso discreto en cada línea, «Completar formatos de todos los artículos», «Ahora no», reutilizar lo confirmado, sin bloquear; compras con y sin ticket | **Implementado y probado** | `packFormatsPanel.test.tsx` (19), `packFormat.test.ts` (41); el mismo formulario sirve para «Sin ticket» |
-| COMP-3g | Fotografiar el envase (1 a 3 fotos), proponer los datos, confirmar y corregir; sin inventar; EAN solo auxiliar; fotos no guardadas | **Implementado y probado en local; función de IA SIN desplegar** | `packagePhotoAi.test.ts` (12), `packPhoto.test.ts` (6), `packFormatsPanel.test.tsx`: una lectura dudosa no rellena nada, un total impreso incoherente baja la confianza, un EAN con dígito de control incorrecto se descarta. El modelo real **no** se ha llamado |
-| COMP-3h | Coste de la IA | **Estimado, sin medir** | ver `docs/EVALUACION_COMPARADOR_PRECIOS.md` |
+| COMP-3g | Fotografiar el envase (1 a 3 fotos), proponer los datos, confirmar y corregir; sin inventar; EAN solo auxiliar; fotos no guardadas | **Implementado y probado; función de IA DESPLEGADA, sin probar con el proveedor real** | `packagePhotoAi.test.ts` (12), `packPhoto.test.ts` (6), `packFormatsPanel.test.tsx`: una lectura dudosa no rellena nada, un total impreso incoherente baja la confianza, un EAN con dígito de control incorrecto se descarta. El modelo real **no** se ha llamado todavía |
+| COMP-3h | Coste de la IA | **Estimado, sin medir** (0,0004–0,0013 $ por lectura; tope 40 al día por familia) | ver `docs/EVALUACION_COMPARADOR_PRECIOS.md` |
 | COMP-3i | Aislamiento entre familias y permisos | **Probado en la base real (transacción revertida)** | RLS por familia en las tres tablas nuevas, guardas de familia, `anon` sin acceso |
 | COMP-3j | Histórico: aprovechar tickets, nombres, formatos y equivalencias sin borrar ni alterar | **Implementado** | el formato del nombre se lee al comparar (sin escribir); lo indicado a mano solo escribe las columnas nuevas; nunca el precio |
 
-**Pendiente antes de publicar**: autorización para aplicar 0323 y 0324 y desplegar `analyze-package-photo`; validar en iPhone y Android (no se ha comprobado en pantalla real); probar la lectura de envases con fotos reales y medir su coste real; comprobar con datos reales cuántos artículos se agrupan.
+**Pendiente**: validar en iPhone y Android; probar la lectura de envases con fotos reales y el proveedor real de IA con una sesión de usuario, y medir su coste real; agrupar los artículos (unos 24 productos comunes y ≈ 100 artículos agrupables según la evaluación) y completar formatos. Nada pasa a Aprobado sin confirmación expresa.
 
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 

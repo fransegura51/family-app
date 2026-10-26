@@ -1,4 +1,4 @@
--- Reversión de 0324. OJO: borra los productos comunes, sus vínculos, los «no emparejar» y los códigos EAN guardados (los artículos, precios y formatos no se tocan).
+-- Reversión de 0331. OJO: borra los productos comunes, sus vínculos, los «no emparejar» y los códigos EAN guardados (los artículos, precios y formatos no se tocan).
 drop trigger if exists common_product_members_guard on public.common_product_members;
 drop trigger if exists common_product_skips_guard on public.common_product_skips;
 drop function if exists public.common_product_members_guard();

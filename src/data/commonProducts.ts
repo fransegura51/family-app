@@ -1,4 +1,4 @@
-// Productos comunes del comparador (migración 0324). Todo es de LA FAMILIA (RLS). Sin la migración las listas salen vacías y el comparador funciona como antes.
+// Productos comunes del comparador (migración 0331). Todo es de LA FAMILIA (RLS). Sin la migración las listas salen vacías y el comparador funciona como antes.
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { listFamilyDecisions } from '@/data/productEquivalences'
@@ -18,7 +18,7 @@ export interface CommonProductsData {
   commons: CommonProduct[]
   members: CommonMember[]
   skipped: string[]
-  /** false = la base todavía no tiene las tablas (migración 0324 sin aplicar): no se puede guardar nada. */
+  /** false = la base todavía no tiene las tablas (migración 0331 sin aplicar): no se puede guardar nada. */
   available: boolean
 }
 

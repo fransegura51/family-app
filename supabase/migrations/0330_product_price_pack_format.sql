@@ -1,4 +1,4 @@
--- 0323 · Formato del envase en cada compra de un producto (COMP-2)
+-- 0330 · Formato del envase en cada compra de un producto (COMP-2)
 --
 -- Para comparar precios entre tiendas hace falta saber cuánto contiene lo que se compró (6 latas × 330 ml = 1,98 l). Hasta ahora solo se podía leer del NOMBRE.
 -- Ahora se guarda, opcional, en cada línea de product_prices: lo confirma la persona al registrar la compra, o se reconoce del nombre / de compras anteriores.

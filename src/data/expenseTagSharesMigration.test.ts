@@ -1,4 +1,4 @@
-// Contrato de la migración PREPARADA 0322 (varias etiquetas por movimiento con reparto, ETQ-1). Se ensayó entera en una transacción REVERTIDA sobre la base real
+// Contrato de la migración 0322 (APLICADA en producción el 26/10/2026) (varias etiquetas por movimiento con reparto, ETQ-1). Se ensayó entera en una transacción REVERTIDA sobre la base real
 // (reparto de 3 etiquetas, suma incorrecta rechazada, etiqueta repetida/ajena rechazada, cambio de importe reescala, cambio de etiqueta única retira el reparto,
 // borrar + volver a insertar recupera el reparto, aislamiento entre familias, vincular compra ↔ cargo con reparto y Deshacer); aquí se fijan sus garantías.
 import { describe, expect, it } from 'vitest'

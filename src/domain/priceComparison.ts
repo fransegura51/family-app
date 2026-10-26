@@ -51,9 +51,11 @@ export interface SharedEquivalence {
 export interface RelationContext {
   decisions?: readonly FamilyDecision[]
   shared?: readonly SharedEquivalence[]
+  /** Producto común de cada artículo (id de artículo → id de producto común). Dos artículos del mismo producto común son comparables. */
+  commonOf?: ReadonlyMap<string, string>
 }
 
-export type RelationSource = 'family' | 'shared' | 'inferred'
+export type RelationSource = 'family' | 'shared' | 'inferred' | 'common'
 export interface ProductLink {
   relation: ProductRelation
   source: RelationSource
@@ -75,6 +77,13 @@ export function relationBetween(a: CmpProduct, b: CmpProduct, ctx: RelationConte
   }
 
   const inferred = compareProducts({ name: a.displayName, brand: a.brand }, { name: b.displayName, brand: b.brand }, { a: a.classKey, b: b.classKey })
+
+  // 1b. Mismo producto común (lo agrupó la familia): comparables, salvo que el nombre ya los dé por idénticos.
+  const commonA = ctx.commonOf?.get(a.id)
+  if (commonA && commonA === ctx.commonOf?.get(b.id)) {
+    if (inferred.relation === 'identical') return { relation: 'identical', source: 'inferred', automatic: true, reasons: inferred.reasons }
+    return { relation: 'equivalent', source: 'common', automatic: true, reasons: ['están en el mismo producto común'] }
+  }
 
   // 2. Equivalencia compartida: validada (varias familias) se aplica; provisional solo sugiere; bloqueada descarta.
   const ka = productTextKey(a.displayName)

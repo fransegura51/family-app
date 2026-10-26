@@ -223,12 +223,16 @@ export function pairingQueue(
 /** Artículos pendientes con la misma palabra clave y las mismas variantes que `base`: candidatos a unirse al mismo producto común nuevo (la persona los marca). */
 export function similarPending(base: CmpProduct, pending: readonly CmpProduct[], ctx: RelationContext = {}): CmpProduct[] {
   const bs = productSignature(base.displayName, base.brand)
+  const mine = critical(bs.variants)
   return pending
     .filter((p) => p.id !== base.id)
     .filter((p) => {
       const ps = productSignature(p.displayName, p.brand)
+      // Comparten una palabra del producto y no chocan en lo que lo hace OTRO producto (con/sin alcohol, entera/desnatada…). Que sean marcas distintas es justo lo normal aquí.
       if (!ps.core.some((w) => bs.core.includes(w))) return false
-      return relationBetween(base, p, ctx).relation !== 'different'
+      if (!sameSet(critical(ps.variants), mine)) return false
+      const decided = ctx.decisions?.find((d) => (d.productA === base.id && d.productB === p.id) || (d.productA === p.id && d.productB === base.id))
+      return decided?.relation !== 'different'
     })
     .slice(0, 8)
 }
@@ -240,6 +244,8 @@ export interface Offering {
   productName: string
   store: string
   date: string
+  /** Línea de product_prices de la última compra de esta presentación (para corregir su formato). */
+  priceId: string | null
   /** Precio total pagado por la presentación (por unidad comprada, tal cual el ticket). */
   totalPrice: number
   pack: PackInput | null
@@ -293,7 +299,7 @@ export function commonResult(
     const key = `${r.productId}|${store.toLowerCase()}|${packKey(r.pack ?? null)}`
     const prev = latest.get(key)
     if (prev && prev.date >= r.recordedDate) continue
-    latest.set(key, { productId: r.productId, productName: name, store, date: r.recordedDate, totalPrice: r.price, pack: r.pack ?? null, normalized: normalizePrice(r, name), diffPct: null, cheapest: false, sameAs: [] })
+    latest.set(key, { productId: r.productId, productName: name, store, date: r.recordedDate, priceId: r.id ?? null, totalPrice: r.price, pack: r.pack ?? null, normalized: normalizePrice(r, name), diffPct: null, cheapest: false, sameAs: [] })
   }
   const all = [...latest.values()]
   const exact = all.filter((o) => o.normalized.exact)

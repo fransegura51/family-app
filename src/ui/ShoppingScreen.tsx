@@ -5,7 +5,6 @@ import {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   TouchEvent as ReactTouchEvent,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -44,7 +43,8 @@ import {
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
 import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
-import { CompactPriceLine, ListPriceComparison, PriceDifferencesOverview, ProductPriceComparison, useCompactComparisons } from '@/ui/PriceComparisonPanels'
+import { ComparePricesTab } from '@/ui/CompareScreen'
+import { CompactPriceLine, ListPriceComparison, ProductPriceComparison, useCompactComparisons } from '@/ui/PriceComparisonPanels'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -184,7 +184,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Estadística compras'] as const
+const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
@@ -215,6 +215,8 @@ export function ShoppingScreen() {
     'compras.lista': () => setTab('Lista'),
     'compras.historial': () => setTab('Historial'),
     'compras.tickets': () => setTab('Tickets'),
+    'compras.comparar': () => setTab('Comparar'),
+    'compras.comparar.emparejar': () => setTab('Comparar'),
     'compras.estadistica': () => setTab('Estadística compras'),
   })
   const [pinnedItems, setPinnedItems] = useState<ComprasMenuItemKey[]>(() => loadComprasPinnedItems())
@@ -317,6 +319,7 @@ export function ShoppingScreen() {
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
+      {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
         <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} />
       )}
@@ -2528,7 +2531,6 @@ function HistoryTab() {
     return products.filter((p) => ids.has(p.id))
   }, [products, scopedPrices])
   const compactComparisons = useCompactComparisons(scopedProducts, scopedPrices)
-  const nameOfProduct = useCallback((id: string) => productById.get(id) ?? '?', [productById])
 
   const withStats = useMemo(
     () =>
@@ -2797,8 +2799,6 @@ function HistoryTab() {
           Otros
         </button>
       </div>
-
-      <PriceDifferencesOverview comparisons={compactComparisons} nameOf={nameOfProduct} onOpen={openDetail} />
 
       <h2 className="section-title" data-help-id="shopping.history-suggestions">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">

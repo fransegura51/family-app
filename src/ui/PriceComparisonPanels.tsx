@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clearFamilyDecision, listFamilyDecisions, loadSharedEquivalences, setFamilyDecision } from '@/data/productEquivalences'
+import { listCommonProductsData } from '@/data/commonProducts'
 import { listAllProductPrices, listProducts, setPriceLinePack } from '@/data/products'
 import { errorMessage } from '@/domain/errorMessage'
 import { productSignature } from '@/domain/productIdentity'
@@ -17,6 +18,7 @@ import {
   type DecisionRelation,
   type FamilyDecision,
   type GroupScope,
+  type RelationContext,
   NO_STORE,
   type SharedEquivalence,
 } from '@/domain/priceComparison'
@@ -39,6 +41,7 @@ export { toCmpPrice, toCmpProduct }
 function useEquivalenceContext(products: readonly CmpProduct[], focusName?: string) {
   const [decisions, setDecisions] = useState<FamilyDecision[]>([])
   const [shared, setShared] = useState<SharedEquivalence[]>([])
+  const [commonOf, setCommonOf] = useState<ReadonlyMap<string, string>>(new Map())
   const [version, setVersion] = useState(0)
 
   const names = useMemo(() => {
@@ -54,6 +57,8 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
     let cancelled = false
     listFamilyDecisions().then((d) => !cancelled && setDecisions(d))
     loadSharedEquivalences(names).then((s) => !cancelled && setShared(s))
+    // Los productos comunes de la familia también cuentan: dos artículos del mismo grupo son comparables.
+    listCommonProductsData().then((c) => !cancelled && setCommonOf(new Map(c.members.map((m) => [m.productId, m.commonId]))))
     return () => {
       cancelled = true
     }
@@ -62,7 +67,8 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
   }, [namesKey, version])
 
   const reload = useCallback(() => setVersion((v) => v + 1), [])
-  return { ctx: { decisions, shared }, reload }
+  const ctx = useMemo<RelationContext>(() => ({ decisions, shared, commonOf }), [decisions, shared, commonOf])
+  return { ctx, reload }
 }
 
 // ─── Ficha del producto ───
@@ -343,47 +349,6 @@ export function CompactPriceLine({ cmp }: { cmp: CompactComparison }) {
         ? `${cmp.best.store}: ${eur(cmp.best.value)}${unit} — ${cmp.pctLess} % menos (${dayMonth(cmp.best.date)})`
         : 'Lo más barato que habéis pagado'}
     </span>
-  )
-}
-
-/** Productos que habéis pagado bastante más barato en otra tienda, de mayor a menor diferencia. Solo comparaciones fiables (mismo formato normalizado). */
-export function PriceDifferencesOverview({ comparisons, nameOf, onOpen }: { comparisons: ReadonlyMap<string, CompactComparison>; nameOf: (productId: string) => string; onOpen: (productId: string, name: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const rows = useMemo(
-    () =>
-      [...comparisons.entries()]
-        .filter(([, c]) => c.best != null && (c.pctLess ?? 0) >= 5)
-        .sort((a, b) => (b[1].pctLess ?? 0) - (a[1].pctLess ?? 0) || nameOf(a[0]).localeCompare(nameOf(b[0]), 'es'))
-        .slice(0, 30),
-    [comparisons, nameOf],
-  )
-  return (
-    <div style={{ margin: '8px 0' }} data-help-id="shopping.price-overview">
-      <button type="button" className="link-button" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-        📊 Dónde habéis pagado menos ({rows.length}) {open ? '▾' : '▸'}
-      </button>
-      {open && (
-        <div className="card" style={{ marginTop: 6 }}>
-          {rows.length === 0 ? (
-            <p className="muted" style={{ margin: 0 }}>
-              Todavía no hay productos con precios comparables entre dos tiendas. Se irán viendo según registréis compras (con el formato del envase, si se pide).
-            </p>
-          ) : (
-            rows.map(([id, cmp]) => (
-              <div key={id} className="receipt-line-card">
-                <button type="button" className="link-button" style={{ padding: 0, textAlign: 'left' }} onClick={() => onOpen(id, nameOf(id))}>
-                  {nameOf(id)}
-                </button>
-                <CompactPriceLine cmp={cmp} />
-              </div>
-            ))
-          )}
-          <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>
-            Son precios que habéis pagado vosotros en el pasado, no ofertas de hoy: antes de cambiar de tienda, comprobad el precio actual.
-          </p>
-        </div>
-      )}
-    </div>
   )
 }
 

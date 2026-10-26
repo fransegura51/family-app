@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clearFamilyDecision, listFamilyDecisions, loadSharedEquivalences, setFamilyDecision } from '@/data/productEquivalences'
-import { listCommonProductsData } from '@/data/commonProducts'
+import { assignToCommon, createCommonProduct, listCommonProductsData, type CommonProductsData } from '@/data/commonProducts'
 import { listAllProductPrices, listProducts, setPriceLinePack } from '@/data/products'
 import { errorMessage } from '@/domain/errorMessage'
 import { productSignature } from '@/domain/productIdentity'
 import { describePack, type PackFormat } from '@/domain/packFormat'
 import { toCmpPrice, toCmpProduct } from '@/domain/priceComparisonAdapters'
+import { applyPick, CommonPickerSheet } from '@/ui/CompareScreen'
 import { PackEditor } from '@/ui/PackFormatsPanel'
 import {
   buildCompactComparisons,
@@ -41,7 +42,7 @@ export { toCmpPrice, toCmpProduct }
 function useEquivalenceContext(products: readonly CmpProduct[], focusName?: string) {
   const [decisions, setDecisions] = useState<FamilyDecision[]>([])
   const [shared, setShared] = useState<SharedEquivalence[]>([])
-  const [commonOf, setCommonOf] = useState<ReadonlyMap<string, string>>(new Map())
+  const [commonsData, setCommonsData] = useState<CommonProductsData>({ commons: [], members: [], skipped: [], available: false })
   const [version, setVersion] = useState(0)
 
   const names = useMemo(() => {
@@ -58,7 +59,7 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
     listFamilyDecisions().then((d) => !cancelled && setDecisions(d))
     loadSharedEquivalences(names).then((s) => !cancelled && setShared(s))
     // Los productos comunes de la familia también cuentan: dos artículos del mismo grupo son comparables.
-    listCommonProductsData().then((c) => !cancelled && setCommonOf(new Map(c.members.map((m) => [m.productId, m.commonId]))))
+    listCommonProductsData().then((c) => !cancelled && setCommonsData(c))
     return () => {
       cancelled = true
     }
@@ -67,8 +68,8 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
   }, [namesKey, version])
 
   const reload = useCallback(() => setVersion((v) => v + 1), [])
-  const ctx = useMemo<RelationContext>(() => ({ decisions, shared, commonOf }), [decisions, shared, commonOf])
-  return { ctx, reload }
+  const ctx = useMemo<RelationContext>(() => ({ decisions, shared, commonOf: new Map(commonsData.members.map((m) => [m.productId, m.commonId])) }), [decisions, shared, commonsData])
+  return { ctx, reload, commonsData }
 }
 
 // ─── Ficha del producto ───
@@ -76,7 +77,8 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
 export function ProductPriceComparison({ productId, products, prices, onPackSaved }: { productId: string; products: readonly Product[]; prices: readonly ProductPrice[]; onPackSaved?: () => void }) {
   const cmpProducts = useMemo(() => products.map(toCmpProduct), [products])
   const target = cmpProducts.find((p) => p.id === productId)
-  const { ctx, reload } = useEquivalenceContext(cmpProducts, target?.displayName)
+  const { ctx, reload, commonsData } = useEquivalenceContext(cmpProducts, target?.displayName)
+  const [pickingCommon, setPickingCommon] = useState(false)
   const [scope, setScope] = useState<GroupScope>('equivalent')
   const [openStore, setOpenStore] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -120,6 +122,8 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
     .sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
     .slice(0, 5)
   const formatted = memberPrices.filter((p) => p.pack != null)
+  const myCommonId = commonsData.members.find((m) => m.productId === productId)?.commonId
+  const commonName = commonsData.commons.find((c) => c.id === myCommonId)?.name ?? null
   const hasAnyPrices = prices.some((p) => memberIds.has(p.productId))
   if (!hasAnyPrices && group.suggestions.length === 0) return null
 
@@ -128,6 +132,14 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
       <h3 className="section-title" style={{ margin: '0 0 6px' }}>
         Precio por tienda
       </h3>
+      {commonsData.available && (
+        <p className="muted" data-help-id="shopping.product-common" style={{ margin: '0 0 6px', fontSize: 13 }}>
+          Producto común: <strong>{commonName ?? 'ninguno'}</strong>{' '}
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => setPickingCommon(true)}>
+            {commonName ? 'Cambiar' : 'Agrupar'}
+          </button>
+        </p>
+      )}
       <div className="chip-row" role="group" aria-label="Qué productos comparar" data-help-id="shopping.price-scope">
         <button type="button" className={scope === 'identical' ? 'chip chip-active' : 'chip'} aria-pressed={scope === 'identical'} onClick={() => setScope('identical')}>
           Solo el mismo
@@ -236,6 +248,19 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
         </div>
       )}
       {error && <p className="error">{error}</p>}
+      {pickingCommon && (
+        <CommonPickerSheet
+          article={products.find((p) => p.id === productId) ?? products[0]}
+          data={{ products: [...products], prices: [...prices], commons: commonsData.commons, members: commonsData.members, skipped: commonsData.skipped, decisions: ctx.decisions ? [...ctx.decisions] : [], shared: ctx.shared ? [...ctx.shared] : [], available: true }}
+          onClose={() => setPickingCommon(false)}
+          onPick={(r) => {
+            setPickingCommon(false)
+            void applyPick({ id: productId }, r, commonsData, { assign: assignToCommon, createCommon: createCommonProduct })
+              .then(reload)
+              .catch((err) => setError(errorMessage(err, 'No se pudo cambiar el producto común')))
+          }}
+        />
+      )}
     </div>
   )
 }

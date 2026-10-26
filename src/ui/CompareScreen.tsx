@@ -90,7 +90,29 @@ function NoticeBar({ notice, onClose, onError }: { notice: Notice | null; onClos
 
 // ─── Buscador / selector de producto común ───
 
-type PickResult = { kind: 'common'; common: CommonProduct } | { kind: 'article'; product: Product } | { kind: 'new'; name: string }
+export type PickResult = { kind: 'common'; common: CommonProduct } | { kind: 'article'; product: Product } | { kind: 'new'; name: string }
+
+/**
+ * Agrupa `article` según lo elegido en el buscador: en un producto común existente, en uno nuevo, o junto a otro artículo (en el grupo del otro si ya lo tiene; si no, se
+ * crea uno con los dos). Una sola implementación para «Emparejar», «Resultados» y la ficha del producto.
+ */
+export async function applyPick(
+  article: Pick<Product, 'id'>,
+  r: PickResult,
+  data: Pick<CompareDataset, 'members' | 'commons'>,
+  a: Pick<CompareActions, 'assign' | 'createCommon'>,
+): Promise<void> {
+  if (r.kind === 'common') return a.assign(article.id, r.common.id, 'manual')
+  if (r.kind === 'new') {
+    const c = await a.createCommon(r.name)
+    return a.assign(article.id, c.id, 'manual')
+  }
+  const cid = data.members.find((m) => m.productId === r.product.id)?.commonId
+  const existing = cid ? data.commons.find((x) => x.id === cid) : undefined
+  const c = existing ?? (await a.createCommon(suggestCommonName(toCmpProduct(r.product))))
+  await a.assign(article.id, c.id, 'manual')
+  if (!existing) await a.assign(r.product.id, c.id, 'manual')
+}
 
 /**
  * Busca CUALQUIER producto común o artículo del historial (aunque PEPA no lo haya sugerido) para agrupar un artículo. Elegir un artículo ya agrupado lo une a su producto común;
@@ -786,20 +808,7 @@ export function ComparePricesTab() {
           onClose={() => setPickGroupFor(null)}
           onPick={(r) => {
             setPickGroupFor(null)
-            const move = async () => {
-              if (r.kind === 'common') await actions.assign(articleToMove.id, r.common.id, 'manual')
-              else if (r.kind === 'new') {
-                const c = await actions.createCommon(r.name)
-                await actions.assign(articleToMove.id, c.id, 'manual')
-              } else {
-                const cid = data.members.find((m) => m.productId === r.product.id)?.commonId
-                const c = cid ? data.commons.find((x) => x.id === cid) : await actions.createCommon(suggestCommonName(toCmpProduct(r.product)))
-                if (!c) return
-                await actions.assign(articleToMove.id, c.id, 'manual')
-                if (!cid) await actions.assign(r.product.id, c.id, 'manual')
-              }
-            }
-            void move().catch((err) => setError(errorMessage(err, 'No se pudo cambiar el grupo')))
+            void applyPick(articleToMove, r, data, actions).catch((err) => setError(errorMessage(err, 'No se pudo cambiar el grupo')))
           }}
         />
       )}

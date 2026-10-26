@@ -1,7 +1,10 @@
 // Productos comunes del comparador (migración 0324). Todo es de LA FAMILIA (RLS). Sin la migración las listas salen vacías y el comparador funciona como antes.
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
-import { normalizeCommonName, type CommonMember, type CommonProduct } from '@/domain/commonProducts'
+import { listFamilyDecisions } from '@/data/productEquivalences'
+import { listProducts } from '@/data/products'
+import { normalizeCommonName, suggestCommons, type CommonMember, type CommonProduct } from '@/domain/commonProducts'
+import { toCmpProduct } from '@/domain/priceComparisonAdapters'
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -103,4 +106,35 @@ export async function listProductEansSafe(): Promise<Map<string, string>> {
 export async function setProductEan(productId: string, ean: string | null): Promise<void> {
   const { error } = await supabase.from('products').update({ ean }).eq('id', productId)
   if (error) throw error
+}
+
+// ─── Asignación automática tras guardar una compra ───
+
+/**
+ * Un artículo que acaba de entrar al historial y es IDÉNTICO a otro ya agrupado se une solo a su producto común (origen «auto», se deshace desde Emparejar).
+ * Todo lo demás se queda como sugerencia. Nunca lanza ni retrasa el guardado de la compra.
+ */
+export async function autoAssignToCommons(productIds: readonly string[]): Promise<number> {
+  try {
+    if (productIds.length === 0) return 0
+    const [products, decisions, data] = await Promise.all([listProducts(), listFamilyDecisions(), listCommonProductsData()])
+    if (!data.available || data.commons.length === 0) return 0
+    const cmp = products.map(toCmpProduct)
+    const ctx = { decisions, commonOf: new Map(data.members.map((m) => [m.productId, m.commonId])) }
+    const members = [...data.members]
+    let n = 0
+    for (const id of new Set(productIds)) {
+      if (members.some((m) => m.productId === id) || data.skipped.includes(id)) continue
+      const article = cmp.find((p) => p.id === id)
+      if (!article) continue
+      const best = suggestCommons(article, data.commons, members, cmp, ctx)[0]
+      if (!best?.automatic) continue
+      await assignToCommon(id, best.common.id, 'auto')
+      members.push({ productId: id, commonId: best.common.id, source: 'auto' })
+      n += 1
+    }
+    return n
+  } catch {
+    return 0
+  }
 }

@@ -181,7 +181,9 @@ import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ti
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setPriceLinePack, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
-import { PackFormatsPanel } from '@/ui/PackFormatsPanel'
+import { autoAssignToCommons, setProductEan } from '@/data/commonProducts'
+import { eanHint } from '@/domain/packPhoto'
+import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
@@ -6248,6 +6250,8 @@ interface DraftLine {
   classOverride?: { kind: FoodTypeKind; classification: string }
   // Formato del envase (COMP-2): undefined = no decidido (se aplica lo que el nombre o las compras anteriores dicen con seguridad); null = «Ahora no».
   pack?: PackFormat | null
+  // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
+  ean?: string
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -6641,6 +6645,7 @@ function ReceiptForm({
   }
 
   async function saveLines(receiptId: string) {
+    const savedProductIds: string[] = []
     // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
     // en serie tardaba tanto (una llamada de red por línea) que parecía
     // que se había quedado colgado en "Subiendo…" — bug real detectado
@@ -6670,6 +6675,8 @@ function ReceiptForm({
           })
           // Una línea que no es un producto (PARKING en Mercadona...) se descarta antes de persistir: sin producto, sin precio, sin clase.
           if (productId == null) return
+          savedProductIds.push(productId)
+          if (line.ean) await setProductEan(productId, line.ean).catch(() => undefined) // solo ayuda; si falla (o aún no hay columna) no importa
           // LA FAMILIA MANDA: solo la clase ELEGIDA A MANO al revisar este ticket se guarda en el producto (y queda confirmada).
           // La clase que resuelven solos el aprendizaje compartido, la clase histórica o las reglas NO se guarda: se resuelve al
           // leer (domain/productClass.ts), para no convertir una clasificación automática en una decisión falsamente humana.
@@ -6694,6 +6701,8 @@ function ReceiptForm({
     )
     // Los formatos recién guardados cuentan ya para recordar el de la próxima compra.
     listAllProductPrices().then(setAllPrices).catch(() => {})
+    // Un artículo idéntico a otro ya agrupado en un producto común se une solo a él (nunca retrasa ni rompe el guardado).
+    void autoAssignToCommons(savedProductIds)
   }
 
   // Deja el formulario de «Subir ticket» como nuevo (tras guardar, o al pulsar Cancelar con una foto ya escaneada por error).
@@ -7092,6 +7101,15 @@ function ReceiptForm({
                     </span>
                   )}
                 </div>
+                <LineFormatControl
+                  line={line}
+                  history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
+                  onPack={(pack) => updateLine(i, { pack })}
+                  onReading={(reading) => {
+                    const ean = eanHint(reading)
+                    if (ean) updateLine(i, { ean })
+                  }}
+                />
               </div>
             )
           })}
@@ -7103,6 +7121,10 @@ function ReceiptForm({
               prices={allPrices}
               productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
               onPack={(i, pack) => updateLine(i, { pack })}
+              onReading={(i, reading) => {
+                const ean = eanHint(reading)
+                if (ean) updateLine(i, { ean })
+              }}
               onFixPast={async (priceId, pack) => {
                 await setPriceLinePack(priceId, pack)
                 setAllPrices(await listAllProductPrices())

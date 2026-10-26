@@ -196,3 +196,33 @@ describe('Emparejar', () => {
     expect(screen.getByText(/aún no están disponibles/)).toBeTruthy()
   })
 })
+
+describe('agrupar desde el buscador (misma lógica en Emparejar, Resultados y la ficha)', () => {
+  it('en un producto común existente', async () => {
+    const { applyPick } = await import('@/ui/CompareScreen')
+    const a = actions()
+    await applyPick({ id: 'det' }, { kind: 'common', common: leche }, base, a)
+    expect(a.assign).toHaveBeenCalledWith('det', 'c-leche', 'manual')
+  })
+  it('junto a un artículo que ya está en un grupo: se une a ese grupo, sin crear otro', async () => {
+    const { applyPick } = await import('@/ui/CompareScreen')
+    const a = actions()
+    await applyPick({ id: 'x' }, { kind: 'article', product: products[0] }, base, a)
+    expect(a.createCommon).not.toHaveBeenCalled()
+    expect(a.assign).toHaveBeenCalledWith('x', 'c-leche', 'manual')
+  })
+  it('junto a un artículo sin grupo: crea uno con los dos', async () => {
+    const { applyPick } = await import('@/ui/CompareScreen')
+    const a = actions()
+    await applyPick({ id: 'cer' }, { kind: 'article', product: products[6] }, base, a)
+    expect(a.createCommon).toHaveBeenCalledTimes(1)
+    expect(a.assign.mock.calls.map((c) => c[0]).sort()).toEqual(['cer', 'cer2'])
+  })
+  it('uno nuevo con el nombre escrito', async () => {
+    const { applyPick } = await import('@/ui/CompareScreen')
+    const a = actions()
+    await applyPick({ id: 'det' }, { kind: 'new', name: 'Detergente' }, base, a)
+    expect(a.createCommon).toHaveBeenCalledWith('Detergente')
+    expect(a.assign).toHaveBeenCalledWith('det', 'c-new', 'manual')
+  })
+})

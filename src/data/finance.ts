@@ -1,6 +1,7 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
+import type { TagShare } from '@/domain/tagShares'
 import type {
   Budget,
   BudgetCategory,
@@ -188,9 +189,9 @@ export async function addExpense(input: {
   notes?: string | null
   isFixedOverride?: boolean | null
   productClassification?: string | null
-}): Promise<void> {
+}): Promise<string> {
   const familyId = await currentFamilyId()
-  const { error } = await supabase.from('expenses').insert({
+  const { data, error } = await supabase.from('expenses').insert({
     family_id: familyId,
     expense_date: input.date,
     amount: input.amount,
@@ -204,7 +205,35 @@ export async function addExpense(input: {
     notes: input.notes ?? null,
     is_fixed_override: input.isFixedOverride ?? null,
     product_classification: input.productClassification ?? null,
-  })
+  }).select('id').single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+// ─── Varias etiquetas con reparto (migración 0322) ───
+// Una sola etiqueta sigue siendo expenses.tag_id. El reparto entre varias vive en expense_tag_shares y solo se escribe con set_expense_tags (valida que la suma sea exacta).
+
+/** Reparto de los movimientos que tienen varias etiquetas, por movimiento. Sin la migración (o sin acceso) devuelve vacío: todo funciona como antes. */
+export async function listTagSharesSafe(): Promise<Map<string, TagShare[]>> {
+  try {
+    const rows = await fetchAllRows<{ expense_id: string; tag_id: string; amount: number | string; position: number }>((from, to) =>
+      supabase.from('expense_tag_shares').select('expense_id, tag_id, amount, position').order('expense_id').order('position').range(from, to),
+    )
+    const map = new Map<string, TagShare[]>()
+    for (const r of rows) {
+      const list = map.get(r.expense_id) ?? []
+      list.push({ tagId: r.tag_id, amount: Number(r.amount) })
+      map.set(r.expense_id, list)
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+/** Fija las etiquetas de un movimiento: [] = sin etiqueta, una = etiqueta única, varias = reparto (la suma debe ser el importe). */
+export async function setExpenseTags(expenseId: string, shares: readonly TagShare[]): Promise<void> {
+  const { error } = await supabase.rpc('set_expense_tags', { p_expense: expenseId, p_shares: shares.map((x) => ({ tag_id: x.tagId, amount: x.amount })) })
   if (error) throw error
 }
 

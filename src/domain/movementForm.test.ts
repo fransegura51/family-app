@@ -47,6 +47,7 @@ describe('Nuevo movimiento — borrador inicial (A/B)', () => {
       store: '',
       productClassification: '',
       tagId: '',
+      tagSplit: null,
       notes: '',
       isFixedOverride: null,
     })
@@ -125,6 +126,7 @@ describe('Se guarda TODO en una sola operación (E…N)', () => {
     store: 'Puesto Mercado Panadería',
     productClassification: 'Panadería y bollería',
     tagId: 'tag-eric',
+    tagSplit: null,
     notes: '  Galletas y Mona ',
     isFixedOverride: null,
   }
@@ -226,5 +228,31 @@ describe('Necesito «Según categoría» es dinámico (K)', () => {
     expect(resolveCategoryClassification('Ocio', CATEGORIES)).toEqual({ necessity: null, isFixed: null })
     // una subcategoría hereda de su categoría principal
     expect(resolveCategoryClassification('Panadería', CATEGORIES)).toEqual({ necessity: 'necesito', isFixed: false })
+  })
+})
+
+describe('Varias etiquetas con reparto (ETQ-1)', () => {
+  const base: MovementDraft = { ...emptyMovementDraft(CATEGORIES, '2026-10-26'), amount: '100', tagId: 'comun' }
+  it('con una sola etiqueta se guarda como siempre: sin reparto', () => {
+    const v = movementFieldValues(base)
+    expect(v.tagId).toBe('comun')
+    expect(v.tagShares).toEqual([])
+    expect(v.tagSplitError).toBeNull()
+  })
+  it('con reparto, la etiqueta principal es la de mayor parte y el reparto suma el importe', () => {
+    const v = movementFieldValues({ ...base, tagSplit: { ids: ['comun', 'eric', 'vac'], mode: 'amount', inputs: { comun: '60', eric: '30', vac: '10' } } })
+    expect(v.tagId).toBe('comun')
+    expect(v.tagShares).toEqual([{ tagId: 'comun', amount: 60 }, { tagId: 'eric', amount: 30 }, { tagId: 'vac', amount: 10 }])
+    expect(v.tagSplitError).toBeNull()
+  })
+  it('a partes iguales se recalcula con el importe actual (100 € entre 3)', () => {
+    const v = movementFieldValues({ ...base, tagSplit: { ids: ['a', 'b', 'c'], mode: 'equal', inputs: {} } })
+    expect(v.tagShares.map((x) => x.amount)).toEqual([33.34, 33.33, 33.33])
+  })
+  it('un reparto que no suma devuelve el motivo y no inventa etiqueta principal', () => {
+    const v = movementFieldValues({ ...base, tagSplit: { ids: ['a', 'b'], mode: 'amount', inputs: { a: '60', b: '30' } } })
+    expect(v.tagSplitError).toBe('Faltan 10,00 € por repartir.')
+    expect(v.tagShares).toEqual([])
+    expect(v.tagId).toBeNull()
   })
 })

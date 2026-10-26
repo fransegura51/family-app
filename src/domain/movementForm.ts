@@ -9,6 +9,7 @@
 //    familia, para «Reparto por clasificación» de Estadística compras) y Necesito/Fijo-Variable.
 import { incomeSelectableCategories } from '@/domain/cancelledCharge'
 import { isComprasFamiliaCategory, isFoodCategory } from '@/domain/finance'
+import { resolveTagSplit, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
 import type { BudgetCategory } from '@/domain/types'
 
 export type ClassificationKind = 'alimentacion' | 'no_alimentos'
@@ -23,6 +24,8 @@ export interface MovementDraft {
   store: string
   productClassification: string
   tagId: string
+  // Varias etiquetas con reparto (ETQ-1). null = una sola etiqueta (tagId), como siempre.
+  tagSplit: TagSplitDraft | null
   notes: string
   // null = «Según categoría» (opción por defecto); true = Fijo; false = Variable.
   isFixedOverride: boolean | null
@@ -69,6 +72,7 @@ export function emptyMovementDraft(categories: BudgetCategory[], today: string):
     store: '',
     productClassification: '',
     tagId: '',
+    tagSplit: null,
     notes: '',
     isFixedOverride: null,
   }
@@ -103,18 +107,35 @@ export function switchMovementType(draft: MovementDraft, toIncome: boolean): Mov
 export interface MovementFieldValues {
   date: string
   amount: number
+  /** Etiqueta única o, con reparto, la principal (la de mayor parte). */
   tagId: string | null
+  /** Reparto entre varias etiquetas (2 o más) ya validado contra el importe; vacío si el movimiento lleva una sola etiqueta. */
+  tagShares: TagShare[]
+  /** Por qué el reparto no es válido (no se debe guardar hasta corregirlo); null si está bien o no hay reparto. */
+  tagSplitError: string | null
   notes: string | null
   isFixedOverride: boolean | null
   productClassification: string | null
   store: string
 }
 
+/** Etiqueta principal de un reparto: la de mayor importe (a igualdad, la primera). */
+export function mainTagOf(shares: readonly TagShare[]): string | null {
+  let best: TagShare | null = null
+  for (const s of shares) if (best === null || s.amount > best.amount) best = s
+  return best?.tagId ?? null
+}
+
 export function movementFieldValues(draft: MovementDraft): MovementFieldValues {
+  const amount = Number(draft.amount)
+  const split = draft.tagSplit && draft.tagSplit.ids.length >= 2 ? resolveTagSplit(draft.tagSplit, amount) : null
+  const shares = split && split.ok ? split.shares : []
   return {
     date: draft.date,
-    amount: Number(draft.amount),
-    tagId: draft.tagId || null,
+    amount,
+    tagId: split ? mainTagOf(shares) : draft.tagId || null,
+    tagShares: shares,
+    tagSplitError: split && !split.ok ? split.error : null,
     notes: draft.notes.trim() || null,
     isFixedOverride: draft.isFixedOverride,
     productClassification: draft.productClassification || null,

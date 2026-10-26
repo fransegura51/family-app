@@ -1,9 +1,12 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
+import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, toggleSplitTag, totalsByTag, type SharesByExpense, type SplitMode, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   addExpense,
+  listTagSharesSafe,
+  setExpenseTags,
   addTaxFundExpense,
   addWalletTransaction,
   createBudget,
@@ -1535,6 +1538,7 @@ export function BankTab({
   openConnectSignal?: number
   focusAccountId?: string | null
 } = {}) {
+  const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -1633,8 +1637,10 @@ export function BankTab({
       listTags(),
       getFinanceMonthStartDay(),
       listFamilyMembers(),
+      listTagSharesSafe(),
     ])
-      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m]) => {
+      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m, shares]) => {
+        setTagShares(shares)
         setConnections(c)
         setAccounts(a)
         setCategories(cats)
@@ -1878,6 +1884,7 @@ export function BankTab({
                   expense={e}
                   categories={categories}
                   tags={tags}
+                  tagShares={tagShares.get(e.id)}
                   onDone={() => {
                     setEditingId(null)
                     reload()
@@ -1888,6 +1895,7 @@ export function BankTab({
                 <MovementRow
                   key={e.id}
                   expense={e}
+                  tagShares={rowTagShares(e, tagShares, tags)}
                   category={categories.find((c) => c.name === e.category)}
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
@@ -2026,6 +2034,7 @@ function PendingSignal({ signal, onOpen }: { signal: PendingSpending; onOpen: ()
 
 export function ResumenTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -2038,8 +2047,9 @@ export function ResumenTab({ onViewMovements }: { onViewMovements: (f: Movements
   const [monthStartDay, setMonthStartDay] = useState(1)
 
   useEffect(() => {
-    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listFamilyMembers()])
-      .then(([e, c, t, m]) => {
+    Promise.all([listExpenses(), listBudgetCategories(), listTags(), listFamilyMembers(), listTagSharesSafe()])
+      .then(([e, c, t, m, shares]) => {
+        setTagShares(shares)
         setExpenses(e)
         setCategories(c)
         setTags(t)
@@ -2240,14 +2250,16 @@ export function ResumenTab({ onViewMovements }: { onViewMovements: (f: Movements
     }
 
     let tagCandidate: Conclusion | null = null
-    const tagCounts = new Map<string, number>()
-    for (const e of nonIncome) if (e.tagId) tagCounts.set(e.tagId, (tagCounts.get(e.tagId) ?? 0) + 1)
+    // Con reparto entre varias etiquetas, cada una cuenta los movimientos en que participa y SOLO el importe que se le asignó.
+    const tagCounts = totalsByTag(nonIncome, tagShares)
+    tagCounts.delete(NO_TAG)
     if (tagCounts.size > 0) {
-      const [tagId, count] = [...tagCounts.entries()].sort((a, b) => b[1] - a[1])[0]
+      const [tagId, top] = [...tagCounts.entries()].sort((a, b) => b[1].count - a[1].count)[0]
+      const count = top.count
       const tag = tags.find((t) => t.id === tagId)
       if (tag && count >= 2) {
         tagCandidate = {
-          text: `La etiqueta que más se repite es ${tag.name}, en ${count} movimientos.`,
+          text: `La etiqueta que más se repite es ${tag.name}, en ${count} movimientos (${top.total.toFixed(2)} € asignados a ella).`,
           filter: { label: `${tag.name} — ${PRESET_LABELS[preset]}`, from, to, isIncome: false, tagId: tag.id },
         }
       }
@@ -2923,6 +2935,7 @@ function CategoryDonutExplorer({
 
 export function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: MovementsFilter) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   // Petición real: "no me gusta que no cuadren Alimentación en Economía
@@ -2952,8 +2965,10 @@ export function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: Move
       listProducts(),
       listReceipts(),
       getFinanceMonthStartDay(),
+      listTagSharesSafe(),
     ])
-      .then(([e, c, t, prices, products, receipts, monthStart]) => {
+      .then(([e, c, t, prices, products, receipts, monthStart, shares]) => {
+        setTagShares(shares)
         setExpenses(e)
         setCategories(c)
         setTags(t)
@@ -3021,11 +3036,10 @@ export function EstadisticasTab({ onViewMovements }: { onViewMovements: (f: Move
       />
     )
   } else if (view === 'etiquetas') {
+    // Cada etiqueta recibe solo su parte de los movimientos repartidos; un movimiento cuenta una sola vez en el total general.
+    const tagTotals = totalsByTag(real, tagShares)
     const slices: BreakdownSlice[] = tags
-      .map((t) => {
-        const matched = real.filter((e) => e.tagId === t.id)
-        return { key: t.id, label: t.name, icon: '🏷️', color: toPastel(t.color, 'chart'), total: matched.reduce((s, e) => s + e.amount, 0), count: matched.length }
-      })
+      .map((t) => ({ key: t.id, label: t.name, icon: '🏷️', color: toPastel(t.color, 'chart'), total: tagTotals.get(t.id)?.total ?? 0, count: tagTotals.get(t.id)?.count ?? 0 }))
       .filter((s) => s.total > 0)
     body =
       tags.length === 0 ? (
@@ -3468,6 +3482,7 @@ export function ExpensesTab({
   // lista, como siempre).
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -3544,8 +3559,10 @@ export function ExpensesTab({
       listFamilyMembers(),
       listWalletsSafe(),
       listAllMovementsSafe(),
+      listTagSharesSafe(),
     ])
-      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov]) => {
+      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares]) => {
+        setTagShares(shares)
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -3642,7 +3659,7 @@ export function ExpensesTab({
       if (filter.pendingOnly && !isPendingSpendingRow(e)) return false
       if (filter.refundsOnly && !isRefund(e, categories)) return false
       if (filter.store !== undefined && e.store !== filter.store) return false
-      if (filter.tagId !== undefined && e.tagId !== filter.tagId) return false
+      if (filter.tagId !== undefined && !hasTag(e, tagShares, filter.tagId)) return false
       if (filter.necessity !== undefined || filter.necessityUnclassified || filter.isFixed !== undefined || filter.isFixedUnclassified) {
         const classification = resolveCategoryClassification(e.category, categories)
         if (filter.necessity !== undefined && classification.necessity !== filter.necessity) return false
@@ -3663,7 +3680,7 @@ export function ExpensesTab({
     // `categories` faltaba en las dependencias (lo cantó el linter al
     // activarlo): reclasificar una categoría no refrescaba un filtro por
     // Debo/Necesito/Quiero o Fijo/Variable hasta que cambiaban los gastos.
-  }, [expenses, filter, periodFrom, periodTo, categories])
+  }, [expenses, filter, periodFrom, periodTo, categories, tagShares])
 
   const monthExpenses = filteredExpenses
 
@@ -3964,6 +3981,7 @@ export function ExpensesTab({
               expense={e}
               categories={categories}
               tags={tags}
+              tagShares={tagShares.get(e.id)}
               onDone={() => {
                 setEditingId(null)
                 reload()
@@ -3976,6 +3994,7 @@ export function ExpensesTab({
             <MovementRow
               key={e.id}
               expense={e}
+              tagShares={rowTagShares(e, tagShares, tags)}
               category={categories.find((c) => c.name === e.category)}
               tag={tags.find((t) => t.id === e.tagId)}
               ownerMember={ownerMemberForExpense(e.id)}
@@ -4144,10 +4163,18 @@ function movementRowColor(
   return undefined
 }
 
+/** Reparto de un movimiento entre varias etiquetas, listo para enseñar en su fila; undefined si lleva una sola (o ninguna). */
+function rowTagShares(e: Expense, byExpense: SharesByExpense, tags: Tag[]): { tag: Tag | undefined; amount: number }[] | undefined {
+  const list = byExpense.get(e.id)
+  if (!list || list.length < 2) return undefined
+  return sharesOf(e, byExpense).map((x) => ({ tag: tags.find((t) => t.id === x.tagId), amount: x.amount }))
+}
+
 function MovementRow({
   expense: e,
   category,
   tag,
+  tagShares,
   onClick,
   extraAction,
   ownerMember,
@@ -4156,6 +4183,8 @@ function MovementRow({
   expense: Expense
   category: BudgetCategory | undefined
   tag: Tag | undefined
+  /** Reparto entre varias etiquetas (2 o más): se enseña cada una con su parte. */
+  tagShares?: { tag: Tag | undefined; amount: number }[]
   onClick: () => void
   extraAction?: React.ReactNode
   // Solo en Banco, viendo todas las cuentas mezcladas (petición real: no
@@ -4200,7 +4229,7 @@ function MovementRow({
             {formatDate(e.expenseDate)}
             {e.store && ` · ${e.store}`}
             {e.kind !== 'real' && ` · ${e.kind}`}
-            {tag && ` · ${tag.name}`}
+            {tagShares && tagShares.length >= 2 ? tagShares.map((x) => ` · ${x.tag?.name ?? 'Sin etiqueta'} ${x.amount.toFixed(2)} €`).join('') : tag && ` · ${tag.name}`}
           </span>
           <span title={source.label}>{source.icon}</span>
         </div>
@@ -4230,6 +4259,111 @@ function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: str
       </select>
       <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => openManager('etiquetas')}>
         ⚙️ Gestionar etiquetas
+      </button>
+    </div>
+  )
+}
+
+// Etiquetas de un movimiento (ETQ-1): una sola (el desplegable de siempre) o VARIAS con reparto del importe — a partes iguales, en euros o en porcentaje.
+// Con una sola etiqueta todo funciona como antes; el reparto es opcional y arranca a partes iguales para que no haya que rellenar nada.
+const SPLIT_MODE_LABELS: Record<SplitMode, string> = { equal: 'A partes iguales', amount: 'En euros', percent: 'En %' }
+
+export function TagSharesField({
+  tags,
+  tagId,
+  split,
+  total,
+  onChange,
+}: {
+  tags: Tag[]
+  tagId: string
+  split: TagSplitDraft | null
+  total: number
+  onChange: (next: { tagId: string; split: TagSplitDraft | null }) => void
+}) {
+  if (!split) {
+    return (
+      <div>
+        <TagSelect value={tagId} onChange={(v) => onChange({ tagId: v, split: null })} tags={tags} />
+        {tags.length >= 2 && (
+          <button
+            type="button"
+            className="link-button"
+            data-help-id="finance.tag-split"
+            style={{ fontSize: 12, padding: '4px 0' }}
+            onClick={() => {
+              const first = tagId || tags[0].id
+              const second = (tags.find((t) => t.id !== first) ?? tags[1]).id
+              onChange({ tagId: first, split: startSplit([first, second], total) })
+            }}
+          >
+            ＋ Repartir entre varias etiquetas
+          </button>
+        )}
+      </div>
+    )
+  }
+  const resolved = resolveTagSplit(split, total)
+  const shownAmount = new Map((resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
+  const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
+  return (
+    <div className="card" data-help-id="finance.tag-split-editor" style={{ padding: 8 }}>
+      <div className="chip-row" role="group" aria-label="Etiquetas del movimiento">
+        {tags.map((t) => {
+          const on = split.ids.includes(t.id)
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={on}
+              className={on ? 'chip chip-active' : 'chip'}
+              onClick={() => {
+                const next = toggleSplitTag(split, t.id, total)
+                onChange(next ? { tagId, split: next } : { tagId: split.ids.filter((x) => x !== t.id)[0] ?? '', split: null })
+              }}
+            >
+              {t.name}
+            </button>
+          )
+        })}
+      </div>
+      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
+        {(['equal', 'amount', 'percent'] as const).map((m) => (
+          <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onChange({ tagId, split: changeSplitMode(split, m, total) })}>
+            {SPLIT_MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
+      {split.ids.map((id) => {
+        const tag = tags.find((t) => t.id === id)
+        const euros = shownAmount.get(id)
+        return (
+          <div key={id} className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
+            <span style={{ flex: 1 }}>{tag?.name ?? 'Etiqueta'}</span>
+            {split.mode === 'equal' ? (
+              <strong>{euros != null ? euros.toFixed(2).replace('.', ',') + ' €' : '—'}</strong>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={`${split.mode === 'percent' ? 'Porcentaje' : 'Importe'} de ${tag?.name ?? 'la etiqueta'}`}
+                  style={{ width: 90 }}
+                  value={split.inputs[id] ?? ''}
+                  onChange={(e) => onChange({ tagId, split: { ...split, inputs: { ...split.inputs, [id]: e.target.value } } })}
+                />
+                <span>{split.mode === 'percent' ? '%' : '€'}</span>
+                {split.mode === 'percent' && euros != null && <span className="muted">= {euros.toFixed(2).replace('.', ',')} €</span>}
+              </>
+            )}
+          </div>
+        )
+      })}
+      <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
+        {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada etiqueta recibe su parte.` : resolved.error}
+      </p>
+      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onChange({ tagId: tagId && split.ids.includes(tagId) ? tagId : split.ids[0], split: null })}>
+        Volver a una sola etiqueta
       </button>
     </div>
   )
@@ -4357,10 +4491,10 @@ function MovementFormFields({
           </p>
         </label>
       )}
-      <label data-help-id="finance.movement-tag">
-        Etiqueta (opcional)
-        <TagSelect value={draft.tagId} onChange={(v) => onChange({ ...draft, tagId: v })} tags={tags} />
-      </label>
+      <div data-help-id="finance.movement-tag">
+        <span style={{ display: 'block', margin: '4px 0 2px' }}>Etiqueta (opcional)</span>
+        <TagSharesField tags={tags} tagId={draft.tagId} split={draft.tagSplit} total={Number(draft.amount)} onChange={(next) => onChange({ ...draft, tagId: next.tagId, tagSplit: next.split })} />
+      </div>
       <label data-help-id="finance.movement-notes">
         Concepto (opcional)
         <input type="text" value={draft.notes} onChange={(e) => onChange({ ...draft, notes: e.target.value })} placeholder="Anotación tuya sobre este movimiento" />
@@ -4398,6 +4532,7 @@ function EditExpenseInline({
   expense,
   categories,
   tags,
+  tagShares,
   onDone,
   onCancel,
   onAddToForecast,
@@ -4406,6 +4541,8 @@ function EditExpenseInline({
   expense: Expense
   categories: BudgetCategory[]
   tags: Tag[]
+  /** Reparto actual entre varias etiquetas (si lo tiene). */
+  tagShares?: readonly TagShare[]
   onDone: () => void
   onCancel: () => void
   // Fase 1D-g.2 — "🔮 Añadir a Previsión": opcional, undefined en Banco (mismo componente, sin tocarlo
@@ -4424,6 +4561,7 @@ function EditExpenseInline({
     store: expense.store ?? '',
     productClassification: expense.productClassification ?? '',
     tagId: expense.tagId ?? '',
+    tagSplit: splitFromShares(tagShares ?? []),
     notes: expense.notes ?? '',
     // Por defecto sigue a la categoría (null), pero este movimiento puede llevar su propia marca.
     isFixedOverride: expense.isFixedOverride,
@@ -4432,6 +4570,11 @@ function EditExpenseInline({
   const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
+    const checked = movementFieldValues(draft)
+    if (checked.tagSplitError) {
+      setError(checked.tagSplitError)
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -4462,6 +4605,9 @@ function EditExpenseInline({
         productClassification: values.productClassification,
         ...(expense.isIncome ? {} : { store: values.store }),
       })
+      // Varias etiquetas: el reparto se guarda DESPUÉS del importe (tiene que sumarlo exacto). Si tenía reparto y ahora lleva una sola, se retira.
+      if (values.tagShares.length >= 2) await setExpenseTags(expense.id, values.tagShares)
+      else if ((tagShares?.length ?? 0) >= 2) await setExpenseTags(expense.id, values.tagId ? [{ tagId: values.tagId, amount: values.amount }] : [])
       emitHelpEvent('finance.movement-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onDone()
     } catch (err) {
@@ -4862,7 +5008,13 @@ function AddExpenseToAnyCategoryInline({
     setSaving(true)
     setError(null)
     try {
-      await addExpense(buildNewExpenseInput(draft, categories))
+      const checked = movementFieldValues(draft)
+      if (checked.tagSplitError) {
+        setError(checked.tagSplitError)
+        return
+      }
+      const newId = await addExpense(buildNewExpenseInput(draft, categories))
+      if (checked.tagShares.length >= 2) await setExpenseTags(newId, checked.tagShares)
       emitHelpEvent('finance.movement-added') // para los tutoriales «Enséñame»: el movimiento YA está guardado
       onAdded()
     } catch (err) {

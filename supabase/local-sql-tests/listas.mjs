@@ -1,4 +1,4 @@
-// Pruebas locales (PGlite, sin tocar ningún dato real) de la migración 0319: Mis listas (privacidad real, carpetas,
+// Pruebas locales (PGlite, sin tocar ningún dato real) de la migración 0321: Mis listas (privacidad real, carpetas,
 // vínculos con Calendario, envío a Compras y sincronización Compras → Mis listas).
 import assert from 'node:assert/strict'
 import { setup, addAccount, mkFamily, as, err, read } from './harness.mjs'
@@ -31,8 +31,8 @@ await db.exec(`
   create policy si on shopping_items for all using (family_id = private.current_family_id());
   grant select, insert, update, delete on calendar_events, shopping_items to authenticated;
 `)
-console.log('\n0319 · aplicar la migración')
-await db.exec(read('supabase/pending-migrations/0319_mis_listas.sql'))
+console.log('\n0321 · aplicar la migración')
+await db.exec(read('supabase/migrations/0321_mis_listas.sql'))
 await db.exec('grant select, insert, update, delete on list_folders, user_lists, list_columns, list_items, list_calendar_links, list_shopping_links to authenticated')
 
 const fam = await mkFamily(db, 'A')

@@ -591,7 +591,7 @@ export const CARDS_DIA_A_DIA: HelpCard[] = [
     module: 'listas',
     title: 'Privacidad, Calendario y Lista de la compra en Mis listas',
     synonyms: ['lista privada', 'lista familiar', 'quien ve mi lista', 'enviar a la compra', 'listas vinculadas', 'vincular con el calendario', 'lista de un evento', 'compartir lista'],
-    quick: 'Cada lista es privada (solo tú) o familiar (la ve y edita la familia con acceso a Mis listas); se cambia cuando quieras sin perder nada. «Enviar a Lista de la compra» manda los elementos que elijas (la lista no cambia; lo que se compre allí se marca como hecho aquí, no al revés). «Vincular con el Calendario» conecta la lista con eventos o tareas, que la muestran como «Listas vinculadas» solo a quien puede verla.',
+    quick: 'Cada lista es privada (solo tú) o familiar (la ve y edita la familia con acceso a Mis listas); se cambia cuando quieras sin perder nada. «Enviar a Lista de la compra» manda los elementos que elijas (la lista no cambia; lo que se compre allí se marca como hecho aquí, no al revés; en Compras esos productos llevan una pequeña 📝). «Vincular con el Calendario» conecta la lista con eventos o tareas, que la muestran como «Listas vinculadas» solo a quien puede verla.',
     state: 'disponible',
     limits: 'Solo la persona que creó la lista cambia su título, privacidad o la borra. Borrar un producto de la compra no borra el elemento de la lista.',
     go: { path: '/listas' },

@@ -31,6 +31,7 @@ import {
   updateShoppingItem,
   updateShoppingItemStatus,
 } from '@/data/shopping'
+import { linkedShoppingIds } from '@/data/lists'
 import { getProductPhotoUrl, listAllProductPrices, listProducts, removeProductPhoto, setProductNonFood, uploadProductPhotoForName } from '@/data/products'
 import {
   listFamilyFoodTypes,
@@ -725,6 +726,7 @@ const PRIORITIES: { value: ShoppingItemPriority; label: string }[] = [
 function ShoppingListTab() {
   const [items, setItems] = useState<ShoppingItem[]>([])
   const [suggestions, setSuggestions] = useState<ProductSuggestion[]>([])
+  const [listLinked, setListLinked] = useState<ReadonlySet<string>>(new Set())
   const [stores, setStores] = useState<ShoppingStoreEntry[]>([])
   // Catálogo global de cadenas conocidas (solo supermercados activos) + sus alias, para el selector de
   // StoreManager y para sugerir (nunca fusionar sola) el vínculo con una tienda ya creada a mano.
@@ -830,9 +832,12 @@ function ShoppingListTab() {
       listFamilyFoodTypes('no_alimentos'),
       listSupermarketChains(),
       listStoreChainAliases(),
+      // Indicador «viene de Mis listas»: si falla (o no hay acceso) Compras funciona igual, sin indicador.
+      linkedShoppingIds().catch(() => [] as string[]),
     ])
-      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories, foodKinds, noFoodKinds, chains, aliases]) => {
+      .then(([shoppingItems, products, prices, shoppingStores, receipts, categories, foodKinds, noFoodKinds, chains, aliases, linkedIds]) => {
         setItems(shoppingItems)
+        setListLinked(new Set(linkedIds))
         setSuggestions(buildSuggestions(products, prices, buildFoodReceiptIds(receipts, categories)))
         setStores(shoppingStores)
         setAllProducts(products)
@@ -1138,6 +1143,7 @@ function ShoppingListTab() {
                     suggestions={suggestions}
                     shoppingMode={shoppingMode}
                     rowColor={classColors.get(group.label)}
+                    linkedIds={listLinked}
                     onSetStatus={setStatus}
                     onDeleted={reload}
                     onReordered={reload}
@@ -1155,6 +1161,7 @@ function ShoppingListTab() {
                     items={doneItems}
                     suggestions={suggestions}
                     shoppingMode={shoppingMode}
+                    linkedIds={listLinked}
                     onSetStatus={setStatus}
                     onDeleted={reload}
                     onReordered={reload}
@@ -1589,6 +1596,7 @@ function DraggableStoreGroup({
   suggestions,
   shoppingMode,
   rowColor,
+  linkedIds,
   onSetStatus,
   onDeleted,
   onReordered,
@@ -1598,6 +1606,7 @@ function DraggableStoreGroup({
   suggestions: ProductSuggestion[]
   shoppingMode: boolean
   rowColor?: string
+  linkedIds?: ReadonlySet<string>
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDeleted: () => void
   onReordered: () => void
@@ -1691,6 +1700,7 @@ function DraggableStoreGroup({
             dragOffsetY={dragOffset}
             shoppingMode={shoppingMode}
             rowColor={rowColor}
+            fromList={linkedIds?.has(item.id) ?? false}
             onSetStatus={onSetStatus}
             onDelete={(id) => deleteShoppingItem(id).then(onDeleted)}
             onEdit={onEdit}
@@ -1724,6 +1734,7 @@ function ShoppingItemRow({
   dragOffsetY,
   shoppingMode,
   rowColor,
+  fromList,
   onSetStatus,
   onDelete,
   onEdit,
@@ -1739,6 +1750,8 @@ function ShoppingItemRow({
   dragOffsetY: number
   shoppingMode: boolean
   rowColor?: string
+  /** Viene de «Mis listas» (indicador discreto; no cambia nada más). */
+  fromList?: boolean
   onSetStatus: (id: string, status: ShoppingItemStatus) => void
   onDelete: (id: string) => void
   onEdit: (item: ShoppingItem) => void
@@ -1906,6 +1919,11 @@ function ShoppingItemRow({
         >
           {label}
         </button>
+        {fromList && (
+          <span className="muted" style={{ fontSize: 13 }} title="Viene de Mis listas" aria-label="Viene de Mis listas" data-help-id="shopping.from-list">
+            📝
+          </span>
+        )}
         {photoPath && (
           <button type="button" className="icon-button" onClick={handleViewPhoto} aria-label={`Ver foto de ${item.name}`}>
             👁

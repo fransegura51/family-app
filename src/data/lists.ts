@@ -10,7 +10,7 @@ import {
   type UserList,
 } from '@/domain/lists'
 
-// Mis listas (migración 0319). La privacidad la hace cumplir el servidor (RLS): aquí solo se pide y se pinta lo que llega.
+// Mis listas (migración 0321). La privacidad la hace cumplir el servidor (RLS): aquí solo se pide y se pinta lo que llega.
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -341,4 +341,12 @@ export async function linkListToEvent(listId: string, eventId: string): Promise<
 export async function unlinkListFromEvent(listId: string, eventId: string): Promise<void> {
   const { error } = await supabase.from('list_calendar_links').delete().eq('list_id', listId).eq('event_id', eventId)
   if (error) throw error
+}
+
+// Productos de Compras que vienen de Mis listas (para el indicador discreto de la Lista de la compra). La RLS solo devuelve los de listas
+// a las que esta persona tiene acceso; si falla, Compras sigue igual (quien llama lo trata como «ninguno»).
+export async function linkedShoppingIds(): Promise<string[]> {
+  const { data, error } = await supabase.from('list_shopping_links').select('shopping_item_id').limit(5000)
+  if (error) throw error
+  return data.map((r) => r.shopping_item_id)
 }

@@ -1017,7 +1017,7 @@ confirmación expresa del usuario.
 ## Mis listas (PEPA-MISLISTAS)
 
 Encargo del usuario (2026-10-26): «IMPLEMENTACIÓN COMPLETA DEL MÓDULO "MIS LISTAS"». Rama `mis-listas`, **sin publicar**: la migración
-`0319_mis_listas.sql` está en `supabase/pending-migrations` (NO aplicada en producción) y la función `analyze-list-document` NO está desplegada.
+`0321_mis_listas.sql` (+ `0321b`, recorte de permisos de tres funciones de disparador) está **aplicada en producción** (26/10/2026, tras comprobar que la 0319 de producción es otra y que no cambió ningún dato existente) y la función `analyze-list-document` está **desplegada** (con sesión obligatoria).
 
 | ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
 |---|---|---|---|---|---|
@@ -1034,13 +1034,11 @@ Encargo del usuario (2026-10-26): «IMPLEMENTACIÓN COMPLETA DEL MÓDULO "MIS LI
 | MISLISTAS-11 | Dictado y texto pegado: varios elementos de una sola frase → elementos separados, con vista previa editable | Sí | Sí — reutiliza `listenContinuous` (servicio de voz existente) + `splitDictation`/`splitLines` | Sí — `lists.test.ts`, `importFlow.test.tsx`; el micrófono real no se ha probado | No |
 | MISLISTAS-12 | Destinos de la importación: añadir a esta lista, sustituir lo de esta lista (confirmación explícita y atómica), crear lista nueva (pide título) o añadir a otra (de cualquier carpeta); cancelar no cambia nada; nunca inventa elementos y lo dudoso sale «revisar» | Sí | Sí — `replace_list_items` (RPC atómica), `ImportFlow` | Sí — `importFlow.test.tsx` (9), SQL (sustitución atómica y con fallo a medias conserva lo anterior) | No |
 | MISLISTAS-13 | Enviar a Compras: «Enviar a Lista de la compra» → selección con casillas → confirmar, aviso de duplicados evidentes, la lista original no cambia, vínculo estable; Compras → Mis listas (comprado = hecho, pendiente = pendiente mientras el vínculo siga activo; renombrar mantiene el vínculo; borrar el producto deja el elemento); completar en Mis listas NO toca Compras; no crea compras ni gastos ni historial de precios. Regla de varios envíos: cada envío crea un producto y un vínculo nuevos; el elemento queda como lo dejó el último cambio de cualquiera de sus productos | Sí | Sí — `enviar_a_compras` y el disparador `trg_shopping_to_lists` (un solo sentido) | Sí — SQL (envío, comprado→hecho, pendiente→pendiente, hecho aquí no toca Compras, renombrar, borrar producto, sin acceso a Compras/lista privada ajena), `listsUi.test.tsx` | No |
-| MISLISTAS-14 | Persistencia y seguridad: tablas por migración controlada con deshacer, RLS, sin huérfanos (borrado en cascada), texto con formato validado por servidor, sin HTML en bruto, errores de red avisan y recargan, sin tocar datos de otros módulos | Sí | Sí — `0319_mis_listas.sql` + rollback, `src/data/lists.ts` | Sí — `listas.mjs`, `listsSource.test.ts` (sin `innerHTML`, aditiva, RLS en todas, rollback completo), fallo de red en `listsUi.test.tsx` | No |
+| MISLISTAS-14 | Persistencia y seguridad: tablas por migración controlada con deshacer, RLS, sin huérfanos (borrado en cascada), texto con formato validado por servidor, sin HTML en bruto, errores de red avisan y recargan, sin tocar datos de otros módulos | Sí | Sí — `0321_mis_listas.sql` + rollback, `src/data/lists.ts` | Sí — `listas.mjs`, `listsSource.test.ts` (sin `innerHTML`, aditiva, RLS en todas, rollback completo), fallo de red en `listsUi.test.tsx` | No |
 
-**Pendiente (honesto)**: (1) **no publicado**: la migración 0319 y la función `analyze-list-document` necesitan aplicarse/desplegarse con autorización
-expresa, y el código está solo en la rama `mis-listas`; (2) no probado en iPhone ni Android físicos (sí en el navegador a 390 px con datos de
+**Pendiente (honesto)**: (1) publicado el 26/10/2026 (migración 0321 aplicada y función desplegada con autorización expresa); la web se publica al integrar la rama en master; (2) no probado en iPhone ni Android físicos (sí en el navegador a 390 px con datos de
 mentira); (3) la lectura de fotos/PDF con IA y el dictado real no se han ejecutado contra los servicios reales; (4) al crear un evento nuevo la lista se
-vincula después de guardarlo (en su edición); (5) los productos de Compras no muestran todavía un indicador de «viene de Mis listas» (el vínculo existe en
-la base de datos); (6) el permiso por sección `listas` hay que marcarlo a mano para menores e invitados con restricciones (como cualquier sección nueva).
+vincula después de guardarlo (en su edición); (5) en Compras los productos que vienen de Mis listas llevan una pequeña 📝 (sin acción; no se ha visto aún con datos reales); (6) el permiso por sección `listas` hay que marcarlo a mano para menores e invitados con restricciones (como cualquier sección nueva).
 Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---

@@ -1,4 +1,4 @@
--- Deshace 0319_mis_listas.sql. ATENCIÓN: borra las listas, carpetas, elementos y vínculos de Mis listas (no toca Compras ni Calendario:
+-- Deshace 0321_mis_listas.sql. ATENCIÓN: borra las listas, carpetas, elementos y vínculos de Mis listas (no toca Compras ni Calendario:
 -- los productos ya enviados a la compra y los eventos siguen donde están). Hacer copia antes si ya hay listas reales.
 drop trigger if exists trg_shopping_to_lists on public.shopping_items;
 drop function if exists private.sync_shopping_to_lists();

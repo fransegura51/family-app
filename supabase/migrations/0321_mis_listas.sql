@@ -5,7 +5,7 @@
 --   · Los elementos llevan texto plano (text) y, si tienen formato, un marcado limitado (rich): solo <b>, <c:color> y &lt; &gt; &amp;.
 --   · Compras → Mis listas: marcar un producto como comprado marca como hecho el elemento de la lista (y volver a pendiente lo desmarca)
 --     mientras el vínculo siga activo. Al revés NO: completar en Mis listas nunca toca Compras. Borrar el producto deja el elemento.
--- Deshacer: supabase/rollbacks/0319_mis_listas_down.sql.
+-- Deshacer: supabase/rollbacks/0321_mis_listas_down.sql.
 
 -- ---------------------------------------------------------------------------------------------------------- carpetas
 create table public.list_folders (
@@ -157,6 +157,10 @@ create policy "list_calendar_links: delete" on public.list_calendar_links for de
 create policy "list_shopping_links: select" on public.list_shopping_links for select
   using (private.list_accessible((select i.list_id from public.list_items i where i.id = list_item_id)));
 -- Los vínculos de Compras solo los crea la función enviar_a_compras (SECURITY DEFINER); no hay política de escritura directa.
+
+-- Mínimo privilegio (como la 0312b): nadie sin sesión toca nada; y los vínculos con Compras solo se crean con enviar_a_compras.
+revoke all on public.list_folders, public.user_lists, public.list_columns, public.list_items, public.list_calendar_links, public.list_shopping_links from anon;
+revoke insert, update, delete, truncate on public.list_shopping_links from authenticated;
 
 -- ---------------------------------------------------------------------------------------------------------- actualizar fechas
 create or replace function private.list_touch()

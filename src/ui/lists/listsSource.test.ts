@@ -7,8 +7,8 @@ import { parseProposedLines } from '@/services/listDocument'
 // Pruebas de «forma» (texto del código y de la migración): lo que no se puede comprobar sin un móvil o una base de datos real, pero sí
 // vigilar para que nadie lo rompa sin querer.
 const ui = import.meta.glob('/src/ui/lists/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const sql = import.meta.glob('/supabase/pending-migrations/0319_mis_listas.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
-const down = import.meta.glob('/supabase/rollbacks/0319_mis_listas_down.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const sql = import.meta.glob('/supabase/migrations/0321_mis_listas.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+const down = import.meta.glob('/supabase/rollbacks/0321_mis_listas_down.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 const stylesCss = readFileSync(resolve(process.cwd(), 'src/ui/styles.css'), 'utf8')
 const migration = Object.values(sql)[0]
 const rollback = Object.values(down)[0]
@@ -47,7 +47,7 @@ describe('Mis listas — gestos (mismo mecanismo que la Lista de la compra)', ()
   })
 })
 
-describe('Mis listas — migración 0319', () => {
+describe('Mis listas — migración 0321', () => {
   const tables = ['list_folders', 'user_lists', 'list_columns', 'list_items', 'list_calendar_links', 'list_shopping_links']
   it('todas las tablas nuevas tienen RLS activada y borrado en cascada desde su lista', () => {
     for (const t of tables) expect(migration, t).toMatch(new RegExp(`alter table public\\.${t} enable row level security`))

@@ -295,6 +295,7 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { formatDate } from '@/domain/dateFormat'
 import { prefSet } from '@/state/prefs/prefsWrite'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -1009,6 +1010,9 @@ export function AccountBalanceCards({
 
   useEffect(reload, [])
 
+  // Cuentas y carteras cambiadas en otro dispositivo (la recarga es silenciosa).
+  useRealtimeRefresh(['bank_accounts', 'cash_wallets'], reload)
+
   // Bug real reportado: "sincronizo el banco y las tarjetas de arriba se
   // quedan en 'Sincronizando...', tengo que cambiar de pestaña para que
   // se vea el saldo real" — esta tarjeta vive en Resumen y solo se
@@ -1149,6 +1153,9 @@ export function BalanceTrendCard() {
   }
 
   useEffect(reload, [])
+
+  // Movimientos, cuentas y carteras cambiados en otro dispositivo (la recarga es silenciosa).
+  useRealtimeRefresh(['bank_transactions', 'bank_accounts', 'cash_movements', 'cash_wallets'], reload)
   useEffect(() => {
     window.addEventListener('family-app:bank-changed', reload)
     return () => window.removeEventListener('family-app:bank-changed', reload)
@@ -1676,6 +1683,9 @@ export function BankTab({
     }
     reload()
   }, [])
+
+  // Tickets, movimientos y presupuestos cambiados en otro dispositivo (recarga silenciosa tras la primera carga).
+  useRealtimeRefresh(['expenses', 'bank_transactions', 'bank_accounts', 'budget_categories', 'expense_tag_shares'], reload)
 
   async function handleSync() {
     setSyncing(true)

@@ -8473,3 +8473,30 @@ details[open] > summary > .review-chevron {
   padding: 8px 12px;
   margin-bottom: 8px;
 }
+
+/* Menú semanal con varios platos por comida: «+ Añadir otro plato», reordenar y copiar un día o la semana (compactos: sin tarjetas nuevas ni etiquetas obligatorias). */
+.menu-slot-add-more .link-button {
+  font-size: 13px;
+  padding: 2px 0;
+}
+.menu-copy-week {
+  margin: 0 0 8px;
+}
+.menu-copy-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 8px;
+  font-size: 14px;
+}
+.menu-copy-panel label {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.menu-copy-panel select {
+  min-height: 36px;
+  font-size: 16px;
+}

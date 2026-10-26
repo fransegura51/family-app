@@ -96,6 +96,7 @@ import { shareText } from '@/services/share'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { HelpHint } from '@/help/ui/HelpHint'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
@@ -861,6 +862,9 @@ function ShoppingListTab() {
     window.addEventListener('family-app:compras-changed', reload)
     return () => window.removeEventListener('family-app:compras-changed', reload)
   }, [])
+
+  // Cambios hechos en OTRO dispositivo (otra persona en el súper, el ordenador…): productos, cantidades, marcados y tiendas. No se recarga con un producto en edición o el formulario de alta abierto.
+  useRealtimeRefresh(['shopping_items', 'shopping_stores'], reload, { paused: editingItem !== null || addingItem })
 
   // Las clases de alimentos también se gestionan desde Configuración (ventana global, ver state/managers.ts).
   useEffect(() => onManagersChanged(reload), [])

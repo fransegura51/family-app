@@ -22,6 +22,7 @@ import { analyzeDocumentExpiry } from '@/services/documentExpiry'
 import { formatDate } from '@/domain/dateFormat'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { DocumentVisibilityPicker, FAMILY_AUDIENCE, audienceToIds, describeAudience, idsToAudience, type DocumentAudience } from '@/ui/DocumentVisibilityPicker'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 const UNCATEGORIZED = '__uncategorized__'
 const UNSPECIFIED = '__unspecified__'
@@ -66,19 +67,26 @@ export function DocumentsScreen() {
   const [addingMember, setAddingMember] = useState(false)
   const [uploading, setUploading] = useState(false)
 
-  function reload() {
-    setLoading(true)
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
     Promise.all([listFamilyMembers(), listMemberDocuments(), listDocumentCategories()])
       .then(([m, d, c]) => {
         setMembers(m)
         setDocuments(d)
         setCategories(c)
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (!silent) setError(e.message)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(() => {
+    reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Documentos añadidos, cambiados o borrados en otro dispositivo (cada persona solo recibe los que puede ver: lo decide el servidor). No se recarga subiendo un documento ni creando una carpeta.
+  useRealtimeRefresh(['member_documents', 'family_members'], () => reload(true), { paused: addingCategory || addingMember || uploading })
 
   async function handleDelete(doc: MemberDocument) {
     try {

@@ -15,6 +15,7 @@ vi.mock('@/data/gallery', () => ({
   updateGalleryCaption: (...a: unknown[]) => update(...(a as [])),
 }))
 vi.mock('@/services/share', () => ({ fetchAsShareableFile: async () => new File([], 'x'), shareFiles: async () => true }))
+vi.mock('@/state/useRealtimeRefresh', () => ({ useRealtimeRefresh: () => undefined }))
 vi.mock('@/ui/SectionBreadcrumb', () => ({ SectionBreadcrumb: () => null }))
 
 import { GalleryScreen } from '@/ui/GalleryScreen'

@@ -38,6 +38,7 @@ import {
 } from '@/domain/communityProfile'
 import type { NotificationPrefs } from '@/domain/notificationPrefs'
 import { AliasDialog } from '@/ui/community/AliasDialog'
+import { AvatarDialog } from '@/ui/community/AvatarDialog'
 import { Breadcrumbs } from '@/ui/community/Breadcrumbs'
 import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 import { useCommunity } from '@/ui/community/CommunityProvider'
@@ -51,6 +52,7 @@ import '@/ui/community/communityProfile.css'
 export function MySettingsPage() {
   const { me, loading, refresh, requireParticipation } = useCommunity()
   const [aliasOpen, setAliasOpen] = useState(false)
+  const [avatarOpen, setAvatarOpen] = useState(false)
   const notice = banNotice(me)
   const hasProfile = me?.hasProfile === true && !!me.id
 
@@ -83,6 +85,9 @@ export function MySettingsPage() {
             <div className="community-settings-links">
               <button type="button" onClick={() => setAliasOpen(true)}>
                 Cambiar alias o icono
+              </button>
+              <button type="button" className="link-button" data-help-id="comunidad.avatar-change" onClick={() => setAvatarOpen(true)}>
+                Cambiar solo el icono
               </button>
               <Link to={paths.profile(me.id!)} className="link-button">
                 Ver mi perfil público
@@ -133,6 +138,17 @@ export function MySettingsPage() {
           Leer las normas de Comunidad
         </Link>
       </p>
+
+      {avatarOpen && me && (
+        <AvatarDialog
+          current={me}
+          onDone={async () => {
+            setAvatarOpen(false)
+            await refresh()
+          }}
+          onCancel={() => setAvatarOpen(false)}
+        />
+      )}
 
       {aliasOpen && (
         <AliasDialog

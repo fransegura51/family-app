@@ -49,6 +49,7 @@ import { showToast } from '@/state/toast'
 import { prefSet } from '@/state/prefs/prefsWrite'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 export function EventMenuSection({ event, onDerivedDataChanged }: { event: FamilyEvent; onDerivedDataChanged: () => void }) {
   const [data, setData] = useState<MenuHubData | null>(null)
@@ -64,6 +65,8 @@ export function EventMenuSection({ event, onDerivedDataChanged }: { event: Famil
   useEffect(() => {
     void reload()
   }, [reload])
+  // Platos, opciones e invitados cambiados en otro dispositivo (se vuelve a leer todo el menú del evento).
+  useRealtimeRefresh(['event_menu_items', 'event_guests', 'event_decisions'], reload)
 
   // Cambios del MENÚ (platos, importación): basta volver a leer los platos; no hace falta recargar toda la pantalla.
   const reloadItems = useCallback(async () => {

@@ -3,6 +3,7 @@ import { setCommunityAlias } from '@/data/community'
 import { communityErrorText, toCommunityError } from '@/domain/communityErrors'
 import { suggestAlias } from '@/domain/communityAlias'
 import { COMMUNITY_RULES, type MyCommunityProfile } from '@/domain/community'
+import { AvatarPicker } from '@/ui/community/AvatarPicker'
 import { useDialogFocus } from '@/ui/community/useDialogFocus'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 
@@ -10,7 +11,6 @@ import { emitHelpEvent } from '@/help/tours/helpBus'
 // puede cambiar después (la identidad interna no cambia). La primera vez se enseñan las normas y hay que aceptarlas.
 // Si la ficha de familia no tiene fecha de nacimiento (age_known = false), al CREAR el alias también hay que marcar «Confirmo que tengo 18 años o más»
 // (declaración, no verificación). Con la edad conocida no se enseña ni se pide nada.
-const AVATARS = ['🙂', '😀', '😄', '😎', '🤗', '🧑‍🍳', '👩‍🍳', '👨‍🍳', '🍳', '🥘', '🍰', '🌿', '🏡', '🧺', '🧸', '🎨', '🌻', '🐶', '🐱', '⭐']
 
 export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunityProfile | null; onDone: () => void | Promise<void>; onCancel: () => void }) {
   const dialogRef = useDialogFocus<HTMLDivElement>()
@@ -97,23 +97,7 @@ export function AliasDialog({ current, onDone, onCancel }: { current: MyCommunit
         <p id="alias-help" className="muted">
           Entre 3 y 24 caracteres: letras, números, espacios, puntos, guiones o guiones bajos. Puedes quedarte con la propuesta, pedir otra las veces que quieras o escribir la tuya.
         </p>
-        <fieldset className="community-avatar-picker" data-help-id="comunidad.alias-emoji">
-          <legend>Tu icono (opcional)</legend>
-          <div className="community-avatar-grid">
-            {AVATARS.map((a) => (
-              <button
-                key={a}
-                type="button"
-                className={'community-avatar-option' + (emoji === a ? ' selected' : '')}
-                aria-pressed={emoji === a}
-                aria-label={`Icono ${a}`}
-                onClick={() => setEmoji(emoji === a ? null : a)}
-              >
-                {a}
-              </button>
-            ))}
-          </div>
-        </fieldset>
+        <AvatarPicker value={emoji} onChange={setEmoji} />
         {needsRules && (
           <>
             <h3>Normas de Comunidad</h3>

@@ -44,6 +44,7 @@ const ActivityScreen = lazy(() => import('@/ui/ActivityScreen').then((m) => ({ d
 const BirthdaysScreen = lazy(() => import('@/ui/BirthdaysScreen').then((m) => ({ default: m.BirthdaysScreen })))
 const ContactsScreen = lazy(() => import('@/ui/ContactsScreen').then((m) => ({ default: m.ContactsScreen })))
 const GalleryScreen = lazy(() => import('@/ui/GalleryScreen').then((m) => ({ default: m.GalleryScreen })))
+const ListsScreen = lazy(() => import('@/ui/lists/ListsScreen').then((m) => ({ default: m.ListsScreen })))
 const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({ default: m.DocumentsScreen })))
 const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
@@ -172,6 +173,7 @@ function AuthedApp() {
             <Route path="/contactos" element={<ContactsScreen />} />
             <Route path="/galeria" element={<GalleryScreen />} />
             <Route path="/documentos" element={<DocumentsScreen />} />
+            <Route path="/listas/*" element={<ListsScreen />} />
             <Route path="/peso" element={<Navigate to="/familia" replace state={{ tab: 'Peso y medidas' }} />} />
             <Route path="/menu-organizar" element={<MenuSettingsScreen profile={profile} />} />
             {/* Centro de Administración único (solo cuentas propietarias de PEPA; la puerta pregunta al servidor). La dirección antigua del «Panel de admin» redirige al área Usuarios. */}

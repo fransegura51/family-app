@@ -94,6 +94,7 @@ import {
 } from '@/domain/reminders'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import type { CalendarCategory, CalendarEvent, Contact, FamilyMember, Profile } from '@/domain/types'
+import { LinkedListsSection } from '@/ui/lists/LinkedListsSection'
 import calendarHeaderImg from '@/assets/calendario/calendar-header.jpg'
 import { getCurrentPosition } from '@/services/geolocation'
 import { reverseGeocode } from '@/services/geocoding'
@@ -4187,6 +4188,7 @@ function EditEventForm({
         note={note}
         onNoteChange={setNote}
       />
+      <LinkedListsSection eventId={event.id} />
       {/* Encargo "tareas recurrentes" (Parte 6) — solo aparece cuando el Evento/Tarea YA se repite;
           uno suelto nunca ve esto y guarda exactamente como antes. */}
       {event.recurrenceRule && (

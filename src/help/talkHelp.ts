@@ -44,6 +44,7 @@ const MODULE_WORDS: [HelpModuleId, RegExp][] = [
   ['contactos', /\b(?:contactos|agenda de contactos)\b/],
   ['galeria', /\b(?:galeria|fotos)\b/],
   ['documentos', /\b(?:documentos)\b/],
+  ['listas', /\b(?:mis listas|listas)\b/],
   ['ubicacion', /\b(?:ubicacion|localizacion|el mapa|mapa)\b/],
   ['comunidad', /\b(?:comunidad)\b/],
   ['notificaciones', /\b(?:notificaciones|avisos|la campana)\b/],

@@ -15,6 +15,7 @@ export const KNOWN_APP_ROUTES: readonly string[] = [
   '/contactos',
   '/galeria',
   '/documentos',
+  '/listas',
   '/menu-organizar',
   '/ayuda',
   '/sugerencias',

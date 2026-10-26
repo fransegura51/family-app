@@ -5,13 +5,14 @@ import { SERIES_C } from '@/help/tours/series/c'
 import { SERIES_D } from '@/help/tours/series/d'
 import { SERIES_E } from '@/help/tours/series/e'
 import { SERIES_F } from '@/help/tours/series/f'
+import { SERIES_G } from '@/help/tours/series/g'
 import type { TutorialSeries } from '@/help/tours/series/types'
 import type { TourDef } from '@/help/tours/types'
 
 export type { TutorialSeries }
 
 // Todos los tutoriales principales. Un tutorial («Enséñame») que no pertenezca a ninguna serie no se ofrece en el catálogo (una prueba lo impide).
-export const SERIES: readonly TutorialSeries[] = [...SERIES_A, ...SERIES_B, ...SERIES_C, ...SERIES_D, ...SERIES_E, ...SERIES_F]
+export const SERIES: readonly TutorialSeries[] = [...SERIES_A, ...SERIES_B, ...SERIES_C, ...SERIES_D, ...SERIES_E, ...SERIES_F, ...SERIES_G]
 
 export const SERIES_BY_ID = new Map(SERIES.map((s) => [s.id, s]))
 

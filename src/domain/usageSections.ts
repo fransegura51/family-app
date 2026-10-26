@@ -19,6 +19,7 @@ export const USAGE_SECTIONS: Record<string, string> = {
   contactos: 'Contactos',
   galeria: 'Galería',
   documentos: 'Documentos',
+  listas: 'Mis listas',
   'menu-organizar': 'Organizar menú',
   ayuda: 'Ayuda',
   sugerencias: 'Sugerencias',

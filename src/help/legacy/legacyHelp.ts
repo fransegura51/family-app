@@ -19,6 +19,7 @@ export const SUMMARIES: Record<string, string> = {
   '/contactos': 'Agenda familiar (colegio, médico, emergencias...) — se puede importar desde el móvil con un archivo .vcf.',
   '/galeria': 'Fotos de la familia, compartibles también con invitados que solo tengan acceso a esta sección.',
   '/documentos': 'Documentos importantes por persona o carpeta, con fecha de vencimiento y recordatorios de renovación si hace falta.',
+  '/listas': 'Tus listas de tareas, ideas o comparativas, en carpetas, privadas o familiares, con importación desde foto, PDF o voz.',
 }
 
 // Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan

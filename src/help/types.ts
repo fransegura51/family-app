@@ -18,6 +18,7 @@ export type HelpModuleId =
   | 'contactos'
   | 'galeria'
   | 'documentos'
+  | 'listas'
   | 'ubicacion'
   | 'comunidad'
   | 'configuracion'

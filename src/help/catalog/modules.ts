@@ -16,6 +16,7 @@ export const HELP_MODULES: HelpModule[] = [
   { id: 'cumpleanos', label: 'Cumpleaños', icon: '🎂', path: '/cumpleanos', summary: 'Próximos cumpleaños de la familia y de los contactos.', legacyRoute: '/cumpleanos' },
   { id: 'contactos', label: 'Contactos', icon: '📇', path: '/contactos', summary: 'Agenda familiar: colegio, médico, emergencias… con importación desde el móvil.', legacyRoute: '/contactos' },
   { id: 'galeria', label: 'Galería', icon: '📷', path: '/galeria', summary: 'Fotos de la familia, compartibles también con invitados con acceso limitado.', legacyRoute: '/galeria' },
+  { id: 'listas', label: 'Mis listas', icon: '📝', path: '/listas', summary: 'Listas propias de tareas, ideas o comparativas, con carpetas, formato, importación de fotos y PDF, y conexión opcional con Calendario y Compras.', legacyRoute: '/listas' },
   { id: 'documentos', label: 'Documentos', icon: '📁', path: '/documentos', summary: 'Documentos importantes por persona o carpeta, con fecha de vencimiento y avisos.', legacyRoute: '/documentos' },
   { id: 'ubicacion', label: 'Ubicación', icon: '📍', path: '/ubicacion', summary: 'Dónde está cada miembro (con su permiso) y avisos de llegada y salida de sitios guardados.', legacyRoute: '/ubicacion' },
   {

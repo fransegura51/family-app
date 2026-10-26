@@ -1,0 +1,567 @@
+/* Mis listas. La casilla, el asa de arrastre y el panel rojo de «Eliminar» reutilizan las clases de la Lista de la compra
+   (.shopping-check, .shopping-drag-handle, .shopping-row-*): así los gestos y el aspecto son los mismos. */
+.lists-screen {
+  padding-bottom: 96px;
+}
+.lists-title {
+  margin: 8px 0 4px;
+  font-size: 22px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.lists-title-editable {
+  cursor: text;
+}
+.lists-title-input,
+.lists-input,
+.lists-search {
+  width: 100%;
+  font: inherit;
+  font-size: 16px; /* 16 px evita el zoom automático de Safari al enfocar */
+  padding: 10px 12px;
+  border: 1px solid #d5d8e0;
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text);
+}
+.lists-title-input {
+  font-size: 20px;
+  font-weight: 700;
+}
+.lists-search {
+  margin: 6px 0 10px;
+}
+.lists-textarea {
+  resize: vertical;
+}
+.lists-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.lists-empty,
+.lists-empty-folder {
+  padding: 12px 4px;
+}
+.lists-section-label {
+  margin: 12px 4px 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Filas de listas y carpetas */
+.lists-folder {
+  padding: 4px 8px 8px;
+  margin-bottom: 10px;
+}
+.lists-folder-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lists-folder-toggle {
+  flex: 1;
+  text-align: left;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 4px;
+  cursor: pointer;
+  color: var(--text);
+}
+.lists-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 4px;
+  border-bottom: 1px solid #eee;
+  background: var(--card-bg);
+}
+.lists-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.lists-row-meta {
+  font-size: 12.5px;
+}
+.lists-privacy {
+  font-size: 14px;
+  opacity: 0.8;
+}
+.lists-row-dragging {
+  z-index: 10;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  opacity: 0.95;
+}
+.lists-drop-before {
+  box-shadow: inset 0 3px 0 var(--primary);
+}
+.lists-drop-after {
+  box-shadow: inset 0 -3px 0 var(--primary);
+}
+.lists-drop-into {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+}
+.lists-root {
+  min-height: 24px;
+}
+.lists-root-hint {
+  text-align: center;
+  padding: 10px;
+  border: 1px dashed #c3c8d4;
+  border-radius: 10px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.lists-archived {
+  margin-top: 16px;
+}
+.lists-menu {
+  flex-basis: 100%;
+}
+.lists-move-options,
+.lists-kind-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.lists-kind {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid #d5d8e0;
+  border-radius: 10px;
+  background: var(--card-bg);
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+.lists-kind-active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.lists-hint {
+  font-size: 13px;
+}
+
+/* Detalle */
+.lists-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lists-head .lists-title,
+.lists-head .lists-title-input {
+  flex: 1;
+}
+.lists-subhead {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+}
+.lists-privacy-btn {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline dotted;
+  cursor: pointer;
+}
+.lists-items,
+.lists-column {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 4px 4px 8px;
+}
+.lists-item {
+  align-items: center;
+  min-height: 46px;
+  padding-left: 8px;
+}
+.lists-item-sub {
+  padding-left: 36px;
+}
+.lists-item-text {
+  text-align: left;
+  font-size: 16px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: text;
+  flex: 1;
+}
+.lists-item-done .lists-item-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.lists-item-done {
+  opacity: 0.7;
+}
+.lists-check-ghost {
+  visibility: hidden;
+}
+.lists-linked {
+  font-size: 13px;
+}
+.lists-add {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 15px;
+  padding: 12px 10px;
+  cursor: pointer;
+}
+.lists-add-column {
+  align-self: start;
+}
+
+/* Editor de un elemento */
+.lists-editor {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 16px;
+  line-height: 1.35;
+  outline: none;
+  border-bottom: 2px solid var(--primary);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.lists-editor[data-empty='true']::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  pointer-events: none;
+}
+.lists-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+  background: var(--card-bg);
+  border-top: 1px solid #d5d8e0;
+  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.08);
+  overflow-x: auto;
+}
+.lists-tool {
+  min-width: 40px;
+  height: 40px;
+  border: 1px solid #d5d8e0;
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.lists-tool:disabled {
+  opacity: 0.35;
+}
+.lists-tool-on {
+  border-color: var(--primary);
+}
+.lists-tool-done {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  padding: 0 14px;
+}
+.lists-tool-sep {
+  width: 1px;
+  height: 24px;
+  background: #d5d8e0;
+  margin: 0 4px;
+}
+.lists-tool-fill {
+  flex: 1;
+}
+.lists-color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.lists-colors {
+  display: inline-flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+.lists-color {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #c3c8d4;
+  cursor: pointer;
+}
+
+/* Comparativa */
+.lists-columns {
+  display: grid;
+  gap: 10px;
+  overflow-x: auto;
+}
+.lists-column-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+}
+.lists-column-title {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  border: none;
+  border-bottom: 1px dashed #c3c8d4;
+  background: none;
+  color: var(--text);
+  padding: 6px 2px;
+}
+
+/* Enviar a Compras */
+.lists-selectbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--tone-done);
+  border-radius: 12px;
+}
+.lists-selectbar-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Importar */
+.lists-import {
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.lists-import-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 4px;
+  font-size: 16px;
+}
+.lists-page-preview {
+  max-width: 100%;
+  max-height: 46vh;
+  display: block;
+  margin: 8px auto;
+  border: 1px solid #d5d8e0;
+}
+.lists-review {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lists-review-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lists-review-sub {
+  padding-left: 24px;
+}
+.lists-review-doubt .lists-input {
+  border-color: #e8801f;
+  background: #fff7ed;
+}
+.lists-doubt {
+  font-size: 11px;
+  color: #b45309;
+}
+.lists-dest-title {
+  margin: 14px 0 4px;
+}
+.lists-dest {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lists-dest-opt {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 2px;
+  font-size: 15px;
+}
+.lists-dest-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 8px 26px;
+}
+
+/* Recorte */
+.lists-crop-view {
+  overflow: auto;
+  max-height: 58vh;
+  padding: 14px;
+  border: 1px solid #d5d8e0;
+  background: #222;
+  touch-action: pan-x pan-y;
+}
+.lists-crop-stage {
+  position: relative;
+  max-width: none;
+}
+.lists-crop-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.lists-crop-shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.lists-crop-rect {
+  position: absolute;
+  border: 2px solid #fff;
+  touch-action: none;
+  cursor: move;
+}
+.lists-crop-handle {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  background: #fff;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  touch-action: none;
+}
+.lists-crop-nw { left: -14px; top: -14px; }
+.lists-crop-ne { right: -14px; top: -14px; }
+.lists-crop-sw { left: -14px; bottom: -14px; }
+.lists-crop-se { right: -14px; bottom: -14px; }
+.lists-crop-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* Calendario */
+.lists-links {
+  max-height: 44vh;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+.lists-link-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 2px;
+  border-bottom: 1px solid #eee;
+}
+
+/* Deshacer */
+.lists-undo {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: #1c1f26;
+  color: #fff;
+  border-radius: 12px;
+}
+.lists-undo .link-button {
+  color: #9db4ff;
+  font-weight: 700;
+}
+
+/* «Listas vinculadas» en el Calendario */
+.lists-linked-section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 0;
+  font-size: 14px;
+}
+.lists-linked-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: #eef1ff;
+}
+.lists-linked-chip a {
+  color: inherit;
+  text-decoration: none;
+}
+.lists-linked-picker {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Las reglas globales de «label» apilan en columna: aquí las opciones van en fila, con el círculo a la izquierda. */
+.lists-dest-opt,
+.lists-link-row {
+  flex-direction: row;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: left;
+}
+.lists-dest-opt input,
+.lists-link-row input {
+  width: auto;
+  margin: 0;
+  flex: 0 0 auto;
+}
+.lists-row-spacer {
+  display: inline-block;
+  width: 26px;
+  flex: 0 0 auto;
+}

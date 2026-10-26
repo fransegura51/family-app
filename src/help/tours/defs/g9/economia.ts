@@ -217,21 +217,21 @@ export const tutEconomiaCarterasEfectivo: TourDef = {
   steps: [
     {
       id: 'tarjetas',
-      text: 'Aquí están las carteras de efectivo: una tarjeta por cartera, con su titular (o «Familiar») y su saldo. Son opcionales: puedes apuntar gastos en efectivo sin tener ninguna.',
-      target: 'finance.cash-wallets',
+      text: 'Aquí están las carteras de efectivo, junto a tus cuentas del banco en «Mis cuentas»: una tarjeta por cartera, con su titular (o «Familiar») y su saldo. Son opcionales: puedes apuntar gastos en efectivo sin tener ninguna.',
+      target: 'finance.accounts',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'anadir',
-      text: '«Añadir cartera» crea una personal (la tuya) o una familiar, con su saldo inicial. Yo solo te enseño dónde está: no creo ninguna.',
-      target: 'finance.cash-add',
+      text: '«+ Añadir cuenta o cartera» te deja elegir entre una cuenta bancaria y una cartera de efectivo (personal o familiar, con su saldo inicial). Yo solo te enseño dónde está: no creo ninguna.',
+      target: 'finance.add-account',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'operaciones',
-      text: 'Al tocar una cartera, Movimientos enseña solo sus movimientos y salen las «Operaciones de efectivo»: entrada, salida, ajustar saldo, traspaso y retirada del banco. Si no tienes ninguna cartera, este paso se salta.',
+      text: 'Al tocar una cartera, Movimientos enseña solo sus movimientos y salen las «Operaciones de efectivo»: entrada, salida, ajustar saldo, traspaso y «↔ Banco y efectivo» (reintegros e ingresos de cajero, en las dos direcciones). Si no tienes ninguna cartera, este paso se salta.',
       target: 'finance.cash-tools',
       completeOn: [],
       manualNext: true,
@@ -240,12 +240,12 @@ export const tutEconomiaCarterasEfectivo: TourDef = {
     {
       id: 'etiqueta',
       text: 'Ojo: pagar desde una cartera no decide a quién corresponde el gasto. Eso lo dice la etiqueta del movimiento (por ejemplo «Común» aunque pague una persona).',
-      target: 'finance.cash-wallets',
+      target: 'finance.accounts',
       completeOn: [],
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. No he creado ni movido nada de efectivo: cuando quieras, hazlo tú desde «Añadir cartera» y las operaciones de cada cartera.',
+  finishText: 'Eso es todo. No he creado ni movido nada de efectivo: cuando quieras, hazlo tú desde «+ Añadir cuenta o cartera» y las operaciones de cada cartera.',
   next: ['eco-nuevo-movimiento', 'eco-banco'],
 }
 

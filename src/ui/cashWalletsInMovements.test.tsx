@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // Carteras de efectivo dentro de Economía → Movimientos (pantalla real ExpensesTab / BankTab, datos simulados). Banco y Movimientos siguen separados:
 // las tarjetas de efectivo y sus herramientas viven en Movimientos y el bloque «Efectivo (opcional)» ya no existe en Banco.
+import { useState } from 'react'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -88,7 +89,7 @@ vi.mock('@/data/cash', async (orig) => ({
 }))
 vi.mock('@/services/voice', async (orig) => ({ ...(await orig<typeof import('@/services/voice')>()), isSpeechSupported: () => false, isDictationSupported: () => false, primeSpeech: () => undefined }))
 
-const { ExpensesTab, BankTab } = await import('@/ui/FinanceScreen')
+const { ExpensesTab, BankTab, AccountBalanceCards } = await import('@/ui/FinanceScreen')
 
 beforeEach(() => {
   Object.values(calls).forEach((m) => m.mockClear())
@@ -110,16 +111,34 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
+// Igual que la pantalla real: las tarjetas de «Mis cuentas» (con las carteras) van arriba y Movimientos debajo; tocar una cartera la elige en Movimientos.
+function Harness() {
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
+  return (
+    <>
+      <AccountBalanceCards myMemberId="jenni" onAddAccount={() => undefined} onSelectAccount={() => undefined} onSelectWallet={(id) => setFocus((p) => ({ id, n: (p?.n ?? 0) + 1 }))} onViewAll={() => undefined} />
+      <ExpensesTab myMemberId="jenni" focusWallet={focus} />
+    </>
+  )
+}
 function renderMovements() {
   return render(
     <MemoryRouter>
-      <ExpensesTab myMemberId="jenni" />
+      <Harness />
     </MemoryRouter>,
   )
 }
 const storesShown = () => ['Mercado Puesto Panadería', 'Kiosco', 'CAJERO', 'Frutería suelta', 'Supermercado tarjeta'].filter((s) => screen.queryByText(new RegExp(s)))
 
-describe('Movimientos: tarjetas de efectivo', () => {
+describe('Movimientos: carteras en «Mis cuentas» (sin bloque «Efectivo» repetido)', () => {
+  it('cada cartera sale UNA sola vez: no hay un segundo bloque «Efectivo» en Movimientos', async () => {
+    renderMovements()
+    await screen.findByRole('button', { name: /Cartera de Jennifer/ })
+    expect(screen.getAllByRole('button', { name: /Cartera de Jennifer/ })).toHaveLength(1)
+    expect(screen.queryByText('💶 Efectivo')).toBeNull()
+    expect(screen.queryByText(/Controlar el efectivo es opcional/)).toBeNull()
+  })
+
   it('muestra una tarjeta por cartera con nombre, titular o familiar, saldo e icono de efectivo', async () => {
     renderMovements()
     const card = await screen.findByRole('button', { name: /Cartera de Jennifer/ })
@@ -148,7 +167,6 @@ describe('Movimientos: tarjetas de efectivo', () => {
     // su entrada de saldo inicial sale en el mismo listado, sin ser gasto ni ingreso
     expect(screen.getByText(/Entrada de efectivo/)).toBeTruthy()
     expect(screen.getByText('saldo inicial')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Cartera de Jennifer/ }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('con una cartera elegida salen las cinco herramientas sobre ESA cartera', async () => {
@@ -156,7 +174,7 @@ describe('Movimientos: tarjetas de efectivo', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Cartera de Jennifer/ }))
     const ops = await screen.findByRole('group', { name: 'Operaciones de la cartera' })
     expect(screen.getByRole('heading', { name: 'Operaciones de efectivo' })).toBeTruthy() // el título ya no repite el nombre de la cartera
-    expect(within(ops).getAllByRole('button').map((b) => b.textContent)).toEqual(['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '🏦 Retirada del banco'])
+    expect(within(ops).getAllByRole('button').map((b) => b.textContent)).toEqual(['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '↔ Banco y efectivo'])
     fireEvent.click(within(ops).getByRole('button', { name: '＋ Entrada' }))
     fireEvent.change(screen.getByLabelText(/Importe/), { target: { value: '5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
@@ -175,18 +193,9 @@ describe('Movimientos: tarjetas de efectivo', () => {
     expect(screen.queryByRole('group', { name: 'Operaciones de la cartera' })).toBeNull()
   })
 
-  it('tocar otra vez la tarjeta activa también vuelve a todos', async () => {
-    renderMovements()
-    const card = await screen.findByRole('button', { name: /Cartera de Jennifer/ })
-    fireEvent.click(card)
-    await screen.findByText(/Ver todos los movimientos/)
-    fireEvent.click(screen.getByRole('button', { name: /Cartera de Jennifer/ }))
-    await waitFor(() => expect(storesShown()).toHaveLength(5))
-  })
-
   it('«Efectivo sin cartera» enseña los gastos en efectivo que no están en ninguna cartera', async () => {
     renderMovements()
-    fireEvent.click(await screen.findByRole('button', { name: 'Efectivo sin cartera' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Ver el efectivo sin cartera/ }))
     await waitFor(() => expect(storesShown()).toEqual(['Frutería suelta']))
     expect(screen.getByText('Efectivo sin cartera', { selector: 'strong' })).toBeTruthy()
   })
@@ -210,22 +219,35 @@ describe('Movimientos: tarjetas de efectivo', () => {
     await waitFor(() => expect(calls.unlinkBank).toHaveBeenCalledWith('m2'))
   })
 
-  it('se puede añadir una cartera desde la propia tarjeta «Añadir cartera»', async () => {
+  it('«+ Añadir cuenta o cartera» ofrece las dos opciones y la de cartera usa el formulario de siempre', async () => {
     renderMovements()
-    fireEvent.click(await screen.findByRole('button', { name: /Añadir cartera/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Añadir cuenta o cartera/ }))
+    expect(screen.getByRole('button', { name: /Añadir cuenta bancaria/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Añadir cartera de efectivo/ }))
     fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Caja del mercado' } })
     fireEvent.change(screen.getByLabelText(/Saldo inicial/), { target: { value: '30' } })
     fireEvent.click(screen.getByRole('button', { name: 'Crear cartera' }))
     await waitFor(() => expect(calls.createWallet).toHaveBeenCalledWith(expect.objectContaining({ name: 'Caja del mercado', openingBalance: 30 })))
   })
 
-  it('sin carteras: explica que el efectivo es opcional y solo ofrece crear una; los gastos en efectivo siguen visibles', async () => {
+  it('«Añadir cuenta bancaria» sigue llevando a conectar el banco', async () => {
+    const onAdd = vi.fn()
+    render(
+      <MemoryRouter>
+        <AccountBalanceCards onAddAccount={onAdd} onSelectAccount={() => undefined} onViewAll={() => undefined} />
+      </MemoryRouter>,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: /Añadir cuenta o cartera/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Añadir cuenta bancaria/ }))
+    expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('sin carteras: los gastos en efectivo siguen visibles y no se pinta ningún bloque de efectivo', async () => {
     wallets = []
     movements = []
     renderMovements()
-    expect(await screen.findByText(/Controlar el efectivo es opcional/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Añadir cartera/ })).toBeTruthy()
     await waitFor(() => expect(storesShown()).toHaveLength(5))
+    expect(screen.queryByText(/Controlar el efectivo es opcional/)).toBeNull()
   })
 
   it('llegar desde «Mis cuentas» con una cartera ya elegida: Movimientos sale filtrado por ella, con sus herramientas', async () => {

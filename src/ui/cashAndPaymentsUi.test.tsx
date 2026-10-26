@@ -176,7 +176,7 @@ describe('carteras (opcionales): alta y herramientas (ahora dentro de Movimiento
   })
   it('ofrece las cinco herramientas sobre la cartera elegida', () => {
     render(<WalletTools wallet={wallet({ balance: 25 })} wallets={[wallet({ balance: 25 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)
-    for (const name of ['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '🏦 Retirada del banco']) expect(screen.getByRole('button', { name })).toBeTruthy()
+    for (const name of ['＋ Entrada', '− Salida', '⚖️ Ajustar saldo', '⇄ Traspaso', '↔ Banco y efectivo']) expect(screen.getByRole('button', { name })).toBeTruthy()
   })
   it('un traspaso entre carteras avisa de que no es ingreso ni gasto y usa la cartera elegida como origen', async () => {
     const w1 = wallet({ balance: 25 })
@@ -190,13 +190,69 @@ describe('carteras (opcionales): alta y herramientas (ahora dentro de Movimiento
     await waitFor(() => expect(calls.transferCash).toHaveBeenCalledWith(expect.objectContaining({ from: 'w1', to: 'w2', amount: 10 })))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
   })
-  it('la retirada del banco solo ofrece movimientos del banco aún sin vincular', () => {
-    const bank = [expense({ id: 'b1', source: 'banco', amount: 100, store: 'CAJERO' }), expense({ id: 'm1', source: 'manual', amount: 8 }), expense({ id: 'b2', source: 'banco', amount: 50, store: 'YA VINCULADO' })]
-    render(<WalletTools wallet={wallet()} wallets={[wallet()]} myMemberId={null} bankExpenses={bank} linkedExpenseIds={new Set(['b2'])} onChanged={() => undefined} />)
-    fireEvent.click(screen.getByRole('button', { name: '🏦 Retirada del banco' }))
-    const options = [...(screen.getByLabelText('Movimiento del banco') as HTMLSelectElement).options].map((o) => o.value)
-    expect(options).toEqual(['', 'b1'])
-    expect(screen.getByText(/deja de contar como gasto o ingreso/)).toBeTruthy()
+  describe('↔ Banco y efectivo', () => {
+    const bank = [
+      expense({ id: 'atm', source: 'banco', amount: 1200, store: null, notes: 'REINTEGRO CAJERO AUTOMATICO 4041', category: 'Retirada de efectivo' }),
+      expense({ id: 'dep', source: 'banco', amount: 500, isIncome: true, notes: 'INGRESO EFECTIVO CAJERO AUTOMATICO 0081', expenseDate: '2026-10-21' }),
+      expense({ id: 'pizza', source: 'banco', amount: 23.5, store: 'PIZZERIA ROMA', notes: 'COMPRA TARJ. PIZZERIA ROMA' }),
+      expense({ id: 'aeat', source: 'banco', amount: 312, isIncome: true, notes: 'AGENCIA TRIBUTARIA' }),
+      expense({ id: 'm1', source: 'manual', amount: 8, notes: 'REINTEGRO CAJERO' }),
+      expense({ id: 'ya', source: 'banco', amount: 50, notes: 'REINTEGRO CAJERO YA VINCULADO' }),
+    ]
+    const open = (balance = 86.5) => {
+      render(<WalletTools wallet={wallet({ balance })} wallets={[wallet({ balance })]} myMemberId={null} bankExpenses={bank} linkedExpenseIds={new Set(['ya'])} onChanged={() => undefined} />)
+      fireEvent.click(screen.getByRole('button', { name: '↔ Banco y efectivo' }))
+    }
+    const options = () => [...(screen.getByLabelText('Movimiento del banco') as HTMLSelectElement).options].map((o) => o.value)
+
+    it('Banco → Cartera ofrece solo reintegros de cajero (también el ya clasificado sin cartera): ni pizzerías, ni ingresos, ni lo apuntado a mano, ni lo ya vinculado', () => {
+      open()
+      expect(options()).toEqual(['', 'atm'])
+    })
+    it('Cartera → Banco ofrece solo ingresos de efectivo: no la Agencia Tributaria', () => {
+      open()
+      fireEvent.click(screen.getByRole('button', { name: 'Cartera → Banco' }))
+      expect(options()).toEqual(['', 'dep'])
+    })
+    it('antes de confirmar dice qué saldo sube y cuál baja, y que no es gasto ni ingreso', () => {
+      open()
+      fireEvent.change(screen.getByLabelText('Movimiento del banco'), { target: { value: 'atm' } })
+      expect(screen.getByText(/sube 1200,00 €: de 86,50 € a 1286,50 €/)).toBeTruthy()
+      expect(screen.getByText(/ya bajó 1200,00 €/)).toBeTruthy()
+      expect(screen.getByText(/No es un gasto ni un ingreso/)).toBeTruthy()
+    })
+    it('un reintegro reconocido se vincula con un solo toque en Guardar', async () => {
+      open()
+      fireEvent.change(screen.getByLabelText('Movimiento del banco'), { target: { value: 'atm' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+      await waitFor(() => expect(calls.linkBank).toHaveBeenCalledWith('w1', 'atm'))
+    })
+    it('el caso de los 500 €: un ingreso mayor que el saldo avisa del negativo y no se guarda sin confirmarlo', async () => {
+      calls.linkBank.mockClear()
+      open(86.5)
+      fireEvent.click(screen.getByRole('button', { name: 'Cartera → Banco' }))
+      fireEvent.change(screen.getByLabelText('Movimiento del banco'), { target: { value: 'dep' } })
+      expect(screen.getByText(/baja 500,00 €: de 86,50 € a -413,50 €/)).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+      expect(await screen.findByText(/La cartera quedaría en -413,50 €. Si de verdad/)).toBeTruthy()
+      expect(calls.linkBank).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByLabelText(/lo confirmo/))
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+      await waitFor(() => expect(calls.linkBank).toHaveBeenCalledWith('w1', 'dep'))
+    })
+    it('un movimiento ambiguo solo sale en la búsqueda manual y exige confirmar su naturaleza', async () => {
+      calls.linkBank.mockClear()
+      open()
+      fireEvent.change(screen.getByLabelText('Buscar por concepto'), { target: { value: 'pizzeria' } })
+      expect(options()).toEqual(['', 'pizza'])
+      fireEvent.change(screen.getByLabelText('Movimiento del banco'), { target: { value: 'pizza' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+      expect(await screen.findByText(/Confirma que este movimiento es dinero que pasó/)).toBeTruthy()
+      expect(calls.linkBank).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByLabelText(/Confirmo que este movimiento/))
+      fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
+      await waitFor(() => expect(calls.linkBank).toHaveBeenCalledWith('w1', 'pizza'))
+    })
   })
   it('una salida mayor que el saldo no se bloquea (el saldo queda por regularizar)', async () => {
     render(<WalletTools wallet={wallet({ balance: 5 })} wallets={[wallet({ balance: 5 })]} myMemberId={null} bankExpenses={[]} linkedExpenseIds={noLinks} onChanged={() => undefined} />)

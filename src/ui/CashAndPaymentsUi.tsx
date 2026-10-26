@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { adoptEntryAsWithdrawal, addMovement, archiveWallet, assignWithdrawal, cashErrorText, createWallet, dismissDuplicate, linkBankExpenseToWallet, linkPurchaseToBank, listDuplicateDecisions, registerPurchaseRefund, removeDuplicateExpense, renameWallet, transferCash } from '@/data/cash'
+import { bankCashCandidates, previewBankCash, type BankCashDirection, type BankCashSearch } from '@/domain/bankCash'
 import { checkWithdrawalSplit, planAdoptions, type WithdrawalCandidate } from '@/domain/cashWithdrawals'
 import { balanceText, eur, movementDelta, usableWallets, type CashMovement, type CashWallet, type ShortfallChoice, type ShortfallNotice } from '@/domain/cashWallet'
 import { planBankLinks, type BankLinkPair } from '@/domain/bankReconciliation'
@@ -360,12 +361,18 @@ export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChang
   const [note, setNote] = useState('')
   const [target, setTarget] = useState('')
   const [bankId, setBankId] = useState('')
+  const [direction, setDirection] = useState<BankCashDirection>('toWallet')
+  const [search, setSearch] = useState<BankCashSearch>({})
+  const [confirmed, setConfirmed] = useState(false)
+  const [confirmedNegative, setConfirmedNegative] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const writable = wallet.ownerMemberId == null || wallet.ownerMemberId === myMemberId
 
   const others = wallets.filter((w) => w.id !== wallet.id)
-  const bankCandidates = bankExpenses.filter((e) => (e.source === 'banco' || e.source === 'ticket_banco') && e.kind === 'real' && !linkedExpenseIds.has(e.id)).slice(0, 40)
+  const cands = useMemo(() => bankCashCandidates(bankExpenses, linkedExpenseIds, direction, search), [bankExpenses, linkedExpenseIds, direction, search])
+  const picked = [...cands.recognized, ...cands.manual].find((c) => c.expense.id === bankId) ?? null
+  const preview = picked ? previewBankCash(direction, picked.expense.amount, wallet.name, wallet.balance) : null
 
   async function run(fn: () => Promise<void>) {
     setError(null)
@@ -375,6 +382,9 @@ export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChang
       setAmount('')
       setNote('')
       setBankId('')
+      setConfirmed(false)
+      setConfirmedNegative(false)
+      setSearch({})
       setRenaming(null)
       onChanged()
     } catch (err) {
@@ -393,8 +403,10 @@ export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChang
       if (!target) return setError('Elige la cartera de destino')
       void run(() => transferCash({ from: wallet.id, to: target, amount: v, date: today(), note }))
     } else if (action === 'bank') {
-      if (!bankId) return setError('Elige el movimiento del banco')
-      void run(() => linkBankExpenseToWallet(wallet.id, bankId))
+      if (!picked || !preview) return setError('Elige el movimiento del banco')
+      if (!picked.recognized && !confirmed) return setError('Confirma que este movimiento es dinero que pasó entre el banco y tu efectivo.')
+      if (preview.negative && !confirmedNegative) return setError(`La cartera quedaría en ${eur(preview.walletAfter)}. Si de verdad es así, marca la casilla para confirmarlo.`)
+      void run(() => linkBankExpenseToWallet(wallet.id, picked.expense.id))
     }
   }
 
@@ -405,7 +417,7 @@ export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChang
       </h3>
       {writable ? (
         <div className="chip-row" role="group" aria-label="Operaciones de la cartera">
-          {([['in', '＋ Entrada'], ['out', '− Salida'], ['adjust', '⚖️ Ajustar saldo'], ['transfer', '⇄ Traspaso'], ['bank', '🏦 Retirada del banco']] as const).map(([k, label]) => (
+          {([['in', '＋ Entrada'], ['out', '− Salida'], ['adjust', '⚖️ Ajustar saldo'], ['transfer', '⇄ Traspaso'], ['bank', '↔ Banco y efectivo']] as const).map(([k, label]) => (
             <button key={k} type="button" className={action === k ? 'chip chip-active' : 'chip'} onClick={() => { setAction(action === k ? null : k); setError(null) }}>
               {label}
             </button>
@@ -436,15 +448,70 @@ export function WalletTools({ wallet, wallets, myMemberId, bankExpenses, onChang
       )}
       {action === 'bank' && (
         <>
-          <select value={bankId} onChange={(e) => setBankId(e.target.value)} aria-label="Movimiento del banco">
-            <option value="">Elige la retirada (o el ingreso de efectivo)…</option>
-            {bankCandidates.map((e) => (
-              <option key={e.id} value={e.id}>
-                {shortDate(e.expenseDate)} · {eur(e.amount)} · {e.isIncome ? 'ingreso' : 'cargo'} {e.store ?? e.notes ?? ''}
+          <div className="chip-row" role="group" aria-label="Dirección">
+            {([['toWallet', 'Banco → Cartera'], ['toBank', 'Cartera → Banco']] as const).map(([k, label]) => (
+              <button key={k} type="button" className={direction === k ? 'chip chip-active' : 'chip'} onClick={() => { setDirection(k); setBankId(''); setConfirmed(false); setConfirmedNegative(false); setError(null) }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+            {direction === 'toWallet'
+              ? 'Sacaste dinero del banco para guardarlo en esta cartera. Elige el reintegro que aparece en tu banco.'
+              : 'Ingresaste en el banco dinero de esta cartera. Elige el ingreso de efectivo que aparece en tu banco.'}
+          </p>
+          <select value={bankId} onChange={(e) => { setBankId(e.target.value); setConfirmed(false); setConfirmedNegative(false) }} aria-label="Movimiento del banco">
+            <option value="">{direction === 'toWallet' ? 'Elige el reintegro de cajero…' : 'Elige el ingreso de efectivo…'}</option>
+            {[...cands.recognized, ...cands.manual].map((c) => (
+              <option key={c.expense.id} value={c.expense.id}>
+                {shortDate(c.expense.expenseDate)} · {eur(c.expense.amount)} · {c.label}
+                {c.classifiedWithoutWallet ? ' (sin cartera)' : ''}
               </option>
             ))}
           </select>
-          <p className="muted" style={{ fontSize: 12 }}>Ese movimiento pasa a «Movimientos internos»: deja de contar como gasto o ingreso y mueve el saldo de esta cartera.</p>
+          {cands.recognized.length === 0 && (
+            <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+              {direction === 'toWallet' ? 'No hay reintegros de cajero sin asignar.' : 'No hay ingresos de efectivo sin asignar.'} Si el concepto del banco no lo dice, búscalo por fecha, importe o texto.
+            </p>
+          )}
+          <details style={{ margin: '4px 0' }}>
+            <summary className="link-button">🔎 Buscar otro movimiento del banco</summary>
+            <div className="inline-fields" style={{ marginTop: 6 }}>
+              <input type="text" value={search.query ?? ''} onChange={(e) => setSearch({ ...search, query: e.target.value })} placeholder="Concepto" aria-label="Buscar por concepto" />
+              <input type="text" inputMode="decimal" value={search.amount ?? ''} onChange={(e) => setSearch({ ...search, amount: e.target.value })} placeholder="Importe" aria-label="Buscar por importe" />
+            </div>
+            <div className="inline-fields" style={{ marginTop: 6 }}>
+              <label>
+                Desde
+                <input type="date" value={search.from ?? ''} onChange={(e) => setSearch({ ...search, from: e.target.value || undefined })} />
+              </label>
+              <label>
+                Hasta
+                <input type="date" value={search.to ?? ''} onChange={(e) => setSearch({ ...search, to: e.target.value || undefined })} />
+              </label>
+            </div>
+          </details>
+          {preview && picked && (
+            <div className="card" style={{ margin: '6px 0' }}>
+              <strong>{preview.title}</strong>
+              <p style={{ margin: '4px 0' }}>{preview.walletLine}</p>
+              <p className="muted" style={{ margin: '4px 0', fontSize: 12 }}>{preview.bankLine}</p>
+              <p className="muted" style={{ margin: '4px 0', fontSize: 12 }}>No es un gasto ni un ingreso: pasa a «Movimientos internos». El movimiento del banco conserva su fecha y su importe.</p>
+              {picked.classifiedWithoutWallet && <p className="muted" style={{ margin: '4px 0', fontSize: 12 }}>Ya estaba clasificado como retirada de efectivo, sin cartera. Nada entra en la cartera hasta que lo confirmes.</p>}
+              {!picked.recognized && (
+                <label className="inline-fields">
+                  <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+                  <span>Confirmo que este movimiento es dinero que pasó entre el banco y mi efectivo.</span>
+                </label>
+              )}
+              {preview.negative && (
+                <label className="inline-fields">
+                  <input type="checkbox" checked={confirmedNegative} onChange={(e) => setConfirmedNegative(e.target.checked)} />
+                  <span>{`La cartera quedaría en ${eur(preview.walletAfter)}; lo confirmo.`}</span>
+                </label>
+              )}
+            </div>
+          )}
         </>
       )}
       {error && <p className="error">{error}</p>}

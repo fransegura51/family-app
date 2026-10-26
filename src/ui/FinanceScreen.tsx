@@ -656,6 +656,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
       )}
       <AccountBalanceCards
         key={`${tab}-${refreshKey}`}
+        myMemberId={myMemberId}
         onAddAccount={() => {
           setOpenConnectSignal((n) => n + 1)
           setTab('Banco')
@@ -941,67 +942,6 @@ function WalletCardButton({ wallet: w, members, active = false, onClick }: { wal
   )
 }
 
-// Carteras de efectivo en Movimientos: mismas tarjetas que las cuentas bancarias de «Mis cuentas» (color del dueño, icono, saldo). Tocar una filtra
-// Movimientos por esa cartera; tocarla otra vez (o «Ver todos los movimientos») vuelve a todos. El efectivo es opcional: sin carteras solo se ofrece crear una.
-export function CashWalletCards({
-  wallets,
-  members,
-  myMemberId,
-  activeView,
-  hasCashWithoutWallet,
-  onSelect,
-  onCreated,
-}: {
-  wallets: CashWallet[]
-  members: FamilyMember[]
-  myMemberId: string | null
-  activeView: string | null
-  hasCashWithoutWallet: boolean
-  onSelect: (view: string | null) => void
-  onCreated: () => void
-}) {
-  const [adding, setAdding] = useState(false)
-  return (
-    <div className="account-cards-block" data-help-id="finance.cash-wallets">
-      <div className="account-cards-heading">
-        <strong>💶 Efectivo</strong>
-        {hasCashWithoutWallet && (
-          <button type="button" className={'link-button' + (activeView === CASH_WITHOUT_WALLET ? ' chip-active' : '')} onClick={() => onSelect(activeView === CASH_WITHOUT_WALLET ? null : CASH_WITHOUT_WALLET)}>
-            Efectivo sin cartera
-          </button>
-        )}
-      </div>
-      {wallets.length === 0 && !adding && (
-        <p className="muted" style={{ fontSize: 12, margin: '0 0 8px' }}>
-          Controlar el efectivo es opcional: puedes apuntar gastos en efectivo sin ninguna cartera. Si quieres saber cuánto llevas, crea una.
-        </p>
-      )}
-      <div className="account-cards-grid">
-        {wallets.map((w) => (
-          <WalletCardButton key={w.id} wallet={w} members={members} active={activeView === w.id} onClick={() => onSelect(activeView === w.id ? null : w.id)} />
-        ))}
-        <button type="button" className="account-card account-card-add" data-help-id="finance.cash-add" onClick={() => setAdding(true)}>
-          <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
-          <span>Añadir cartera</span>
-        </button>
-      </div>
-      {adding && (
-        <NewWalletForm
-          startOpen
-          members={members}
-          myMemberId={myMemberId}
-          hasPersonal={wallets.some((w) => w.ownerMemberId === myMemberId)}
-          onCancel={() => setAdding(false)}
-          onCreated={() => {
-            setAdding(false)
-            onCreated()
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
 // Fila de un movimiento de cartera que NO es un gasto ni un ingreso (entrada, salida, ajuste de saldo, traspaso entre carteras): mismo diseño que
 // MovementRow, sin crear nada en Economía.
 export function CashMovementRow({ movement: m, walletName, onDelete }: { movement: CashMovement; walletName: string; onDelete?: () => void }) {
@@ -1035,11 +975,13 @@ export function CashMovementRow({ movement: m, walletName, onDelete }: { movemen
 }
 
 export function AccountBalanceCards({
+  myMemberId = null,
   onAddAccount,
   onSelectAccount,
   onSelectWallet,
   onViewAll,
 }: {
+  myMemberId?: string | null
   onAddAccount: () => void
   onSelectAccount: (accountId: string) => void
   /** Tocar una cartera de efectivo abre Movimientos con esa cartera elegida. */
@@ -1049,6 +991,8 @@ export function AccountBalanceCards({
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
   const [wallets, setWallets] = useState<CashWallet[]>([])
+  // «+ Añadir cuenta o cartera»: primero se elige qué se añade; cada opción usa su formulario de siempre.
+  const [chooser, setChooser] = useState<'closed' | 'choose' | 'wallet'>('closed')
 
   function reload() {
     Promise.all([listBankAccounts(), listFamilyMembers(), listWalletsSafe()])
@@ -1121,11 +1065,34 @@ export function AccountBalanceCards({
         {/* Petición real: "no me has puesto para poder agregar cuentas
             a esa pantalla" — entrada directa al formulario de conectar
             banco (ya en Banco), sin tener que saber que vive ahí. */}
-        <button type="button" className="account-card account-card-add" data-help-id="finance.add-account" onClick={onAddAccount}>
+        <button type="button" className="account-card account-card-add" data-help-id="finance.add-account" aria-expanded={chooser !== 'closed'} onClick={() => setChooser((c) => (c === 'closed' ? 'choose' : 'closed'))}>
           <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
-          <span>Añadir cuenta</span>
+          <span>Añadir cuenta o cartera</span>
         </button>
       </div>
+      {chooser === 'choose' && (
+        <div className="chip-row" role="group" aria-label="Qué quieres añadir" data-help-id="finance.add-choice" style={{ marginTop: 8 }}>
+          <button type="button" className="chip" onClick={() => { setChooser('closed'); onAddAccount() }}>
+            🏦 Añadir cuenta bancaria
+          </button>
+          <button type="button" className="chip" onClick={() => setChooser('wallet')}>
+            💶 Añadir cartera de efectivo
+          </button>
+        </div>
+      )}
+      {chooser === 'wallet' && (
+        <NewWalletForm
+          startOpen
+          members={members}
+          myMemberId={myMemberId}
+          hasPersonal={wallets.some((w) => w.ownerMemberId === myMemberId)}
+          onCancel={() => setChooser('closed')}
+          onCreated={() => {
+            setChooser('closed')
+            reload()
+          }}
+        />
+      )}
       {/* Petición real: "debajo de las 4 ventanas de cuentas pon un
           enlace Configuración cuentas que lleve directamente al menú de
           configuración" — conectar/desconectar/asignar dueño vive ahora
@@ -3831,17 +3798,14 @@ export function ExpensesTab({
         </button>
       )}
 
-      <CashWalletCards
-        wallets={visibleWallets}
-        members={members}
-        myMemberId={myMemberId}
-        activeView={effectiveCashView}
-        hasCashWithoutWallet={hasCashWithoutWallet}
-        onSelect={pickCashView}
-        onCreated={reload}
-      />
+      {/* Las carteras se eligen en las tarjetas de «Mis cuentas» (arriba, junto a las cuentas del banco): aquí no se repiten. */}
+      {!effectiveCashView && hasCashWithoutWallet && (
+        <button type="button" className="link-button" data-help-id="finance.cash-wallets" onClick={() => pickCashView(CASH_WITHOUT_WALLET)}>
+          💶 Ver el efectivo sin cartera
+        </button>
+      )}
       {effectiveCashView && (
-        <div className="card event-card filter-banner">
+        <div className="card event-card filter-banner" data-help-id="finance.cash-wallets">
           <strong>{activeWallet ? `Cartera: ${activeWallet.name}` : 'Efectivo sin cartera'}</strong>
           <button type="button" className="link-button" onClick={() => pickCashView(null)}>
             ✕ Ver todos los movimientos

@@ -51,6 +51,6 @@ describe('Tickets → Compras registradas (solo textos visibles)', () => {
 
   it('Banco ya no menciona el efectivo y la Ayuda sitúa las carteras en Movimientos', () => {
     expect(legacyHelp).not.toContain('Economía → Banco → «Efectivo (opcional)»')
-    expect(legacyHelp).toContain('Economía → Movimientos, en las tarjetas de «💶 Efectivo»')
+    expect(legacyHelp).toContain('+ Añadir cuenta o cartera')
   })
 })

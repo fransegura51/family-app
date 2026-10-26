@@ -38,6 +38,7 @@ import {
   type ListVisibility,
 } from '@/domain/lists'
 import { showToast } from '@/state/toast'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { CalendarLinksSheet } from '@/ui/lists/CalendarLinksSheet'
@@ -343,6 +344,9 @@ export function ListDetailScreen({ listId }: { listId: string }) {
     setSelected(new Set(items.filter((i) => !i.done).map((i) => i.id)))
   }
   const [dupAsk, setDupAsk] = useState<{ fresh: ListItem[]; dup: ListItem[] } | null>(null)
+  // Cambios hechos en otro dispositivo: elementos, columnas y datos de la lista. No se recarga mientras se edita un elemento o el título, se elige qué enviar, hay una ventana abierta o se arrastra.
+  useRealtimeRefresh(['list_items', 'list_columns', 'user_lists'], load, { paused: editingId !== null || draft !== null || titleEditing || selecting || sheet !== null || dupAsk !== null || drag.dragId !== null })
+
   const doSend = async (chosen: ListItem[]) => {
     setDupAsk(null)
     if (chosen.length === 0) {

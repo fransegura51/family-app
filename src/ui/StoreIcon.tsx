@@ -1,30 +1,70 @@
 import { ReactNode, useState } from 'react'
-import { getStoreIcon } from '@/domain/storeIcons'
+import { DEFAULT_STORE_EMOJI, getStoreIcon } from '@/domain/storeIcons'
+import { storeBadge } from '@/domain/storeBadge'
 
-// Fase 6 (plan de pendientes) — fondo blanco detrás del logo (bug real: un logo mayormente blanco o
-// transparente se volvía ilegible sobre una cabecera de color o un fondo oscuro, porque el <img> se
-// pintaba suelto, sin ningún respaldo de contraste). El tamaño del respaldo es siempre el del icono más
-// un margen fijo — nunca cambia el tamaño del logo en sí ni cómo se recorta.
+// Icono de tienda. Reglas (logotipos, 27/10/2026 — nunca más un recuadro vacío):
+//  · Los logotipos de las cadenas conocidas están EMPAQUETADOS en la app (imágenes con hash de Vite), así que no dependen de ningún servicio externo.
+//  · Mientras una imagen no se ha cargado, o si falla, se ve una INSIGNIA DE TEXTO (iniciales sobre un color estable por tienda), nunca una caja blanca vacía.
+//  · Las tiendas sin logotipo ni icono propio (una tienda nueva, «Chino»…) también usan la insignia; los iconos con significado (🏮 chino, 💊 farmacia…) se conservan.
+// El logo va sobre un respaldo blanco (un logo mayormente blanco o transparente sería ilegible sobre una cabecera de color) del tamaño del icono más un margen fijo.
 const LOGO_BACKDROP_PADDING = 2
 
-function LogoBackdrop({ size, children }: { size: number; children: ReactNode }) {
+function Box({ size, background, children }: { size: number; background: string; children: ReactNode }) {
   const boxSize = size + LOGO_BACKDROP_PADDING * 2
   return (
     <span
       style={{
+        position: 'relative',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         width: boxSize,
         height: boxSize,
-        background: '#fff',
+        background,
         borderRadius: 6,
         verticalAlign: 'middle',
         boxSizing: 'border-box',
+        overflow: 'hidden',
+        flex: '0 0 auto',
       }}
     >
       {children}
     </span>
+  )
+}
+
+export function StoreBadge({ name, size }: { name: string; size: number }) {
+  const b = storeBadge(name)
+  return (
+    <Box size={size} background={b.background}>
+      <span aria-hidden="true" style={{ color: b.color, fontWeight: 700, fontSize: Math.max(8, Math.round(size * (b.text.length > 1 ? 0.5 : 0.6))), lineHeight: 1, letterSpacing: '-0.02em' }}>
+        {b.text}
+      </span>
+    </Box>
+  )
+}
+
+// Imagen con respaldo: la insignia de texto se pinta mientras la imagen no ha cargado; si falla, se queda la insignia.
+function LogoImage({ name, size, src }: { name: string; size: number; src: string }) {
+  const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading')
+  if (state === 'error') return <StoreBadge name={name} size={size} />
+  return (
+    <Box size={size} background="#fff">
+      {state === 'loading' && (
+        <span style={{ position: 'absolute', inset: 0 }}>
+          <StoreBadge name={name} size={size} />
+        </span>
+      )}
+      <img
+        src={src}
+        alt={name}
+        width={size}
+        height={size}
+        style={{ borderRadius: 4, objectFit: 'contain', opacity: state === 'ok' ? 1 : 0 }}
+        onLoad={() => setState('ok')}
+        onError={() => setState('error')}
+      />
+    </Box>
   )
 }
 
@@ -35,34 +75,8 @@ function LogoBackdrop({ size, children }: { size: number; children: ReactNode })
 // (StoreIconBadge) que además navega a la lista de esa tienda.
 export function StoreIcon({ name, size = 18, logoAsset }: { name: string; size?: number; logoAsset?: string | null }) {
   const icon = getStoreIcon(name, logoAsset)
-  const [broken, setBroken] = useState(false)
-
-  if (icon.kind === 'image') {
-    return (
-      <LogoBackdrop size={size}>
-        <img
-          src={icon.src}
-          alt={name}
-          width={size}
-          height={size}
-          style={{ borderRadius: 4, objectFit: 'cover' }}
-        />
-      </LogoBackdrop>
-    )
-  }
-  if (icon.kind === 'logo' && !broken) {
-    return (
-      <LogoBackdrop size={size}>
-        <img
-          src={`https://www.google.com/s2/favicons?domain=${icon.domain}&sz=${size * 2}`}
-          alt={name}
-          width={size}
-          height={size}
-          style={{ borderRadius: 4 }}
-          onError={() => setBroken(true)}
-        />
-      </LogoBackdrop>
-    )
-  }
-  return <span style={{ fontSize: size }}>{icon.kind === 'emoji' ? icon.icon : '🏬'}</span>
+  if (icon.kind === 'image') return <LogoImage name={name} size={size} src={icon.src} />
+  if (icon.kind === 'logo') return <LogoImage name={name} size={size} src={`https://www.google.com/s2/favicons?domain=${icon.domain}&sz=${size * 2}`} />
+  if (icon.icon === DEFAULT_STORE_EMOJI) return <StoreBadge name={name} size={size} />
+  return <span style={{ fontSize: size }}>{icon.icon}</span>
 }

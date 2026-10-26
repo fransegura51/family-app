@@ -1,5 +1,7 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
-import { ChangeEvent, FormEvent, Fragment, lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
+import { showToast } from '@/state/toast'
+import { ChangeEvent, FormEvent, Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { eventMenuPath } from '@/domain/eventMenuHub'
 import { paletteByName, pastelPalette } from '@/domain/colors'
@@ -17,6 +19,7 @@ import {
   type AlimentacionMenuItemKey,
 } from '@/state/alimentacionMenu'
 import {
+  copyMenuEntries,
   createRecipe,
   deleteMenuEntry,
   deleteRecipe,
@@ -25,6 +28,7 @@ import {
   listRecipes,
   listRecipeSearchHistory,
   logRecipeSearch,
+  reorderMenuEntries,
   setMenuEntry,
   updateMenuEntry,
   updateRecipe,
@@ -354,7 +358,7 @@ function AlimentacionMenuDropdown({
 // Menú semanal (Skill 15)
 // ---------------------------------------------------------------------
 
-function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void }) {
+export function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const from = searchParams.get('desde')
   const dates = useMemo(() => weekDates(from), [from])
@@ -386,25 +390,88 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
   const [importOpen, setImportOpen] = useState(false)
   // «🛒 Añadir a Compras»: de la semana entera, de un día o de un plato (receta). Solo con recetas enlazadas que tengan ingredientes.
   const [shopping, setShopping] = useState<{ scope: KitchenShoppingScope; title: string } | null>(null)
+  // Copiar un día o la semana entera a otra fecha (nunca sustituye: añade detrás de lo que ya haya).
+  const [copying, setCopying] = useState<{ scope: 'day'; date: string; target: string } | { scope: 'week' } | null>(null)
+  const [copyBusy, setCopyBusy] = useState(false)
+  // La semana que se está viendo, siempre la actual (los avisos de otros dispositivos y de Pepa recargan ESTA semana, no la de cuando se abrió la pantalla).
+  const datesRef = useRef(dates)
+  datesRef.current = dates
 
-  function reload() {
-    setLoading(true)
-    Promise.all([listMenuEntries(dates[0], dates[6]), listRecipes()])
+  // `silent`: recarga de fondo (avisos de otro dispositivo o de Pepa): sin «Cargando menú…», así no se pierde lo que se está editando.
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
+    const d = datesRef.current
+    return Promise.all([listMenuEntries(d[0], d[6]), listRecipes()])
       .then(([e, r]) => {
         setEntries(e)
         setRecipes(r)
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        if (!silent) setError(err.message)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [dates]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pepa (VoiceCapture) puede apuntar un plato desde cualquier pantalla.
   useEffect(() => {
-    window.addEventListener('family-app:menu-changed', reload)
-    return () => window.removeEventListener('family-app:menu-changed', reload)
+    void reload()
+  }, [dates]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pepa (VoiceCapture) puede apuntar un plato desde cualquier pantalla de ESTE dispositivo.
+  useEffect(() => {
+    const onChanged = () => void reload(true)
+    window.addEventListener('family-app:menu-changed', onChanged)
+    return () => window.removeEventListener('family-app:menu-changed', onChanged)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cambios hechos en OTRO dispositivo de la familia (ordenador ↔ móvil): se recarga en silencio, salvo mientras se edita un plato, se añade uno o se copia.
+  useRealtimeRefresh(['menu_entries', 'recipes', 'recipe_ingredients'], () => reload(true), { paused: editingId !== null || addingFor !== null || copying !== null || copyBusy })
+
+  // Reordenar los platos de una comida: sube o baja uno sin tocar los demás (solo cambia el orden).
+  function moveDish(slot: MenuEntry[], index: number, delta: -1 | 1) {
+    const j = index + delta
+    if (j < 0 || j >= slot.length) return
+    const ids = slot.map((e) => e.id)
+    ;[ids[index], ids[j]] = [ids[j], ids[index]]
+    setEntries((prev) => {
+      const pos = new Set(ids)
+      const at = prev.map((e, i) => (pos.has(e.id) ? i : -1)).filter((i) => i >= 0)
+      const reordered = ids.map((id) => prev.find((e) => e.id === id) as MenuEntry)
+      const next = [...prev]
+      at.forEach((pi, k) => {
+        next[pi] = reordered[k]
+      })
+      return next
+    })
+    reorderMenuEntries(ids).catch(() => {
+      setError('No se ha podido guardar el nuevo orden.')
+      void reload(true)
+    })
+  }
+
+  // Copia a otra fecha los platos de los días indicados (con su comida, receta o texto y su orden).
+  async function copyDays(sources: string[], targetFor: (date: string) => string) {
+    const copies = sources.flatMap((d) => entries.filter((e) => e.entryDate === d).map((e) => ({ entryDate: targetFor(d), mealType: e.mealType, recipeId: e.recipeId, freeText: e.freeText })))
+    if (copies.length === 0) {
+      setCopying(null)
+      return
+    }
+    setCopyBusy(true)
+    try {
+      const n = await copyMenuEntries(copies)
+      showToast(n === 1 ? 'Copiado 1 plato' : `Copiados ${n} platos`)
+      setCopying(null)
+      await reload(true)
+    } catch {
+      setError('No se han podido copiar los platos. No se ha cambiado nada.')
+    } finally {
+      setCopyBusy(false)
+    }
+  }
+  const plusDays = (date: string, n: number) => {
+    const d = new Date(date + 'T00:00')
+    d.setDate(d.getDate() + n)
+    return toDateStr(d)
+  }
 
   if (loading) return <p className="muted">Cargando menú…</p>
 
@@ -444,12 +511,43 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
           🛒 Añadir semana a Compras
         </button>
       )}
+      {entries.length > 0 && (
+        <div className="menu-copy-week">
+          {copying?.scope === 'week' ? (
+            <div className="menu-copy-panel" role="group" aria-label="Repetir la semana">
+              <span>Se copian los {entries.length} platos de esta semana a la semana siguiente. Lo que ya haya allí se conserva.</span>
+              <button type="button" className="primary" disabled={copyBusy} onClick={() => void copyDays(dates, (d) => plusDays(d, 7))}>
+                {copyBusy ? 'Copiando…' : 'Copiar'}
+              </button>
+              <button type="button" className="link-button" onClick={() => setCopying(null)}>
+                Cancelar
+              </button>
+            </div>
+          ) : (
+            <button type="button" className="link-button" data-help-id="cocina.menu-copiar-semana" onClick={() => setCopying({ scope: 'week' })}>
+              📋 Repetir esta semana en la siguiente
+            </button>
+          )}
+        </div>
+      )}
       {dates.map((date) => {
         const dayLabel = new Date(date + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })
         return (
         <div key={date} className="card menu-day" style={{ background: weekdayColor(date) }} data-help-id="cocina.menu-dia">
           <div className="menu-day-head">
             <strong>{dayLabel}</strong>
+            {entries.some((e) => e.entryDate === date) && (
+              <button
+                type="button"
+                className="menu-icon-btn"
+                title="Copiar los platos de este día a otro día"
+                aria-label={`Copiar los platos de ${dayLabel} a otro día`}
+                data-help-id="cocina.menu-copiar-dia"
+                onClick={() => setCopying({ scope: 'day', date, target: plusDays(date, 1) })}
+              >
+                ⧉
+              </button>
+            )}
             {hasShoppableEntry(entries, recipes, { scope: 'day', date }) && (
               <button
                 type="button"
@@ -463,6 +561,28 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
               </button>
             )}
           </div>
+          {copying?.scope === 'day' && copying.date === date && (
+            <div className="menu-copy-panel" role="group" aria-label={`Copiar ${dayLabel} a otro día`}>
+              <label>
+                Copiar a
+                <select value={copying.target} onChange={(e) => setCopying({ scope: 'day', date, target: e.target.value })}>
+                  {[...dates, ...dates.map((d) => plusDays(d, 7))]
+                    .filter((d) => d !== date)
+                    .map((d) => (
+                      <option key={d} value={d}>
+                        {new Date(d + 'T00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'short' })}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button type="button" className="primary" disabled={copyBusy} onClick={() => void copyDays([date], () => copying.target)}>
+                {copyBusy ? 'Copiando…' : 'Copiar'}
+              </button>
+              <button type="button" className="link-button" onClick={() => setCopying(null)}>
+                Cancelar
+              </button>
+            </div>
+          )}
           {MEAL_TYPES.map((meal) => {
             const slotEntries = entries.filter((e) => e.entryDate === date && e.mealType === meal.value)
             const entry = slotEntries[0]
@@ -496,7 +616,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     onPick={async (pick) => {
                       await updateMenuEntry(e.id, pick)
                       setEditingId(null)
-                      reload()
+                      void reload(true)
                     }}
                     onCancel={() => setEditingId(null)}
                   />
@@ -514,11 +634,21 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     )}
                   </div>
                   <div className="menu-slot-actions" data-help-id="cocina.menu-acciones">
+                    {slotEntries.length > 1 && (
+                      <>
+                        <button type="button" className="menu-icon-btn" title="Subir" aria-label={`Subir ${label}`} disabled={slotEntries[0].id === e.id} data-help-id="cocina.menu-subir" onClick={() => moveDish(slotEntries, slotEntries.findIndex((x) => x.id === e.id), -1)}>
+                          ↑
+                        </button>
+                        <button type="button" className="menu-icon-btn" title="Bajar" aria-label={`Bajar ${label}`} disabled={slotEntries[slotEntries.length - 1].id === e.id} onClick={() => moveDish(slotEntries, slotEntries.findIndex((x) => x.id === e.id), 1)}>
+                          ↓
+                        </button>
+                      </>
+                    )}
                     {cart(e, label)}
                     <button type="button" className="menu-icon-btn" title="Editar" aria-label={`Editar ${label}`} onClick={() => setEditingId(e.id)}>
                       <PencilIcon />
                     </button>
-                    <ConfirmIconButton icon={<TrashIcon />} className="menu-icon-btn" ariaLabel={`Quitar ${label} del menú`} onConfirm={() => deleteMenuEntry(e.id).then(reload)} />
+                    <ConfirmIconButton icon={<TrashIcon />} className="menu-icon-btn" ariaLabel={`Quitar ${label} del menú`} onConfirm={() => deleteMenuEntry(e.id).then(() => reload(true))} />
                   </div>
                 </div>
               )
@@ -536,7 +666,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                         await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
                         emitHelpEvent('cocina.menu-entry-added')
                         setAddingFor(null)
-                        reload()
+                        void reload(true)
                       }}
                       onCancel={() => setAddingFor(null)}
                     />
@@ -548,7 +678,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                     </div>
                   )}
                   {extraEntries.length > 0 && (
-                    <div className="menu-slot-extras" aria-label={`Acompañamientos de ${meal.label}`}>
+                    <div className="menu-slot-extras" aria-label={`Más platos de ${meal.label}`}>
                       {extraEntries.map((extra) => {
                         const extraRecipe = extra.recipeId ? recipes.find((r) => r.id === extra.recipeId) : undefined
                         return (
@@ -559,6 +689,25 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
                       })}
                     </div>
                   )}
+                  {entry &&
+                    (isAdding ? (
+                      <MenuEntryPicker
+                        recipes={recipes}
+                        onPick={async (pick) => {
+                          await setMenuEntry({ entryDate: date, mealType: meal.value, ...pick })
+                          emitHelpEvent('cocina.menu-entry-added')
+                          setAddingFor(null)
+                          void reload(true)
+                        }}
+                        onCancel={() => setAddingFor(null)}
+                      />
+                    ) : (
+                      <div className="menu-slot-name menu-slot-add-more">
+                        <button type="button" className="link-button" data-help-id="cocina.menu-anadir-otro" onClick={() => setAddingFor({ date, meal: meal.value })}>
+                          + Añadir otro plato
+                        </button>
+                      </div>
+                    ))}
                 </div>
               </Fragment>
             )
@@ -584,7 +733,7 @@ function MenuTab({ onOpenRecipe }: { onOpenRecipe: (recipeId: string) => void })
           <CommunityMenuImportModal
             onClose={(imported) => {
               setImportOpen(false)
-              if (imported) reload()
+              if (imported) void reload(true)
             }}
           />
         </Suspense>
@@ -801,18 +950,25 @@ function RecipesTab() {
     }
   }
 
-  function reload() {
-    setLoading(true)
-    Promise.all([listRecipes(), listShoppingStores()])
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
+    return Promise.all([listRecipes(), listShoppingStores()])
       .then(([r, s]) => {
         setRecipes(r)
         setStores(s)
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (!silent) setError(e.message)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(() => {
+    void reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cambios de recetas hechos en otro dispositivo; no se recarga mientras se ve, edita, comparte o añade una receta.
+  useRealtimeRefresh(['recipes', 'recipe_ingredients'], () => reload(true), { paused: editing !== null || adding || viewingId !== null || sharing !== null || pickingFor !== null })
 
   // Se abre una sola vez: al abrirla se quita ?receta de la URL, así recargar la lista no la vuelve a abrir.
   useEffect(() => {
@@ -830,9 +986,10 @@ function RecipesTab() {
 
   // Pepa (VoiceCapture) puede guardar una receta desde cualquier pantalla.
   useEffect(() => {
-    window.addEventListener('family-app:recipes-changed', reload)
-    return () => window.removeEventListener('family-app:recipes-changed', reload)
-  }, [])
+    const onChanged = () => void reload(true)
+    window.addEventListener('family-app:recipes-changed', onChanged)
+    return () => window.removeEventListener('family-app:recipes-changed', onChanged)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <p className="muted">Cargando recetas…</p>
 

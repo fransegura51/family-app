@@ -1,32 +1,42 @@
+import { readdirSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-// Fase 6 (plan de pendientes) — Compras: un logo de tienda mayormente blanco o transparente (favicon o
-// imagen empaquetada) se volvía ilegible sin ningún respaldo de contraste detrás. Este archivo protege
-// que el respaldo blanco envuelve AMBOS casos de logo real (favicon y la imagen empaquetada), nunca el
-// emoji/icono genérico (que ya tiene su propio color de fondo según el caso), y que el tamaño del propio
-// logo nunca cambia — solo se le añade un margen fijo alrededor.
+// Logotipos de tiendas (27/10/2026): el icono nunca se ve como un recuadro vacío. La insignia de texto se pinta mientras la imagen no ha cargado y la sustituye si falla;
+// el logo va sobre un respaldo blanco con margen fijo (un logo mayormente blanco sería ilegible); y los archivos empaquetados existen y no están vacíos.
 const SRC = (import.meta.glob('/src/ui/StoreIcon.tsx', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/ui/StoreIcon.tsx']
+const ICONS = (import.meta.glob('/src/domain/storeIcons.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)['/src/domain/storeIcons.ts']
 
-describe('StoreIcon — respaldo blanco detrás de un logo real, nunca detrás del emoji genérico', () => {
-  it('LogoBackdrop envuelve el <img> de la imagen empaquetada (kind "image")', () => {
-    const imageBranch = SRC.slice(SRC.indexOf("if (icon.kind === 'image')"), SRC.indexOf("if (icon.kind === 'logo'"))
-    expect(imageBranch).toContain('<LogoBackdrop size={size}>')
-    expect(imageBranch).toContain('</LogoBackdrop>')
+describe('StoreIcon — nunca un cuadro vacío', () => {
+  it('la imagen empaquetada y el favicon en vivo pasan por LogoImage (insignia mientras carga y si falla)', () => {
+    expect(SRC).toContain("if (icon.kind === 'image') return <LogoImage")
+    expect(SRC).toContain("if (icon.kind === 'logo') return <LogoImage")
+    expect(SRC).toContain("setState('error')")
+    expect(SRC).toContain("if (state === 'error') return <StoreBadge")
+    expect(SRC).toContain("state === 'loading' &&")
   })
-
-  it('LogoBackdrop envuelve el <img> del favicon en vivo (kind "logo")', () => {
-    const logoBranch = SRC.slice(SRC.indexOf("if (icon.kind === 'logo'"), SRC.indexOf("return <span style={{ fontSize: size }}>"))
-    expect(logoBranch).toContain('<LogoBackdrop size={size}>')
-    expect(logoBranch).toContain('</LogoBackdrop>')
+  it('el icono por defecto (🏬) se pinta como insignia de texto, no como emoji genérico', () => {
+    expect(SRC).toContain('if (icon.icon === DEFAULT_STORE_EMOJI) return <StoreBadge')
   })
-
-  it('el emoji/icono genérico de respaldo NUNCA lleva LogoBackdrop (ya tiene su propio tratamiento)', () => {
-    const fallback = SRC.slice(SRC.indexOf('return <span style={{ fontSize: size }}>'))
-    expect(fallback).not.toContain('LogoBackdrop')
-  })
-
-  it('el tamaño del logo en sí (width/height) nunca cambia — el respaldo solo añade un margen fijo alrededor', () => {
+  it('respaldo blanco con margen fijo y el logo en sí conserva su tamaño', () => {
     expect(SRC).toContain('const boxSize = size + LOGO_BACKDROP_PADDING * 2')
-    expect([...SRC.matchAll(/width=\{size\}\s*\n\s*height=\{size\}/g)]).toHaveLength(2)
+    expect(SRC).toContain('<Box size={size} background="#fff">')
+    expect([...SRC.matchAll(/width=\{size\}\s*\n\s*height=\{size\}/g)]).toHaveLength(1)
+  })
+})
+
+describe('logotipos empaquetados: persisten tras compilar y desplegar', () => {
+  const dir = resolve(process.cwd(), 'src/assets/store-logos')
+  const files = readdirSync(dir).filter((f) => f.endsWith('.png'))
+  it('cada import de storeIcons.ts apunta a un archivo que existe y no está vacío', () => {
+    const imports = [...ICONS.matchAll(/from '@\/assets\/store-logos\/([a-z]+\.png)'/g)].map((m) => m[1])
+    expect(imports.length).toBeGreaterThanOrEqual(15)
+    for (const f of imports) {
+      expect(files, f).toContain(f)
+      expect(statSync(resolve(dir, f)).size, f).toBeGreaterThan(300)
+    }
+  })
+  it('no hay archivos sueltos sin usar (un logo en la carpeta que nadie importa se perdería sin que nadie lo note)', () => {
+    for (const f of files) expect(ICONS, f).toContain(`store-logos/${f}`)
   })
 })

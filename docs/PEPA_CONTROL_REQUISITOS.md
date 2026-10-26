@@ -1086,6 +1086,23 @@ Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---
 
+## Fase 1 (27/10/2026): avatares de Comunidad, varios platos por comida, logotipos de tiendas y sincronización entre dispositivos (PEPA-F1)
+
+Encargo del usuario (2026-10-27): «Correcciones prioritarias, automatización editorial y prueba completa de Comunidad», Fase 1. Política vigente que NO cambia: Comunidad PEPA es solo para mayores de 18 años.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| F1-AVATARES | Catálogo de iconos de Comunidad ampliado a unos 100 en seis categorías (caras, animales, comida, aficiones, naturaleza, personajes), conservando los 20 de siempre; pestañas compactas, cuadrícula adaptable, icono elegido marcado; cambiar SOLO el icono desde «Mis ajustes» sin tocar el alias | Sí (2026-10-27) | Sí — `src/domain/communityAvatars.ts`, `AvatarPicker.tsx`, `AvatarDialog.tsx` («Cambiar solo el icono», guarda con el mismo alias); sin migración (el servidor solo exige ≤ 16 caracteres sin letras ni dígitos); mismo almacenamiento (`avatar_emoji`) | Sí — `communityAvatars.test.ts`, `avatarPicker.test.tsx`; revisado en 390 px y en 1100 px | No |
+| F1-MENU | Varios platos independientes en cada comida del menú semanal (uno debajo de otro, sin etiquetas, «+ Añadir otro plato»), editar/quitar/reordenar cada uno, copiar un día o repetir la semana, Compras con todos los platos | Sí | Sí — la base de datos ya admitía varias filas por comida: solo la pantalla lo impedía; migración **0323** (columna `sort_order`, rellenada con el orden de siempre); `reorderMenuEntries`, `copyMenuEntries`; la presentación con un solo plato no cambia | Sí — `menuMultiDish.test.tsx` (16: tres platos editados, reordenados, copiados y llevados a Compras), `menu-order.mjs` (PostgreSQL local: orden conservado, tres platos, dos clientes, otra familia) | No |
+| F1-LOGOS | Logotipos de tiendas: causa real, recuperación y que persistan | Sí | Sí — **causa**: los logotipos NO estaban en la app, se pedían en vivo a un servicio externo (favicons de Google): cualquier bloqueo, caída o límite los dejaba como una caja blanca vacía y no había forma de recuperarlos; **arreglo**: 13 logotipos reales empaquetados en `src/assets/store-logos` (Mercadona, Aldi, Hiperber, Lidl, Eroski, Consum, Alcampo, Dia, Spar, El Corte Inglés, Amazon, Covirán, Manper) además de Charter y Superdumbo; insignia de texto (iniciales sobre color estable) en lugar de cuadros vacíos; sin logos por parecido de nombre | Sí — `storeIcons.test.ts`, `storeIconLegibilityUi.test.ts` (cada import existe, nada suelto, imágenes distintas por cadena) | No |
+| F1-SYNC | Los cambios en datos compartidos se ven en los demás dispositivos sin recargar, en ambas direcciones | Sí | Sí — gancho `useRealtimeRefresh` (un canal por tabla y dispositivo, ráfagas juntas, pausa mientras se edita, recarga al volver/reconectar) y migración **0324** (publica 56 tablas en Realtime con `replica identity full`) | Parcial — `useRealtimeRefresh.test.tsx` (11), `menu-order.mjs`; **el aviso en vivo entre dos dispositivos reales no se ha podido probar sin dos sesiones** | No |
+
+**Cobertura de la sincronización** (recarga silenciosa, sin «Cargando…»; se pausa si hay un formulario o edición abierta): Cocina (menú semanal, recetas), Compras (productos y tiendas), Calendario (eventos, tareas y estados), Economía (movimientos, cuentas, carteras, tickets, presupuestos), Eventos (lista, preparativos, invitados, presupuesto, proveedores, mesas, decoración, actividades y menú del evento), Pequeños Grandes (puntos, canjes, recompensas, monedero), Mis listas (lista y carpetas), Galería, Documentos. Lo privado respeta sus permisos: el canal solo avisa y cada dispositivo vuelve a pedir sus datos con su sesión. **No cubierto todavía**: Comunidad (sus datos), Contactos, Familia y Ubicación (solo recargan al abrir la pantalla); los borrados no se pueden filtrar por familia en Realtime (se avisa a todos de «algo cambió» en esa tabla, sin contenido).
+
+**Pendiente (honesto)**: comprobar en los móviles y el ordenador reales (1) que el menú reordenado en un dispositivo aparece solo en el otro, (2) logotipos en Safari de iPhone y Android, (3) el selector de iconos. Carrefour, Caprabo e Hipercor usan insignia de texto (su favicon solo existe a 16 px). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

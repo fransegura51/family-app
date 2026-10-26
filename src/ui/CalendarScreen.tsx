@@ -117,6 +117,7 @@ import { formatDateFromTimestamp, formatDateTime } from '@/domain/dateFormat'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { HelpHint } from '@/help/ui/HelpHint'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Skill: vistas de calendario al estilo de referencia (foto aportada
 // por la familia) — Agenda, Familiar, Día, 3 días y Semana se suman al
@@ -321,8 +322,9 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
     return () => setSelectedCalendarDate(null)
   }, [selectedDate])
 
-  function reload() {
-    setLoading(true)
+  // `silent`: recarga de fondo (avisos de otro dispositivo): sin «Cargando calendario…», así no se pierde lo que se está viendo ni editando.
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
     Promise.all([
       listUpcomingEvents(),
       listFamilyMembers(),
@@ -351,11 +353,18 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
         setCategories(cat)
         setCalendarPrefs(prefs)
       })
-      .catch((err: Error) => setError(err.message))
+      .catch((err: Error) => {
+        if (!silent) setError(err.message)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(() => {
+    reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Eventos y tareas creados, cambiados o completados en otro dispositivo. Nada se recarga con un formulario de evento o tarea abierto.
+  useRealtimeRefresh(['calendar_events', 'calendar_event_completions', 'calendar_event_members'], () => reload(true), { paused: addingEvent || addingTask || editingId !== null })
 
   // ENLACE PROFUNDO desde un aviso (INC-14): /calendario?evento=<uuid>&fecha=AAAA-MM-DD abre ese día y marca ese evento o tarea (la ocurrencia concreta si
   // es una serie); /calendario?fecha=AAAA-MM-DD&tareas=1 (resumen diario) abre ese día y baja al bloque «Tareas». Se reutiliza lo que ya hay: la tarjeta

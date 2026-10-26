@@ -120,8 +120,8 @@ describe('formulario «Elige tu alias»', () => {
     expect(aliasSrc.match(/setCommunityAlias\(/g)).toHaveLength(1)
     expect(aliasSrc).toContain('onClick={() => void save()}')
     // El icono sigue siendo independiente del alias.
-    expect(aliasSrc).toContain('community-avatar-picker')
-    expect(aliasSrc).toContain('setEmoji(emoji === a ? null : a)')
+    expect(aliasSrc).toContain('AvatarPicker')
+    expect(aliasSrc).toContain('<AvatarPicker value={emoji} onChange={setEmoji} />')
   })
 
   it('si el servidor dice que la propuesta automática ya está cogida, se cambia por otra; si la escribió la persona, se le explica sin cambiarla', () => {

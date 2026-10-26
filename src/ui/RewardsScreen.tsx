@@ -49,6 +49,7 @@ import { errorMessage } from '@/domain/errorMessage'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { HelpDestMark } from '@/help/ui/HelpDest'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // PG-PUNTOS-FINANZAS (Parte A3) — "YYYY-MM" del mes de hoy, para filtrar la Carrera mensual. Función
 // aparte (no inline) para que ambos sitios que la necesitan (reload y el render) usen siempre el mismo
@@ -143,6 +144,9 @@ export function RewardsScreen({ profile }: { profile: Profile }) {
   }
 
   useEffect(reload, [])
+
+  // Puntos, canjes y recompensas cambiados en otro dispositivo (recarga en silencio; no con un formulario de recompensa abierto).
+  useRealtimeRefresh(['point_grants', 'reward_redemptions', 'rewards', 'reward_participants', 'kid_wallet_transactions', 'kid_goals', 'wishlist_items'], reloadQuiet, { paused: showAddReward || editingRewardId !== null })
 
   // PG-PUNTOS-FINANZAS (Parte A5) — detecta hitos de 10 puntos NUEVOS sobre el saldo canjeable REAL de
   // cada miembro visible (nunca sobre Camino/Carrera) comparado con lo último que ya se le enseñó. Si

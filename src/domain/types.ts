@@ -261,6 +261,8 @@ export interface MenuEntry {
   mealType: MealType
   recipeId: string | null
   freeText: string | null
+  /** Lugar del plato dentro de su comida (0323). Opcional: los menús creados antes de la 0323 y los de las pruebas se ordenan por antigüedad. */
+  sortOrder?: number
 }
 
 export interface BodyMeasurement {

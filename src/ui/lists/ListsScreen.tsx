@@ -24,6 +24,7 @@ import {
   type UserList,
 } from '@/domain/lists'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useDragSort } from '@/ui/lists/gestures'
@@ -146,6 +147,9 @@ function ListsHome() {
       })
     }
   })
+
+  // Listas, carpetas y elementos cambiados en otro dispositivo; no se recarga con una ventana abierta, un menú desplegado o un arrastre en curso.
+  useRealtimeRefresh(['user_lists', 'list_items', 'list_folders'], reload, { paused: sheet !== null || menuId !== null || drag.dragId !== null })
 
   if (!data && !error) return <div className="screen">Cargando tus listas…</div>
 

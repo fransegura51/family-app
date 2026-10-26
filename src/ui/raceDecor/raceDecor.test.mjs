@@ -5,6 +5,8 @@
 // mes y la versión de enero salen de la fecha de España.
 import assert from 'node:assert/strict'
 import { it } from 'vitest'
+import { drawMeadow, makeMeadow } from './common.js'
+import { rngFrom } from './toolkit.js'
 import { createRaceDecorator, MONTH_INFO, currentMonthInSpain, januaryVariantInSpain } from './index.js'
 
 // Cada prueba tiene hasta 2 minutos: recorren los doce meses durante decenas de segundos simulados.
@@ -278,5 +280,19 @@ t('un fotograma de cualquier mes tarda poco (medido sobre un contexto de mentira
     }
     const per = (performance.now() - t0) / 600
     assert.ok(per < 6, `${MONTH_INFO[m].name}: ${per.toFixed(2)} ms por fotograma`)
+  }
+})
+
+t('en móvil se quitan objetos REPETIDOS del prado pero nunca un tipo entero (octubre conserva cuenco, bolsa, bruja, vampiro, fantasma y calabaza)', () => {
+  const rng = rngFrom(7)
+  const KINDS = [0, 1, 2, 4, 3, 0, 2, 5, 1, 0, 3]
+  const items = makeMeadow(rng, KINDS.length, (i) => KINDS[i])
+  for (const W of [345, 300, 732]) {
+    const env = makeEnv(W, W < 500 ? 329 : 495, 1, { dt: 0.05 })
+    const drawn = new Set()
+    drawMeadow(env, items, (it) => drawn.add(it.kind), 1)
+    // algunas posiciones quedan fuera de pantalla según el desplazamiento: se prueba con varios desplazamientos
+    for (let off = 0; off < 600; off += 40) drawMeadow({ ...env, offset: off }, items, (it) => drawn.add(it.kind), 1)
+    assert.deepEqual([...drawn].sort(), [0, 1, 2, 3, 4, 5], `ancho ${W}`)
   }
 })

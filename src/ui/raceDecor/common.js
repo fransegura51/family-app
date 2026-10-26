@@ -50,6 +50,13 @@ export function eachBush(env, fn) {
 export function makeMeadow(rng, count, pick) {
   const items = []
   for (let i = 0; i < count; i++) items.push({ i, jx: rng.range(-18, 18), s: rng.range(0.82, 1.18), ph: rng.range(0, TAU), kind: pick ? pick(i, rng) : 0 })
+  // La primera aparición de cada tipo (cuenco de chuches, bolsa, bruja…) se marca: en móvil se aclara el prado quitando
+  // REPETIDOS, nunca un tipo entero.
+  const seen = new Set()
+  for (const it of items) {
+    it.firstOfKind = !seen.has(it.kind)
+    seen.add(it.kind)
+  }
   return items
 }
 // Objetos que se apoyan en el borde del prado y se mueven con la misma paralaje que las flores del paisaje.
@@ -58,10 +65,10 @@ export function makeMeadow(rng, count, pick) {
 export function drawMeadow(env, items, fn, t, factor = 0.52, size = 1.45, opts = {}) {
   const span = env.W + 280
   const u = unit(env)
-  const narrow = env.W < 500 // en móvil se dibuja uno de cada dos: el prado es más corto y se amontonaría
+  const narrow = env.W < 500 // en móvil se dibuja uno de cada dos (menos la primera aparición de cada tipo): el prado es más corto y se amontonaría
   const trunks = opts.avoidTrunks ? env.anchors.filter((a) => !a.bush).map((a) => a.x) : null
   for (const it of items) {
-    if (narrow && it.i % 2 === 1) continue
+    if (narrow && it.i % 2 === 1 && !it.firstOfKind) continue
     let x = ((((it.i * span) / items.length + it.jx - env.offset * factor) % span) + span) % span - 140
     if (trunks) {
       for (const tx of trunks) {

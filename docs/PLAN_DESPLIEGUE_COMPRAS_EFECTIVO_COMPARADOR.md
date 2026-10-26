@@ -210,3 +210,14 @@ Contiene: estadísticas con una sola definición de gasto real, carteras en «Mi
 **Comprobación después de publicar:** que los 15 casos pasen a un solo gasto (Resumen de junio–agosto baja 1.387,67 €), que «Deshacer» devuelva el apunte del banco, y que no queden avisos de duplicados en Compras registradas salvo casos dudosos.
 
 **Estado final del anexo (25/10/2026):** migración 0318 aplicada (huellas de gastos, movimientos bancarios, carteras, movimientos de cartera: idénticas antes y después; +7 categorías «Retirada de efectivo»); cliente publicado en el commit 637fa7d (build y deploy en verde); función bancaria v19 sin cambios. **Pendiente de comprobar tras abrir «Compras registradas» en el iPhone:** que se crean 15 anotaciones «bank_expense_merged», que desaparecen 15 apuntes duplicados del banco, que el gasto de junio–agosto baja 1.387,67 € y que 14 compras quedan con la etiqueta «Comun». Para deshacerlo: «Deshacer» en el aviso (o restore_economy_log por anotación).
+
+## Anexo 26/10/2026 — segundo bloque (EFE-5, ETQ-1, COMP-2): orden de publicación
+
+**No publicado.** Hay commits locales con el cliente nuevo y dos migraciones preparadas en `supabase/pending-migrations/` (con su reversión en `supabase/rollbacks/`). Orden obligatorio, porque el cliente nuevo tolera la ausencia de las migraciones pero lo ideal es aplicarlas primero:
+
+1. `0319_expense_tag_shares.sql` — tabla `expense_tag_shares` (+ archivo de repartos de movimientos borrados), `set_expense_tags`, tres disparadores sobre `expenses` (reescalar, archivar al borrar, recuperar al reinsertar) y `link_purchase_to_bank_expense` (con el reparto). Ensayada en transacción revertida; no cambia ningún dato existente (las etiquetas actuales son la etiqueta principal `tag_id`).
+2. `0320_product_price_pack_format.sql` — cuatro columnas opcionales en `product_prices` y una comprobación; 1.188 precios con huella idéntica antes y después.
+3. Subir los ratchets de numeración (4 archivos de prueba) a 320 al mover los ficheros a `supabase/migrations/`.
+4. Publicar el cliente y comprobar el despliegue.
+
+Comprobaciones tras publicar: crear un movimiento con 3 etiquetas (iguales y en %) y comprobar que Estadísticas → Etiquetas suma cada parte y el total no cambia; registrar una compra con un producto ya comprado en otra tienda y comprobar que pregunta el formato (y que «Ahora no» guarda igual); abrir Economía y comprobar que la cartera sale una sola vez, junto a las cuentas.

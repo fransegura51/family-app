@@ -10,9 +10,9 @@
 // precios son HISTÓRICOS (lo que pagó esta familia), nunca ofertas vigentes; una tienda con menos productos con precio no gana por tener
 // un total más bajo.
 import { productTextKey } from './productText'
-import { compareProducts, type ProductRelation } from './productIdentity'
+import { compareProducts, productSignature, type ProductRelation } from './productIdentity'
 import { normalizeMeasurementUnit } from './measurementUnit'
-import { basisLabel, normalizePrice, parseProductSize, type NormalizedPrice, type UnitPriceBasis } from './productSize'
+import { basisLabel, normalizePrice, parseProductSize, type NormalizedPrice, type PackInput, type UnitPriceBasis } from './productSize'
 
 export interface CmpProduct {
   id: string
@@ -29,6 +29,10 @@ export interface CmpPrice {
   store: string | null
   unit: string | null
   recordedDate: string
+  /** Formato del envase guardado al registrar la compra (manda sobre el tamaño del nombre). */
+  pack?: PackInput | null
+  /** Identificador de la línea de product_prices (para corregir su formato desde la ficha). */
+  id?: string
 }
 
 export type DecisionRelation = 'same' | 'equivalent' | 'different'
@@ -367,3 +371,83 @@ export function compareShoppingList(
 }
 
 export { basisLabel }
+
+// ─── Comparación compacta para el listado de productos (COMP-2) ───
+
+export interface CompactComparison {
+  basis: UnitPriceBasis
+  /** Compra más reciente del producto (o de un equivalente) y dónde. */
+  last: { store: string; value: number; date: string }
+  /** Otra tienda donde lo pagasteis más barato la última vez que lo comprasteis allí; null si lo último ya fue lo más barato. */
+  best: { store: string; value: number; date: string } | null
+  /** Cuánto menos pagasteis allí, en % sobre lo último (redondeado). */
+  pctLess: number | null
+  lastIsCheapest: boolean
+  /** Tiendas con precio exacto comparable. */
+  stores: number
+}
+
+/** Diferencia mínima para enseñarla en el listado: menos de un 3 % no es noticia. */
+export const MIN_COMPACT_DIFF_PCT = 3
+
+/**
+ * Resumen en una línea de la ficha de precios: lo último que pagasteis frente a lo más barato que pagasteis en otra tienda. Solo con precios
+ * EXACTOS de la misma base (€/kg, €/l, €/ud) y al menos dos tiendas reales. Son precios históricos de la familia, nunca ofertas actuales.
+ */
+export function compactComparison(view: ProductPriceView): CompactComparison | null {
+  const real = view.rows.filter((r) => r.store !== NO_STORE)
+  if (view.basis == null || view.basis === 'envase' || real.length < 2) return null
+  const lastRow = [...real].sort((a, b) => b.last.date.localeCompare(a.last.date))[0]
+  const cheapest = real.reduce((m, r) => (r.last.price.value < m.last.price.value ? r : m))
+  const last = { store: lastRow.store, value: lastRow.last.price.value, date: lastRow.last.date }
+  if (cheapest.store === lastRow.store) return { basis: view.basis, last, best: null, pctLess: null, lastIsCheapest: true, stores: real.length }
+  const pctLess = last.value > 0 ? Math.round(((last.value - cheapest.last.price.value) / last.value) * 100) : null
+  if (pctLess == null || pctLess < MIN_COMPACT_DIFF_PCT) return null
+  return { basis: view.basis, last, best: { store: cheapest.store, value: cheapest.last.price.value, date: cheapest.last.date }, pctLess, lastIsCheapest: false, stores: real.length }
+}
+
+/**
+ * La comparación compacta de TODOS los productos con compras, sin comparar cada uno con cada uno: solo se estudian los productos que comparten
+ * alguna palabra clave con otro comprado en una tienda distinta. Devuelve únicamente los que tienen una comparación fiable que enseñar.
+ */
+export function buildCompactComparisons(products: readonly CmpProduct[], prices: readonly CmpPrice[], ctx: RelationContext = {}): Map<string, CompactComparison> {
+  const storesByProduct = new Map<string, Set<string>>()
+  for (const p of prices) {
+    const s = p.store?.trim().toLowerCase()
+    if (!s) continue
+    const set = storesByProduct.get(p.productId) ?? new Set<string>()
+    set.add(s)
+    storesByProduct.set(p.productId, set)
+  }
+  const priced = products.filter((p) => storesByProduct.has(p.id))
+  const wordIndex = new Map<string, CmpProduct[]>()
+  const coreOf = new Map<string, string[]>()
+  for (const p of priced) {
+    const core = productSignature(p.displayName, p.brand).core
+    coreOf.set(p.id, core)
+    for (const w of core) {
+      const list = wordIndex.get(w) ?? []
+      list.push(p)
+      wordIndex.set(w, list)
+    }
+  }
+  const pricesByProduct = new Map<string, CmpPrice[]>()
+  for (const p of prices) {
+    const list = pricesByProduct.get(p.productId) ?? []
+    list.push(p)
+    pricesByProduct.set(p.productId, list)
+  }
+  const out = new Map<string, CompactComparison>()
+  for (const p of priced) {
+    const related = new Map<string, CmpProduct>()
+    for (const w of coreOf.get(p.id) ?? []) for (const q of wordIndex.get(w) ?? []) related.set(q.id, q)
+    const stores = new Set<string>()
+    for (const q of related.values()) for (const s of storesByProduct.get(q.id) ?? []) stores.add(s)
+    if (stores.size < 2) continue
+    const { members } = equivalentGroup(p, [...related.values()], ctx, 'equivalent')
+    const memberPrices = members.flatMap((m) => pricesByProduct.get(m.product.id) ?? [])
+    const cmp = compactComparison(productPriceView(members.map((m) => m.product), memberPrices))
+    if (cmp) out.set(p.id, cmp)
+  }
+  return out
+}

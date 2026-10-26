@@ -3,7 +3,26 @@ import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
 import { storedClassKind, type ProductClassKind } from '@/domain/productClass'
 import { isProductLine } from '@/domain/ticketLines'
+import type { PackFormat, PackSource } from '@/domain/packFormat'
+import type { PackUnit } from '@/domain/productSize'
 import type { Product, ProductPrice } from '@/domain/types'
+
+// El formato del envase (migración 0320) es opcional: si la base aún no tiene las columnas, todo sigue como antes (sin formato).
+const isMissingColumn = (err: { code?: string; message?: string } | null) => !!err && (err.code === '42703' || err.code === 'PGRST204' || /pack_(count|amount|unit|source)/.test(err.message ?? ''))
+
+interface PackColumns {
+  pack_count: number | string | null
+  pack_amount: number | string | null
+  pack_unit: string | null
+  pack_source: string | null
+}
+function packFromRow(r: Partial<PackColumns>): PackFormat | null {
+  if (r.pack_count == null || r.pack_amount == null || !r.pack_unit) return null
+  return { count: Number(r.pack_count), amount: Number(r.pack_amount), unit: r.pack_unit as PackUnit, source: (r.pack_source ?? 'manual') as PackSource }
+}
+function packToRow(p: PackFormat | null | undefined): PackColumns {
+  return p ? { pack_count: p.count, pack_amount: p.amount, pack_unit: p.unit, pack_source: p.source } : { pack_count: null, pack_amount: null, pack_unit: null, pack_source: null }
+}
 
 async function currentFamilyId(): Promise<string> {
   const { data: userResult } = await supabase.auth.getUser()
@@ -138,6 +157,8 @@ export interface ReceiptLineDetail {
   // Corrección PESO — 'kg' solo si así se guardó explícitamente; cualquier otra cosa (incluido null, todo
   // el histórico anterior a esta corrección) se trata como 'ud', igual que ya se mostraba antes.
   unit: string | null
+  /** Formato del envase de esta línea, si se conoce. */
+  pack: PackFormat | null
 }
 
 // El detalle de líneas leído de un ticket concreto — para el desplegable
@@ -145,17 +166,21 @@ export interface ReceiptLineDetail {
 // ya se guardó en el Historial (product_prices.receipt_id) en vez de
 // duplicar esa información en otra tabla.
 export async function listProductPricesByReceipt(receiptId: string): Promise<ReceiptLineDetail[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('product_prices')
-    .select('id, price, quantity, unit, products(display_name)')
+    .select('id, price, quantity, unit, pack_count, pack_amount, pack_unit, pack_source, products(display_name)')
     .eq('receipt_id', receiptId)
+  if (isMissingColumn(error)) {
+    ;({ data, error } = (await supabase.from('product_prices').select('id, price, quantity, unit, products(display_name)').eq('receipt_id', receiptId)) as unknown as typeof data extends infer D ? { data: D; error: typeof error } : never)
+  }
   if (error) throw error
-  return data.map((r) => ({
+  return (data ?? []).map((r) => ({
     id: r.id,
     name: (r.products as unknown as { display_name: string } | null)?.display_name ?? '?',
     price: Number(r.price),
     quantity: r.quantity,
     unit: r.unit,
+    pack: packFromRow(r as Partial<PackColumns>),
   }))
 }
 
@@ -168,14 +193,17 @@ export async function deleteProductPricesByReceipt(receiptId: string): Promise<v
 }
 
 export async function listAllProductPrices(): Promise<ProductPrice[]> {
-  const data = await fetchAllRows((from, to) =>
-    supabase
-      .from('product_prices')
-      .select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id')
-      .order('recorded_date', { ascending: true })
-      .order('id')
-      .range(from, to),
-  )
+  const select = (cols: string) =>
+    fetchAllRows((from, to) => supabase.from('product_prices').select(cols).order('recorded_date', { ascending: true }).order('id').range(from, to)) as unknown as Promise<
+      (Record<string, unknown> & Partial<PackColumns> & { id: string; product_id: string; price: number | string; store: string | null; quantity: string | null; unit: string | null; recorded_date: string; receipt_id: string | null })[]
+    >
+  let data
+  try {
+    data = await select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id, pack_count, pack_amount, pack_unit, pack_source')
+  } catch (err) {
+    if (!isMissingColumn(err as { code?: string; message?: string })) throw err
+    data = await select('id, product_id, price, store, quantity, unit, recorded_date, receipt_id')
+  }
   return data.map((r) => ({
     id: r.id,
     productId: r.product_id,
@@ -185,7 +213,14 @@ export async function listAllProductPrices(): Promise<ProductPrice[]> {
     unit: r.unit,
     recordedDate: r.recorded_date,
     receiptId: r.receipt_id,
+    pack: packFromRow(r),
   }))
+}
+
+/** Corrige o borra el formato del envase de UNA compra ya guardada (nunca toca el precio). */
+export async function setPriceLinePack(priceId: string, pack: PackFormat | null): Promise<void> {
+  const { error } = await supabase.from('product_prices').update(packToRow(pack)).eq('id', priceId)
+  if (error) throw error
 }
 
 // Reconoce productos equivalentes por nombre normalizado, sin perder el
@@ -207,6 +242,8 @@ export async function recordProductPurchase(input: {
   store: string
   date?: string
   receiptId?: string
+  /** Formato del envase de esta compra (opcional; si la base aún no admite el dato, se guarda la compra sin él). */
+  pack?: PackFormat | null
 }): Promise<{ productId: string | null }> {
   if (!isProductLine(input.store, input.name)) return { productId: null }
   const familyId = await currentFamilyId()
@@ -222,7 +259,7 @@ export async function recordProductPurchase(input: {
     .single()
   if (productError) throw productError
 
-  const { error: priceError } = await supabase.from('product_prices').insert({
+  const row = {
     product_id: product.id,
     price: input.price,
     store: input.store || null,
@@ -230,7 +267,10 @@ export async function recordProductPurchase(input: {
     unit: input.unit || null,
     receipt_id: input.receiptId || null,
     ...(input.date ? { recorded_date: input.date } : {}),
-  })
+  }
+  let { error: priceError } = await supabase.from('product_prices').insert(input.pack ? { ...row, ...packToRow(input.pack) } : row)
+  // Sin la migración 0320 la compra se guarda igual, sin el formato.
+  if (input.pack && isMissingColumn(priceError)) ({ error: priceError } = await supabase.from('product_prices').insert(row))
   if (priceError) throw priceError
   return { productId: product.id }
 }

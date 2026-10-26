@@ -5,6 +5,7 @@ import {
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
   TouchEvent as ReactTouchEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -43,7 +44,7 @@ import {
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
 import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
-import { ListPriceComparison, ProductPriceComparison } from '@/ui/PriceComparisonPanels'
+import { CompactPriceLine, ListPriceComparison, PriceDifferencesOverview, ProductPriceComparison, useCompactComparisons } from '@/ui/PriceComparisonPanels'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -2521,6 +2522,14 @@ function HistoryTab() {
     [scopedPrices, foodReceiptIds, nonFoodProductIds, foodProductIds],
   )
 
+  // Comparación compacta entre tiendas (COMP-2): solo con precios exactos y comparables; reutiliza las equivalencias de la ficha del producto.
+  const scopedProducts = useMemo(() => {
+    const ids = new Set(scopedPrices.map((p) => p.productId))
+    return products.filter((p) => ids.has(p.id))
+  }, [products, scopedPrices])
+  const compactComparisons = useCompactComparisons(scopedProducts, scopedPrices)
+  const nameOfProduct = useCallback((id: string) => productById.get(id) ?? '?', [productById])
+
   const withStats = useMemo(
     () =>
       products
@@ -2789,6 +2798,8 @@ function HistoryTab() {
         </button>
       </div>
 
+      <PriceDifferencesOverview comparisons={compactComparisons} nameOf={nameOfProduct} onOpen={openDetail} />
+
       <h2 className="section-title" data-help-id="shopping.history-suggestions">Sugerencias para la próxima compra</h2>
       <div className="price-row-list">
         {suggestions.map(({ product, stats }) => (
@@ -2882,14 +2893,12 @@ function HistoryTab() {
                 className="price-row"
                 style={{ background: i % 2 === 1 ? classColors.get(group.label) : undefined }}
               >
-                <button
-                  type="button"
-                  className="price-row-name price-row-name-button"
-                  data-help-id="shopping.history-product"
-                  onClick={() => openDetail(c.productId, c.name)}
-                >
-                  {c.name}
-                </button>
+                <div className="price-row-name" style={{ whiteSpace: 'normal' }}>
+                  <button type="button" className="price-row-name-button" data-help-id="shopping.history-product" onClick={() => openDetail(c.productId, c.name)}>
+                    {c.name}
+                  </button>
+                  {compactComparisons.get(c.productId) && <CompactPriceLine cmp={compactComparisons.get(c.productId)!} />}
+                </div>
                 <span className="price-row-price">
                   {c.currentPrice!.toFixed(2)} {displayMeasurementUnit(c.unit)}<PriceDelta percent={c.deltaPercent} />
                 </span>
@@ -2973,7 +2982,7 @@ function HistoryTab() {
                   ))}
               </select>
             </div>
-            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} />
+            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} onPackSaved={() => void listAllProductPrices().then(setPrices)} />
           </div>
         </div>
       )}

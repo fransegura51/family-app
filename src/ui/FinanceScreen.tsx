@@ -179,7 +179,9 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
+import { listAllProductPrices, listProducts, setPriceLinePack, setProductNonFood } from '@/data/products'
+import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
+import { PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
@@ -6244,6 +6246,8 @@ interface DraftLine {
   // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
   // deja que se seguisa recalculando sola mientras cambia el nombre.
   classOverride?: { kind: FoodTypeKind; classification: string }
+  // Formato del envase (COMP-2): undefined = no decidido (se aplica lo que el nombre o las compras anteriores dicen con seguridad); null = «Ahora no».
+  pack?: PackFormat | null
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -6450,6 +6454,7 @@ function ReceiptForm({
   // resolver el icono/"Nuevo" de cada línea leída — ver
   // resolveDraftLineClass.
   const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
   const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
     alimentacion: [],
     no_alimentos: [],
@@ -6569,6 +6574,8 @@ function ReceiptForm({
   }
 
   useEffect(() => {
+    // Los precios anteriores sirven para recordar el formato del envase y saber si el producto ya se compró en otra tienda (opcional: si falla, el formulario sigue igual).
+    listAllProductPrices().then(setAllPrices).catch(() => {})
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
       .then(([products, foodKinds, noFoodKinds]) => {
         setAllProducts(products)
@@ -6584,7 +6591,7 @@ function ReceiptForm({
         setLines(
           // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
           // nada, a diferencia de antes.
-          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2) })),
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), ...(l.pack ? { pack: l.pack } : {}) })),
         ),
       )
       .catch(() => {})
@@ -6648,6 +6655,8 @@ function ReceiptForm({
           // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
           // era el importe TOTAL de la línea y había que dividirlo entre las unidades; ahora quien revisa el
           // ticket edita directamente la magnitud comparable (€/ud o €/kg), igual que ya la da el OCR.
+          const known = productByNormalizedName.get(normalizeProductName(line.name))
+          const history = known ? allPrices.filter((p) => p.productId === known.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
           const { productId } = await recordProductPurchase({
             name: line.name.trim(),
             price: Number(line.unitPrice),
@@ -6656,6 +6665,8 @@ function ReceiptForm({
             store,
             date: receiptDate,
             receiptId,
+            // El formato del envase es opcional: lo que la persona indicó, o lo que el nombre / las compras anteriores dicen con seguridad.
+            pack: resolveLinePack(line, history).pack,
           })
           // Una línea que no es un producto (PARKING en Mercadona...) se descarta antes de persistir: sin producto, sin precio, sin clase.
           if (productId == null) return
@@ -6681,6 +6692,8 @@ function ReceiptForm({
           ])
         }),
     )
+    // Los formatos recién guardados cuentan ya para recordar el de la próxima compra.
+    listAllProductPrices().then(setAllPrices).catch(() => {})
   }
 
   // Deja el formulario de «Subir ticket» como nuevo (tras guardar, o al pulsar Cancelar con una foto ya escaneada por error).
@@ -7082,6 +7095,20 @@ function ReceiptForm({
               </div>
             )
           })}
+          {lines.length > 0 && (
+            <PackFormatsPanel
+              lines={lines}
+              store={store}
+              products={allProducts}
+              prices={allPrices}
+              productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
+              onPack={(i, pack) => updateLine(i, { pack })}
+              onFixPast={async (priceId, pack) => {
+                await setPriceLinePack(priceId, pack)
+                setAllPrices(await listAllProductPrices())
+              }}
+            />
+          )}
           {lines.length === 0 && <p className="muted">{ocrStatus === 'done' ? 'No se ha reconocido ningún producto: añádelos con «+ Añadir línea».' : 'Todavía no hay productos: pulsa «+ Añadir línea».'}</p>}
           <button type="button" className="link-button" data-help-id="shopping.receipt-add-line" onClick={addBlankLine}>
             + Añadir línea

@@ -915,6 +915,28 @@ Encargo del usuario tras probar en iPhone. **Estado: implementado y probado en l
 
 **Pendiente de validación real**: todo lo anterior en iPhone y Android; la vinculación automática de los 15 casos ocurre al abrir Compras registradas con el cliente publicado (ensayada en transacción revertida); retiradas del cajero (necesitan un reintegro real); que las estadísticas de producción coincidan con lo esperado una vez vinculados los 15 (el gasto de jun–ago bajará 1.387,67 €).
 
+## Banco y efectivo y etiquetas con reparto (EFE-5, ETQ-1, publicado el 26/10/2026)
+
+**Estado: PUBLICADO el 26/10/2026 (commits `74b7264`, `30036b6`, `055d4a3`; GitHub Actions «Deploy to GitHub Pages» en verde) con la migración `0322_expense_tag_shares.sql` APLICADA en producción (la 0319 de producción es otra, de otra sesión; por eso se renumeró). Pendiente de validación real en iPhone/Android, sin Aprobar.**
+
+Antes de aplicar la 0322 se comprobó el estado real: 954 gastos, 24 etiquetas, 810 movimientos bancarios; después de aplicarla las huellas de gastos (importe, etiqueta y categoría) y de vínculos bancarios son idénticas, la tabla de reparto está vacía (las etiquetas actuales siguen siendo la etiqueta principal `tag_id`), solo `authenticated` puede leer el reparto (la tabla de archivo no tiene acceso), `anon` no puede ejecutar `set_expense_tags` y los tres disparadores están creados.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| EFE-5a | Las carteras salen UNA sola vez, junto a las cuentas del banco en «Mis cuentas»; sin el bloque «Efectivo» repetido en Movimientos; tocar una cartera sigue filtrando sus movimientos | **Publicado; pendiente de validación real** | `cashWalletsInMovements.test.tsx`; el paquete publicado contiene «Añadir cuenta o cartera» y no contiene «Retirada del banco» |
+| EFE-5b | «+ Añadir cuenta o cartera» con dos opciones, cada una con su formulario de siempre | **Publicado; pendiente de validación real** | `cashWalletsInMovements.test.tsx` |
+| EFE-5c | «↔ Banco y efectivo» en las dos direcciones, con vista previa de qué saldo sube y cuál baja; no crea gasto ni ingreso | **Publicado; pendiente de validación real** | `bankCash.test.ts` (17), `cashAndPaymentsUi.test.tsx`. Sin servidor nuevo: reutiliza `cash_link_bank_expense` |
+| EFE-5d | Solo se ofrecen reintegros de cajero (o ingresos de efectivo); búsqueda manual por concepto, importe o fechas con confirmación explícita | **Publicado; pendiente de validación real** | las mismas pruebas; el paquete publicado contiene «Confirmo que este movimiento es dinero…» |
+| EFE-5e | **1.200 €** del 13/10 | **Seleccionable; sin asignar** | Está clasificado como «Retirada de efectivo» sin cartera y ahora aparece en «↔ Banco y efectivo» (marcado «sin cartera»). **No se asigna a ninguna cartera sin que se confirme el destino del dinero** |
+| EFE-5f | **500 €** del 21/10 | **Sin tocar, por decisión de la propietaria** | Ingreso real en cajero; la cartera de Jennifer quedó en negativo y la propietaria lo conocía y lo aceptó. No se modifica el movimiento ni se hacen ajustes artificiales. Desde ahora la pantalla avisa y pide confirmación |
+| ETQ-1a | Varias etiquetas por movimiento con una sola categoría; una sola etiqueta funciona como siempre | **Publicado; pendiente de validación real** | `tagShares.test.ts` (22), `tagSharesField.test.tsx` (7), `expenseTagSharesMigration.test.ts` (9). Ensayo REVERTIDO en producción: reparto de 3 etiquetas, suma incorrecta / etiqueta repetida / etiqueta ajena rechazadas, cambio de importe reescala al céntimo, cambio de etiqueta única retira el reparto, borrar + reinsertar recupera el reparto, otra familia no lo ve ni lo escribe, vincular compra ↔ cargo con reparto y Deshacer |
+| ETQ-1b | Partes iguales, euros o porcentajes; la suma coincide exacta; redondeos | **Publicado; pendiente de validación real** | 100 € entre 3 = 33,34 · 33,33 · 33,33; 60/30/10; 70/30 de 47,63 € |
+| ETQ-1c | Estadísticas, filtros y conclusiones de Pepa con el importe asignado; un movimiento cuenta una sola vez | **Publicado; pendiente de validación real** | `totalsByTag`, dónut «Etiquetas», filtro por etiqueta, conclusión «La etiqueta que más se repite» |
+| ETQ-1d | Edición posterior; movimiento nuevo; compras, banco y carteras | **Publicado; pendiente de validación real** | mismo formulario de «Nuevo movimiento» y «Editar movimiento»; el reparto del cargo pasa a la compra al vincularlas |
+| EST-2 | **Verificación de las estadísticas de Economía y Compras (26/10/2026)**: todas las compras (con y sin ticket, banco, cartera, efectivo sin cartera, mixtas) cuentan UNA vez; los movimientos internos no son gasto ni ingreso | **Verificado; sin cambios necesarios** | La compra del mercado del 22/10 (13,50 €, `manual`, efectivo, categoría de alimentación, `kind real`) cuenta en `isRealSpending` (`statsEconomyConsistency.test.tsx`). En producción: 131 justificantes, 0 con gasto que no cuente, 0 en categorías de movimientos internos, 0 compras con el mismo id duplicado, 0 gastos del banco apuntados por dos movimientos. **Hallazgo pendiente**: 1 justificante automático de Amazon (6,99 €, 16/10/2026, 3 líneas) sin gasto asociado, por lo que no suma en Economía; no se toca sin comprobar si corresponde a un cargo real |
+
+**Pendiente**: validación real en iPhone/Android; el justificante de Amazon de 6,99 € sin gasto; los 1.200 € (destino del dinero). Nada pasa a Aprobado sin confirmación expresa.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos

@@ -1037,7 +1037,7 @@ No había ningún sistema de alias de comercios (no se creó uno paralelo).
 
 ## Reparto de un gasto entre varias clasificaciones de Compras (CLASIF-1, 27/10/2026)
 
-**Estado: implementado y probado en local; migración `0332_expense_class_shares.sql` ensayada en una transacción REVERTIDA sobre la base real (ver más abajo). Pendiente de validación real en iPhone, sin Aprobar.**
+**Estado: PUBLICADO el 27/10/2026 con la migración `0332_expense_class_shares.sql` APLICADA en producción tras ensayarla en una transacción REVERTIDA sobre la base real (ver más abajo; tras aplicarla: 0 repartos, RLS activa, solo lectura para `authenticated`, 954 gastos intactos). Pendiente de validación real en iPhone, sin Aprobar.**
 
 **Qué hace.** En el campo «Clasificación» de un gasto (Economía → Movimientos: «+ Nuevo movimiento» y «Editar movimiento»), la opción sencilla de siempre sigue siendo una sola clasificación. Nueva opción voluntaria: **«＋ Repartir entre varias clasificaciones»**, con las clasificaciones de Compras ya existentes, a partes iguales, en euros o en porcentaje, y la suma debe coincidir EXACTAMENTE con el gasto (al céntimo; el reparto por porcentaje y por partes iguales reparte los céntimos sueltos sin perder ninguno). Reutiliza la lógica y el editor del reparto por etiquetas (ETQ-1): el mismo editor sirve ahora para etiquetas y clasificaciones.
 - Ejemplo real: Amazon 47,97 € = Ropa y calzado 40,98 € + otra clasificación 6,99 €.

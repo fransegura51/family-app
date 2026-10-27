@@ -8525,3 +8525,30 @@ input[type='search'] {
   color: var(--text);
   background-color: #fff;
 }
+
+/* Varias etiquetas en una fila de Movimientos (COR-02): un punto por etiqueta, en vertical, centrado en el hueco del indicador. No añade altura a la fila (el contenedor
+   no ocupa alto y los puntos se solapan un poco si hacen falta más de tres). */
+.movement-row-dots {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  width: 11px;
+}
+
+.movement-row-dots-stack {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+}
+
+.movement-row-dots-stack .movement-row-dot {
+  margin-top: 0;
+}
+
+.movement-row-imputed {
+  font-size: 13px;
+  font-weight: 600;
+}

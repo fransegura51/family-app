@@ -21,7 +21,9 @@ vi.mock('@/data/productEquivalences', () => ({
   clearFamilyDecision: () => clearFamilyDecision(),
   loadSharedEquivalences: (names: readonly string[]) => loadSharedSpy(names),
 }))
-vi.mock('@/data/products', () => ({ listProducts: async () => storedProducts, listAllProductPrices: async () => storedPrices }))
+vi.mock('@/data/products', () => ({ listProducts: async () => storedProducts, listAllProductPrices: async () => storedPrices, setPriceLinePack: async () => undefined }))
+vi.mock('@/data/commonProducts', () => ({ listCommonProductsData: async () => ({ commons: [], members: [], skipped: [], available: true }), assignToCommon: async () => undefined, createCommonProduct: async (name: string) => ({ id: 'new', name, normalizedName: name }) }))
+vi.mock('@/data/supabaseClient', () => ({ supabase: {} }))
 
 const { ProductPriceComparison, ListPriceComparison } = await import('@/ui/PriceComparisonPanels')
 

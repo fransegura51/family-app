@@ -34,7 +34,7 @@ const HELP_INTENT =
 // Palabras que identifican cada sección. Se miran por palabra completa sobre el texto normalizado (sin tildes ni mayúsculas).
 const MODULE_WORDS: [HelpModuleId, RegExp][] = [
   ['pepa', /\b(?:hablar con pepa|el asistente|asistente de voz|hablarle a pepa|botones redondos)\b/],
-  ['compras', /\b(?:compras?|lista de la compra|supermercados?|tickets?|historial de precios|estadistica de compras)\b/],
+  ['compras', /\b(?:compras?|lista de la compra|supermercados?|tickets?|historial de precios|comparar precios|estadistica de compras)\b/],
   ['calendario', /\b(?:calendario|agenda|tareas?|citas?)\b/],
   ['cocina', /\b(?:cocina|recetas?|menu semanal|menus?|alimentacion)\b/],
   ['economia', /\b(?:economia|dinero|gastos?|presupuestos?|banco|movimientos|ahorros?)\b/],

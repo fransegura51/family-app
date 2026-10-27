@@ -8,6 +8,7 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { formatDateFromTimestamp } from '@/domain/dateFormat'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Petición real: "Galería: compartir una o varias fotos" — cada foto ya
 // tiene su URL firmada cargada (reload la pide de golpe para toda la
@@ -88,8 +89,8 @@ export function GalleryScreen() {
     }
   }
 
-  function reload() {
-    setLoading(true)
+  function reload(silent = false) {
+    if (!silent) setLoading(true)
     listGalleryPhotos()
       .then(async (list) => {
         setPhotos(list)
@@ -98,11 +99,18 @@ export function GalleryScreen() {
         )
         setUrls(Object.fromEntries(entries))
       })
-      .catch((e: Error) => setError(e.message))
+      .catch((e: Error) => {
+        if (!silent) setError(e.message)
+      })
       .finally(() => setLoading(false))
   }
 
-  useEffect(reload, [])
+  useEffect(() => {
+    reload()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fotos subidas, cambiadas o borradas en otro dispositivo (no se recarga con una foto abierta, en selección o guardando su descripción).
+  useRealtimeRefresh(['gallery_photos'], () => reload(true), { paused: selecting || openIndex !== null || captionSaving })
 
   async function handleDelete(photo: GalleryPhoto) {
     try {

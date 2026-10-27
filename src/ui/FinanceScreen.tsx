@@ -180,7 +180,11 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
+import { listAllProductPrices, listProducts, setPriceLinePack, setProductEan, setProductNonFood } from '@/data/products'
+import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
+import { autoAssignToCommons } from '@/data/commonProducts'
+import { eanHint } from '@/domain/packPhoto'
+import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
@@ -296,6 +300,7 @@ import { fetchAsShareableFile, shareFiles } from '@/services/share'
 import { formatDate } from '@/domain/dateFormat'
 import { prefSet } from '@/state/prefs/prefsWrite'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Tickets y Registro Alimentación se mudan a Compras (petición real:
 // "estoy pensando si pasar registro alimentación y tickets a compra")
@@ -1010,6 +1015,9 @@ export function AccountBalanceCards({
 
   useEffect(reload, [])
 
+  // Cuentas y carteras cambiadas en otro dispositivo (la recarga es silenciosa).
+  useRealtimeRefresh(['bank_accounts', 'cash_wallets'], reload)
+
   // Bug real reportado: "sincronizo el banco y las tarjetas de arriba se
   // quedan en 'Sincronizando...', tengo que cambiar de pestaña para que
   // se vea el saldo real" — esta tarjeta vive en Resumen y solo se
@@ -1150,6 +1158,9 @@ export function BalanceTrendCard() {
   }
 
   useEffect(reload, [])
+
+  // Movimientos, cuentas y carteras cambiados en otro dispositivo (la recarga es silenciosa).
+  useRealtimeRefresh(['bank_transactions', 'bank_accounts', 'cash_movements', 'cash_wallets'], reload)
   useEffect(() => {
     window.addEventListener('family-app:bank-changed', reload)
     return () => window.removeEventListener('family-app:bank-changed', reload)
@@ -1677,6 +1688,9 @@ export function BankTab({
     }
     reload()
   }, [])
+
+  // Tickets, movimientos y presupuestos cambiados en otro dispositivo (recarga silenciosa tras la primera carga).
+  useRealtimeRefresh(['expenses', 'bank_transactions', 'bank_accounts', 'budget_categories', 'expense_tag_shares'], reload)
 
   async function handleSync() {
     setSyncing(true)
@@ -6245,6 +6259,10 @@ interface DraftLine {
   // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
   // deja que se seguisa recalculando sola mientras cambia el nombre.
   classOverride?: { kind: FoodTypeKind; classification: string }
+  // Formato del envase (COMP-2): undefined = no decidido (se aplica lo que el nombre o las compras anteriores dicen con seguridad); null = «Ahora no».
+  pack?: PackFormat | null
+  // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
+  ean?: string
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -6451,6 +6469,7 @@ function ReceiptForm({
   // resolver el icono/"Nuevo" de cada línea leída — ver
   // resolveDraftLineClass.
   const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
   const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
     alimentacion: [],
     no_alimentos: [],
@@ -6570,6 +6589,8 @@ function ReceiptForm({
   }
 
   useEffect(() => {
+    // Los precios anteriores sirven para recordar el formato del envase y saber si el producto ya se compró en otra tienda (opcional: si falla, el formulario sigue igual).
+    listAllProductPrices().then(setAllPrices).catch(() => {})
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
       .then(([products, foodKinds, noFoodKinds]) => {
         setAllProducts(products)
@@ -6585,7 +6606,7 @@ function ReceiptForm({
         setLines(
           // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
           // nada, a diferencia de antes.
-          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2) })),
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), ...(l.pack ? { pack: l.pack } : {}) })),
         ),
       )
       .catch(() => {})
@@ -6635,6 +6656,7 @@ function ReceiptForm({
   }
 
   async function saveLines(receiptId: string) {
+    const savedProductIds: string[] = []
     // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
     // en serie tardaba tanto (una llamada de red por línea) que parecía
     // que se había quedado colgado en "Subiendo…" — bug real detectado
@@ -6649,6 +6671,8 @@ function ReceiptForm({
           // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
           // era el importe TOTAL de la línea y había que dividirlo entre las unidades; ahora quien revisa el
           // ticket edita directamente la magnitud comparable (€/ud o €/kg), igual que ya la da el OCR.
+          const known = productByNormalizedName.get(normalizeProductName(line.name))
+          const history = known ? allPrices.filter((p) => p.productId === known.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
           const { productId } = await recordProductPurchase({
             name: line.name.trim(),
             price: Number(line.unitPrice),
@@ -6657,9 +6681,13 @@ function ReceiptForm({
             store,
             date: receiptDate,
             receiptId,
+            // El formato del envase es opcional: lo que la persona indicó, o lo que el nombre / las compras anteriores dicen con seguridad.
+            pack: resolveLinePack(line, history).pack,
           })
           // Una línea que no es un producto (PARKING en Mercadona...) se descarta antes de persistir: sin producto, sin precio, sin clase.
           if (productId == null) return
+          savedProductIds.push(productId)
+          if (line.ean) await setProductEan(productId, line.ean).catch(() => undefined) // solo ayuda; si falla (o aún no hay columna) no importa
           // LA FAMILIA MANDA: solo la clase ELEGIDA A MANO al revisar este ticket se guarda en el producto (y queda confirmada).
           // La clase que resuelven solos el aprendizaje compartido, la clase histórica o las reglas NO se guarda: se resuelve al
           // leer (domain/productClass.ts), para no convertir una clasificación automática en una decisión falsamente humana.
@@ -6682,6 +6710,10 @@ function ReceiptForm({
           ])
         }),
     )
+    // Los formatos recién guardados cuentan ya para recordar el de la próxima compra.
+    listAllProductPrices().then(setAllPrices).catch(() => {})
+    // Un artículo idéntico a otro ya agrupado en un producto común se une solo a él (nunca retrasa ni rompe el guardado).
+    void autoAssignToCommons(savedProductIds)
   }
 
   // Deja el formulario de «Subir ticket» como nuevo (tras guardar, o al pulsar Cancelar con una foto ya escaneada por error).
@@ -7080,9 +7112,36 @@ function ReceiptForm({
                     </span>
                   )}
                 </div>
+                <LineFormatControl
+                  line={line}
+                  history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
+                  onPack={(pack) => updateLine(i, { pack })}
+                  onReading={(reading) => {
+                    const ean = eanHint(reading)
+                    if (ean) updateLine(i, { ean })
+                  }}
+                />
               </div>
             )
           })}
+          {lines.length > 0 && (
+            <PackFormatsPanel
+              lines={lines}
+              store={store}
+              products={allProducts}
+              prices={allPrices}
+              productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
+              onPack={(i, pack) => updateLine(i, { pack })}
+              onReading={(i, reading) => {
+                const ean = eanHint(reading)
+                if (ean) updateLine(i, { ean })
+              }}
+              onFixPast={async (priceId, pack) => {
+                await setPriceLinePack(priceId, pack)
+                setAllPrices(await listAllProductPrices())
+              }}
+            />
+          )}
           {lines.length === 0 && <p className="muted">{ocrStatus === 'done' ? 'No se ha reconocido ningún producto: añádelos con «+ Añadir línea».' : 'Todavía no hay productos: pulsa «+ Añadir línea».'}</p>}
           <button type="button" className="link-button" data-help-id="shopping.receipt-add-line" onClick={addBlankLine}>
             + Añadir línea

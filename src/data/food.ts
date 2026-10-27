@@ -241,11 +241,13 @@ export async function addRecipeIngredientsToShoppingList(
 export async function listMenuEntries(startDate: string, endDate: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from('menu_entries')
-    .select('id, family_id, entry_date, meal_type, recipe_id, free_text')
+    .select('id, family_id, entry_date, meal_type, recipe_id, free_text, sort_order')
     .gte('entry_date', startDate)
     .lte('entry_date', endDate)
-    // Orden estable: el primer plato de una comida es el más antiguo (en un menú importado de Comunidad, el principal va antes que su acompañamiento).
+    // Orden estable: el lugar de cada plato en su comida (sort_order, 0323); en empate el más antiguo y, por último, el id (en un menú importado de Comunidad, el principal va antes que su acompañamiento).
+    .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
   if (error) throw error
   return data.map((r) => ({
     id: r.id,
@@ -254,6 +256,7 @@ export async function listMenuEntries(startDate: string, endDate: string): Promi
     mealType: r.meal_type as MealType,
     recipeId: r.recipe_id,
     freeText: r.free_text,
+    sortOrder: r.sort_order == null ? undefined : Number(r.sort_order),
   }))
 }
 
@@ -288,6 +291,28 @@ export async function updateMenuEntry(id: string, input: { recipeId: string | nu
 export async function deleteMenuEntry(id: string): Promise<void> {
   const { error } = await supabase.from('menu_entries').delete().eq('id', id)
   if (error) throw error
+}
+
+// Reordenar los platos de UNA comida: se manda la lista de ids ya en el orden final y se reparten valores de sort_order nuevos y crecientes (updates sueltos, no upsert: ver
+// shopping.ts). Solo cambia el orden: ningún plato, receta, fecha ni comida se toca.
+export async function reorderMenuEntries(orderedIds: string[]): Promise<void> {
+  const base = Date.now() * 1000
+  const results = await Promise.all(orderedIds.map((id, i) => supabase.from('menu_entries').update({ sort_order: base + i }).eq('id', id)))
+  const failed = results.find((r) => r.error)
+  if (failed?.error) throw failed.error
+}
+
+// Copiar platos a otro día (duplicar un día o una semana): inserta COPIAS (identificadores nuevos) con la misma comida, receta o texto y el mismo orden, DETRÁS de lo que ya hubiera
+// en el destino. Nunca borra ni sustituye nada. Todo o nada: es un único insert.
+export async function copyMenuEntries(copies: { entryDate: string; mealType: MealType; recipeId: string | null; freeText: string | null }[]): Promise<number> {
+  if (copies.length === 0) return 0
+  const familyId = await currentFamilyId()
+  const base = Date.now() * 1000
+  const { error } = await supabase.from('menu_entries').insert(
+    copies.map((c, i) => ({ family_id: familyId, entry_date: c.entryDate, meal_type: c.mealType, recipe_id: c.recipeId, free_text: c.freeText, sort_order: base + i })),
+  )
+  if (error) throw error
+  return copies.length
 }
 
 // ---------------------------------------------------------------------

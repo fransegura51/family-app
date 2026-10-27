@@ -1,3 +1,16 @@
+import mercadonaLogo from '@/assets/store-logos/mercadona.png'
+import aldiLogo from '@/assets/store-logos/aldi.png'
+import hiperberLogo from '@/assets/store-logos/hiperber.png'
+import lidlLogo from '@/assets/store-logos/lidl.png'
+import eroskiLogo from '@/assets/store-logos/eroski.png'
+import consumLogo from '@/assets/store-logos/consum.png'
+import alcampoLogo from '@/assets/store-logos/alcampo.png'
+import diaLogo from '@/assets/store-logos/dia.png'
+import sparLogo from '@/assets/store-logos/spar.png'
+import elcorteinglesLogo from '@/assets/store-logos/elcorteingles.png'
+import amazonLogo from '@/assets/store-logos/amazon.png'
+import coviranLogo from '@/assets/store-logos/coviran.png'
+import manperLogo from '@/assets/store-logos/manper.png'
 import superDumboLogo from '@/assets/store-logos/superdumbo.png'
 import charterLogo from '@/assets/store-logos/charter.png'
 import { normalizeStoreName } from '@/domain/storeChains'
@@ -35,29 +48,14 @@ export type StoreIcon = StoreIconLogo | StoreIconImage | StoreIconEmoji
 // que mejor encaja con cómo se ha dictado ("Hyper Beard", "Hiperver",
 // "Hipervel") — si no es la tienda correcta, dímelo y lo cambio.
 const STORE_LOGOS: Record<string, string> = {
-  mercadona: 'mercadona.es',
-  aldi: 'aldi.es',
-  hipervel: 'hiperber.es',
-  hiperber: 'hiperber.es',
-  lidl: 'lidl.es',
-  carrefour: 'carrefour.es',
-  caprabo: 'caprabo.com',
-  eroski: 'eroski.es',
-  consum: 'consum.es',
-  alcampo: 'alcampo.es',
-  dia: 'dia.es',
-  spar: 'spar.es',
-  'el corte ingles': 'elcorteingles.es',
-  hipercor: 'hipercor.es',
+  // Vacío a propósito: ya no se pide ningún favicon en vivo (su calidad es impredecible: Carrefour, Caprabo o Hipercor solo ofrecen 16 px, borrosos). Las cadenas sin logotipo
+  // empaquetado (Carrefour, Caprabo, Hipercor…) usan la insignia de texto hasta que se disponga de su logotipo en buena calidad: basta añadir el PNG a src/assets/store-logos.
   // COM-02 — dominios comprobados uno a uno (nunca adivinados): amazon.es, coviran.es y manper.com
   // cargan la web real de cada cadena. "Charter" no tiene dominio propio (su única presencia web es una
   // subpágina de consum.es) y store_chains ya documenta que su cadena "nunca se funde con Consum" —
   // usar el favicon de consum.es mostraría el logo de Consum bajo el nombre de Charter, justo la
   // asociación errónea que este encargo prohíbe; su logo real (dado directamente por el usuario, ver
   // STORE_IMAGE_LOGOS) resuelve esto sin depender de ningún dominio.
-  amazon: 'amazon.es',
-  coviran: 'coviran.es',
-  manper: 'manper.com',
 }
 
 // Cadenas regionales cuyo logo real ha dado el usuario directamente
@@ -65,7 +63,24 @@ const STORE_LOGOS: Record<string, string> = {
 // tienda") porque no tienen un favicon fiable que se pueda referenciar
 // en vivo. Charter (COM-02) entra por el mismo motivo: no tiene dominio
 // propio verificable, así que el usuario dio su logo real directamente.
+// Logotipos EMPAQUETADOS en la propia app (src/assets/store-logos): Vite los copia con su hash en cada compilación, así que no dependen de ningún servicio externo, de bloqueadores
+// de contenido ni de Safari. Cada clave apunta SOLO al logo de su propia cadena (nunca por parecido de nombre). Una prueba exige que cada archivo exista y no se repita.
+// Hipervel es el alias dictado de HiperBer (misma cadena).
 const STORE_IMAGE_LOGOS: Record<string, string> = {
+  mercadona: mercadonaLogo,
+  aldi: aldiLogo,
+  hiperber: hiperberLogo,
+  hipervel: hiperberLogo,
+  lidl: lidlLogo,
+  eroski: eroskiLogo,
+  consum: consumLogo,
+  alcampo: alcampoLogo,
+  dia: diaLogo,
+  spar: sparLogo,
+  'el corte ingles': elcorteinglesLogo,
+  amazon: amazonLogo,
+  coviran: coviranLogo,
+  manper: manperLogo,
   superdumbo: superDumboLogo,
   'super dumbo': superDumboLogo,
   charter: charterLogo,
@@ -87,7 +102,8 @@ const STORE_EMOJIS: Record<string, string> = {
   farmacia: '💊',
 }
 
-const DEFAULT_EMOJI = '🏬'
+export const DEFAULT_STORE_EMOJI = '🏬'
+const DEFAULT_EMOJI = DEFAULT_STORE_EMOJI
 
 // Resolutor TÉCNICO de store_chains.logo_asset — la base de datos decide qué logo_asset tiene cada
 // cadena (null = todavía ninguno); este mapa solo sabe convertir ese identificador en el asset

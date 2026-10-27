@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Pruebas del SQL de cuentas, vinculos e invitaciones sobre un PostgreSQL local en memoria (PGlite). No forma parte de la app ni de sus dependencias.",
   "scripts": {
-    "test": "node tests.mjs && node point-grants.mjs && node support-tickets.mjs && node listas.mjs && node run-live-scripts.mjs"
+    "test": "node tests.mjs && node point-grants.mjs && node support-tickets.mjs && node listas.mjs && node menu-order.mjs && node run-live-scripts.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.10"

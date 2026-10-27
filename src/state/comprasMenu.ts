@@ -6,7 +6,7 @@
 
 import { prefSet } from '@/state/prefs/prefsWrite'
 
-export type FixedComprasMenuItemKey = 'Inicio' | 'Lista' | 'Historial' | 'Tickets' | 'Estadística compras'
+export type FixedComprasMenuItemKey = 'Inicio' | 'Lista' | 'Historial' | 'Tickets' | 'Comparar' | 'Estadística compras'
 export type ComprasMenuItemKey = FixedComprasMenuItemKey | `custom:${string}`
 
 export function isCustomComprasMenuKey(key: ComprasMenuItemKey): boolean {
@@ -30,6 +30,7 @@ export const COMPRAS_MENU_ITEM_META: Record<FixedComprasMenuItemKey, { icon: str
   Lista: { icon: '🛒', label: 'Lista de la compra' },
   Historial: { icon: '📈', label: 'Historial de precios' },
   Tickets: { icon: '🧾', label: 'Compras registradas' },
+  Comparar: { icon: '⚖️', label: 'Comparar precios' },
   'Estadística compras': { icon: '🍎', label: 'Estadística compras' },
 }
 
@@ -38,7 +39,7 @@ export function comprasMenuEntryMeta(entry: ComprasMenuEntry): { icon: string; l
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Estadística compras']
+const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras']
 
 const KEY = 'familyapp:compras-menu-layout'
 

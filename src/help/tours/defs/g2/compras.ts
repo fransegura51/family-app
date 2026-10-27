@@ -1,3 +1,4 @@
+import { TOURS_COMPRAS_COMPARAR } from '@/help/tours/defs/g2/comprasComparar'
 import { TOURS_COMPRAS_TICKETS } from '@/help/tours/defs/g2/comprasTickets'
 import type { TourDef } from '@/help/tours/types'
 
@@ -6,6 +7,7 @@ import type { TourDef } from '@/help/tours/types'
 //  · ser-compras-lista      → com-anadir-producto, tut-compras-editar-producto, tut-compras-marcar-comprado, tut-compras-finalizar-compra, tut-compras-compartir
 //  · ser-compras-tiendas    → tut-compras-tiendas, tut-compras-asignar-tienda, tut-compras-clase-historial
 //  · ser-compras-tickets    → defs/g2/comprasTickets.ts
+//  · ser-compras-comparar   → defs/g2/comprasComparar.ts
 //  · ser-compras-historial  → tut-compras-consultar-compras, tut-compras-historial-precios, tut-compras-ficha-producto, tut-compras-comparar-lista, tut-compras-estadistica
 // REGLA (verificada en data/shopping.ts y shoppingBoughtDoesNotFeedHistory.test.ts): marcar «Comprado» solo cambia el estado en la lista; «Finalizar compra» solo borra de la lista lo tachado
 // de esa tienda. Ninguno crea compra, gasto ni precio. Lo que sí registra es guardar un ticket o una compra «Sin ticket» (pestaña Compras registradas).
@@ -25,7 +27,7 @@ export const visitaCompras: TourDef = {
   steps: [
     {
       id: 'menu',
-      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Compras registradas y Estadística compras. Con «📌 Sacar» pones un acceso como botón en pantalla. Ahora solo miramos.',
+      text: 'Esto es Compras. Con el botón ☰ Menú cambias de parte: Inicio, Lista de la compra, Historial de precios, Compras registradas, Comparar precios y Estadística compras. Con «📌 Sacar» pones un acceso como botón en pantalla. Ahora solo miramos.',
       target: 'shopping.menu',
       completeOn: [],
       manualNext: true,
@@ -636,4 +638,5 @@ export const TOURS_COMPRAS: TourDef[] = [
   tutComprasCompararLista,
   tutComprasEstadistica,
   ...TOURS_COMPRAS_TICKETS,
+  ...TOURS_COMPRAS_COMPARAR,
 ]

@@ -652,6 +652,7 @@ import { formatDate, formatDateTime } from '@/domain/dateFormat'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Módulo Eventos (PEPA Events) — plan aprobado en
 // C:\Users\Usuario\.claude\plans\zany-wishing-brook.md.
@@ -865,6 +866,7 @@ export function EventosScreen() {
       .finally(() => setLoading(false))
   }
   useEffect(reload, [showArchived])
+  useRealtimeRefresh(['events'], reload)
 
   // Consume el deep-link una sola vez, en cuanto los eventos ya están
   // cargados (antes no se sabe si el id es válido) — y limpia la URL
@@ -1289,6 +1291,8 @@ function EventDetail({
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las tareas')))
   }
   useEffect(() => void reloadTasks(), [event.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Preparativos creados, cambiados o completados en otro dispositivo.
+  useRealtimeRefresh(['event_tasks'], reloadTasks)
 
   // Completar UNA tarea suelta (checkbox normal) pasa por el MISMO motor general de "siguiente
   // preparativo" que resolver un encargo — hoy siempre sin ninguna sugerencia real (ver
@@ -1511,6 +1515,7 @@ function EventDetail({
     if (has('plan_dia')) listEventDayPlan(event.id).then(setDayPlan).catch(() => {})
   }
   useEffect(reloadDashboardStats, [event.id, event.enabledModules, event.tagId, refreshKey])
+  useRealtimeRefresh(['event_guests', 'event_budget_items', 'event_payments'], reloadDashboardStats)
 
   // Fase 2 — "Estado del evento": sustituye el porcentaje agregado de
   // "Preparación del evento" (auditoría: 0/6 tareas + 16/16 invitados
@@ -12079,6 +12084,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       .catch(() => {})
   }
   useEffect(reload, [event.id])
+  useRealtimeRefresh(['event_guests', 'event_guest_members', 'event_decisions'], reload)
   const momentosChoice = (momentosDecision?.answer as unknown as MomentosAnswer | undefined)?.choice
   const showPerGuestMoments = momentosChoice === 'depende' && moments.length >= 2
 
@@ -13065,6 +13071,7 @@ function BudgetSection({ event }: { event: FamilyEvent }) {
     }
   }
   useEffect(reload, [event.id, event.tagId])
+  useRealtimeRefresh(['event_budget_items', 'event_payments', 'event_providers', 'event_task_groups'], reload)
 
   const planned = items.reduce((sum, i) => sum + (i.plannedAmount ?? 0), 0)
   // Fase 3 (bug real: un encargo resuelto con proveedor y 100€ no aparecía en Presupuesto aunque sí
@@ -14168,6 +14175,7 @@ function ProvidersSection({ eventId }: { eventId: string }) {
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar los proveedores')))
   }
   useEffect(reload, [eventId])
+  useRealtimeRefresh(['event_providers', 'event_provider_links'], reload)
 
   const globalById = new Map(globals.map((g) => [g.id, g]))
   const q = query.trim().toLowerCase()
@@ -15508,6 +15516,7 @@ function TablesSection({ event }: { event: FamilyEvent }) {
       .catch(() => {})
   }
   useEffect(reload, [event.id])
+  useRealtimeRefresh(['event_tables', 'event_guests'], reload)
 
   // Fase 14C — agrupado por unidad, para saber sin JOIN adicional si
   // cada invitado está desglosado en personas o sigue en modo unidad.
@@ -15670,6 +15679,7 @@ function DecorationSection({ eventId }: { eventId: string }) {
       .catch((err) => setError(errorMessage(err, 'No se pudo cargar la decoración')))
   }
   useEffect(reload, [eventId])
+  useRealtimeRefresh(['event_decoration_items'], reload)
 
   async function handleAdd(ev: FormEvent) {
     ev.preventDefault()
@@ -15756,6 +15766,7 @@ function ActivitiesSection({ eventId }: { eventId: string }) {
       .catch((err) => setError(errorMessage(err, 'No se pudieron cargar las actividades')))
   }
   useEffect(reload, [eventId])
+  useRealtimeRefresh(['event_activities'], reload)
 
   const [transferring, setTransferring] = useState<EventActivity | null>(null)
   async function handleTransfer(activity: EventActivity, store: string | null) {

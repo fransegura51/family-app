@@ -89,6 +89,73 @@ export function stripSize(name: string): string {
   return out.replace(/\s+/g, ' ').trim()
 }
 
+// ─── Formato del envase guardado de forma ESTRUCTURADA (product_prices.pack_*) ───
+// «6 latas × 330 ml» = count 6 × amount 330 unit 'ml' → 1,98 l. Lo confirma la persona al registrar la compra (o se reconoce del nombre) y manda sobre
+// lo que se pueda leer del nombre: el nombre del ticket suele estar abreviado o sin tamaño.
+export type PackUnit = 'g' | 'kg' | 'ml' | 'l' | 'ud'
+export const PACK_UNITS: readonly PackUnit[] = ['g', 'kg', 'ml', 'l', 'ud']
+export interface PackInput {
+  /** Cuántos envases o unidades trae la presentación que se vende (6 latas, 12 huevos; 1 si es uno solo). */
+  count: number
+  /** Cantidad de cada uno (330, 1,5, 1 para «unidades»). */
+  amount: number
+  unit: PackUnit
+}
+
+export function packMagnitude(unit: PackUnit): SizeMagnitude {
+  return unit === 'g' || unit === 'kg' ? 'peso' : unit === 'ml' || unit === 'l' ? 'volumen' : 'unidades'
+}
+
+/** Contenido total de la presentación en g (peso), ml (volumen) o unidades. null si los datos no son válidos. */
+export function packTotalSize(pack: PackInput): ParsedSize | null {
+  if (!(pack.count > 0) || !(pack.amount > 0) || !PACK_UNITS.includes(pack.unit)) return null
+  const factor = pack.unit === 'kg' || pack.unit === 'l' ? 1000 : 1
+  const total = pack.count * pack.amount * factor
+  if (!Number.isFinite(total) || total <= 0) return null
+  return { magnitude: packMagnitude(pack.unit), amount: total, raw: `${pack.count}x${pack.amount}${pack.unit}` }
+}
+
+const numEs = (n: number) => String(Math.round(n * 1000) / 1000).replace('.', ',')
+
+/** «6 × 330 ml = 1,98 l» · «1 l» · «12 ud». */
+export function describePackInput(pack: PackInput): string {
+  const each = pack.unit === 'ud' ? (pack.amount === 1 ? 'ud' : `${numEs(pack.amount)} ud`) : `${numEs(pack.amount)} ${pack.unit}`
+  const single = pack.count === 1 ? each : `${numEs(pack.count)} × ${each}`
+  const total = pack.count === 1 ? null : packTotalSize(pack)
+  if (!total || total.magnitude === 'unidades') return pack.count !== 1 && pack.unit === 'ud' && pack.amount === 1 ? `${numEs(pack.count)} ud` : single
+  const big = total.magnitude === 'peso' ? (total.amount >= 1000 ? `${numEs(total.amount / 1000)} kg` : `${numEs(total.amount)} g`) : total.amount >= 1000 ? `${numEs(total.amount / 1000)} l` : `${numEs(total.amount)} ml`
+  return `${single} = ${big}`
+}
+
+const UNIT_TEXT: Record<string, PackUnit> = { kg: 'kg', kgs: 'kg', g: 'g', gr: 'g', grs: 'g', ml: 'ml', l: 'l', lt: 'l', lts: 'l' }
+
+/**
+ * El formato estructurado que dice el NOMBRE, solo si es claro: «6x330 ml» → 6 × 330 ml, «Leche 1 L» → 1 × 1 l, «Huevos docena» → 12 ud, «Pack 6» → 6 ud.
+ * Mismas reglas que parseProductSize (ambiguo = null); nunca se inventa.
+ */
+export function parseProductPack(name: string): PackInput | null {
+  const total = parseProductSize(name)
+  if (!total) return null
+  const multi = (name ?? '').match(MULTIPACK)
+  if (multi) {
+    const u = multi[3].toLowerCase()
+    if (u === 'cl') return { count: Number(multi[1]), amount: toNumber(multi[2]) * 10, unit: 'ml' }
+    if (u.startsWith('gramo')) return { count: Number(multi[1]), amount: toNumber(multi[2]), unit: 'g' }
+    if (u.startsWith('litro')) return { count: Number(multi[1]), amount: toNumber(multi[2]), unit: 'l' }
+    const unit = UNIT_TEXT[u]
+    return unit ? { count: Number(multi[1]), amount: toNumber(multi[2]), unit } : null
+  }
+  if (total.magnitude === 'unidades') return { count: total.amount, amount: 1, unit: 'ud' }
+  const single = (name ?? '').match(SINGLE)
+  if (!single) return null
+  const u = single[2].toLowerCase()
+  if (u === 'cl') return { count: 1, amount: toNumber(single[1]) * 10, unit: 'ml' }
+  if (u.startsWith('gramo')) return { count: 1, amount: toNumber(single[1]), unit: 'g' }
+  if (u.startsWith('litro')) return { count: 1, amount: toNumber(single[1]), unit: 'l' }
+  const unit = UNIT_TEXT[u]
+  return unit ? { count: 1, amount: toNumber(single[1]), unit } : null
+}
+
 export type UnitPriceBasis = 'kg' | 'l' | 'ud' | 'envase'
 
 export interface NormalizedPrice {
@@ -110,13 +177,14 @@ function round(value: number): number {
 /**
  * Normaliza UN registro de product_prices:
  *  · unit='kg' (vendido por peso): ya es €/kg.
- *  · unit='ud' (o legado seguro) con tamaño en el nombre: peso → €/kg, volumen → €/l, recuento → €/ud (cada huevo).
+ *  · unit='ud' (o legado seguro) con formato guardado (pack) o tamaño en el nombre: peso → €/kg, volumen → €/l, recuento → €/ud (cada huevo).
  *  · sin tamaño fiable: precio del envase, NO comparable de forma exacta con otros formatos.
  */
-export function normalizePrice(record: { price: number; unit: string | null }, productName: string): NormalizedPrice {
+export function normalizePrice(record: { price: number; unit: string | null; pack?: PackInput | null }, productName: string): NormalizedPrice {
   const unit = normalizeMeasurementUnit(record.unit)
   if (unit === 'kg') return { value: round(record.price), basis: 'kg', exact: true, packagePrice: null, size: null }
-  const size = parseProductSize(productName)
+  // El formato confirmado al registrar la compra manda sobre el que se lea del nombre.
+  const size = (record.pack ? packTotalSize(record.pack) : null) ?? parseProductSize(productName)
   if (!size) return { value: round(record.price), basis: 'envase', exact: false, packagePrice: round(record.price), size: null }
   if (size.magnitude === 'peso') return { value: round(record.price / (size.amount / 1000)), basis: 'kg', exact: true, packagePrice: round(record.price), size }
   if (size.magnitude === 'volumen') return { value: round(record.price / (size.amount / 1000)), basis: 'l', exact: true, packagePrice: round(record.price), size }

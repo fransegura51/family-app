@@ -1,6 +1,7 @@
 // Tipos de dominio — reflejan el esquema de supabase/migrations, sin
 // depender de ningún framework de UI.
 
+import type { PackFormat } from '@/domain/packFormat'
 import type { EventReminder } from '@/domain/reminders'
 
 // "guest" = invitado externo a la familia (Skill de invitados): tiene
@@ -260,6 +261,8 @@ export interface MenuEntry {
   mealType: MealType
   recipeId: string | null
   freeText: string | null
+  /** Lugar del plato dentro de su comida (0323). Opcional: los menús creados antes de la 0323 y los de las pruebas se ordenan por antigüedad. */
+  sortOrder?: number
 }
 
 export interface BodyMeasurement {
@@ -570,6 +573,8 @@ export interface ProductPrice {
   unit: string | null
   recordedDate: string
   receiptId: string | null
+  /** Formato del envase de esta compra (6 × 330 ml…), si se conoce (migración 0330). */
+  pack?: PackFormat | null
 }
 
 export interface Receipt {

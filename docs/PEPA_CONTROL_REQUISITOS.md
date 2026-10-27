@@ -937,6 +937,29 @@ Antes de aplicar la 0322 se comprobó el estado real: 954 gastos, 24 etiquetas, 
 
 **Pendiente**: validación real en iPhone/Android; el justificante de Amazon de 6,99 € sin gasto; los 1.200 € (destino del dinero). Nada pasa a Aprobado sin confirmación expresa.
 
+## Comparar precios: quinta subsección, productos comunes, formatos del envase y fotografía (COMP-2, COMP-3, 27/10/2026)
+
+**Estado: PUBLICADO el 27/10/2026 (ver commit y despliegue en el informe); migraciones `0330_product_price_pack_format` y `0331_common_products` APLICADAS en producción (se renumeraron: 0323 y 0324 ya las había aplicado otra sesión); función de IA `analyze-package-photo` DESPLEGADA** (responde 401 sin sesión; **no se ha podido llamar con el proveedor real de IA** porque hace falta una sesión de usuario: no se entran credenciales ajenas). Implementado, pendiente de validación real en iPhone y Android; sin Aprobar.
+
+Comprobado al aplicar: huellas de `product_prices` (1.230 líneas) y de `products` (488) idénticas antes y después, `product_equivalences` (7) intacta, tablas nuevas vacías, `anon` sin acceso, 3 políticas por familia. El comparador no modifica nada de Banco y efectivo, de las etiquetas con reparto ni de OAuth/Enable Banking (rama `banco-capa-proveedor`): no comparten archivos de código.
+
+Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada en lugar de revisar 470 fichas; un artículo pertenece a UN producto común (no se emparejan de dos en dos); `product_equivalences` y el aprendizaje compartido se reutilizan sin cambios y los productos comunes solo añaden «comparables»; los productos comunes entran en el comparador de siempre (`RelationContext.commonOf`).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COMP-3a | Quinta subsección «Comparar precios» (Resultados / Emparejar), con las otras cuatro intactas; el comparador general deja de estar escondido en Historial (se conserva el historial individual y la línea compacta bajo cada producto) | **Implementado y probado** | `compareScreen.test.tsx` (20), `compactPriceLine.test.tsx`, destino `compras.comparar` y `compras.comparar.emparejar` |
+| COMP-3b | Productos comunes: proponer, aceptar, buscar cualquiera, crear, corregir, separar, recordar; conservar nombres, formatos y precios originales | **Implementado y probado** | `commonProducts.test.ts` (20), `commonContext.test.ts` (6); migración 0324 ensayada REVERTIDA en producción: un artículo solo en un producto común, artículo de otra familia rechazado, nombre repetido rechazado, otra familia no ve ni borra, borrar el grupo no toca artículos (huella de `products` idéntica) |
+| COMP-3c | Mismo producto frente a comparable; sin propagar equivalencias dudosas; leche entera ≠ semidesnatada, con ≠ sin alcohol, con ≠ sin lactosa | **Implementado y probado** | variantes críticas en `suggestCommons`; solo se asigna solo un artículo IDÉNTICO a otro ya agrupado; una decisión «distinto» de la familia manda |
+| COMP-3d | «Emparejar»: cola priorizada por frecuencia (pesada por el precio), gasto, coincidencias y utilidad entre tiendas; filtros por tienda (cualquier número) y texto; no excluye productos no alimentarios; se puede dejar a medias | **Implementado y probado** | `pairingQueue`; al crear un producto común ofrece artículos parecidos para unir de una vez |
+| COMP-3e | Comparar formatos distintos por €/kg, €/l o €/ud: precio total, fecha, tienda, formato, cantidad total y diferencia con la más económica; sin sobrescribir el histórico; sin mezclar unidades | **Implementado y probado** | el ejemplo del encargo (6 × 1 l, 1 × 1,5 l, 1 × 1 l, 12 × 500 ml) ordena Hiperber 0,953 €/l, Otra tienda 1,00, Mercadona 1,05, Consum 1,10; el precio del paquete se enseña aparte |
+| COMP-3f | Formato del envase al registrar la compra: acceso discreto en cada línea, «Completar formatos de todos los artículos», «Ahora no», reutilizar lo confirmado, sin bloquear; compras con y sin ticket | **Implementado y probado** | `packFormatsPanel.test.tsx` (19), `packFormat.test.ts` (41); el mismo formulario sirve para «Sin ticket» |
+| COMP-3g | Fotografiar el envase (1 a 3 fotos), proponer los datos, confirmar y corregir; sin inventar; EAN solo auxiliar; fotos no guardadas | **Implementado y probado; función de IA DESPLEGADA, sin probar con el proveedor real** | `packagePhotoAi.test.ts` (12), `packPhoto.test.ts` (6), `packFormatsPanel.test.tsx`: una lectura dudosa no rellena nada, un total impreso incoherente baja la confianza, un EAN con dígito de control incorrecto se descarta. El modelo real **no** se ha llamado todavía |
+| COMP-3h | Coste de la IA | **Estimado, sin medir** (0,0004–0,0013 $ por lectura; tope 40 al día por familia) | ver `docs/EVALUACION_COMPARADOR_PRECIOS.md` |
+| COMP-3i | Aislamiento entre familias y permisos | **Probado en la base real (transacción revertida)** | RLS por familia en las tres tablas nuevas, guardas de familia, `anon` sin acceso |
+| COMP-3j | Histórico: aprovechar tickets, nombres, formatos y equivalencias sin borrar ni alterar | **Implementado** | el formato del nombre se lee al comparar (sin escribir); lo indicado a mano solo escribe las columnas nuevas; nunca el precio |
+
+**Pendiente**: validar en iPhone y Android; probar la lectura de envases con fotos reales y el proveedor real de IA con una sesión de usuario, y medir su coste real; agrupar los artículos (unos 24 productos comunes y ≈ 100 artículos agrupables según la evaluación) y completar formatos. Nada pasa a Aprobado sin confirmación expresa.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos
@@ -1098,6 +1121,23 @@ Encargo del usuario (2026-10-26): «IMPLEMENTACIÓN COMPLETA DEL MÓDULO "MIS LI
 mentira); (3) la lectura de fotos/PDF con IA y el dictado real no se han ejecutado contra los servicios reales; (4) al crear un evento nuevo la lista se
 vincula después de guardarlo (en su edición); (5) en Compras los productos que vienen de Mis listas llevan una pequeña 📝 (sin acción; no se ha visto aún con datos reales); (6) el permiso por sección `listas` hay que marcarlo a mano para menores e invitados con restricciones (como cualquier sección nueva).
 Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
+## Fase 1 (27/10/2026): avatares de Comunidad, varios platos por comida, logotipos de tiendas y sincronización entre dispositivos (PEPA-F1)
+
+Encargo del usuario (2026-10-27): «Correcciones prioritarias, automatización editorial y prueba completa de Comunidad», Fase 1. Política vigente que NO cambia: Comunidad PEPA es solo para mayores de 18 años.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| F1-AVATARES | Catálogo de iconos de Comunidad ampliado a unos 100 en seis categorías (caras, animales, comida, aficiones, naturaleza, personajes), conservando los 20 de siempre; pestañas compactas, cuadrícula adaptable, icono elegido marcado; cambiar SOLO el icono desde «Mis ajustes» sin tocar el alias | Sí (2026-10-27) | Sí — `src/domain/communityAvatars.ts`, `AvatarPicker.tsx`, `AvatarDialog.tsx` («Cambiar solo el icono», guarda con el mismo alias); sin migración (el servidor solo exige ≤ 16 caracteres sin letras ni dígitos); mismo almacenamiento (`avatar_emoji`) | Sí — `communityAvatars.test.ts`, `avatarPicker.test.tsx`; revisado en 390 px y en 1100 px | No |
+| F1-MENU | Varios platos independientes en cada comida del menú semanal (uno debajo de otro, sin etiquetas, «+ Añadir otro plato»), editar/quitar/reordenar cada uno, copiar un día o repetir la semana, Compras con todos los platos | Sí | Sí — la base de datos ya admitía varias filas por comida: solo la pantalla lo impedía; migración **0323** (columna `sort_order`, rellenada con el orden de siempre); `reorderMenuEntries`, `copyMenuEntries`; la presentación con un solo plato no cambia | Sí — `menuMultiDish.test.tsx` (16: tres platos editados, reordenados, copiados y llevados a Compras), `menu-order.mjs` (PostgreSQL local: orden conservado, tres platos, dos clientes, otra familia) | No |
+| F1-LOGOS | Logotipos de tiendas: causa real, recuperación y que persistan | Sí | Sí — **causa**: los logotipos NO estaban en la app, se pedían en vivo a un servicio externo (favicons de Google): cualquier bloqueo, caída o límite los dejaba como una caja blanca vacía y no había forma de recuperarlos; **arreglo**: 13 logotipos reales empaquetados en `src/assets/store-logos` (Mercadona, Aldi, Hiperber, Lidl, Eroski, Consum, Alcampo, Dia, Spar, El Corte Inglés, Amazon, Covirán, Manper) además de Charter y Superdumbo; insignia de texto (iniciales sobre color estable) en lugar de cuadros vacíos; sin logos por parecido de nombre | Sí — `storeIcons.test.ts`, `storeIconLegibilityUi.test.ts` (cada import existe, nada suelto, imágenes distintas por cadena) | No |
+| F1-SYNC | Los cambios en datos compartidos se ven en los demás dispositivos sin recargar, en ambas direcciones | Sí | Sí — gancho `useRealtimeRefresh` (un canal por tabla y dispositivo, ráfagas juntas, pausa mientras se edita, recarga al volver/reconectar) y migración **0324** (publica 56 tablas en Realtime con `replica identity full`) | Parcial — `useRealtimeRefresh.test.tsx` (11), `menu-order.mjs`; **el aviso en vivo entre dos dispositivos reales no se ha podido probar sin dos sesiones** | No |
+
+**Cobertura de la sincronización** (recarga silenciosa, sin «Cargando…»; se pausa si hay un formulario o edición abierta): Cocina (menú semanal, recetas), Compras (productos y tiendas), Calendario (eventos, tareas y estados), Economía (movimientos, cuentas, carteras, tickets, presupuestos), Eventos (lista, preparativos, invitados, presupuesto, proveedores, mesas, decoración, actividades y menú del evento), Pequeños Grandes (puntos, canjes, recompensas, monedero), Mis listas (lista y carpetas), Galería, Documentos. Lo privado respeta sus permisos: el canal solo avisa y cada dispositivo vuelve a pedir sus datos con su sesión. **No cubierto todavía**: Comunidad (sus datos), Contactos, Familia y Ubicación (solo recargan al abrir la pantalla); los borrados no se pueden filtrar por familia en Realtime (se avisa a todos de «algo cambió» en esa tabla, sin contenido).
+
+**Pendiente (honesto)**: comprobar en los móviles y el ordenador reales (1) que el menú reordenado en un dispositivo aparece solo en el otro, (2) logotipos en Safari de iPhone y Android, (3) el selector de iconos. Carrefour, Caprabo e Hipercor usan insignia de texto (su favicon solo existe a 16 px). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---
 

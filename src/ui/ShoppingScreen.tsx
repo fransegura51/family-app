@@ -43,7 +43,8 @@ import {
 import { classifyFoodType, FOOD_TYPES, NO_FOOD_TYPES } from '@/domain/foodTypes'
 import { resolveProductClassSafe, unambiguousStore } from '@/domain/productClass'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
-import { ListPriceComparison, ProductPriceComparison } from '@/ui/PriceComparisonPanels'
+import { ComparePricesTab } from '@/ui/CompareScreen'
+import { CompactPriceLine, ListPriceComparison, ProductPriceComparison, useCompactComparisons } from '@/ui/PriceComparisonPanels'
 import { colorForClass, pastelPalette, storeColorResolver } from '@/domain/colors'
 import {
   createShoppingStore,
@@ -96,6 +97,7 @@ import { shareText } from '@/services/share'
 import { usePrefChange } from '@/state/prefs/usePrefChange'
 import { HelpHint } from '@/help/ui/HelpHint'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 
 // Petición real: "vamos a organizarla por clases de alimentos..." con
 // colores — la clase de un producto (Fruta, Lácteos, Limpieza…) no
@@ -183,7 +185,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Estadística compras'] as const
+const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
@@ -214,6 +216,8 @@ export function ShoppingScreen() {
     'compras.lista': () => setTab('Lista'),
     'compras.historial': () => setTab('Historial'),
     'compras.tickets': () => setTab('Tickets'),
+    'compras.comparar': () => setTab('Comparar'),
+    'compras.comparar.emparejar': () => setTab('Comparar'),
     'compras.estadistica': () => setTab('Estadística compras'),
   })
   const [pinnedItems, setPinnedItems] = useState<ComprasMenuItemKey[]>(() => loadComprasPinnedItems())
@@ -316,6 +320,7 @@ export function ShoppingScreen() {
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab />}
       {tab === 'Tickets' && <ReceiptsTab />}
+      {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
         <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} />
       )}
@@ -861,6 +866,9 @@ function ShoppingListTab() {
     window.addEventListener('family-app:compras-changed', reload)
     return () => window.removeEventListener('family-app:compras-changed', reload)
   }, [])
+
+  // Cambios hechos en OTRO dispositivo (otra persona en el súper, el ordenador…): productos, cantidades, marcados y tiendas. No se recarga con un producto en edición o el formulario de alta abierto.
+  useRealtimeRefresh(['shopping_items', 'shopping_stores'], reload, { paused: editingItem !== null || addingItem })
 
   // Las clases de alimentos también se gestionan desde Configuración (ventana global, ver state/managers.ts).
   useEffect(() => onManagersChanged(reload), [])
@@ -2521,6 +2529,13 @@ function HistoryTab() {
     [scopedPrices, foodReceiptIds, nonFoodProductIds, foodProductIds],
   )
 
+  // Comparación compacta entre tiendas (COMP-2): solo con precios exactos y comparables; reutiliza las equivalencias de la ficha del producto.
+  const scopedProducts = useMemo(() => {
+    const ids = new Set(scopedPrices.map((p) => p.productId))
+    return products.filter((p) => ids.has(p.id))
+  }, [products, scopedPrices])
+  const compactComparisons = useCompactComparisons(scopedProducts, scopedPrices)
+
   const withStats = useMemo(
     () =>
       products
@@ -2882,14 +2897,12 @@ function HistoryTab() {
                 className="price-row"
                 style={{ background: i % 2 === 1 ? classColors.get(group.label) : undefined }}
               >
-                <button
-                  type="button"
-                  className="price-row-name price-row-name-button"
-                  data-help-id="shopping.history-product"
-                  onClick={() => openDetail(c.productId, c.name)}
-                >
-                  {c.name}
-                </button>
+                <div className="price-row-name" style={{ whiteSpace: 'normal' }}>
+                  <button type="button" className="price-row-name-button" data-help-id="shopping.history-product" onClick={() => openDetail(c.productId, c.name)}>
+                    {c.name}
+                  </button>
+                  {compactComparisons.get(c.productId) && <CompactPriceLine cmp={compactComparisons.get(c.productId)!} />}
+                </div>
                 <span className="price-row-price">
                   {c.currentPrice!.toFixed(2)} {displayMeasurementUnit(c.unit)}<PriceDelta percent={c.deltaPercent} />
                 </span>
@@ -2973,7 +2986,7 @@ function HistoryTab() {
                   ))}
               </select>
             </div>
-            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} />
+            <ProductPriceComparison productId={detail.productId} products={products} prices={prices} onPackSaved={() => void listAllProductPrices().then(setPrices)} />
           </div>
         </div>
       )}

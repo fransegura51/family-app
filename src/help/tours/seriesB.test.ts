@@ -15,11 +15,12 @@ const CHAPTERS = SERIES_B.flatMap((s) => chaptersOf(s))
 const textOf = (t: { steps: Array<{ text: string; details?: Array<{ text: string }> }>; finishText: string }) => [...t.steps.flatMap((s) => [s.text, ...(s.details ?? []).map((d) => d.text)]), t.finishText].join('\n')
 
 describe('series B: Compras y Economía', () => {
-  it('son 9 series con los capítulos esperados y cada capítulo es del mismo módulo que su serie', () => {
+  it('son 10 series con los capítulos esperados y cada capítulo es del mismo módulo que su serie', () => {
     expect(SERIES_B.map((s) => s.id)).toEqual([
       'ser-compras-lista',
       'ser-compras-tiendas',
       'ser-compras-tickets',
+      'ser-compras-comparar',
       'ser-compras-historial',
       'ser-economia-moverte',
       'ser-economia-apuntar',

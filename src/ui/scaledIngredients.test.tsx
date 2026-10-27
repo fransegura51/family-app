@@ -55,7 +55,7 @@ describe('Cocina: menú semanal', () => {
     expect(cocina).toContain('aria-label="Semana siguiente"')
     expect(cocina).toContain('Volver a hoy')
     expect(cocina).toContain("next.set('desde', toDateStr(base))")
-    expect(cocina).toContain('useEffect(reload, [dates])')
+    expect(cocina).toContain('}, [dates])')
   })
 
   it('pinta también el tipo «snack» (ya no se filtra)', () => {

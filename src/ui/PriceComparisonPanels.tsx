@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { clearFamilyDecision, listFamilyDecisions, loadSharedEquivalences, setFamilyDecision } from '@/data/productEquivalences'
-import { listAllProductPrices, listProducts } from '@/data/products'
+import { assignToCommon, createCommonProduct, listCommonProductsData, type CommonProductsData } from '@/data/commonProducts'
+import { listAllProductPrices, listProducts, setPriceLinePack } from '@/data/products'
 import { errorMessage } from '@/domain/errorMessage'
 import { productSignature } from '@/domain/productIdentity'
+import { describePack, type PackFormat } from '@/domain/packFormat'
+import { toCmpPrice, toCmpProduct } from '@/domain/priceComparisonAdapters'
+import { applyPick, CommonPickerSheet } from '@/ui/CompareScreen'
+import { PackEditor } from '@/ui/PackFormatsPanel'
 import {
+  buildCompactComparisons,
   compareShoppingList,
   equivalentGroup,
   productPriceView,
   relationBetween,
-  type CmpPrice,
   type CmpProduct,
+  type CompactComparison,
   type DecisionRelation,
   type FamilyDecision,
   type GroupScope,
+  type RelationContext,
+  NO_STORE,
   type SharedEquivalence,
 } from '@/domain/priceComparison'
-import { basisLabel } from '@/domain/productSize'
+import { basisLabel, normalizePrice } from '@/domain/productSize'
 import type { Product, ProductPrice, ShoppingItem } from '@/domain/types'
 
 // Comparador inteligente de precios (Compras): ficha del producto y lista de la compra.
@@ -28,17 +36,13 @@ const shortDate = (d: string) => {
   return `${day}/${m}/${y}`
 }
 
-export function toCmpProduct(p: Product): CmpProduct {
-  return { id: p.id, displayName: p.displayName, brand: p.brand, classKey: p.classConfirmedAt ? p.category : null }
-}
-export function toCmpPrice(p: ProductPrice): CmpPrice {
-  return { productId: p.productId, price: p.price, store: p.store, unit: p.unit, recordedDate: p.recordedDate }
-}
+export { toCmpPrice, toCmpProduct }
 
 /** Decisiones de la familia + equivalencias compartidas para un conjunto de productos (con recarga tras corregir). */
 function useEquivalenceContext(products: readonly CmpProduct[], focusName?: string) {
   const [decisions, setDecisions] = useState<FamilyDecision[]>([])
   const [shared, setShared] = useState<SharedEquivalence[]>([])
+  const [commonsData, setCommonsData] = useState<CommonProductsData>({ commons: [], members: [], skipped: [], available: false })
   const [version, setVersion] = useState(0)
 
   const names = useMemo(() => {
@@ -54,6 +58,8 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
     let cancelled = false
     listFamilyDecisions().then((d) => !cancelled && setDecisions(d))
     loadSharedEquivalences(names).then((s) => !cancelled && setShared(s))
+    // Los productos comunes de la familia también cuentan: dos artículos del mismo grupo son comparables.
+    listCommonProductsData().then((c) => !cancelled && setCommonsData(c))
     return () => {
       cancelled = true
     }
@@ -62,18 +68,21 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
   }, [namesKey, version])
 
   const reload = useCallback(() => setVersion((v) => v + 1), [])
-  return { ctx: { decisions, shared }, reload }
+  const ctx = useMemo<RelationContext>(() => ({ decisions, shared, commonOf: new Map(commonsData.members.map((m) => [m.productId, m.commonId])) }), [decisions, shared, commonsData])
+  return { ctx, reload, commonsData }
 }
 
 // ─── Ficha del producto ───
 
-export function ProductPriceComparison({ productId, products, prices }: { productId: string; products: readonly Product[]; prices: readonly ProductPrice[] }) {
+export function ProductPriceComparison({ productId, products, prices, onPackSaved }: { productId: string; products: readonly Product[]; prices: readonly ProductPrice[]; onPackSaved?: () => void }) {
   const cmpProducts = useMemo(() => products.map(toCmpProduct), [products])
   const target = cmpProducts.find((p) => p.id === productId)
-  const { ctx, reload } = useEquivalenceContext(cmpProducts, target?.displayName)
+  const { ctx, reload, commonsData } = useEquivalenceContext(cmpProducts, target?.displayName)
+  const [pickingCommon, setPickingCommon] = useState(false)
   const [scope, setScope] = useState<GroupScope>('equivalent')
   const [openStore, setOpenStore] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fixingPrice, setFixingPrice] = useState<string | null>(null)
 
   const group = useMemo(() => (target ? equivalentGroup(target, cmpProducts, ctx, scope) : { members: [], suggestions: [] }), [target, cmpProducts, ctx, scope])
   const memberIds = useMemo(() => new Set(group.members.map((m) => m.product.id)), [group])
@@ -82,6 +91,17 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
     [group, prices, memberIds],
   )
   if (!target) return null
+
+  async function savePack(priceId: string, pack: PackFormat) {
+    setError(null)
+    try {
+      await setPriceLinePack(priceId, pack)
+      setFixingPrice(null)
+      onPackSaved?.()
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el formato'))
+    }
+  }
 
   async function decide(otherId: string, relation: DecisionRelation | null) {
     setError(null)
@@ -95,6 +115,15 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
   }
 
   const others = group.members.filter((m) => m.product.id !== productId)
+  const nameOfMember = new Map(group.members.map((m) => [m.product.id, m.product.displayName]))
+  const memberPrices = prices.filter((p) => memberIds.has(p.productId))
+  const unformatted = memberPrices
+    .filter((p) => normalizePrice(toCmpPrice(p), nameOfMember.get(p.productId) ?? '').exact === false)
+    .sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
+    .slice(0, 5)
+  const formatted = memberPrices.filter((p) => p.pack != null)
+  const myCommonId = commonsData.members.find((m) => m.productId === productId)?.commonId
+  const commonName = commonsData.commons.find((c) => c.id === myCommonId)?.name ?? null
   const hasAnyPrices = prices.some((p) => memberIds.has(p.productId))
   if (!hasAnyPrices && group.suggestions.length === 0) return null
 
@@ -103,6 +132,14 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
       <h3 className="section-title" style={{ margin: '0 0 6px' }}>
         Precio por tienda
       </h3>
+      {commonsData.available && (
+        <p className="muted" data-help-id="shopping.product-common" style={{ margin: '0 0 6px', fontSize: 13 }}>
+          Producto común: <strong>{commonName ?? 'ninguno'}</strong>{' '}
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} onClick={() => setPickingCommon(true)}>
+            {commonName ? 'Cambiar' : 'Agrupar'}
+          </button>
+        </p>
+      )}
       <div className="chip-row" role="group" aria-label="Qué productos comparar" data-help-id="shopping.price-scope">
         <button type="button" className={scope === 'identical' ? 'chip chip-active' : 'chip'} aria-pressed={scope === 'identical'} onClick={() => setScope('identical')}>
           Solo el mismo
@@ -145,6 +182,33 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
       ))}
       {view.rows.length > 0 && view.cheapestStore == null && <p className="muted">Solo hay precios de una tienda: todavía no se puede comparar.</p>}
       {view.note && view.rows.length > 0 && <p className="muted">{view.note}</p>}
+      {unformatted.length > 0 && (
+        <div data-help-id="shopping.price-unformatted">
+          <p className="muted" style={{ margin: '8px 0 2px' }}>
+            Compras sin formato conocido (no se pueden comparar). Si sabes cuánto contenía el envase, indícalo y se incluirá:
+          </p>
+          {unformatted.map((p) => (
+            <div key={p.id} className="receipt-line-card">
+              <span>
+                {shortDate(p.recordedDate)} · {p.store ?? NO_STORE} · {eur(p.price)}
+              </span>{' '}
+              {fixingPrice === p.id ? (
+                <PackEditor price={p.price} onSave={(pack) => void savePack(p.id, pack)} onCancel={() => setFixingPrice(null)} />
+              ) : (
+                <button type="button" className="link-button" onClick={() => setFixingPrice(p.id)}>
+                  Indicar formato
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {formatted.length > 0 && (
+        <p className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+          Formato guardado en {formatted.length} {formatted.length === 1 ? 'compra' : 'compras'}: {describePack(formatted[0].pack as PackFormat)}
+          {formatted.length > 1 ? ' y otros' : ''}.
+        </p>
+      )}
       <p className="muted" style={{ fontSize: 12 }}>
         Son precios que habéis pagado vosotros, no ofertas de hoy.
       </p>
@@ -184,6 +248,19 @@ export function ProductPriceComparison({ productId, products, prices }: { produc
         </div>
       )}
       {error && <p className="error">{error}</p>}
+      {pickingCommon && (
+        <CommonPickerSheet
+          article={products.find((p) => p.id === productId) ?? products[0]}
+          data={{ products: [...products], prices: [...prices], commons: commonsData.commons, members: commonsData.members, skipped: commonsData.skipped, decisions: ctx.decisions ? [...ctx.decisions] : [], shared: ctx.shared ? [...ctx.shared] : [], available: true }}
+          onClose={() => setPickingCommon(false)}
+          onPick={(r) => {
+            setPickingCommon(false)
+            void applyPick({ id: productId }, r, commonsData, { assign: assignToCommon, createCommon: createCommonProduct })
+              .then(reload)
+              .catch((err) => setError(errorMessage(err, 'No se pudo cambiar el producto común')))
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -269,6 +346,34 @@ export function ListPriceComparison({ items }: { items: readonly ShoppingItem[] 
         </div>
       )}
     </div>
+  )
+}
+
+// ─── Comparación compacta en el listado y vista general de diferencias (COMP-2) ───
+
+const dayMonth = (d: string) => {
+  const [, m, day] = d.split('-')
+  return `${day}/${m}`
+}
+
+/** La comparación compacta de todos los productos con compras, calculada una vez (reutiliza las mismas equivalencias y reglas que la ficha del producto). */
+export function useCompactComparisons(products: readonly Product[], prices: readonly ProductPrice[]): ReadonlyMap<string, CompactComparison> {
+  const cmpProducts = useMemo(() => products.map(toCmpProduct), [products])
+  const { ctx } = useEquivalenceContext(cmpProducts)
+  return useMemo(() => buildCompactComparisons(cmpProducts, prices.map(toCmpPrice), ctx), [cmpProducts, prices, ctx])
+}
+
+/** Dos líneas cortas bajo el nombre del producto: dónde fue la última compra y dónde habéis pagado menos. Precios históricos, no ofertas. */
+export function CompactPriceLine({ cmp }: { cmp: CompactComparison }) {
+  const unit = basisLabel(cmp.basis).replace('€', '')
+  return (
+    <span className="muted" style={{ display: 'block', fontSize: 12, lineHeight: 1.3, whiteSpace: 'normal' }} data-help-id="shopping.price-compact">
+      {cmp.last.store} · última compra ({dayMonth(cmp.last.date)})
+      <br />
+      {cmp.best && cmp.pctLess != null
+        ? `${cmp.best.store}: ${eur(cmp.best.value)}${unit} — ${cmp.pctLess} % menos (${dayMonth(cmp.best.date)})`
+        : 'Lo más barato que habéis pagado'}
+    </span>
   )
 }
 

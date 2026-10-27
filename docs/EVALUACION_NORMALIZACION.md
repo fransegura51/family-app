@@ -59,5 +59,5 @@ Lectura honesta: la segunda columna después de los ajustes **ya no es ciega**. 
 - El catálogo no aprende de las correcciones de las familias; el aprendizaje compartido sigue siendo por texto y clase. Aprender identidades compartidas (producto, no solo clase) sería un paso posterior.
 - Lo que el catálogo no reconoce queda «sin clasificar» o con la regla por palabras anterior; nunca se inventa.
 - «MEJILLONES NATURAL», «LASAÑA» a secas y otros nombres ambiguos se resuelven con una decisión explícita del catálogo (y se pueden corregir a mano).
-- Las tres clases nuevas (Alimentación infantil, Platos preparados, Higiene y cuidado del bebé) necesitan la migración 0334; hasta aplicarla esos productos siguen como antes en las familias existentes.
+- Las tres clases nuevas (Alimentación infantil, Platos preparados, Higiene y cuidado del bebé) vienen de la migración 0334, aplicada en producción el 27/10/2026 (las familias nuevas las reciben al crearse).
 - La lectura de envases con IA y la validación en móvil siguen pendientes de las pruebas reales de la persona responsable.

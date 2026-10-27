@@ -1219,7 +1219,7 @@ Encargo del usuario (2026-10-27), Fase 2. Reglas que NO cambian: Comunidad solo 
 
 ## Catálogo maestro de productos y normalización inteligente (NORM-1, 27/10/2026)
 
-Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estado: código implementado y probado en la rama principal; migración `0334_catalog_master_classes.sql` PREPARADA y NO APLICADA (el conector de Supabase de esta sesión dejó de ver el proyecto `family-app`: «sin permiso»); prueba limpia con una familia real PENDIENTE. Sin Aprobar.**
+Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estado: código implementado y probado en la rama principal; migración `0334_catalog_master_classes.sql` APLICADA en producción el 27/10/2026 (verificada: 3 clases aprobadas, +18 filas en 6 familias, ninguna renombrada ni otra tabla tocada); criterio «PEPA no adivina» CONFIRMADO por la persona responsable (Desatascador, Papel de cocina, Servilletas y Tortitas integrales se clasifican con las categorías existentes); prueba limpia con una familia real PENDIENTE. Sin Aprobar.**
 
 **Registro consultado antes de implementar.** Se respetan: CAT-1 (clasificador común y aprendizaje compartido: no se sustituyen ni se crea otro), COMP-1 (distinguir idéntico / equivalente / distinto sin inventar coincidencias), COMP-4 (las agrupaciones de PEPA salen «pendientes de revisar» y nunca se tocan los grupos confirmados), CLASIF-1 y el resto de Compras. **Decisión anterior que este encargo cambia, conscientemente y que necesita tu confirmación:** la corrección «PEPA NO ADIVINA» dejaba `Desatascador`, `Tortitas integrales`, `Papel de cocina` y `Servilletas` como «Sin clasificar» porque solo había una palabra suelta; ahora el catálogo maestro (una lista curada) los reconoce (Limpieza del hogar, Snacks y dulces) y esos cuatro casos del test se actualizaron. Lo que ni el catálogo ni las reglas reconocen sigue «Sin clasificar» (`Xilofón azul`, `PARKING`…).
 
@@ -1235,7 +1235,7 @@ Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estad
 |---|---|---|---|
 | NORM-1a | Auditoría previa de CAT-1, productos comunes, formatos, equivalencias y aprendizaje compartido | **Hecha** | Reutiliza `resolveProductClass`, `catalog_food_types`, `common_products`, `product_prices.pack_*`, `productIdentity`, `autoGrouping`; ninguna tabla ni clasificador paralelos |
 | NORM-1b | Catálogo maestro compartido, ampliable sin cambiar la estructura | **Implementado y probado** | `catalogIntegrity.test.ts` (claves únicas, todas las clases con entradas, ningún alias se «come» una variante o una marca, sin alias duplicados) |
-| NORM-1c | Ampliar CAT-1 (Alimentación infantil y lo que de verdad falta) sin duplicar ni reclasificar | **Código y migración 0334 preparados; migración NO aplicada** | `catalogClasses.test.ts` (espejo de las migraciones, aditiva, idempotente, reversible); con la clase ausente la app sigue como antes |
+| NORM-1c | Ampliar CAT-1 (Alimentación infantil y lo que de verdad falta) sin duplicar ni reclasificar | **Implementado; migración 0334 APLICADA (27/10/2026)** | `catalogClasses.test.ts` (espejo de las migraciones, aditiva, idempotente, reversible); con la clase ausente la app sigue como antes |
 | NORM-1d | Normalizar el artículo: texto original intacto, producto, categoría, marca, formato, niveles seguro/probable/dudoso | **Implementado y probado** | `identify.test.ts` (los ejemplos del encargo, ingredientes ≠ platos, «zero», productos no equivalentes, confianza) |
 | NORM-1e | Un solo clasificador para Compras, Economía y Comparador; no clasificar dos veces | **Implementado y probado** | `productClass.test.ts` (cascada con el catálogo), `catalogGrouping.test.ts` |
 | NORM-1f | Formato sin inventar cantidades; datos originales separados de los interpretados | **Implementado y probado** | `identify.test.ts` («P-6» no supone 1 L), `productSize`; nada se escribe: el catálogo calcula al leer |
@@ -1246,7 +1246,7 @@ Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estad
 | NORM-1k | Sin cambios en tickets, importes, banco, permisos ni duplicados; migraciones seguras | **Verificado** | Solo lectura sobre datos; migración aditiva; conciliación y Banco sin tocar |
 | NORM-1l | Ayuda al día (AYUDA-01) | **Hecho** | `exp-compras-clasificar-productos` y la ficha `com-comparar-precios` actualizadas; inventario del Centro de Administración |
 
-**Pendiente (honesto).** (1) Aplicar la migración 0334 en producción (hace falta reconectar el acceso a Supabase). (2) Ejecutar la prueba limpia con una familia real y revisar la muestra. (3) Validar en móvil. (4) Confirmar el cambio de criterio de «PEPA no adivina» descrito arriba. (5) Decidir si se quiere aprendizaje compartido de identidades de producto (hoy solo de clase). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+**Pendiente (honesto).** (1) ~~Aplicar la migración 0334~~ hecha el 27/10/2026. (2) Ejecutar la prueba limpia con una familia real y revisar la muestra. (3) Validar en móvil. (4) ~~Confirmar el cambio de criterio de «PEPA no adivina»~~ confirmado el 27/10/2026. (5) Decidir si se quiere aprendizaje compartido de identidades de producto (hoy solo de clase). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---
 

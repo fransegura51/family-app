@@ -284,11 +284,14 @@ export function CreateCommonSheet({
 function OfferRow({
   offer,
   basis,
+  reliable = true,
   onChange,
   onSeparate,
 }: {
   offer: Offering
   basis: NonNullable<CommonResult['basis']>
+  /** false = por unidad pero sin contenido confirmado: no se marca la más económica. */
+  reliable?: boolean
   onChange: () => void
   onSeparate: () => void
 }) {
@@ -306,6 +309,7 @@ function OfferRow({
       </div>
       <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
         {offer.pack ? `${describePack(offer.pack)} · ` : ''}paquete {eur(offer.totalPrice)} · {shortDate(offer.date)}
+        {!reliable ? ' · contenido por unidad sin confirmar' : ''}
         {offer.cheapest ? ' · la más económica' : offer.diffPct != null && offer.diffPct > 0 ? ` · +${String(offer.diffPct).replace('.', ',')} %` : ''}
         {offer.sameAs.length > 0 ? ` · mismo producto que ${offer.sameAs[0]}` : ''}
       </p>
@@ -403,7 +407,7 @@ export function ResultsView({
             {open && (
               <div style={{ marginTop: 6 }}>
                 {r.offers.map((o) => (
-                  <OfferRow key={`${o.productId}|${o.store}|${o.date}|${o.pack ? describePack(o.pack) : ''}`} offer={o} basis={r.basis!} onChange={() => onPickGroup(o.productId)} onSeparate={() => void guard(() => separate(o.productId, r.common.id), 'No se pudo separar')} />
+                  <OfferRow key={`${o.productId}|${o.store}|${o.date}|${o.pack ? describePack(o.pack) : ''}`} offer={o} basis={r.basis!} reliable={r.reliable} onChange={() => onPickGroup(o.productId)} onSeparate={() => void guard(() => separate(o.productId, r.common.id), 'No se pudo separar')} />
                 ))}
                 {r.offers.length > 0 && (
                   <p className="muted" style={{ margin: '2px 0 6px', fontSize: 12 }}>

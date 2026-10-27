@@ -8500,3 +8500,28 @@ details[open] > summary > .review-chevron {
   min-height: 36px;
   font-size: 16px;
 }
+
+/* Contraste de los buscadores y sus resultados: el estilo global de `button` es texto blanco sobre azul; las tarjetas-botón de fondo claro
+   (resultados del selector «¿Con qué se compara?», líneas de ticket tocables) y los campos de búsqueda fijan su propio color legible. */
+button.receipt-line-card {
+  color: var(--text);
+  background: #f4f6fb;
+  font-size: 15px;
+  font-weight: 500;
+  border-color: #d5dbea;
+  -webkit-text-fill-color: var(--text);
+}
+
+button.receipt-line-card strong {
+  font-weight: 700;
+}
+
+button.receipt-line-card .muted {
+  color: #4b5563;
+  -webkit-text-fill-color: #4b5563;
+}
+
+input[type='search'] {
+  color: var(--text);
+  background-color: #fff;
+}

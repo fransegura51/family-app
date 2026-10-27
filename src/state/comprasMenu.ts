@@ -28,8 +28,8 @@ export interface ComprasMenuGroup {
 export const COMPRAS_MENU_ITEM_META: Record<FixedComprasMenuItemKey, { icon: string; label: string }> = {
   Inicio: { icon: '🏠', label: 'Inicio' },
   Lista: { icon: '🛒', label: 'Lista de la compra' },
-  Historial: { icon: '📈', label: 'Historial de precios' },
   Tickets: { icon: '🧾', label: 'Compras registradas' },
+  Historial: { icon: '📈', label: 'Historial de precios' },
   Comparar: { icon: '⚖️', label: 'Comparar precios' },
   'Estadística compras': { icon: '🍎', label: 'Estadística compras' },
 }
@@ -39,7 +39,7 @@ export function comprasMenuEntryMeta(entry: ComprasMenuEntry): { icon: string; l
   return { icon: entry.icon || '📌', label: entry.label || '(sin nombre)' }
 }
 
-const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras']
+const DEFAULT_KEYS: FixedComprasMenuItemKey[] = ['Inicio', 'Lista', 'Tickets', 'Historial', 'Comparar', 'Estadística compras']
 
 const KEY = 'familyapp:compras-menu-layout'
 
@@ -60,6 +60,17 @@ export function loadComprasMenuLayout(): ComprasMenuGroup[] {
     }))
     const known = new Set(groups.flatMap((g) => g.items.map((it) => it.key)))
     const missing = DEFAULT_KEYS.filter((k) => !known.has(k))
+    // Un menú guardado con el orden por defecto ANTERIOR (Historial antes de Compras registradas) pasa al nuevo; uno personalizado a propósito no se toca.
+    const flat = groups.flatMap((g) => g.items.map((it) => it.key)).join('|')
+    if (missing.length === 0 || missing.join('|') === 'Comparar') {
+      const OLD = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Estadística compras']
+      const OLD_WITH_COMPARE = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras']
+      if (flat === OLD.join('|') || flat === OLD_WITH_COMPARE.join('|') || (missing.join('|') === 'Comparar' && flat === OLD.join('|'))) {
+        const swapped = groups.map((g) => ({ ...g, items: g.items.map((it) => (it.key === 'Historial' ? { ...it, key: 'Tickets' as const } : it.key === 'Tickets' ? { ...it, key: 'Historial' as const } : it)) }))
+        if (missing.length === 0) return swapped
+        return swapped.map((g, i) => (i === 0 ? { ...g, items: [...g.items, ...missing.map((key) => ({ key }))] } : g))
+      }
+    }
     if (missing.length === 0) return groups
     return groups.map((g, i) => (i === 0 ? { ...g, items: [...g.items, ...missing.map((key) => ({ key }))] } : g))
   } catch {

@@ -175,6 +175,30 @@ describe('acceso discreto en cada línea del ticket', () => {
   })
 })
 
+describe('etiquetas del formulario y selector de fotos compartido', () => {
+  it('los tres controles llevan etiqueta visible', () => {
+    render(<PackEditor price={4.95} onSave={() => undefined} />)
+    expect(screen.getByText('N.º de envases')).toBeTruthy()
+    expect(screen.getByText('Cantidad por envase')).toBeTruthy()
+    expect(screen.getByText('Unidad de medida')).toBeTruthy()
+  })
+  it('«Fotografiar envase» abre el mismo selector que los tickets: cámara, galería y archivos', () => {
+    render(<PackEditor price={4.95} onSave={() => undefined} />)
+    fireEvent.click(screen.getByRole('button', { name: /Fotografiar envase/ }))
+    expect(screen.getByRole('button', { name: /Hacer foto/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Elegir de la galería/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Elegir archivo/ })).toBeTruthy()
+  })
+  it('con una foto espera a «Leer envase» (por si se añade la etiqueta); la cámara usa capture', () => {
+    const analyze = vi.fn(async () => ({ name: null, brand: null, count: null, amount: null, unit: null, presentation: null, ean: null, confidence: 'baja' as const, notes: null }))
+    render(<PackEditor price={4.95} analyze={analyze} onSave={() => undefined} />)
+    expect(screen.getByLabelText('Hacer foto del envase').getAttribute('capture')).toBe('environment')
+    fireEvent.change(screen.getByLabelText('Hacer foto del envase'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } })
+    expect(analyze).not.toHaveBeenCalled()
+    expect(screen.getByText(/1 foto lista/)).toBeTruthy()
+  })
+})
+
 describe('Fotografiar envase', () => {
   const reading = (o: Partial<PackPhotoReading> = {}): PackPhotoReading => ({ name: 'Cerveza Lager', brand: 'Estrella', count: 6, amount: 330, unit: 'ml', presentation: null, ean: '8410000000009', confidence: 'alta', notes: null, ...o })
   const choose = (analyze: (f: File[]) => Promise<PackPhotoReading>, onReading?: (r: PackPhotoReading) => void) => {
@@ -187,6 +211,7 @@ describe('Fotografiar envase', () => {
     const analyze = vi.fn(async () => reading())
     render(<PackEditor price={4.95} analyze={analyze} onSave={onSave} />)
     fireEvent.change(screen.getByLabelText('Fotos del envase'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Leer envase' })) // con una sola foto se espera por si se añade otra
     expect(await screen.findByText(/Detectado en «Cerveza Lager»: 6 × 330 ml\. Comprueba y pulsa «Guardar formato»/)).toBeTruthy()
     expect((screen.getByLabelText('Cantidad de cada envase') as HTMLInputElement).value).toBe('330')
     expect(onSave).not.toHaveBeenCalled()

@@ -266,6 +266,11 @@ export interface CommonResult {
   /** Con formato exacto, pero de otra magnitud (€/kg frente a €/l): no se mezcla. */
   otherUnit: Offering[]
   storeCount: number
+  /**
+   * false = las presentaciones se comparan solo por unidad (brick, lata…) pero NO se conoce lo que contiene cada una (el «P-6» del nombre dice 6 unidades, no cuántos litros):
+   * se enseñan, pero no se declara ninguna «más económica» hasta confirmar el formato.
+   */
+  reliable: boolean
   /** Días entre la compra más antigua y la más reciente de las comparadas. */
   spanDays: number
   note: string | null
@@ -308,7 +313,9 @@ export function commonResult(
   let basis: UnitPriceBasis | null = null
   for (const b of BASIS_PRIORITY) if ((counts.get(b) ?? 0) > (basis ? (counts.get(basis) ?? 0) : 0)) basis = b
   const offers = exact.filter((o) => o.normalized.basis === basis).sort((a, b) => a.normalized.value - b.normalized.value || b.date.localeCompare(a.date))
-  const best = offers[0]?.normalized.value ?? null
+  // Comparar por unidad solo es fiable si el contenido de cada unidad está confirmado (formato guardado). Un «P-6» o «x12» del nombre cuenta unidades, no litros ni kilos.
+  const reliable = !(basis === 'ud' && offers.some((o) => !o.pack))
+  const best = reliable ? (offers[0]?.normalized.value ?? null) : null
   for (const o of offers) {
     o.cheapest = best != null && o.normalized.value === best
     o.diffPct = best != null && best > 0 ? Math.round(((o.normalized.value - best) / best) * 1000) / 10 : null
@@ -331,7 +338,8 @@ export function commonResult(
   const storeCount = new Set(offers.map((o) => o.store.toLowerCase())).size
   const notes: string[] = []
   if (spanDays > WIDE_SPAN_DAYS) notes.push(`Las compras comparadas están separadas por ${Math.round(spanDays / 30)} meses: los precios pueden haber cambiado.`)
-  if (offers.length < 2) notes.push(offers.length === 0 ? 'Todavía no hay presentaciones con formato conocido para comparar.' : 'Solo hay una presentación con formato conocido: falta otra para comparar.')
+  if (!reliable) notes.push('Se compara por unidad (brick, lata…) y no se sabe cuánto contiene cada una: indica el formato de cada artículo para saber cuál sale más barata por litro o kilo. Mientras tanto no se marca ninguna como la más económica.')
+  else if (offers.length < 2) notes.push(offers.length === 0 ? 'Todavía no hay presentaciones con formato conocido para comparar.' : 'Solo hay una presentación con formato conocido: falta otra para comparar.')
   return {
     common,
     basis,
@@ -339,6 +347,7 @@ export function commonResult(
     unformatted: all.filter((o) => !o.normalized.exact).sort((a, b) => b.date.localeCompare(a.date)),
     otherUnit: exact.filter((o) => o.normalized.basis !== basis),
     storeCount,
+    reliable,
     spanDays,
     note: notes.length > 0 ? notes.join(' ') : null,
   }
@@ -346,7 +355,7 @@ export function commonResult(
 
 /** Lo más barato de un resultado, en una frase corta para la lista plegada. null si no hay con qué comparar. */
 export function resultHeadline(r: CommonResult): { store: string; value: number; basis: UnitPriceBasis; extraPct: number | null } | null {
-  if (r.offers.length < 2 || r.basis == null) return null
+  if (r.offers.length < 2 || r.basis == null || !r.reliable) return null
   const best = r.offers[0]
   const worst = r.offers[r.offers.length - 1]
   return { store: best.store, value: best.normalized.value, basis: r.basis, extraPct: worst.diffPct }

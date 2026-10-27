@@ -829,3 +829,32 @@ details.help-quick[open] > summary::after {
   gap: 2px;
   min-width: 0;
 }
+
+/* Contraste del buscador de Ayuda y de sus resultados (texto oscuro sobre fondo claro, también en iPhone y Android). */
+.help-ask-row input,
+.help-area-search {
+  color: var(--text, #1c1f26);
+  background-color: #fff;
+  -webkit-text-fill-color: var(--text, #1c1f26);
+}
+
+.help-ask-row input::placeholder,
+.help-area-search::placeholder {
+  color: #6b7280;
+  -webkit-text-fill-color: #6b7280;
+}
+
+.help-suggestion,
+.help-suggestion-title {
+  color: var(--text, #1c1f26);
+  -webkit-text-fill-color: var(--text, #1c1f26);
+}
+
+.help-suggestion-module {
+  color: #4b5563;
+  -webkit-text-fill-color: #4b5563;
+}
+
+.help-suggestion-tour .help-suggestion-title {
+  -webkit-text-fill-color: var(--help-primary, #3b5bdb);
+}

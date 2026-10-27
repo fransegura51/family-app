@@ -18,8 +18,8 @@ export function communityStateFrom(status: Pick<CommunityStatus, 'visible' | 'ac
   return status.access === 'none' ? 'no' : 'ok'
 }
 
-export function buildHelpContext(profile: Pick<Profile, 'role' | 'allowedSections'>, community: HelpCommunityState, platform: HelpPlatform = detectPlatform()): HelpContext {
-  return { role: profile.role, allowedSections: profile.allowedSections, platform, community }
+export function buildHelpContext(profile: Pick<Profile, 'role' | 'allowedSections'>, community: HelpCommunityState, platform: HelpPlatform = detectPlatform(), owner = false): HelpContext {
+  return { role: profile.role, allowedSections: profile.allowedSections, platform, community, owner }
 }
 
 // Módulo en el que está la persona según la ruta (para la ayuda contextual).

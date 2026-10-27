@@ -30,7 +30,7 @@ describe('catálogo de módulos', () => {
   })
   it('KNOWN_APP_ROUTES coincide con las rutas de App.tsx (sin pantallas que falten ni sobren)', () => {
     const routes = [...appSource.matchAll(/<Route path="(\/[^"]*)"/g)].map((m) => m[1].replace(/\/\*$/, ''))
-    const real = new Set(routes.filter((r) => !['/peso', '/admin-uso', '/administracion'].includes(r)))
+    const real = new Set(routes.filter((r) => !['/peso', '/admin-uso'].includes(r)))
     expect([...real].sort()).toEqual([...KNOWN_APP_ROUTES].sort())
   })
 })

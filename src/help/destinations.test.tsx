@@ -220,6 +220,7 @@ describe('auditoría de «Llévame»: cada destino de cada ficha existe en el c�
       familia: '/familia',
       calendario: '/calendario',
       config: '/menu-organizar',
+      admin: '/administracion',
     }
     for (const c of withDest) expect(prefixToPath[c.go!.dest!.split('.')[0]], c.id).toBe(c.go!.path)
   })

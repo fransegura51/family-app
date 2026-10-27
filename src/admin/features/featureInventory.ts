@@ -568,6 +568,21 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     tests: ['src/ui/community/communityAdminUi.test.ts', 'src/domain/communityAdmin.test.ts'],
     help: { module: 'comunidad', terms: ['denunciar'] },
   },
+  {
+    id: 'comunidad-editorial',
+    module: 'Comunidad',
+    name: 'Programa editorial semanal con IA y «Rectificar con Pepa»',
+    state: 'parcial',
+    works: 'Panel «Generación semanal» (Comunidad → Contenido oficial): interruptores independientes de artículos, encuesta y menú (en pausa por defecto), próxima y última ejecución, borradores de la semana, «Generar ahora» con confirmación, errores recientes e historial, y «Programa de la semana». «Rectificar con Pepa» propone una versión nueva de un artículo, encuesta o menú sin publicar, la compara con la anterior y se acepta o rechaza; cada aceptación crea una versión (restaurable) y nunca publica. Aprobar un artículo del programa lo programa para su día a las 10:00.',
+    missing: 'La función de servidor community-editorial (generación y rectificación con IA) aún no está desplegada; la publicación del menú aprobado a su hora está desactivada hasta que se active su control.',
+    limits: 'Nada se publica sin aprobación humana. El control «Publicar a su hora el menú ya aprobado» es independiente de la generación. Solo cuentas propietarias.',
+    verification: 'probada',
+    verificationNote: 'Pruebas de dominio, de datos (RPC y fetch simulados) y de interfaz; la IA real y el cron no se pueden verificar desde el código.',
+    reviewed: '2026-10-27',
+    evidence: ['src/ui/community/admin/EditorialPanel.tsx', 'src/ui/community/admin/RevisePanel.tsx', 'src/data/communityEditorial.ts', 'src/domain/communityEditorial.ts', 'supabase/migrations/0325_community_editorial_automation.sql'],
+    tests: ['src/ui/community/communityEditorialUi.test.tsx', 'src/data/communityEditorialData.test.ts', 'src/domain/communityEditorialAdmin.test.ts'],
+    help: { module: 'comunidad', terms: ['generacion semanal', 'rectificar con pepa'] },
+  },
 
   // ───────────────────────── Administración y sistema
   {

@@ -18,7 +18,7 @@ import migration0264 from '../../supabase/migrations/0264_community_core.sql?raw
 import migration0265 from '../../supabase/migrations/0265_community_content.sql?raw'
 import migration0270 from '../../supabase/migrations/0270_community_official.sql?raw'
 import migration0272 from '../../supabase/migrations/0272_community_public_read.sql?raw'
-import migration0273 from '../../supabase/migrations/0273_community_maintenance.sql?raw'
+import migration0325 from '../../supabase/migrations/0325_community_editorial_automation.sql?raw'
 import migration0275Raw from '../../supabase/migrations/0275_community_cron_functions.sql?raw'
 import rollback0275 from '../../supabase/rollbacks/0275_community_cron_functions_down.sql?raw'
 import { COMMUNITY_AI_PURPOSES } from '../../supabase/functions/_shared/communityAi'
@@ -47,8 +47,8 @@ describe('nada llama a ai_gate (que es por familia)', () => {
     expect(c).toContain('community_service_ai_allowed')
     expect(c).toContain('community_service_record_ai')
   })
-  it('los propósitos de IA coinciden con el CHECK de la tabla de uso (0273)', () => {
-    const m = /purpose text not null check \(purpose in \(([^)]*)\)\)/.exec(migration0273)!
+  it('los propósitos de IA coinciden con el CHECK vigente de la tabla de uso (0273, ampliado en 0325)', () => {
+    const m = /community_ai_usage_purpose_check\s+check \(purpose in \(([^)]*)\)\)/.exec(migration0325)!
     const inDb = [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]).sort()
     expect([...COMMUNITY_AI_PURPOSES].sort()).toEqual(inDb)
   })

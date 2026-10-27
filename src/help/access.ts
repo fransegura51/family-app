@@ -25,6 +25,8 @@ export interface HelpContext {
   allowedSections: string[] | null
   platform: HelpPlatform
   community: HelpCommunityState
+  /** Esta cuenta administra PEPA (se sabe de hace poco; si no se sabe, false). */
+  owner?: boolean
 }
 
 export const RESTRICTED_FAMILY_ADMIN = 'Esto solo lo puede hacer la administración de tu familia en PEPA. Pídeselo a quien la administre.'
@@ -46,6 +48,7 @@ export function ruleResult(rule: HelpAccessRule | undefined, ctx: HelpContext): 
   if (!rule) return { status: 'allowed' }
   if (rule.platforms && !rule.platforms.includes(ctx.platform)) return { status: 'hidden' }
   if (rule.community && ctx.community !== 'ok') return { status: 'hidden' }
+  if (rule.ownerOnly && !ctx.owner) return { status: 'hidden' }
   if (rule.familyAdmin && ctx.role !== 'admin') return { status: 'restricted', reason: RESTRICTED_FAMILY_ADMIN }
   if (rule.adultsOnly && (ctx.role === 'child' || ctx.role === 'guest')) return { status: 'restricted', reason: RESTRICTED_ADULTS }
   return { status: 'allowed' }

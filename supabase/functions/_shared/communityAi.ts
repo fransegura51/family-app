@@ -14,10 +14,10 @@ import { type ServiceClient, asRows } from './communityServer.ts'
 // Regla de oro (igual que en la capa central): el control nunca rompe la conversación. Si la IA falla o el tope está alcanzado, quien llama recibe un
 // resultado «no ok» y sigue sin ella; nada se lanza hacia fuera.
 
-export type CommunityAiPurpose = 'summary' | 'pepa_answer' | 'pepa_mention' | 'proposals'
+export type CommunityAiPurpose = 'summary' | 'pepa_answer' | 'pepa_mention' | 'proposals' | 'editorial_article' | 'editorial_poll' | 'editorial_menu' | 'editorial_revise'
 
-// Los mismos valores que admite el CHECK de la tabla community_ai_usage (migración 0273).
-export const COMMUNITY_AI_PURPOSES: readonly CommunityAiPurpose[] = ['summary', 'pepa_answer', 'pepa_mention', 'proposals']
+// Los mismos valores que admite el CHECK de la tabla community_ai_usage (migraciones 0273 y 0325).
+export const COMMUNITY_AI_PURPOSES: readonly CommunityAiPurpose[] = ['summary', 'pepa_answer', 'pepa_mention', 'proposals', 'editorial_article', 'editorial_poll', 'editorial_menu', 'editorial_revise']
 
 // Valores de siempre por si la tabla de ajustes no respondiera (los mismos que usa la capa central).
 export const DEFAULT_AI_PROVIDER = 'gemini'

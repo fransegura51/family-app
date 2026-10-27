@@ -80,7 +80,7 @@ export const ADMIN_TEXT = {
   menuAutopublishOff: 'La publicación automática está DESACTIVADA hasta que se valide',
   menuAutopublishOn: 'La publicación automática está ACTIVADA: cada sábado a las 10:00 (hora peninsular) sale el menú aprobado para la semana siguiente',
   menuAutopublishHelp:
-    'Un menú aprobado no se publica al momento: se programa para el próximo sábado a las 10:00 y cubre la semana siguiente (de lunes a domingo). Solo hay un menú por semana. Si el sábado no hay un menú aprobado, no se publica nada y se avisa a la administración. El interruptor no se cambia desde aquí: es un ajuste técnico.',
+    'Un menú aprobado no se publica al momento: se programa para el próximo sábado a las 10:00 y cubre la semana siguiente (de lunes a domingo). Solo hay un menú por semana. Si el sábado no hay un menú aprobado, no se publica nada y se avisa a la administración. Se cambia en «Generación semanal» (Contenido oficial).',
 } as const
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
@@ -825,6 +825,8 @@ export interface ProposalPayload {
   sources: ArticleSource[]
   methodology: string
   comparison: string
+  // true = artículo práctico del programa semanal (sin datos externos): se puede aprobar sin fuentes (siempre con revisión humana).
+  editorial: boolean
   raw: Record<string, unknown>
 }
 
@@ -835,6 +837,7 @@ export function toProposalPayload(raw: unknown): ProposalPayload {
     sources: rows(r.sources).map((s) => ({ title: str(s.title), publisher: str(s.publisher), url: str(s.url), date: str(s.date) })),
     methodology: str(r.methodology),
     comparison: str(r.comparison),
+    editorial: r.editorial === true,
     raw: r,
   }
 }
@@ -862,6 +865,11 @@ export interface Proposal {
   publishAttempts: number
   publishError: string | null
   menuTextStale: boolean
+  // Programa semanal: día del hueco (null = creado a mano), si lo generó Pepa, quién lo propuso y el nivel de prioridad del tema (1-4).
+  slotDate: string | null
+  generated: boolean
+  proposedBy: string | null
+  tier: number | null
 }
 
 const asKind = (v: unknown): ProposalKind => (v === 'poll' || v === 'article' || v === 'menu' ? v : 'tip')
@@ -892,6 +900,10 @@ export function toProposals(raw: unknown): Proposal[] {
       publishAttempts: num(r.publishAttempts),
       publishError: strOrNull(r.publishError),
       menuTextStale: bool(r.menuTextStale),
+      slotDate: strOrNull(r.slotDate),
+      generated: bool(r.generated),
+      proposedBy: strOrNull(r.proposedBy),
+      tier: typeof r.tier === 'number' ? r.tier : null,
     }))
 }
 
@@ -982,6 +994,8 @@ export function approveResultText(kind: ProposalKind, result: unknown): string {
     return 'Encuesta aprobada y publicada ahora: ya está abierta a votos.'
   }
   if (kind === 'menu') return menuApproveText(result)
+  // Artículo del programa semanal: aprobar lo PROGRAMA (no lo publica al momento).
+  if (kind === 'article' && bool(r.scheduled) && toDate(r.publishAt)) return `Aprobado: se publicará el ${formatMadrid(r.publishAt, 'full')} (hora peninsular).`
   return kind === 'article' ? 'Artículo aprobado y publicado.' : 'Consejo aprobado y publicado.'
 }
 

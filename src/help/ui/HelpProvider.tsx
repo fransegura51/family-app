@@ -126,7 +126,7 @@ export function HelpProvider({ profile, children }: { profile: Pick<Profile, 'ro
 
   usePrefChange(HELP_VOICE_KEY, () => setVoiceModeState(getHelpVoiceMode()))
 
-  const ctx = useMemo(() => buildHelpContext(profile, community), [profile, community])
+  const ctx = useMemo(() => buildHelpContext(profile, community, undefined, peekAppOwner(profile.id)), [profile, community])
   const ctxRef = useRef(ctx)
   ctxRef.current = ctx
 

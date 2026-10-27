@@ -40,6 +40,8 @@ export interface HelpAccessRule {
   adultsOnly?: boolean
   /** Es de Comunidad: solo con cuenta, 18 años cumplidos y Comunidad abierta para esa cuenta. Si no, la ficha NO se muestra. */
   community?: boolean
+  /** Solo la administración de PEPA (cuenta propietaria): para las demás personas la ficha o el recorrido ni aparecen. */
+  ownerOnly?: boolean
   /** Solo en estas plataformas (app nativa o web). */
   platforms?: HelpPlatform[]
 }

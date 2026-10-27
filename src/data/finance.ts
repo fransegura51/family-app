@@ -1,6 +1,7 @@
 import { fetchAllRows } from '@/data/paginate'
 import { supabase } from '@/data/supabaseClient'
 import { compressImageFile } from '@/domain/imageCompression'
+import type { ClassShare } from '@/domain/classShares'
 import type { TagShare } from '@/domain/tagShares'
 import type {
   Budget,
@@ -234,6 +235,30 @@ export async function listTagSharesSafe(): Promise<Map<string, TagShare[]>> {
 /** Fija las etiquetas de un movimiento: [] = sin etiqueta, una = etiqueta única, varias = reparto (la suma debe ser el importe). */
 export async function setExpenseTags(expenseId: string, shares: readonly TagShare[]): Promise<void> {
   const { error } = await supabase.rpc('set_expense_tags', { p_expense: expenseId, p_shares: shares.map((x) => ({ tag_id: x.tagId, amount: x.amount })) })
+  if (error) throw error
+}
+
+/** Reparto de gastos entre clasificaciones de Compras (0332). Si la tabla aún no existe o falla, es «sin repartos»: los gastos funcionan como siempre. */
+export async function listClassSharesSafe(): Promise<Map<string, ClassShare[]>> {
+  try {
+    const rows = await fetchAllRows<{ expense_id: string; class_name: string; amount: number | string; position: number }>((from, to) =>
+      supabase.from('expense_class_shares').select('expense_id, class_name, amount, position').order('expense_id').order('position').range(from, to),
+    )
+    const map = new Map<string, ClassShare[]>()
+    for (const r of rows) {
+      const list = map.get(r.expense_id) ?? []
+      list.push({ className: r.class_name, amount: Number(r.amount) })
+      map.set(r.expense_id, list)
+    }
+    return map
+  } catch {
+    return new Map()
+  }
+}
+
+/** Fija las clasificaciones de un gasto: [] = sin clasificación, una = clasificación única, varias = reparto (la suma debe ser el importe). */
+export async function setExpenseClasses(expenseId: string, shares: readonly ClassShare[]): Promise<void> {
+  const { error } = await supabase.rpc('set_expense_classes', { p_expense: expenseId, p_shares: shares.map((x) => ({ class_name: x.className, amount: x.amount })) })
   if (error) throw error
 }
 

@@ -1,11 +1,14 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
-import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, toggleSplitTag, totalsByTag, type SharesByExpense, type SplitMode, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, tagAmount, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   addExpense,
+  listClassSharesSafe,
   listTagSharesSafe,
+  setExpenseClasses,
   setExpenseTags,
   addTaxFundExpense,
   addWalletTransaction,
@@ -182,7 +185,7 @@ import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ti
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setPriceLinePack, setProductEan, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
-import { autoAssignToCommons } from '@/data/commonProducts'
+import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
 import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
@@ -411,6 +414,8 @@ export interface MovementsFilter {
   // única forma de reproducir EXACTAMENTE el mismo conjunto que
   // produjo la cifra es la lista de ids que ya se calculó para ella.
   expenseIds?: string[]
+  /** Lo que cada movimiento aporta a la estadística desde la que se llegó (p. ej. una clasificación repartida): la lista enseña esa parte además del importe completo. */
+  imputed?: { label: string; byExpense: Record<string, number> }
   // Solo gastos reales SIN categoría (category NULL, «Pendiente de clasificar»). Filtro lógico: no es una categoría ni se busca en
   // budget_categories. Sin fechas: un pendiente sigue pendiente aunque pase el mes.
   pendingOnly?: boolean
@@ -1551,6 +1556,7 @@ export function BankTab({
   focusAccountId?: string | null
 } = {}) {
   const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -1650,9 +1656,11 @@ export function BankTab({
       getFinanceMonthStartDay(),
       listFamilyMembers(),
       listTagSharesSafe(),
+      listClassSharesSafe(),
     ])
-      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m, shares]) => {
+      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m, shares, clsShares]) => {
         setTagShares(shares)
+        setClassShares(clsShares)
         setConnections(c)
         setAccounts(a)
         setCategories(cats)
@@ -1900,6 +1908,7 @@ export function BankTab({
                   categories={categories}
                   tags={tags}
                   tagShares={tagShares.get(e.id)}
+                  classShares={classShares.get(e.id)}
                   onDone={() => {
                     setEditingId(null)
                     reload()
@@ -3498,6 +3507,7 @@ export function ExpensesTab({
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -3575,9 +3585,11 @@ export function ExpensesTab({
       listWalletsSafe(),
       listAllMovementsSafe(),
       listTagSharesSafe(),
+      listClassSharesSafe(),
     ])
-      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares]) => {
+      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares, clsShares]) => {
         setTagShares(shares)
+        setClassShares(clsShares)
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -3745,6 +3757,26 @@ export function ExpensesTab({
         .reduce((sum, e) => sum + e.amount, 0),
     [accountFilteredExpenses, categories],
   )
+
+  // Importe IMPUTADO (COR-03): al llegar desde una estadística filtrada por una etiqueta (o por una clasificación repartida), lo que esa estadística suma de cada
+  // movimiento es SU parte, no el importe completo. El movimiento se sigue contando UNA vez y con su importe real; aquí solo se calcula la parte para enseñarla.
+  const imputed = useMemo(() => {
+    if (!filter) return null
+    if (filter.imputed) return { label: filter.imputed.label, byExpense: new Map(Object.entries(filter.imputed.byExpense)) }
+    if (filter.tagId !== undefined) {
+      const tagId = filter.tagId
+      const label = tagId === NO_TAG ? 'Sin etiqueta' : (tags.find((t) => t.id === tagId)?.name ?? 'esta etiqueta')
+      return { label, byExpense: new Map(expenses.map((e) => [e.id, tagAmount(e, tagShares, tagId)] as const)) }
+    }
+    return null
+  }, [filter, expenses, tags, tagShares])
+  const imputedTotal = useMemo(() => {
+    if (!imputed) return null
+    const cents = accountFilteredExpenses
+      .filter((e) => isRealSpending(e, categories))
+      .reduce((sum, e) => sum + Math.round((imputed.byExpense.get(e.id) ?? 0) * 100), 0)
+    return cents / 100
+  }, [imputed, accountFilteredExpenses, categories])
 
   // Petición real: "gráficos de estadísticas, total ingresos" — un
   // ingreso (nómina, paga extra...) es el mismo movimiento, solo
@@ -3932,9 +3964,14 @@ export function ExpensesTab({
       )}
 
       <p className="points-badge" data-help-id="finance.movements-total">
-        {monthTotal.toFixed(2)} € gastados
+        {imputed && imputedTotal != null ? `${imputedTotal.toFixed(2)} € imputados a ${imputed.label}` : `${monthTotal.toFixed(2)} € gastados`}
         {monthIncome > 0 && ` · +${monthIncome.toFixed(2)} € ingresados`}
       </p>
+      {imputed && imputedTotal != null && Math.abs(imputedTotal - monthTotal) >= 0.005 && (
+        <p className="muted" style={{ fontSize: 12, margin: '2px 0 4px' }} data-help-id="finance.movements-total-full">
+          Importe completo de estos movimientos: {monthTotal.toFixed(2)} €
+        </p>
+      )}
 
       {/* Petición real: "pondría en algún lugar bien visible que la
           clasificación de productos y movimientos bancarios son
@@ -3997,6 +4034,7 @@ export function ExpensesTab({
               categories={categories}
               tags={tags}
               tagShares={tagShares.get(e.id)}
+              classShares={classShares.get(e.id)}
               onDone={() => {
                 setEditingId(null)
                 reload()
@@ -4010,6 +4048,7 @@ export function ExpensesTab({
               key={e.id}
               expense={e}
               tagShares={rowTagShares(e, tagShares, tags)}
+              imputed={imputedForRow(imputed, e)}
               category={categories.find((c) => c.name === e.category)}
               tag={tags.find((t) => t.id === e.tagId)}
               ownerMember={ownerMemberForExpense(e.id)}
@@ -4179,10 +4218,27 @@ function movementRowColor(
 }
 
 /** Reparto de un movimiento entre varias etiquetas, listo para enseñar en su fila; undefined si lleva una sola (o ninguna). */
+// Parte del movimiento que corresponde a lo filtrado, solo si difiere del importe completo (si es todo, no se repite).
+function imputedForRow(imputed: { label: string; byExpense: ReadonlyMap<string, number> } | null, e: Expense): { label: string; amount: number } | undefined {
+  if (!imputed) return undefined
+  const amount = imputed.byExpense.get(e.id)
+  if (amount == null || Math.abs(amount - e.amount) < 0.005) return undefined
+  return { label: imputed.label, amount }
+}
+
 function rowTagShares(e: Expense, byExpense: SharesByExpense, tags: Tag[]): { tag: Tag | undefined; amount: number }[] | undefined {
   const list = byExpense.get(e.id)
   if (!list || list.length < 2) return undefined
   return sharesOf(e, byExpense).map((x) => ({ tag: tags.find((t) => t.id === x.tagId), amount: x.amount }))
+}
+
+// Solape vertical entre puntos (px) para que N puntos de 11 px quepan en el alto habitual de una fila (~34 px) sin agrandarla: hasta 3 no se tocan.
+const DOT_SIZE_PX = 11
+const DOTS_MAX_HEIGHT_PX = 34
+function overlapPx(count: number): number {
+  if (count <= 1) return 0
+  const step = Math.min(DOT_SIZE_PX, Math.floor((DOTS_MAX_HEIGHT_PX - DOT_SIZE_PX) / (count - 1)))
+  return DOT_SIZE_PX - Math.max(2, step)
 }
 
 function MovementRow({
@@ -4190,6 +4246,7 @@ function MovementRow({
   category,
   tag,
   tagShares,
+  imputed,
   onClick,
   extraAction,
   ownerMember,
@@ -4200,6 +4257,8 @@ function MovementRow({
   tag: Tag | undefined
   /** Reparto entre varias etiquetas (2 o más): se enseña cada una con su parte. */
   tagShares?: { tag: Tag | undefined; amount: number }[]
+  /** Solo al llegar desde una estadística filtrada: la parte de este movimiento que corresponde a lo filtrado (el importe completo se sigue enseñando). */
+  imputed?: { label: string; amount: number }
   onClick: () => void
   extraAction?: React.ReactNode
   // Solo en Banco, viendo todas las cuentas mezcladas (petición real: no
@@ -4214,14 +4273,26 @@ function MovementRow({
   rowColor?: string
 }) {
   const source = SOURCE_META[e.source]
+  // Puntos de colores (COR-02): uno por cada etiqueta asignada, en vertical. Con una sola (o ninguna) es el punto de siempre, sin cambios.
+  const dotTags = tagShares && tagShares.length >= 2 ? tagShares.flatMap((x) => (x.tag ? [x.tag] : [])) : []
   return (
     <div className="movement-row" data-help-id="finance.movement-row" onClick={onClick} style={{ background: rowColor }}>
-      <span
-        className="movement-row-dot"
-        style={{ background: tag ? tag.color : 'transparent' }}
-        title={tag ? `Etiqueta: ${tag.name}` : undefined}
-        aria-hidden="true"
-      />
+      {dotTags.length >= 2 ? (
+        <span className="movement-row-dots" data-testid="movement-row-dots" title={`Etiquetas: ${dotTags.map((t) => t.name).join(', ')}`} aria-hidden="true">
+          <span className="movement-row-dots-stack">
+            {dotTags.map((t, i) => (
+              <span key={t.id} className="movement-row-dot" style={{ background: t.color, marginTop: i === 0 ? 0 : -overlapPx(dotTags.length) }} />
+            ))}
+          </span>
+        </span>
+      ) : (
+        <span
+          className="movement-row-dot"
+          style={{ background: tag ? tag.color : 'transparent' }}
+          title={tag ? `Etiqueta: ${tag.name}` : undefined}
+          aria-hidden="true"
+        />
+      )}
       <div className="movement-row-body">
         <div className="movement-row-line">
           {/* Petición real: "he puesto la categoría Sueldo pero fuera
@@ -4248,6 +4319,11 @@ function MovementRow({
           </span>
           <span title={source.label}>{source.icon}</span>
         </div>
+        {imputed && (
+          <div className="movement-row-line movement-row-imputed" data-testid="movement-row-imputed">
+            Correspondiente a {imputed.label}: {imputed.amount.toFixed(2)} €
+          </div>
+        )}
         {e.notes && <div className="movement-row-line movement-row-notes muted">{e.notes}</div>}
       </div>
       {extraAction && (
@@ -4282,6 +4358,98 @@ function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: str
 // Etiquetas de un movimiento (ETQ-1): una sola (el desplegable de siempre) o VARIAS con reparto del importe — a partes iguales, en euros o en porcentaje.
 // Con una sola etiqueta todo funciona como antes; el reparto es opcional y arranca a partes iguales para que no haya que rellenar nada.
 const SPLIT_MODE_LABELS: Record<SplitMode, string> = { equal: 'A partes iguales', amount: 'En euros', percent: 'En %' }
+
+const capitalizeWord = (w: string) => w.charAt(0).toUpperCase() + w.slice(1)
+
+// Editor de reparto COMPARTIDO por etiquetas y por clasificaciones (mismo comportamiento, mismos modos, mismo texto salvo el nombre de lo que se reparte): elige qué
+// entra, el modo (partes iguales, euros o %), lo escrito en cada parte y la comprobación de que suma el importe exacto.
+function ShareSplitEditor({
+  items,
+  noun,
+  split,
+  total,
+  helpId,
+  preferredSingle,
+  onSplit,
+  onSingle,
+}: {
+  items: { id: string; label: string }[]
+  noun: SplitNoun
+  split: TagSplitDraft
+  total: number
+  helpId: string
+  /** Lo que queda si se vuelve a uno solo (si sigue entre los elegidos). */
+  preferredSingle: string
+  onSplit: (next: TagSplitDraft) => void
+  /** Se vuelve a una sola: recibe el id que se conserva ('' si ninguno). */
+  onSingle: (id: string) => void
+}) {
+  const resolved = resolveTagSplit(split, total, noun)
+  const shownAmount = new Map((resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
+  const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
+  return (
+    <div className="card" data-help-id={helpId} style={{ padding: 8 }}>
+      <div className="chip-row" role="group" aria-label={`${capitalizeWord(noun.plural)} del movimiento`}>
+        {items.map((t) => {
+          const on = split.ids.includes(t.id)
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={on}
+              className={on ? 'chip chip-active' : 'chip'}
+              onClick={() => {
+                const next = toggleSplitTag(split, t.id, total)
+                if (next) onSplit(next)
+                else onSingle(split.ids.filter((x) => x !== t.id)[0] ?? '')
+              }}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
+        {(['equal', 'amount', 'percent'] as const).map((m) => (
+          <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onSplit(changeSplitMode(split, m, total))}>
+            {SPLIT_MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
+      {split.ids.map((id) => {
+        const item = items.find((t) => t.id === id)
+        const euros = shownAmount.get(id)
+        return (
+          <div key={id} className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
+            <span style={{ flex: 1 }}>{item?.label ?? capitalizeWord(noun.singular)}</span>
+            {split.mode === 'equal' ? (
+              <strong>{euros != null ? euros.toFixed(2).replace('.', ',') + ' €' : '—'}</strong>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={`${split.mode === 'percent' ? 'Porcentaje' : 'Importe'} de ${item?.label ?? `la ${noun.singular}`}`}
+                  style={{ width: 90 }}
+                  value={split.inputs[id] ?? ''}
+                  onChange={(e) => onSplit({ ...split, inputs: { ...split.inputs, [id]: e.target.value } })}
+                />
+                <span>{split.mode === 'percent' ? '%' : '€'}</span>
+                {split.mode === 'percent' && euros != null && <span className="muted">= {euros.toFixed(2).replace('.', ',')} €</span>}
+              </>
+            )}
+          </div>
+        )
+      })}
+      <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
+        {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada ${noun.singular} recibe su parte.` : resolved.error}
+      </p>
+      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
+        Volver a una sola {noun.singular}
+      </button>
+    </div>
+  )
+}
 
 export function TagSharesField({
   tags,
@@ -4318,68 +4486,86 @@ export function TagSharesField({
       </div>
     )
   }
-  const resolved = resolveTagSplit(split, total)
-  const shownAmount = new Map((resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
-  const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
   return (
-    <div className="card" data-help-id="finance.tag-split-editor" style={{ padding: 8 }}>
-      <div className="chip-row" role="group" aria-label="Etiquetas del movimiento">
-        {tags.map((t) => {
-          const on = split.ids.includes(t.id)
-          return (
-            <button
-              key={t.id}
-              type="button"
-              aria-pressed={on}
-              className={on ? 'chip chip-active' : 'chip'}
-              onClick={() => {
-                const next = toggleSplitTag(split, t.id, total)
-                onChange(next ? { tagId, split: next } : { tagId: split.ids.filter((x) => x !== t.id)[0] ?? '', split: null })
-              }}
-            >
-              {t.name}
-            </button>
-          )
-        })}
-      </div>
-      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
-        {(['equal', 'amount', 'percent'] as const).map((m) => (
-          <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onChange({ tagId, split: changeSplitMode(split, m, total) })}>
-            {SPLIT_MODE_LABELS[m]}
+    <ShareSplitEditor
+      items={tags.map((t) => ({ id: t.id, label: t.name }))}
+      noun={TAG_NOUN}
+      split={split}
+      total={total}
+      helpId="finance.tag-split-editor"
+      preferredSingle={tagId}
+      onSplit={(next) => onChange({ tagId, split: next })}
+      onSingle={(id) => onChange({ tagId: id, split: null })}
+    />
+  )
+}
+
+// Clasificación de un gasto SIN desglose de ticket (CLASIF-1): una sola (el desplegable de siempre, por defecto) o VARIAS con reparto del importe — a partes iguales, en
+// euros o en porcentaje. La categoría contable y las etiquetas no cambian: son otros conceptos. Si el gasto tiene un ticket con productos clasificados, manda ese desglose.
+export function ClassSharesField({
+  options,
+  value,
+  split,
+  total,
+  onChange,
+}: {
+  options: FamilyFoodType[]
+  value: string
+  split: ClassSplitDraft | null
+  total: number
+  onChange: (next: { value: string; split: ClassSplitDraft | null }) => void
+}) {
+  if (!split) {
+    return (
+      <div>
+        <label>
+          Clasificación (opcional)
+          <select value={value} onChange={(e) => onChange({ value: e.target.value, split: null })}>
+            <option value="">Sin clasificar</option>
+            {options.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.icon} {t.name}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.
+          </p>
+        </label>
+        {options.length >= 2 && (
+          <button
+            type="button"
+            className="link-button"
+            data-help-id="finance.class-split"
+            style={{ fontSize: 12, padding: '4px 0' }}
+            onClick={() => {
+              const first = value || options[0].name
+              const second = (options.find((t) => t.name !== first) ?? options[1]).name
+              onChange({ value: first, split: startClassSplit([first, second], total) })
+            }}
+          >
+            ＋ Repartir entre varias clasificaciones
           </button>
-        ))}
+        )}
       </div>
-      {split.ids.map((id) => {
-        const tag = tags.find((t) => t.id === id)
-        const euros = shownAmount.get(id)
-        return (
-          <div key={id} className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
-            <span style={{ flex: 1 }}>{tag?.name ?? 'Etiqueta'}</span>
-            {split.mode === 'equal' ? (
-              <strong>{euros != null ? euros.toFixed(2).replace('.', ',') + ' €' : '—'}</strong>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label={`${split.mode === 'percent' ? 'Porcentaje' : 'Importe'} de ${tag?.name ?? 'la etiqueta'}`}
-                  style={{ width: 90 }}
-                  value={split.inputs[id] ?? ''}
-                  onChange={(e) => onChange({ tagId, split: { ...split, inputs: { ...split.inputs, [id]: e.target.value } } })}
-                />
-                <span>{split.mode === 'percent' ? '%' : '€'}</span>
-                {split.mode === 'percent' && euros != null && <span className="muted">= {euros.toFixed(2).replace('.', ',')} €</span>}
-              </>
-            )}
-          </div>
-        )
-      })}
-      <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
-        {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada etiqueta recibe su parte.` : resolved.error}
+    )
+  }
+  return (
+    <div>
+      <span style={{ display: 'block', margin: '4px 0 2px' }}>Clasificación (opcional)</span>
+      <ShareSplitEditor
+        items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
+        noun={CLASS_NOUN}
+        split={split}
+        total={total}
+        helpId="finance.class-split-editor"
+        preferredSingle={value}
+        onSplit={(next) => onChange({ value, split: next })}
+        onSingle={(name) => onChange({ value: name, split: null })}
+      />
+      <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+        Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
       </p>
-      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onChange({ tagId: tagId && split.ids.includes(tagId) ? tagId : split.ids[0], split: null })}>
-        Volver a una sola etiqueta
-      </button>
     </div>
   )
 }
@@ -4490,21 +4676,13 @@ function MovementFormFields({
         </label>
       )}
       {classificationKind && (
-        <label>
-          Clasificación (opcional)
-          <select value={draft.productClassification} onChange={(e) => onChange({ ...draft, productClassification: e.target.value })}>
-            <option value="">Sin clasificar</option>
-            {classificationOptions.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.icon} {t.name}
-              </option>
-            ))}
-          </select>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por
-            clasificación" de Estadística compras.
-          </p>
-        </label>
+        <ClassSharesField
+          options={classificationOptions}
+          value={draft.productClassification}
+          split={draft.classSplit}
+          total={Number(draft.amount)}
+          onChange={(next) => onChange({ ...draft, productClassification: next.value, classSplit: next.split })}
+        />
       )}
       <div data-help-id="finance.movement-tag">
         <span style={{ display: 'block', margin: '4px 0 2px' }}>Etiqueta (opcional)</span>
@@ -4548,6 +4726,7 @@ function EditExpenseInline({
   categories,
   tags,
   tagShares,
+  classShares,
   onDone,
   onCancel,
   onAddToForecast,
@@ -4558,6 +4737,8 @@ function EditExpenseInline({
   tags: Tag[]
   /** Reparto actual entre varias etiquetas (si lo tiene). */
   tagShares?: readonly TagShare[]
+  /** Reparto actual entre varias clasificaciones (si lo tiene). */
+  classShares?: readonly ClassShare[]
   onDone: () => void
   onCancel: () => void
   // Fase 1D-g.2 — "🔮 Añadir a Previsión": opcional, undefined en Banco (mismo componente, sin tocarlo
@@ -4575,6 +4756,7 @@ function EditExpenseInline({
     amount: String(expense.amount),
     store: expense.store ?? '',
     productClassification: expense.productClassification ?? '',
+    classSplit: classSplitFromShares(classShares ?? []),
     tagId: expense.tagId ?? '',
     tagSplit: splitFromShares(tagShares ?? []),
     notes: expense.notes ?? '',
@@ -4586,8 +4768,8 @@ function EditExpenseInline({
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
-    if (checked.tagSplitError) {
-      setError(checked.tagSplitError)
+    if (checked.tagSplitError || checked.classSplitError) {
+      setError(checked.tagSplitError ?? checked.classSplitError)
       return
     }
     setSaving(true)
@@ -4623,6 +4805,9 @@ function EditExpenseInline({
       // Varias etiquetas: el reparto se guarda DESPUÉS del importe (tiene que sumarlo exacto). Si tenía reparto y ahora lleva una sola, se retira.
       if (values.tagShares.length >= 2) await setExpenseTags(expense.id, values.tagShares)
       else if ((tagShares?.length ?? 0) >= 2) await setExpenseTags(expense.id, values.tagId ? [{ tagId: values.tagId, amount: values.amount }] : [])
+      // Varias clasificaciones (CLASIF-1): igual que las etiquetas, después del importe. Si tenía reparto y ahora lleva una sola, se retira.
+      if (values.classShares.length >= 2) await setExpenseClasses(expense.id, values.classShares)
+      else if ((classShares?.length ?? 0) >= 2) await setExpenseClasses(expense.id, values.productClassification ? [{ className: values.productClassification, amount: values.amount }] : [])
       emitHelpEvent('finance.movement-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onDone()
     } catch (err) {
@@ -5024,12 +5209,13 @@ function AddExpenseToAnyCategoryInline({
     setError(null)
     try {
       const checked = movementFieldValues(draft)
-      if (checked.tagSplitError) {
-        setError(checked.tagSplitError)
+      if (checked.tagSplitError || checked.classSplitError) {
+        setError(checked.tagSplitError ?? checked.classSplitError)
         return
       }
       const newId = await addExpense(buildNewExpenseInput(draft, categories))
       if (checked.tagShares.length >= 2) await setExpenseTags(newId, checked.tagShares)
+      if (checked.classShares.length >= 2) await setExpenseClasses(newId, checked.classShares)
       emitHelpEvent('finance.movement-added') // para los tutoriales «Enséñame»: el movimiento YA está guardado
       onAdded()
     } catch (err) {
@@ -5181,13 +5367,14 @@ interface ClassifiableEntry {
 }
 
 function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
-  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }>; expenseIds: Set<string> }>()
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }>; byExpense: Map<string, number> }>()
   for (const entry of entries) {
-    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>(), expenseIds: new Set<string>() }
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>(), byExpense: new Map<string, number>() }
     const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0 }
     p.total += entry.amount
     group.products.set(entry.itemId, p)
-    group.expenseIds.add(entry.expenseId)
+    // Importe imputado a esta clasificación por cada gasto (en céntimos enteros para que la suma no arrastre decimales).
+    group.byExpense.set(entry.expenseId, (group.byExpense.get(entry.expenseId) ?? 0) + Math.round(entry.amount * 100))
     totals.set(entry.type.name, group)
   }
   // Mismo color por clase que en Lista e Historial de compras (pastel,
@@ -5199,6 +5386,8 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
         .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
+      // Solo cuentan los gastos que APORTAN importe a esta clasificación: un gasto con una línea de 0 € (o un reparto a cero) de esta clase no es «de esta clase».
+      const contributing = [...group.byExpense.entries()].filter(([, cents]) => cents > 0)
       return {
         key: name,
         label: name,
@@ -5207,7 +5396,8 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
         total,
         count: productList.length,
         products: productList,
-        expenseIds: [...group.expenseIds],
+        expenseIds: contributing.map(([id]) => id),
+        imputed: Object.fromEntries(contributing.map(([id, cents]) => [id, cents / 100])),
       }
     })
     .sort((a, b) => b.total - a.total)
@@ -6290,7 +6480,7 @@ interface ResolvedDraftLine {
   icon: string
   // De dónde sale `kind`: 'override' = elección explícita de la familia; 'shared' = aprendizaje compartido aprobado; 'default' = solo la
   // suposición de un producto NUEVO (comida) o lo ya guardado del producto. Solo las dos primeras son evidencia que se puede guardar.
-  kindSource: 'override' | 'shared' | 'default'
+  kindSource: 'override' | 'shared' | 'catalog' | 'default'
 }
 
 function resolveDraftLineClass(
@@ -6333,6 +6523,11 @@ function resolveDraftLineClass(
     if (resolved.source === 'shared') {
       kind = resolved.kind
       kindSource = 'shared'
+    } else if (resolved.source === 'catalog') {
+      // El catálogo maestro fija el conjunto para MOSTRAR (un detergente nuevo es de «Otros»), pero NO se guarda como marca del producto: solo evidencia
+      // de la familia o del aprendizaje compartido se persiste.
+      kind = resolved.kind
+      kindSource = 'catalog'
     }
   }
   const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
@@ -6470,6 +6665,7 @@ function ReceiptForm({
   // resolveDraftLineClass.
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
+  const [commonOf, setCommonOf] = useState<ReadonlyMap<string, string>>(new Map())
   const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
     alimentacion: [],
     no_alimentos: [],
@@ -6591,6 +6787,7 @@ function ReceiptForm({
   useEffect(() => {
     // Los precios anteriores sirven para recordar el formato del envase y saber si el producto ya se compró en otra tienda (opcional: si falla, el formulario sigue igual).
     listAllProductPrices().then(setAllPrices).catch(() => {})
+    listCommonProductsData().then((d) => setCommonOf(new Map(d.members.map((m) => [m.productId, m.commonId])))).catch(() => {})
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
       .then(([products, foodKinds, noFoodKinds]) => {
         setAllProducts(products)
@@ -7131,6 +7328,7 @@ function ReceiptForm({
               products={allProducts}
               prices={allPrices}
               productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
+              commonOf={commonOf}
               onPack={(i, pack) => updateLine(i, { pack })}
               onReading={(i, reading) => {
                 const ean = eanHint(reading)
@@ -7294,8 +7492,8 @@ function LinkedDonutCard({
   // `expenseIds` falta en los dónuts calculados a partir de precios
   // por producto (p. ej. tipo de alimento) — ahí no hay "Ver
   // movimientos" porque no hay un gasto real 1:1 con la porción.
-  slices: (BreakdownSlice & { expenseIds?: string[] })[]
-  onViewRecords?: (expenseIds: string[], label: string) => void
+  slices: (BreakdownSlice & { expenseIds?: string[]; imputed?: Record<string, number> })[]
+  onViewRecords?: (expenseIds: string[], label: string, imputed?: { label: string; byExpense: Record<string, number> }) => void
 }) {
   const grandTotal = slices.reduce((sum, s) => sum + s.total, 0)
   const linkable = onViewRecords && slices.every((s) => s.expenseIds !== undefined)
@@ -7314,7 +7512,7 @@ function LinkedDonutCard({
             linkable
               ? (key) => {
                   const slice = slices.find((s) => s.key === key)
-                  if (slice?.expenseIds) onViewRecords(slice.expenseIds, `${title} — ${slice.label}`)
+                  if (slice?.expenseIds) onViewRecords(slice.expenseIds, `${title} — ${slice.label}`, slice.imputed ? { label: slice.label, byExpense: slice.imputed } : undefined)
                 }
               : undefined
           }
@@ -7332,7 +7530,10 @@ interface FoodTypeBreakdownEntry {
   total: number
   count: number
   products: { productId: string; name: string; total: number }[]
+  /** Gastos que de verdad aportan importe a esta clasificación (importe imputado > 0), en la MISMA lista que se enseña en «Ver movimientos». */
   expenseIds: string[]
+  /** Lo que cada uno de esos gastos aporta a esta clasificación (no su importe completo): una compra repartida o con varios productos aporta solo su parte. */
+  imputed: Record<string, number>
 }
 
 // Petición real: "debajo del dónut haz una lista como esta y que dando
@@ -7647,6 +7848,8 @@ export function BudgetsTab({
   // pintar el dónut/lista aunque sea una clase propia de la familia,
   // no una de las 11 de fábrica.
   const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
+  // Reparto de un gasto entre varias clasificaciones (CLASIF-1): solo cuenta para gastos SIN desglose de ticket.
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que una cosa filtre por mes físico y la otra por
@@ -7691,8 +7894,9 @@ export function BudgetsTab({
       group === 'alimentacion' ? listProducts() : Promise.resolve([]),
       group === 'alimentacion' ? listFamilyFoodTypes('alimentacion') : Promise.resolve([]),
       group === 'alimentacion' ? listFamilyFoodTypes('no_alimentos') : Promise.resolve([]),
+      group === 'alimentacion' ? listClassSharesSafe() : Promise.resolve(new Map<string, ClassShare[]>()),
     ])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes]) => {
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes, clsShares]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -7713,6 +7917,7 @@ export function BudgetsTab({
         setPrices(p)
         setProducts(prod)
         setFoodTypes([...foodKindTypes, ...noFoodKindTypes])
+        setClassShares(clsShares)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -7904,6 +8109,28 @@ export function BudgetsTab({
           else nonFoodAmount += remainder
         }
       }
+    } else if ((classShares.get(e.id)?.length ?? 0) >= 2) {
+      // Gasto SIN desglose de ticket repartido a mano entre varias clasificaciones (CLASIF-1): cada parte va a su lado (Alimentos / Otros) y a su clasificación; el gasto cuenta
+      // UNA vez (la suma de las partes es su importe). Lo no repartido, o una clasificación que ya no existe, cae en «Sin clasificar» del lado de su categoría.
+      const baseTarget = baseIsFood ? foodClassEntries : noAlimentosClassEntries
+      const shares = classSharesOf(e, classShares)
+      for (const share of shares) {
+        if (share.amount <= 0) continue
+        const kind = share.className ? foodTypeKindByName.get(share.className) : undefined
+        if (kind === 'alimentacion' && share.className) {
+          foodAmount += share.amount
+          foodClassEntries.push({ itemId: `${e.id}:${share.className}`, displayName: e.store ?? 'Compra', amount: share.amount, type: { name: share.className, icon: foodTypeIconByName.get(share.className) ?? '🍽️' }, expenseId: e.id })
+        } else if (kind === 'no_alimentos' && share.className) {
+          nonFoodAmount += share.amount
+          noAlimentosClassEntries.push({ itemId: `${e.id}:${share.className}`, displayName: e.store ?? 'Compra', amount: share.amount, type: { name: share.className, icon: noAlimentosTypeIconByName.get(share.className) ?? '❓' }, expenseId: e.id })
+        } else if (isPending) {
+          unknownAmount += share.amount // pendiente de clasificar: no se atribuye ni a Alimentos ni a Otros
+        } else {
+          if (baseIsFood) foodAmount += share.amount
+          else nonFoodAmount += share.amount
+          baseTarget.push({ itemId: `${e.id}:sin-clasificar`, displayName: e.store ?? 'Compra', amount: share.amount, type: SIN_CLASIFICAR, expenseId: e.id })
+        }
+      }
     } else {
       const manualKind = e.productClassification ? foodTypeKindByName.get(e.productClassification) : undefined
       if (manualKind === 'alimentacion' && e.productClassification) {
@@ -7944,25 +8171,27 @@ export function BudgetsTab({
   // buildProductTypeBreakdown, coloreado sin repetirse igual que
   // categoryColors).
   const foodTypeBreakdown = buildProductTypeBreakdown(foodClassEntries)
-  const foodTypePieGroups: (BreakdownSlice & { expenseIds: string[] })[] = foodTypeBreakdown.map((t) => ({
+  const foodTypePieGroups: (BreakdownSlice & { expenseIds: string[]; imputed?: Record<string, number> })[] = foodTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
     icon: t.icon,
     color: t.color,
     total: t.total,
-    count: t.count,
+    count: t.expenseIds.length, // «N movimientos»: movimientos reales, no productos
     expenseIds: t.expenseIds,
+    imputed: t.imputed,
   }))
 
   const noAlimentosTypeBreakdown = buildProductTypeBreakdown(noAlimentosClassEntries)
-  const noAlimentosTypePieGroups: (BreakdownSlice & { expenseIds: string[] })[] = noAlimentosTypeBreakdown.map((t) => ({
+  const noAlimentosTypePieGroups: (BreakdownSlice & { expenseIds: string[]; imputed?: Record<string, number> })[] = noAlimentosTypeBreakdown.map((t) => ({
     key: t.key,
     label: t.label,
     icon: t.icon,
     color: t.color,
     total: t.total,
-    count: t.count,
+    count: t.expenseIds.length, // «N movimientos»: movimientos reales, no productos
     expenseIds: t.expenseIds,
+    imputed: t.imputed,
   }))
 
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
@@ -8307,14 +8536,14 @@ export function BudgetsTab({
             title="Reparto del gasto por tienda"
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
-            onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
+            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           </div>
           <LinkedDonutCard
             title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? foodTypePieGroups : noAlimentosTypePieGroups}
-            onViewRecords={(expenseIds, label) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds })}
+            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           <FoodTypeBreakdownList
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}

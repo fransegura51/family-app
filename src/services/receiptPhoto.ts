@@ -4,6 +4,9 @@
 // pequeña. La clave de Gemini nunca pasa por aquí: vive en Supabase
 // Vault y solo la lee la función de servidor.
 import { supabase } from '@/data/supabaseClient'
+import { compressImageFile } from '@/domain/imageCompression'
+
+const RECEIPT_MAX_DIMENSION = 2600
 
 export type MeasurementUnit = 'ud' | 'kg'
 
@@ -44,17 +47,26 @@ export async function analyzeReceiptPhoto(file: File): Promise<ReceiptScanResult
   const token = sessionData.session?.access_token
   if (!token) throw new Error('No autenticado')
 
-  const imageBase64 = await fileToBase64(file)
+  // La foto directa de la cámara pesa varios MB (más en base64): sin reducirla, la petición se caía en red («Load failed» en iPhone).
+  // Se lee a más resolución que el resto de fotos porque los tickets son largos y de letra pequeña.
+  const prepared = await compressImageFile(file, RECEIPT_MAX_DIMENSION)
+  const imageBase64 = await fileToBase64(prepared)
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/analyze-receipt-photo`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ imageBase64, mimeType: file.type || 'image/jpeg' }),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${supabaseUrl}/functions/v1/analyze-receipt-photo`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ imageBase64, mimeType: prepared.type || 'image/jpeg' }),
+    })
+  } catch {
+    // Fallo de red (sin cobertura, foto demasiado pesada...): un mensaje comprensible en vez del «Load failed» del navegador.
+    throw new Error('No se pudo enviar la foto del ticket. Comprueba la conexión y vuelve a pulsar «Leer ticket».')
+  }
 
   if (!res.ok) {
     throw new Error('No se pudo leer el ticket')

@@ -19,9 +19,10 @@ describe('relación entre productos: la familia manda, luego lo compartido, lueg
     expect(relationBetween(a, b, { decisions: [{ productA: 'a', productB: 'b', relation: 'different' }] })).toMatchObject({ relation: 'different', source: 'family' })
   })
   it('una equivalencia compartida VALIDADA se aplica; una PROVISIONAL solo sugiere; una bloqueada descarta', () => {
-    const x = P('x', 'Yogur sabor fresa Danone 4 ud')
-    const y = P('y', 'Yogurt de fresa Hacendado')
-    const shared = (level: 'validated' | 'provisional' | 'blocked') => ({ shared: [{ keyA: 'yogur sabor fresa danone 4 ud', keyB: 'yogurt de fresa hacendado', level }] })
+    // Un producto que el catálogo maestro no identifica (solo se parece por las palabras): ahí manda lo compartido, como siempre.
+    const x = P('x', 'Bebida Xyloso sabor fresa Danone 4 ud')
+    const y = P('y', 'Bebida Xyloso de fresa Hacendado')
+    const shared = (level: 'validated' | 'provisional' | 'blocked') => ({ shared: [{ keyA: 'bebida xyloso sabor fresa danone 4 ud', keyB: 'bebida xyloso de fresa hacendado', level }] })
     expect(relationBetween(x, y, shared('validated'))).toMatchObject({ relation: 'equivalent', source: 'shared', automatic: true })
     expect(relationBetween(x, y, shared('provisional')).automatic).toBe(false)
     expect(relationBetween(a, b, { shared: [{ keyA: 'leche entera hacendado 1 l', keyB: 'leche entera milbona 1 l', level: 'blocked' }] }).relation).toBe('different')

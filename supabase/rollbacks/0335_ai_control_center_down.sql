@@ -1,4 +1,4 @@
--- Deshacer 0332 (Centro de Control de IA). Devuelve la puerta de IA y los contadores a su forma anterior. Los datos del registro de llamadas se pierden (son solo estadísticas).
+-- Deshacer 0335 (Centro de Control de IA). Devuelve la puerta de IA y los contadores a su forma anterior. Los datos del registro de llamadas se pierden (son solo estadísticas).
 do $$
 begin
   if exists (select 1 from cron.job where jobname = 'ai-detect') then

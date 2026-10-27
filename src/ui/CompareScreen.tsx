@@ -1,14 +1,16 @@
 // «Comparar precios» (quinta subsección de Compras): Resultados (comparaciones por producto común) y Emparejar (agrupar artículos bajo un producto común).
 // Reutiliza el comparador y las equivalencias de siempre: aquí solo se agrupan los artículos que se pueden comparar entre sí, SIN tocar nombres, precios ni formatos originales.
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createCommonProduct, deleteCommonProduct, assignToCommon, listCommonProductsData, renameCommonProduct, skipPairing, unassignFromCommon, unskipPairing } from '@/data/commonProducts'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { confirmCommon, createCommonProduct, deleteCommonProduct, assignToCommon, discardPendingCommon, listCommonProductsData, renameCommonProduct, runAutoGrouping, separateFromPepaGroup, skipPairing, unassignFromCommon, unskipPairing } from '@/data/commonProducts'
 import { clearFamilyDecision, listFamilyDecisions, loadSharedEquivalences, setFamilyDecision } from '@/data/productEquivalences'
 import { listAllProductPrices, listProducts, setPriceLinePack } from '@/data/products'
-import { commonResult, pairingQueue, resultHeadline, similarPending, suggestCommonName, type CommonMember, type CommonProduct, type CommonResult, type Offering, type PairingItem } from '@/domain/commonProducts'
+import { planAutoGrouping } from '@/domain/autoGrouping'
+import { articleStats, commonResult, memberFormats, type MemberFormat, pairingQueue, resultHeadline, similarPending, suggestCommonName, type CommonMember, type CommonProduct, type CommonResult, type Offering, type PairingItem } from '@/domain/commonProducts'
 import { errorMessage } from '@/domain/errorMessage'
 import { useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
 import { describePack, type PackFormat } from '@/domain/packFormat'
+import type { PackInput } from '@/domain/productSize'
 import type { DecisionRelation, FamilyDecision, RelationContext, SharedEquivalence } from '@/domain/priceComparison'
 import { toCmpPrice, toCmpProduct } from '@/domain/priceComparisonAdapters'
 import { basisLabel } from '@/domain/productSize'
@@ -22,6 +24,8 @@ export interface CompareDataset {
   commons: CommonProduct[]
   members: CommonMember[]
   skipped: string[]
+  /** Artículos que la familia sacó de una propuesta de PEPA (no se vuelven a proponer). */
+  rejected?: string[]
   decisions: FamilyDecision[]
   shared: SharedEquivalence[]
   /** false = la base aún no tiene los productos comunes (migración sin aplicar). */
@@ -35,6 +39,12 @@ export interface CompareActions {
   rename: (commonId: string, name: string) => Promise<void>
   remove: (commonId: string) => Promise<void>
   skip: (productId: string) => Promise<void>
+  /** Acepta un grupo propuesto por PEPA. */
+  confirmGroup: (commonId: string) => Promise<void>
+  /** Descarta un grupo propuesto por PEPA (y PEPA no lo vuelve a proponer). */
+  discardGroup: (commonId: string, productIds: string[]) => Promise<void>
+  /** Saca un artículo de un grupo propuesto por PEPA (y PEPA no vuelve a proponérselo). */
+  separatePepa: (productId: string) => Promise<void>
   unskip: (productId: string) => Promise<void>
   decide: (a: string, b: string, relation: DecisionRelation | null) => Promise<void>
   setPack: (priceId: string, pack: PackFormat) => Promise<void>
@@ -284,11 +294,17 @@ export function CreateCommonSheet({
 function OfferRow({
   offer,
   basis,
+  reliable = true,
+  provisional = false,
   onChange,
   onSeparate,
 }: {
   offer: Offering
   basis: NonNullable<CommonResult['basis']>
+  /** false = por unidad pero sin contenido confirmado: no se marca la más económica. */
+  reliable?: boolean
+  /** true = el grupo lo propuso PEPA y no está revisado. */
+  provisional?: boolean
   onChange: () => void
   onSeparate: () => void
 }) {
@@ -306,7 +322,8 @@ function OfferRow({
       </div>
       <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
         {offer.pack ? `${describePack(offer.pack)} · ` : ''}paquete {eur(offer.totalPrice)} · {shortDate(offer.date)}
-        {offer.cheapest ? ' · la más económica' : offer.diffPct != null && offer.diffPct > 0 ? ` · +${String(offer.diffPct).replace('.', ',')} %` : ''}
+        {!reliable ? ' · contenido por unidad sin confirmar' : ''}
+        {offer.cheapest ? (provisional ? ' · la más económica (provisional)' : ' · la más económica') : offer.diffPct != null && offer.diffPct > 0 ? ` · +${String(offer.diffPct).replace('.', ',')} %` : ''}
         {offer.sameAs.length > 0 ? ` · mismo producto que ${offer.sameAs[0]}` : ''}
       </p>
       <div className="chip-row">
@@ -317,6 +334,88 @@ function OfferRow({
           Separar
         </button>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Formato de cada artículo de un producto común: cuáles se conocen y cuáles faltan, con lo que se puede hacer ahora (confirmar lo que PEPA lee en el nombre, escribirlo, fotografiar
+ * el envase) o dejarlo para más adelante: al volver a comprar ese artículo PEPA lo ofrece sin bloquear el ticket. Nunca se inventa un formato histórico.
+ */
+function GroupFormats({
+  formats,
+  actions,
+  onError,
+  fixing,
+  setFixing,
+}: {
+  formats: MemberFormat[]
+  actions: CompareActions
+  onError: (m: string) => void
+  fixing: string | null
+  setFixing: (id: string | null) => void
+}) {
+  const [showKnown, setShowKnown] = useState(false)
+  const known = formats.filter((f) => f.state === 'confirmado')
+  const todo = formats.filter((f) => f.state !== 'confirmado')
+  if (formats.length === 0) return null
+  async function save(f: MemberFormat, pack: PackFormat) {
+    try {
+      if (!f.priceId) throw new Error('No se encuentra la compra para guardar el formato')
+      await actions.setPack(f.priceId, pack)
+      setFixing(null)
+    } catch (err) {
+      onError(errorMessage(err, 'No se pudo guardar el formato'))
+    }
+  }
+  return (
+    <div data-help-id="compare.formats" style={{ marginTop: 6 }}>
+      <p className="muted" style={{ margin: '6px 0 2px', fontSize: 13 }}>
+        Formato de los artículos: {known.length} de {formats.length} {formats.length === 1 ? 'conocido' : 'conocidos'}
+        {todo.length > 0 ? ' · para comparar por litro o kilo hace falta completar el resto (puedes hacerlo ahora o en una compra posterior)' : ''}
+      </p>
+      {todo.map((f) => (
+        <div key={f.productId} className="receipt-line-card" data-help-id="compare.unformatted">
+          <span>
+            <strong>{f.store}</strong> · {f.productName} · {eur(f.totalPrice)} · {shortDate(f.date)}
+          </span>
+          {f.note && (
+            <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
+              {f.note}
+            </p>
+          )}
+          {f.priceId &&
+            (fixing === f.priceId ? (
+              <PackEditor price={f.totalPrice} onSave={(pack) => void save(f, pack)} onCancel={() => setFixing(null)} />
+            ) : (
+              <div className="chip-row">
+                {f.proposal && (
+                  <button type="button" className="chip chip-active" onClick={() => void save(f, { ...(f.proposal as PackInput), source: 'nombre' })}>
+                    ✓ Confirmar {describePack(f.proposal)}
+                  </button>
+                )}
+                <button type="button" className="link-button" onClick={() => setFixing(f.priceId)}>
+                  {f.proposal ? 'Cambiar formato' : 'Indicar formato'}
+                </button>
+              </div>
+            ))}
+        </div>
+      ))}
+      {known.length > 0 && (
+        <>
+          <button type="button" className="link-button" style={{ fontSize: 12 }} aria-expanded={showKnown} onClick={() => setShowKnown((v) => !v)}>
+            Con formato conocido ({known.length}) {showKnown ? '▾' : '▸'}
+          </button>
+          {showKnown &&
+            known.map((f) => (
+              <p key={f.productId} className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
+                ✓ {f.productName}
+                {f.pack ? ' · ' + describePack(f.pack) : ''}
+                {f.note ? ' · ' + f.note : ''}
+              </p>
+            ))}
+        </>
+      )}
     </div>
   )
 }
@@ -355,9 +454,12 @@ export function ResultsView({
       .map((c) => {
         const ids = membersBy.get(c.id) ?? []
         const prods = cmpProducts.filter((p) => ids.includes(p.id))
-        return commonResult(c, prods, ids.flatMap((id) => pricesBy.get(id) ?? []), ctx)
+        const groupPrices = ids.flatMap((id) => pricesBy.get(id) ?? [])
+        const res = commonResult(c, prods, groupPrices, ctx)
+        return Object.assign(res, { formats: memberFormats(prods, groupPrices, res.basis) })
       })
-      .sort((a, b) => (resultHeadline(b)?.extraPct ?? -1) - (resultHeadline(a)?.extraPct ?? -1) || a.common.name.localeCompare(b.common.name, 'es'))
+      // Primero lo confirmado por la familia; lo que PEPA agrupó y sigue sin revisar, después.
+      .sort((a, b) => Number(a.common.status === 'pending') - Number(b.common.status === 'pending') || (resultHeadline(b)?.extraPct ?? -1) - (resultHeadline(a)?.extraPct ?? -1) || a.common.name.localeCompare(b.common.name, 'es'))
   }, [data, cmpProducts, ctx])
 
   const q = productTextKey(query)
@@ -389,53 +491,42 @@ export function ResultsView({
       {shown.map((r) => {
         const open = openId === r.common.id
         const head = resultHeadline(r)
+        const provisional = r.common.status === 'pending'
         return (
           <div key={r.common.id} className="card" style={{ marginBottom: 8, padding: 8 }}>
             <button type="button" className="receipt-row-summary" style={{ width: '100%', textAlign: 'left' }} aria-expanded={open} onClick={() => setOpenId(open ? null : r.common.id)}>
-              <strong>{r.common.name}</strong> {open ? '▾' : '▸'}
+              <strong>{r.common.name}</strong> {provisional ? <span className="muted" style={{ fontSize: 12 }}>⏳ agrupado por PEPA, pendiente de revisar </span> : null}{open ? '▾' : '▸'}
               <br />
               <span className="muted" style={{ fontSize: 13 }}>
                 {r.offers.length + r.unformatted.length + r.otherUnit.length} {r.offers.length + r.unformatted.length + r.otherUnit.length === 1 ? 'presentación' : 'presentaciones'}
                 {r.storeCount > 0 ? ` · ${r.storeCount} ${r.storeCount === 1 ? 'tienda' : 'tiendas'}` : ''}
-                {head ? ` · más barata: ${head.store} ${perUnit(head.value, head.basis)}` : r.unformatted.length > 0 ? ' · faltan formatos' : ''}
+                {head ? ` · ${provisional ? 'más barata (provisional)' : 'más barata'}: ${head.store} ${perUnit(head.value, head.basis)}` : r.formats.some((f) => f.state !== 'confirmado') ? ` · faltan formatos (${r.formats.filter((f) => f.state === 'confirmado').length} de ${r.formats.length} conocidos)` : ''}
               </span>
             </button>
             {open && (
               <div style={{ marginTop: 6 }}>
+                {provisional && (
+                  <div className="receipt-line-card" data-help-id="compare.pending-banner">
+                    <p style={{ margin: '0 0 4px', fontSize: 13 }}>PEPA ha agrupado estos artículos porque parecen el mismo producto. Hasta que lo confirmes, la comparación es provisional.</p>
+                    <div className="chip-row">
+                      <button type="button" className="chip chip-active" onClick={() => void guard(async () => { await actions.confirmGroup(r.common.id); onNotice({ text: `Grupo «${r.common.name}» confirmado.` }) }, 'No se pudo confirmar')}>
+                        ✓ Confirmar grupo
+                      </button>
+                      <button type="button" className="link-button" onClick={() => void guard(async () => { await actions.discardGroup(r.common.id, data.members.filter((m) => m.commonId === r.common.id).map((m) => m.productId)); onNotice({ text: `Grupo «${r.common.name}» descartado.` }) }, 'No se pudo descartar')}>
+                        Descartar grupo
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {r.offers.map((o) => (
-                  <OfferRow key={`${o.productId}|${o.store}|${o.date}|${o.pack ? describePack(o.pack) : ''}`} offer={o} basis={r.basis!} onChange={() => onPickGroup(o.productId)} onSeparate={() => void guard(() => separate(o.productId, r.common.id), 'No se pudo separar')} />
+                  <OfferRow key={`${o.productId}|${o.store}|${o.date}|${o.pack ? describePack(o.pack) : ''}`} offer={o} basis={r.basis!} reliable={r.reliable} provisional={provisional} onChange={() => onPickGroup(o.productId)} onSeparate={() => void guard(() => separate(o.productId, r.common.id), 'No se pudo separar')} />
                 ))}
                 {r.offers.length > 0 && (
                   <p className="muted" style={{ margin: '2px 0 6px', fontSize: 12 }}>
                     Ordenado por precio {perUnit(0, r.basis!).replace('0,00 ', '')} (menor a mayor). El precio del paquete se enseña aparte: una presentación grande puede salir más barata por unidad pero exigir pagar más de una vez.
                   </p>
                 )}
-                {r.unformatted.length > 0 && (
-                  <div data-help-id="compare.unformatted">
-                    <p className="muted" style={{ margin: '6px 0 2px', fontSize: 13 }}>
-                      Sin formato conocido (no se compara hasta indicarlo):
-                    </p>
-                    {r.unformatted.map((o) => (
-                      <div key={`${o.productId}|${o.store}|${o.date}`} className="receipt-line-card">
-                        <span>
-                          <strong>{o.store}</strong> · {o.productName} · {eur(o.totalPrice)} · {shortDate(o.date)}
-                        </span>{' '}
-                        {o.priceId &&
-                          (fixing === o.priceId ? (
-                            <PackEditor
-                              price={o.totalPrice}
-                              onSave={(pack) => void guard(async () => { await actions.setPack(o.priceId as string, pack); setFixing(null) }, 'No se pudo guardar el formato')}
-                              onCancel={() => setFixing(null)}
-                            />
-                          ) : (
-                            <button type="button" className="link-button" onClick={() => setFixing(o.priceId)}>
-                              Indicar formato
-                            </button>
-                          ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <GroupFormats formats={r.formats} actions={actions} onError={onError} fixing={fixing} setFixing={setFixing} />
                 {r.otherUnit.length > 0 && (
                   <p className="muted" style={{ margin: '6px 0', fontSize: 12 }}>
                     {r.otherUnit.length} {r.otherUnit.length === 1 ? 'presentación está' : 'presentaciones están'} en otra unidad ({r.otherUnit.map((o) => `${o.store}: ${perUnit(o.normalized.value, o.normalized.basis)}`).join('; ')}) y no se mezcla.
@@ -481,13 +572,17 @@ export function ResultsView({
   )
 
   async function separate(productId: string, commonId: string) {
-    await actions.unassign(productId)
-    onNotice({ text: 'Artículo separado del grupo.', undo: () => actions.assign(productId, commonId, 'manual') })
+    // Si el grupo lo propuso PEPA, además se anota para que no vuelva a proponer ese artículo.
+    const fromPepa = data.commons.find((c) => c.id === commonId)?.status === 'pending'
+    if (fromPepa) await actions.separatePepa(productId)
+    else await actions.unassign(productId)
+    onNotice({ text: 'Artículo separado del grupo.', undo: () => actions.assign(productId, commonId, fromPepa ? 'pepa' : 'manual') })
   }
 
   async function removeCommon(r: CommonResult) {
     const ids = data.members.filter((m) => m.commonId === r.common.id).map((m) => m.productId)
-    await actions.remove(r.common.id)
+    if (r.common.status === 'pending') await actions.discardGroup(r.common.id, ids)
+    else await actions.remove(r.common.id)
     setConfirmDelete(null)
     onNotice({
       text: `Grupo «${r.common.name}» eliminado. Los artículos y sus precios siguen ahí.`,
@@ -533,6 +628,9 @@ export function PairingView({
     return [...count.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([s]) => s)
   }, [data.prices])
   const safe = queue.filter((i) => i.suggestions[0]?.automatic)
+  const pendingCommonIds = useMemo(() => new Set(data.commons.filter((c) => c.status === 'pending').map((c) => c.id)), [data.commons])
+  const pepaCount = data.members.filter((m) => pendingCommonIds.has(m.commonId)).length
+  const confirmedCount = data.members.length - pepaCount
 
   async function guard(fn: () => Promise<void>, fallback: string) {
     try {
@@ -588,6 +686,7 @@ export function PairingView({
   }
 
   const memberRows = data.commons
+    .filter((c) => c.status !== 'pending')
     .map((c) => ({ c, items: data.members.filter((m) => m.commonId === c.id).map((m) => productById.get(m.productId)).filter((p): p is Product => !!p) }))
     .filter((x) => x.items.length > 0)
 
@@ -602,7 +701,7 @@ export function PairingView({
   return (
     <div data-help-id="compare.pairing">
       <p className="muted" style={{ marginTop: 0 }}>
-        {totalPending} {totalPending === 1 ? 'artículo' : 'artículos'} por agrupar · {data.members.length} ya agrupados. No hace falta terminar: puedes dejarlo y seguir otro día.
+        <strong>{confirmedCount}</strong> {confirmedCount === 1 ? 'confirmado' : 'confirmados'} por vosotros · <strong>{pepaCount}</strong> agrupados por PEPA, pendientes de revisar · <strong>{totalPending}</strong> pendientes de emparejar. No hace falta terminar: puedes dejarlo y seguir otro día.
       </p>
       <div className="inline-fields">
         <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar artículo o tienda…" aria-label="Buscar artículos por emparejar" style={{ flex: 1 }} />
@@ -664,11 +763,11 @@ export function PairingView({
 
       <div style={{ marginTop: 10 }}>
         <button type="button" className="link-button" aria-expanded={showDone} onClick={() => setShowDone((v) => !v)}>
-          Agrupados ({data.members.length}) {showDone ? '▾' : '▸'}
+          Confirmados ({confirmedCount}) {showDone ? '▾' : '▸'}
         </button>
         {showDone && (
           <div className="card" style={{ marginTop: 4 }}>
-            {memberRows.length === 0 && <p className="muted">Todavía no has agrupado ninguno.</p>}
+            {memberRows.length === 0 && <p className="muted">Todavía no has confirmado ninguno.</p>}
             {memberRows.map(({ c, items }) => (
               <div key={c.id} style={{ marginBottom: 6 }}>
                 <strong>{c.name}</strong>
@@ -722,10 +821,182 @@ export function PairingView({
   )
 }
 
+// ─── Revisar lo que ha agrupado PEPA ───
+
+/**
+ * Agrupaciones que PEPA ha propuesto a partir del historial, pendientes de revisar: primero las que juntan tiendas distintas (las que permiten comparar). Cada grupo se confirma,
+ * se corrige (renombrar, separar un artículo) o se descarta. Nada de esto cuenta como confirmado hasta que la persona lo acepta. Debajo, lo que PEPA ve parecido a los grupos
+ * que la familia ya confirmó: ahí NO añade nada sola, lo añade la persona.
+ */
+export function ReviewView({
+  data,
+  actions,
+  onNotice,
+  onError,
+}: {
+  data: CompareDataset
+  actions: CompareActions
+  onNotice: (n: Notice) => void
+  onError: (m: string) => void
+}) {
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
+  const [limit, setLimit] = useState(10)
+  const productById = useMemo(() => new Map(data.products.map((p) => [p.id, p])), [data.products])
+  const cmpPrices = useMemo(() => data.prices.map((p) => ({ ...toCmpPrice(p), quantity: Number(p.quantity) > 0 ? Number(p.quantity) : 1 })), [data.prices])
+  const stats = useMemo(() => articleStats(cmpPrices), [cmpPrices])
+  const groups = useMemo(() => {
+    return data.commons
+      .filter((c) => c.status === 'pending')
+      .map((c) => {
+        const items = data.members.filter((m) => m.commonId === c.id).map((m) => productById.get(m.productId)).filter((p): p is Product => !!p)
+        const stores = [...new Set(items.flatMap((p) => stats.get(p.id)?.stores ?? []))]
+        return { c, items, stores }
+      })
+      .filter((g) => g.items.length > 0)
+      .sort((a, b) => b.stores.length - a.stores.length || b.items.length - a.items.length || a.c.name.localeCompare(b.c.name, 'es'))
+  }, [data.commons, data.members, productById, stats])
+  const forMine = useMemo(() => {
+    const plan = planAutoGrouping({
+      products: data.products.map(toCmpProduct),
+      prices: cmpPrices,
+      commons: data.commons.map((c) => ({ ...c, status: c.status ?? 'confirmed' })),
+      members: data.members,
+      skippedIds: new Set(data.skipped),
+      rejectedIds: new Set(data.rejected ?? []),
+      ctx: relationContext(data),
+    })
+    return plan.forConfirmed
+  }, [data, cmpPrices])
+
+  async function guard(fn: () => Promise<void>, fallback: string) {
+    try {
+      await fn()
+    } catch (err) {
+      onError(errorMessage(err, fallback))
+    }
+  }
+
+  async function confirm(g: (typeof groups)[number]) {
+    await actions.confirmGroup(g.c.id)
+    onNotice({ text: `Grupo «${g.c.name}» confirmado.` })
+  }
+
+  async function confirmMulti() {
+    const multi = groups.filter((g) => g.stores.length > 1)
+    for (const g of multi) await actions.confirmGroup(g.c.id)
+    onNotice({ text: `${multi.length} ${multi.length === 1 ? 'grupo confirmado' : 'grupos confirmados'}.` })
+  }
+
+  async function discard(g: (typeof groups)[number]) {
+    await actions.discardGroup(g.c.id, g.items.map((p) => p.id))
+    onNotice({ text: `Grupo «${g.c.name}» descartado. Los artículos y sus precios siguen ahí y PEPA no lo volverá a proponer.` })
+  }
+
+  if (!data.available) {
+    return (
+      <p className="muted" data-help-id="compare.unavailable">
+        Los productos comunes aún no están disponibles en tu cuenta.
+      </p>
+    )
+  }
+  const multiCount = groups.filter((g) => g.stores.length > 1).length
+  return (
+    <div data-help-id="compare.review">
+      <p className="muted" style={{ marginTop: 0 }}>
+        PEPA ha revisado vuestro historial y propone estos grupos de artículos que parecen el mismo producto. Hasta que los confirméis, en Resultados se enseñan como provisionales. No hace falta revisarlos todos.
+      </p>
+      {groups.length === 0 && <p className="muted">No hay agrupaciones de PEPA pendientes de revisar.</p>}
+      {multiCount > 1 && (
+        <button type="button" className="chip" style={{ marginBottom: 6 }} onClick={() => void guard(confirmMulti, 'No se pudieron confirmar')}>
+          ✓ Confirmar los {multiCount} grupos con varias tiendas
+        </button>
+      )}
+      {groups.slice(0, limit).map((g) => (
+        <div key={g.c.id} className="card" style={{ marginBottom: 8, padding: 8 }} data-help-id="compare.review-group">
+          <strong>{g.c.name}</strong>
+          <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
+            {g.items.length} {g.items.length === 1 ? 'artículo' : 'artículos'} · {g.stores.length > 0 ? g.stores.join(' y ') : 'sin tienda'} · agrupado por PEPA, pendiente de revisar
+          </p>
+          {g.items.map((p) => (
+            <p key={p.id} style={{ margin: '2px 0', fontSize: 14 }}>
+              {p.displayName}
+              <span className="muted" style={{ fontSize: 12 }}>
+                {' '}
+                · {stats.get(p.id)?.lastStore ?? 'Sin tienda'} · {eur(stats.get(p.id)?.lastPrice ?? 0)}
+              </span>{' '}
+              <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} aria-label={`Separar ${p.displayName}`} onClick={() => void guard(async () => { await actions.separatePepa(p.id); onNotice({ text: `«${p.displayName}» separado de «${g.c.name}». PEPA no se lo volverá a proponer.` }) }, 'No se pudo separar')}>
+                ✕ Separar
+              </button>
+            </p>
+          ))}
+          <div className="chip-row" style={{ marginTop: 4 }}>
+            {renaming?.id === g.c.id ? (
+              <>
+                <input type="text" value={renaming.name} maxLength={80} onChange={(e) => setRenaming({ id: g.c.id, name: e.target.value })} aria-label="Nombre del producto común" />
+                <button type="button" className="chip" onClick={() => void guard(async () => { await actions.rename(g.c.id, renaming.name); setRenaming(null) }, 'No se pudo cambiar el nombre')}>
+                  Guardar nombre
+                </button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="chip chip-active" onClick={() => void guard(() => confirm(g), 'No se pudo confirmar')}>
+                  ✓ Confirmar grupo
+                </button>
+                <button type="button" className="link-button" onClick={() => setRenaming({ id: g.c.id, name: g.c.name })}>
+                  ✏️ Cambiar nombre
+                </button>
+                <button type="button" className="link-button" onClick={() => void guard(() => discard(g), 'No se pudo descartar')}>
+                  Descartar grupo
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+      {groups.length > limit && (
+        <button type="button" className="link-button" onClick={() => setLimit((l) => l + 15)}>
+          Ver más ({groups.length - limit})
+        </button>
+      )}
+
+      {forMine.length > 0 && (
+        <div data-help-id="compare.review-mine" style={{ marginTop: 10 }}>
+          <strong>Para tus grupos</strong>
+          <p className="muted" style={{ margin: '2px 0 6px', fontSize: 12 }}>
+            PEPA no cambia los grupos que ya habéis confirmado. Estos artículos se parecen a los de vuestros grupos: añádelos si quieres.
+          </p>
+          {forMine.map((f) => (
+            <div key={f.commonId} className="card" style={{ marginBottom: 8, padding: 8 }}>
+              <strong>{f.commonName}</strong>
+              {f.productIds.map((id) => {
+                const p = productById.get(id)
+                return p ? (
+                  <p key={id} style={{ margin: '2px 0', fontSize: 14 }}>
+                    {p.displayName}{' '}
+                    <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} aria-label={`Añadir ${p.displayName} a ${f.commonName}`} onClick={() => void guard(async () => { await actions.assign(id, f.commonId, 'sugerido'); onNotice({ text: `«${p.displayName}» añadido a «${f.commonName}».`, undo: () => actions.unassign(id) }) }, 'No se pudo añadir')}>
+                      ＋ Añadir
+                    </button>
+                  </p>
+                ) : null
+              })}
+              {f.productIds.length > 1 && (
+                <button type="button" className="chip" onClick={() => void guard(async () => { for (const id of f.productIds) await actions.assign(id, f.commonId, 'sugerido'); onNotice({ text: `${f.productIds.length} artículos añadidos a «${f.commonName}».`, undo: async () => { for (const id of f.productIds) await actions.unassign(id) } }) }, 'No se pudo añadir')}>
+                  ＋ Añadir los {f.productIds.length}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Contenedor: carga los datos y arma las acciones ───
 
 export function ComparePricesTab() {
-  const [view, setView] = useState<'resultados' | 'emparejar'>('resultados')
+  const [view, setView] = useState<'resultados' | 'emparejar' | 'revisar'>('resultados')
+  const autoRan = useRef(false)
   const [data, setData] = useState<CompareDataset | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -739,7 +1010,7 @@ export function ComparePricesTab() {
       const priced = new Set(prices.map((p) => p.productId))
       const names = products.filter((p) => priced.has(p.id)).slice(0, 100).map((p) => p.displayName)
       const shared = await loadSharedEquivalences(names)
-      setData({ products, prices, commons: cd.commons, members: cd.members, skipped: cd.skipped, decisions, shared, available: cd.available })
+      setData({ products, prices, commons: cd.commons, members: cd.members, skipped: cd.skipped, rejected: cd.rejected, decisions, shared, available: cd.available })
       setError(null)
     } catch (err) {
       setError(errorMessage(err, 'No se pudieron cargar los precios'))
@@ -749,6 +1020,18 @@ export function ComparePricesTab() {
   useEffect(() => {
     void reload()
   }, [reload])
+
+  // PEPA agrupa sola lo que es claramente el mismo producto, una vez al abrir (idempotente: no duplica ni resucita lo descartado). Es una propuesta: queda pendiente de revisar.
+  useEffect(() => {
+    if (!data || !data.available || autoRan.current) return
+    autoRan.current = true
+    void runAutoGrouping().then((o) => {
+      if (o && o.grouped > 0) {
+        setNotice({ text: `PEPA ha agrupado ${o.grouped} ${o.grouped === 1 ? 'artículo' : 'artículos'} que parecen el mismo producto. Están pendientes de revisar en «Revisar PEPA».` })
+        void reload()
+      }
+    })
+  }, [data, reload])
 
   const actions: CompareActions = useMemo(() => {
     const then = (fn: () => Promise<unknown>) => async () => {
@@ -766,6 +1049,9 @@ export function ComparePricesTab() {
       rename: (id, name) => then(() => renameCommonProduct(id, name))(),
       remove: (id) => then(() => deleteCommonProduct(id))(),
       skip: (id) => then(() => skipPairing(id))(),
+      confirmGroup: (id) => then(() => confirmCommon(id))(),
+      discardGroup: (id, ids) => then(() => discardPendingCommon(id, ids))(),
+      separatePepa: (id) => then(() => separateFromPepaGroup(id))(),
       unskip: (id) => then(() => unskipPairing(id))(),
       decide: (a, b, relation) => then(() => (relation == null ? clearFamilyDecision(a, b) : setFamilyDecision(a, b, relation)))(),
       setPack: (priceId, pack) => then(() => setPriceLinePack(priceId, pack))(),
@@ -781,6 +1067,7 @@ export function ComparePricesTab() {
     )
 
   const pending = pairingPending(data)
+  const toReview = data.commons.filter((c) => c.status === 'pending' && data.members.some((m) => m.commonId === c.id)).length
   const articleToMove = pickGroupFor ? data.products.find((p) => p.id === pickGroupFor) : null
 
   return (
@@ -793,11 +1080,18 @@ export function ComparePricesTab() {
         <button type="button" className={view === 'emparejar' ? 'chip chip-active' : 'chip'} aria-pressed={view === 'emparejar'} onClick={() => setView('emparejar')}>
           Emparejar{pending > 0 ? ` (${pending})` : ''}
         </button>
+        {(toReview > 0 || view === 'revisar') && (
+          <button type="button" className={view === 'revisar' ? 'chip chip-active' : 'chip'} aria-pressed={view === 'revisar'} data-help-id="compare.review-tab" onClick={() => setView('revisar')}>
+            Revisar PEPA{toReview > 0 ? ` (${toReview})` : ''}
+          </button>
+        )}
       </div>
       {error && <p className="error">{error}</p>}
       <NoticeBar notice={notice} onClose={() => setNotice(null)} onError={setError} />
       {view === 'resultados' ? (
         <ResultsView data={data} actions={actions} onNotice={setNotice} onError={setError} onPickGroup={setPickGroupFor} />
+      ) : view === 'revisar' ? (
+        <ReviewView data={data} actions={actions} onNotice={setNotice} onError={setError} />
       ) : (
         <PairingView data={data} actions={actions} onNotice={setNotice} onError={setError} />
       )}

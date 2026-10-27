@@ -1,4 +1,4 @@
--- CENTRO DE CONTROL DE IA (0332) — control, medición, límites, alertas y proyección de TODA la IA de PEPA, sin duplicar lo que ya existe.
+-- CENTRO DE CONTROL DE IA (0335) — control, medición, límites, alertas y proyección de TODA la IA de PEPA, sin duplicar lo que ya existe.
 --
 -- Qué ya existía y se REUTILIZA (no se sustituye):
 --   · ai_config.enabled            → interruptor GLOBAL de la IA (lo leen ai_gate / ai_gate_family y la IA de Comunidad).
@@ -15,7 +15,7 @@
 --   · ai_admin_log → quién cambió qué y cuándo.
 --   · La IA de Comunidad pasa a respetar el interruptor global y el de cada función. Los artículos/encuestas/menús editoriales YA NO dependen de ai_enabled de Comunidad
 --     (que gobierna las respuestas y resúmenes de la conversación): se controlan con su función en el Centro de Control y sus interruptores de programación.
--- Todo es aditivo: no cambia datos de familias, ni reglas de edad, ni permisos de privacidad. Deshacer: supabase/rollbacks/0332_ai_control_center_down.sql.
+-- Todo es aditivo: no cambia datos de familias, ni reglas de edad, ni permisos de privacidad. Deshacer: supabase/rollbacks/0335_ai_control_center_down.sql.
 
 -- ---------------------------------------------------------------------------------------------
 -- 0) Comprobación de administrador (la única puerta de las funciones ai_admin_*)

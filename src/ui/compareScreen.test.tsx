@@ -74,7 +74,7 @@ describe('Resultados', () => {
     const withMissing: CompareDataset = { ...base, prices: [...prices, price('pz', 'k', 'Lidl', 0.99, '2026-10-20')] }
     render(<ResultsView data={withMissing} actions={a} onNotice={() => undefined} onError={() => undefined} onPickGroup={() => undefined} />)
     fireEvent.click(screen.getByRole('button', { name: /Leche semidesnatada/ }))
-    expect(screen.getByText(/Sin formato conocido/)).toBeTruthy()
+    expect(screen.getByText(/Formato de los artículos: 3 de 4 conocidos/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Indicar formato' }))
     fireEvent.change(screen.getByLabelText('Cantidad de cada envase'), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText('Unidad del envase'), { target: { value: 'l' } })
@@ -111,7 +111,8 @@ describe('Emparejar', () => {
     render(<PairingView data={base} actions={actions()} onNotice={() => undefined} onError={() => undefined} />)
     expect(screen.getByText('LECHE SEMIDESNATADA PASCUAL 1L')).toBeTruthy()
     expect(screen.queryByText('LECHE SEMI P-6 HACENDADO')).toBeNull()
-    expect(screen.getByText(/4 artículos por agrupar · 4 ya agrupados/)).toBeTruthy()
+    expect(screen.getByText(/pendientes de emparejar/)).toBeTruthy()
+
     expect(screen.getByText(/No hace falta terminar/)).toBeTruthy()
   })
   it('aceptar la sugerencia agrupa con un toque y se puede deshacer', async () => {
@@ -177,7 +178,7 @@ describe('Emparejar', () => {
   it('se puede separar un artículo ya agrupado desde «Agrupados»', async () => {
     const a = actions()
     render(<PairingView data={base} actions={a} onNotice={() => undefined} onError={() => undefined} />)
-    fireEvent.click(screen.getByRole('button', { name: /Agrupados \(4\)/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Confirmados \(4\)/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Separar LECHE ASTURIANA S' }))
     await waitFor(() => expect(a.unassign).toHaveBeenCalledWith('h'))
   })

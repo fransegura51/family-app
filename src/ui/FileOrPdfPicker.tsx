@@ -24,14 +24,16 @@
 // comportamiento ni acoplar el texto de Tickets a esos otros usos.
 import { type ChangeEvent, useRef, useState } from 'react'
 
-function FileSourceSheet({
+export function FileSourceSheet({
   title,
+  fileLabel = '📄 Elegir PDF',
   onPickCamera,
   onPickGallery,
   onPickPdf,
   onCancel,
 }: {
   title: string
+  fileLabel?: string
   onPickCamera: () => void
   onPickGallery: () => void
   onPickPdf: () => void
@@ -49,7 +51,7 @@ function FileSourceSheet({
             🖼️ Elegir de la galería
           </button>
           <button type="button" className="link-button" style={{ display: 'block', width: '100%', textAlign: 'left' }} onClick={onPickPdf}>
-            📄 Elegir PDF
+            {fileLabel}
           </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>

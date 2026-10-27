@@ -7,7 +7,8 @@
 //   · Nada se asigna solo salvo cuando el artículo es IDÉNTICO a uno ya agrupado; todo lo demás es una sugerencia que la persona acepta, busca o descarta.
 import { productTextKey } from './productText'
 import { productSignature } from './productIdentity'
-import { normalizePrice, type NormalizedPrice, type PackInput, type UnitPriceBasis } from './productSize'
+import { normalizeMeasurementUnit } from './measurementUnit'
+import { normalizePrice, packTotalSize, parseProductPack, type NormalizedPrice, type PackInput, type UnitPriceBasis } from './productSize'
 import { relationBetween, type CmpPrice, type CmpProduct, type ProductLink, type RelationContext } from './priceComparison'
 import type { ProductRelation } from './productIdentity'
 
@@ -15,12 +16,14 @@ export interface CommonProduct {
   id: string
   name: string
   normalizedName: string
+  /** 'pending' = lo ha agrupado PEPA y la familia todavía no lo ha revisado. Sin valor = confirmado. */
+  status?: 'confirmed' | 'pending'
 }
 
 export interface CommonMember {
   productId: string
   commonId: string
-  source: 'sugerido' | 'manual' | 'auto'
+  source: 'sugerido' | 'manual' | 'auto' | 'pepa'
 }
 
 export function normalizeCommonName(name: string): string {
@@ -42,7 +45,7 @@ export function suggestCommonName(article: CmpProduct): string {
     const base = [...core].find((c) => c === w || w.startsWith(c) || c.startsWith(w))
     if (!base || seen.has(base)) continue
     seen.add(base)
-    words.push(base)
+    words.push(w)
     if (words.length >= 3) break
   }
   return cap(words.join(' ') || productTextKey(article.displayName))
@@ -266,6 +269,11 @@ export interface CommonResult {
   /** Con formato exacto, pero de otra magnitud (€/kg frente a €/l): no se mezcla. */
   otherUnit: Offering[]
   storeCount: number
+  /**
+   * false = las presentaciones se comparan solo por unidad (brick, lata…) pero NO se conoce lo que contiene cada una (el «P-6» del nombre dice 6 unidades, no cuántos litros):
+   * se enseñan, pero no se declara ninguna «más económica» hasta confirmar el formato.
+   */
+  reliable: boolean
   /** Días entre la compra más antigua y la más reciente de las comparadas. */
   spanDays: number
   note: string | null
@@ -308,7 +316,10 @@ export function commonResult(
   let basis: UnitPriceBasis | null = null
   for (const b of BASIS_PRIORITY) if ((counts.get(b) ?? 0) > (basis ? (counts.get(basis) ?? 0) : 0)) basis = b
   const offers = exact.filter((o) => o.normalized.basis === basis).sort((a, b) => a.normalized.value - b.normalized.value || b.date.localeCompare(a.date))
-  const best = offers[0]?.normalized.value ?? null
+  // Comparar por unidad solo es fiable si el contenido de cada unidad está confirmado (formato guardado). Un «P-6» o «x12» del nombre cuenta unidades, no litros ni kilos.
+  const reliable = !(basis === 'ud' && offers.some((o) => !o.pack))
+  // Con una sola presentación no hay con qué comparar: no se marca como la más económica.
+  const best = reliable && offers.length >= 2 ? (offers[0]?.normalized.value ?? null) : null
   for (const o of offers) {
     o.cheapest = best != null && o.normalized.value === best
     o.diffPct = best != null && best > 0 ? Math.round(((o.normalized.value - best) / best) * 1000) / 10 : null
@@ -331,7 +342,8 @@ export function commonResult(
   const storeCount = new Set(offers.map((o) => o.store.toLowerCase())).size
   const notes: string[] = []
   if (spanDays > WIDE_SPAN_DAYS) notes.push(`Las compras comparadas están separadas por ${Math.round(spanDays / 30)} meses: los precios pueden haber cambiado.`)
-  if (offers.length < 2) notes.push(offers.length === 0 ? 'Todavía no hay presentaciones con formato conocido para comparar.' : 'Solo hay una presentación con formato conocido: falta otra para comparar.')
+  if (!reliable) notes.push('Se compara por unidad (brick, lata…) y no se sabe cuánto contiene cada una: indica el formato de cada artículo para saber cuál sale más barata por litro o kilo. Mientras tanto no se marca ninguna como la más económica.')
+  else if (offers.length < 2) notes.push(offers.length === 0 ? 'Todavía no hay presentaciones con formato conocido para comparar.' : 'Solo hay una presentación con formato conocido: falta otra para comparar.')
   return {
     common,
     basis,
@@ -339,6 +351,7 @@ export function commonResult(
     unformatted: all.filter((o) => !o.normalized.exact).sort((a, b) => b.date.localeCompare(a.date)),
     otherUnit: exact.filter((o) => o.normalized.basis !== basis),
     storeCount,
+    reliable,
     spanDays,
     note: notes.length > 0 ? notes.join(' ') : null,
   }
@@ -346,8 +359,66 @@ export function commonResult(
 
 /** Lo más barato de un resultado, en una frase corta para la lista plegada. null si no hay con qué comparar. */
 export function resultHeadline(r: CommonResult): { store: string; value: number; basis: UnitPriceBasis; extraPct: number | null } | null {
-  if (r.offers.length < 2 || r.basis == null) return null
+  if (r.offers.length < 2 || r.basis == null || !r.reliable) return null
   const best = r.offers[0]
   const worst = r.offers[r.offers.length - 1]
   return { store: best.store, value: best.normalized.value, basis: r.basis, extraPct: worst.diffPct }
+}
+
+// ─── Formatos de los artículos de un producto común ───
+
+export type FormatState = 'confirmado' | 'propuesto' | 'falta'
+
+/** Qué se sabe del contenido de un artículo del grupo (a partir de su última compra). Nunca se inventa: lo que no se sabe es «falta». */
+export interface MemberFormat {
+  productId: string
+  productName: string
+  store: string
+  /** Línea de product_prices de la última compra (para guardar el formato). */
+  priceId: string | null
+  totalPrice: number
+  date: string
+  state: FormatState
+  /** Formato guardado y confirmado (state 'confirmado'). */
+  pack: PackInput | null
+  /** Formato que PEPA lee en el nombre y que la persona puede confirmar (state 'propuesto'). */
+  proposal: PackInput | null
+  /** Por qué falta, si hay algo que decir. */
+  note: string | null
+}
+
+/**
+ * Para cada artículo del grupo: formato conocido, propuesto por PEPA (lo dice el nombre) o por completar. Un envase que solo cuenta unidades («P-6») cuando el grupo se compara por
+ * litro o kilo NO está completo: falta el contenido de cada unidad.
+ */
+export function memberFormats(memberProducts: readonly CmpProduct[], prices: readonly CmpPrice[], basis: UnitPriceBasis | null): MemberFormat[] {
+  const latest = new Map<string, CmpPrice>()
+  for (const r of prices) {
+    const prev = latest.get(r.productId)
+    if (!prev || prev.recordedDate < r.recordedDate) latest.set(r.productId, r)
+  }
+  const out: MemberFormat[] = []
+  for (const p of memberProducts) {
+    const r = latest.get(p.id)
+    if (!r) continue
+    const base = { productId: p.id, productName: p.displayName, store: r.store?.trim() || 'Sin tienda concreta', priceId: r.id ?? null, totalPrice: r.price, date: r.recordedDate }
+    if (normalizeMeasurementUnit(r.unit) === 'kg') {
+      out.push({ ...base, state: 'confirmado', pack: null, proposal: null, note: 'Se vende por kilo: ya se compara por €/kg.' })
+      continue
+    }
+    const countOnly = (pk: PackInput) => packTotalSize(pk)?.magnitude === 'unidades'
+    const needsVolume = basis === 'l' || basis === 'kg'
+    if (r.pack && packTotalSize(r.pack)) {
+      if (needsVolume && countOnly(r.pack)) out.push({ ...base, state: 'falta', pack: null, proposal: null, note: 'Solo indica cuántas unidades trae: falta el contenido de cada una.' })
+      else out.push({ ...base, state: 'confirmado', pack: r.pack, proposal: null, note: null })
+      continue
+    }
+    const fromName = parseProductPack(p.displayName)
+    if (fromName && !(needsVolume && countOnly(fromName)) && !countOnly(fromName)) {
+      out.push({ ...base, state: 'propuesto', pack: null, proposal: fromName, note: 'PEPA lo lee en el nombre del artículo.' })
+      continue
+    }
+    out.push({ ...base, state: 'falta', pack: null, proposal: null, note: fromName ? 'El nombre solo dice cuántas unidades trae: falta el contenido de cada una.' : null })
+  }
+  return out.sort((a, b) => (a.state === b.state ? a.productName.localeCompare(b.productName, 'es') : a.state === 'confirmado' ? 1 : b.state === 'confirmado' ? -1 : a.state === 'propuesto' ? -1 : 1))
 }

@@ -185,7 +185,7 @@ function buildSuggestions(
 // qué se ha comprado que con el dinero en sí). Sus componentes siguen
 // definidos en FinanceScreen.tsx y se importan desde ahí, en vez de
 // duplicar todo el código de tickets/categorías en dos archivos.
-const SUB_TABS = ['Inicio', 'Lista', 'Historial', 'Tickets', 'Comparar', 'Estadística compras'] as const
+const SUB_TABS = ['Inicio', 'Lista', 'Tickets', 'Historial', 'Comparar', 'Estadística compras'] as const
 type SubTab = (typeof SUB_TABS)[number]
 
 function isComprasSubTab(key: ComprasMenuItemKey): key is SubTab {
@@ -331,8 +331,9 @@ export function ShoppingScreen() {
 function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void }) {
   const shortcuts: { tab: SubTab; body: string; 'data-help-id': string }[] = [
     { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.', 'data-help-id': 'shopping.card-lista' },
-    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.', 'data-help-id': 'shopping.card-historial' },
     { tab: 'Tickets', body: 'Registra una compra con o sin ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
+    { tab: 'Historial', body: 'Precios de lo que sueles comprar — Alimentos y Otros (ropa, electrónica...), con buscador.', 'data-help-id': 'shopping.card-historial' },
+    { tab: 'Comparar', body: 'Qué producto sale más barato por litro o kilo, tienda a tienda.', 'data-help-id': 'shopping.card-comparar' },
     { tab: 'Estadística compras', body: 'Cuánto se lleva registrado en Alimentación y en Otros, y en qué.', 'data-help-id': 'shopping.card-estadistica' },
   ]
   // Petición real: extender el pastel también a estas tarjetas de
@@ -1016,7 +1017,7 @@ function ShoppingListTab() {
       shared: sharedHintFor(listShared, item.store, item.name),
     })
     const classification = resolved.className
-    const kind: FoodTypeKind = resolved.source === 'shared' ? resolved.kind : contextKind
+    const kind: FoodTypeKind = resolved.source === 'shared' || resolved.source === 'catalog' ? resolved.kind : contextKind
     const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
     const label = classification || 'Sin clasificar'
     const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? classifyFoodType(item.name).icon : '❓') : '❓')

@@ -42,7 +42,7 @@ export { toCmpPrice, toCmpProduct }
 function useEquivalenceContext(products: readonly CmpProduct[], focusName?: string) {
   const [decisions, setDecisions] = useState<FamilyDecision[]>([])
   const [shared, setShared] = useState<SharedEquivalence[]>([])
-  const [commonsData, setCommonsData] = useState<CommonProductsData>({ commons: [], members: [], skipped: [], available: false })
+  const [commonsData, setCommonsData] = useState<CommonProductsData>({ commons: [], members: [], skipped: [], rejected: [], available: false })
   const [version, setVersion] = useState(0)
 
   const names = useMemo(() => {

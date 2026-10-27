@@ -131,7 +131,7 @@ describe('Control de IA · interruptores', () => {
     api.getAiState.mockRejectedValue(new Error('Could not find the function public.ai_admin_state in the schema cache'))
     page()
     const alert = await screen.findByRole('alert')
-    expect(within(alert).getByText(/migración 0332/)).toBeTruthy()
+    expect(within(alert).getByText(/migración 0335/)).toBeTruthy()
   })
 
   it('un administrador sin permiso ve un mensaje, no un fallo técnico', async () => {

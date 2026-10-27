@@ -135,7 +135,7 @@ export class CommunityAi {
         p_retries: m.retries,
         p_duration_ms: m.durationMs,
       })
-      // Base de datos sin la migración 0332: la llamada de siempre.
+      // Base de datos sin la migración 0335: la llamada de siempre.
       if (res.error && isMissingRpc(res.error.message)) res = await this.client.rpc('community_service_record_ai', { p_purpose: purpose, p_error: error })
       if (res.error) console.error('[community-ai] no se pudo anotar el uso:', purpose)
     } catch {

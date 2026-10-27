@@ -8,6 +8,7 @@ import { toCmpPrice, toCmpProduct } from '@/domain/priceComparisonAdapters'
 import { PACK_UNITS } from '@/domain/productSize'
 import type { Product, ProductPrice } from '@/domain/types'
 import { MAX_PACKAGE_PHOTOS, analyzePackagePhotos } from '@/services/packagePhoto'
+import { FileSourceSheet } from '@/ui/FileOrPdfPicker'
 
 const eur = (n: number) => n.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 const shortDate = (d: string) => {
@@ -45,12 +46,15 @@ export function PackEditor({
   const [amount, setAmount] = useState(initial ? String(initial.amount) : '')
   const [unit, setUnit] = useState<string>(initial?.unit ?? 'g')
   const [photoState, setPhotoState] = useState<{ busy: boolean; message: string | null; error: boolean }>({ busy: false, message: null, error: false })
+  const cameraRef = useRef<HTMLInputElement>(null)
+  const galleryRef = useRef<HTMLInputElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [basket, setBasket] = useState<File[]>([])
   const pack = parsePackInput(count, amount, unit)
   const per = pack ? unitPriceText(price, pack) : null
 
-  async function handleFiles(list: FileList | null) {
-    const files = [...(list ?? [])].slice(0, MAX_PACKAGE_PHOTOS)
+  async function read(files: File[]) {
     if (files.length === 0) return
     setPhotoState({ busy: true, message: null, error: false })
     try {
@@ -62,27 +66,49 @@ export function PackEditor({
         setUnit(s.fill.unit)
       }
       onReading?.(reading)
+      setBasket([])
       setPhotoState({ busy: false, message: s.message, error: s.fill == null })
     } catch (err) {
       setPhotoState({ busy: false, message: err instanceof Error ? err.message : 'No se pudo leer el envase. Escribe el formato a mano.', error: true })
-    } finally {
-      if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  // Cámara, galería y archivos entregan aquí sus fotos (hasta MAX_PACKAGE_PHOTOS por lectura). Con una sola foto se espera a que la persona decida si añade otra (frontal y
+  // etiqueta); con varias a la vez, o al completar el máximo, se lee sin más.
+  function handleFiles(list: FileList | null, input: HTMLInputElement | null) {
+    const picked = [...(list ?? [])].filter((f) => f.type.startsWith('image/') || /.(jpe?g|png|webp|heic|heif)$/i.test(f.name))
+    if (input) input.value = ''
+    if (picked.length === 0) return
+    const next = [...basket, ...picked].slice(0, MAX_PACKAGE_PHOTOS)
+    setBasket(next)
+    setPhotoState({ busy: false, message: null, error: false })
+    if (picked.length > 1 || next.length >= MAX_PACKAGE_PHOTOS) void read(next)
   }
 
   return (
     <div style={{ marginTop: 4 }}>
-      <div className="inline-fields" style={{ alignItems: 'center' }}>
-        <input type="number" min={1} step="any" inputMode="decimal" style={{ width: 64 }} value={count} onChange={(e) => setCount(e.target.value)} aria-label="Número de envases o unidades" />
-        <span aria-hidden="true">×</span>
-        <input type="number" min={0} step="any" inputMode="decimal" style={{ width: 84 }} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Cantidad" aria-label="Cantidad de cada envase" />
-        <select value={unit} onChange={(e) => setUnit(e.target.value)} aria-label="Unidad del envase">
-          {PACK_UNITS.map((u) => (
-            <option key={u} value={u}>
-              {u === 'ud' ? 'unidades' : u}
-            </option>
-          ))}
-        </select>
+      <div className="inline-fields pack-editor-fields" style={{ alignItems: 'flex-end' }} data-help-id="shopping.pack-fields">
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, gap: 2 }}>
+          N.º de envases
+          <input type="number" min={1} step="any" inputMode="decimal" style={{ width: 72 }} value={count} onChange={(e) => setCount(e.target.value)} aria-label="Número de envases o unidades" />
+        </label>
+        <span aria-hidden="true" style={{ paddingBottom: 12 }}>
+          ×
+        </span>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, gap: 2 }}>
+          Cantidad por envase
+          <input type="number" min={0} step="any" inputMode="decimal" style={{ width: 104 }} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Ej. 330" aria-label="Cantidad de cada envase" />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column', fontSize: 12, gap: 2 }}>
+          Unidad de medida
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} aria-label="Unidad del envase">
+            {PACK_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {u === 'ud' ? 'unidades' : u}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       {pack && (
         <p className="muted" style={{ margin: '2px 0', fontSize: 12 }}>
@@ -92,19 +118,52 @@ export function PackEditor({
       )}
       {allowPhoto && (
         <div style={{ margin: '2px 0' }}>
-          <input ref={fileRef} type="file" accept="image/*" multiple hidden aria-label="Fotos del envase" data-help-id="shopping.pack-photo-input" onChange={(e) => void handleFiles(e.target.files)} />
-          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} disabled={photoState.busy} data-help-id="shopping.pack-photo" onClick={() => fileRef.current?.click()}>
-            {photoState.busy ? 'Leyendo el envase…' : '📷 Fotografiar envase'}
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden aria-label="Hacer foto del envase" onChange={(e) => handleFiles(e.target.files, e.target)} />
+          <input ref={galleryRef} type="file" accept="image/*" multiple hidden aria-label="Fotos del envase" data-help-id="shopping.pack-photo-input" onChange={(e) => handleFiles(e.target.files, e.target)} />
+          <input ref={fileRef} type="file" accept=".jpg,.jpeg,.png,.webp,.heic,.heif" hidden aria-label="Archivo de imagen del envase" onChange={(e) => handleFiles(e.target.files, e.target)} />
+          <button type="button" className="link-button" style={{ fontSize: 13, padding: 0 }} disabled={photoState.busy} data-help-id="shopping.pack-photo" onClick={() => setSheetOpen(true)}>
+            {photoState.busy ? 'Leyendo el envase…' : basket.length > 0 ? '📷 Añadir otra foto' : '📷 Fotografiar envase'}
           </button>
+          {basket.length > 0 && !photoState.busy && (
+            <span style={{ fontSize: 12, marginLeft: 8 }}>
+              {basket.length === 1 ? '1 foto lista' : `${basket.length} fotos listas`} ·{' '}
+              <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} onClick={() => void read(basket)}>
+                Leer envase
+              </button>{' '}
+              ·{' '}
+              <button type="button" className="link-button" style={{ fontSize: 12, padding: 0 }} onClick={() => setBasket([])}>
+                Quitar fotos
+              </button>
+            </span>
+          )}
           {photoState.message && (
             <p className={photoState.error ? 'error' : 'muted'} role="status" style={{ margin: '2px 0', fontSize: 12 }}>
               {photoState.message}
             </p>
           )}
-          {!photoState.message && !photoState.busy && (
+          {!photoState.message && !photoState.busy && basket.length === 0 && (
             <span className="muted" style={{ fontSize: 11, marginLeft: 6 }}>
               hasta {MAX_PACKAGE_PHOTOS} fotos (frontal y etiqueta); no se guardan
             </span>
+          )}
+          {sheetOpen && (
+            <FileSourceSheet
+              title="Fotografiar envase"
+              fileLabel="📁 Elegir archivo"
+              onPickCamera={() => {
+                setSheetOpen(false)
+                cameraRef.current?.click()
+              }}
+              onPickGallery={() => {
+                setSheetOpen(false)
+                galleryRef.current?.click()
+              }}
+              onPickPdf={() => {
+                setSheetOpen(false)
+                fileRef.current?.click()
+              }}
+              onCancel={() => setSheetOpen(false)}
+            />
           )}
         </div>
       )}
@@ -194,9 +253,11 @@ interface Props {
   onFixPast?: (priceId: string, pack: PackFormat) => Promise<void> | void
   onReading?: (index: number, reading: PackPhotoReading) => void
   analyze?: (files: File[]) => Promise<PackPhotoReading>
+  /** Producto común de cada artículo agrupado: si el artículo está en un grupo con formatos por completar, se pregunta aunque el grupo sea de la misma tienda. */
+  commonOf?: ReadonlyMap<string, string>
 }
 
-export function PackFormatsPanel({ lines, store, products, prices, productIdFor, onPack, onFixPast, onReading, analyze }: Props) {
+export function PackFormatsPanel({ lines, store, products, prices, productIdFor, onPack, onFixPast, onReading, analyze, commonOf }: Props) {
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
@@ -223,17 +284,18 @@ export function PackFormatsPanel({ lines, store, products, prices, productIdFor,
           const resolved = resolveLinePack(line, pid ? (historyByProduct.get(pid) ?? []) : [])
           if (resolved.status.kind === 'peso') return null
           const target = pid ? (cmpProducts.find((p) => p.id === pid) ?? null) : null
-          const others = otherStorePrices(target, store, cmpProducts, cmpPrices)
-          return { line, index, ...resolved, others }
+          const others = otherStorePrices(target, store, cmpProducts, cmpPrices, { commonOf })
+          const inGroup = !!pid && !!commonOf?.has(pid)
+          return { line, index, ...resolved, others, inGroup }
         })
         .filter((r): r is NonNullable<typeof r> => r !== null),
-    [lines, store, productIdFor, historyByProduct, cmpProducts, cmpPrices],
+    [lines, store, productIdFor, historyByProduct, cmpProducts, cmpPrices, commonOf],
   )
   if (rows.length === 0) return null
 
   const missing = rows.filter((r) => r.pack == null).length
   // Lo que más sirve para comparar: productos que ya se compraron en otra tienda y siguen sin formato.
-  const ask = rows.filter((r) => needsAnswer(r.status) && r.line.pack === undefined && r.others.length > 0)
+  const ask = rows.filter((r) => needsAnswer(r.status) && r.line.pack === undefined && (r.others.length > 0 || r.inGroup))
   const recognized = rows.filter((r) => (r.status.kind === 'nombre' || r.status.kind === 'recordado') && r.line.pack === undefined)
 
   function renderEditor(r: (typeof rows)[number]) {

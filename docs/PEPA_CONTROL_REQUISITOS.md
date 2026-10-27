@@ -960,6 +960,32 @@ Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada 
 
 **Pendiente**: validar en iPhone y Android; probar la lectura de envases con fotos reales y el proveedor real de IA con una sesión de usuario, y medir su coste real; agrupar los artículos (unos 24 productos comunes y ≈ 100 artículos agrupables según la evaluación) y completar formatos. Nada pasa a Aprobado sin confirmación expresa.
 
+## Retoques del comparador tras la primera validación real (COMP-4, 27/10/2026)
+
+Encargo del usuario (27/10/2026, tras probar en iPhone: «el emparejamiento manual funciona, hemos agrupado tres artículos bajo Leche semidesnatada»). **Migración 0333 APLICADA el 27/10/2026**
+(`supabase/migrations/0333_common_products_pepa_review.sql`; reversión en `supabase/rollbacks/`): columna `status` en `common_products` (los grupos de la familia quedan `confirmed`), valor `pepa` en
+`source` y tabla `common_product_auto_rejects`. Antes y después: huellas de `product_prices`, `products` y `receipts` idénticas; el grupo «Leche semidesnatada» (3 artículos) intacto.
+
+| ID | Descripción | Estado | Evidencia |
+|---|---|---|---|
+| COMP-4a | Agrupación automática inicial: PEPA identifica artículos que son el mismo producto (otra marca, otro tamaño, nombre cortado por el ticket) sin depender del EAN, sin mezclar variantes ni números distintos, sin tocar grupos confirmados ni compras; idempotente | **Implementado y probado; ejecutado sobre el historial de la familia** (12 grupos, 24 artículos, todos «pendientes de revisar») | `src/domain/autoGrouping.ts` + `autoGrouping.test.ts` (21); `runAutoGrouping` en `src/data/commonProducts.ts`; segunda pasada sobre los datos reales: 0 grupos nuevos |
+| COMP-4b | Tres estados visibles: confirmados por la familia / agrupados por PEPA pendientes de revisar / pendientes de emparejar; revisar, confirmar, corregir (nombre, separar), descartar; lo separado o descartado no se vuelve a proponer; lo parecido a un grupo confirmado se ofrece aparte («Para tus grupos») y lo añade la persona | **Implementado y probado** | `ReviewView` («Revisar PEPA») y `PairingView` en `CompareScreen.tsx`; `compareReview.test.tsx` (12); aislamiento y RLS probados en transacción revertida (0333) |
+| COMP-4c | Agrupaciones pendientes = comparación provisional (no definitiva) | **Implementado y probado** | Resultados marca «pendiente de revisar» y «(provisional)» |
+| COMP-4d | Nuevas compras: reconocer el producto común y aprovechar los grupos; lo dudoso queda como sugerencia | **Implementado y probado** | `autoAssignToCommons` (idénticos a un artículo agrupado) + `runAutoGrouping` al guardar una compra y al abrir Comparar precios |
+| COMP-4e | Formatos poco a poco: por grupo, qué artículos tienen formato y cuáles faltan; confirmar el propuesto, escribirlo, fotografiar el envase o dejarlo; se ofrece discretamente al volver a comprar el artículo; sin bloquear el ticket; sin inventar formatos históricos | **Implementado y probado** | `memberFormats`, `GroupFormats`; `PackFormatsPanel` recibe `commonOf` |
+| COMP-4f | Contraste de los buscadores (selector «¿Con qué se compara?» y Ayuda) | **Corregido; pendiente de ver en iPhone/Android** | `styles.css`, `help.css` (texto oscuro explícito en tarjetas-botón y campos de búsqueda) |
+| COMP-4g | Orden de Compras: Inicio, Lista, Compras registradas, Historial de precios, Comparar precios, Estadística compras (menú y tarjetas de Inicio); los menús guardados con el orden anterior se actualizan, los personalizados no | **Implementado y probado** | `comprasMenu.ts`, `ShoppingScreen.tsx` |
+| COMP-4h | Precio de packs: precio del paquete ≠ precio por unidad; sin contenido conocido no se declara «la más económica» (ni con una sola presentación) | **Implementado y probado** | `commonResult.reliable`; caso «LECHE SEMI P-6» abajo |
+| COMP-4i | Formulario de formato con etiquetas visibles («N.º de envases», «Cantidad por envase», «Unidad de medida») | **Implementado y probado** | `PackEditor` |
+| COMP-4j | «Fotografiar envase» usa el mismo selector de tickets (cámara, galería, archivos), hasta 3 fotos por lectura | **Implementado y probado** | `FileSourceSheet` compartido; no se creó otro selector |
+
+**LECHE SEMI P-6 (Mercadona)**: la compra se guardó con precio 10,74 € y cantidad 1 (= 6 bricks × 1,79 €; el mismo producto suelto, «LECHE SEMI DESNATADA», costó 1,79 €). Los 1,79 €/ud son
+10,74 ÷ 6 (el «P-6» del nombre) y el paquete es 10,74 €: no se multiplica dos veces. Lo que no se sabe es el contenido de cada brick (el nombre solo da el número de unidades), así que no se
+puede dar un precio por litro ni decir «la más económica» hasta confirmar 6 × 1 l. No se ha modificado ningún precio histórico.
+
+**Pendiente**: ver el contraste y el nuevo selector de fotos en iPhone y Android; probar «Fotografiar envase» con la IA real (de día, con envases); revisar los 12 grupos propuestos; completar formatos
+(sin ellos solo se comparan por litro/kilo los artículos cuyo nombre trae el tamaño). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos
@@ -1032,6 +1058,49 @@ No había ningún sistema de alias de comercios (no se creó uno paralelo).
 | ECO-02f | Las 13 conciliaciones reales confirmadas siguen siendo elegibles; datos históricos intactos | **Verificado** | prueba de regresión con datos reales; consulta de solo lectura |
 
 **Pendiente**: validar en el iPhone que las sugerencias de «Pagos por revisar» son las esperadas y que «Vincular con un movimiento del banco» funciona. **Límite conocido**: si el banco escribe el comercio con un nombre sin ninguna palabra en común con el título del pago (p. ej. un pago titulado «IBI» y un cargo «SUMA GESTION TRIBUTARIA», sin proveedor), PEPA ya no lo propone (antes sí, por cuenta + importe + fecha) y hay que vincularlo a mano o poner el emisor en «Proveedor». Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
+## Reparto de un gasto entre varias clasificaciones de Compras (CLASIF-1, 27/10/2026)
+
+**Estado: PUBLICADO el 27/10/2026 con la migración `0332_expense_class_shares.sql` APLICADA en producción tras ensayarla en una transacción REVERTIDA sobre la base real (ver más abajo; tras aplicarla: 0 repartos, RLS activa, solo lectura para `authenticated`, 954 gastos intactos). Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Qué hace.** En el campo «Clasificación» de un gasto (Economía → Movimientos: «+ Nuevo movimiento» y «Editar movimiento»), la opción sencilla de siempre sigue siendo una sola clasificación. Nueva opción voluntaria: **«＋ Repartir entre varias clasificaciones»**, con las clasificaciones de Compras ya existentes, a partes iguales, en euros o en porcentaje, y la suma debe coincidir EXACTAMENTE con el gasto (al céntimo; el reparto por porcentaje y por partes iguales reparte los céntimos sueltos sin perder ninguno). Reutiliza la lógica y el editor del reparto por etiquetas (ETQ-1): el mismo editor sirve ahora para etiquetas y clasificaciones.
+- Ejemplo real: Amazon 47,97 € = Ropa y calzado 40,98 € + otra clasificación 6,99 €.
+- Un solo gasto y un solo movimiento bancario, sin duplicados: el gasto cuenta UNA vez en el total, en «por tienda» y en la comparativa; cada clasificación recibe solo su parte en «Reparto por clasificación» (Alimentación y Otros, cada parte en su lado).
+- La categoría contable y las etiquetas son conceptos distintos y no se tocan.
+- **Si el gasto tiene un ticket con productos clasificados línea a línea, ese desglose manda**: el reparto manual no se admite (el servidor lo rechaza y la pantalla avisa) y, si existiera, no se vuelve a contar.
+- Editar o quitar el reparto: se vuelve a una sola clasificación («Volver a una sola clasificación») o se cambia el reparto; el gasto y su movimiento original no se pierden. Si el importe del gasto cambia por otra vía, el reparto se reescala (suma exacta); si se cambia la clasificación con el selector sencillo, manda esa y el reparto se retira.
+- **No se cambia ninguna clasificación histórica** ni se migra ningún dato: las clasificaciones actuales siguen siendo la «principal» (`expenses.product_classification`) y no tienen filas de reparto.
+
+**Migración 0332 (aditiva, con reversión `supabase/rollbacks/0332_expense_class_shares_down.sql`).** Tabla `expense_class_shares` (+ archivo para «Deshacer»), función `set_expense_classes` (valida acceso a Economía, gasto propio y tocable, clasificaciones de la familia, sin repetidas, importes positivos, suma exacta y ausencia de ticket clasificado), disparadores de coherencia (reescala, retirada, archivo/restauración) y `link_purchase_to_bank_expense` (la de 0322 + que el reparto del cargo pase a la compra solo si ella no tenía clasificación ni reparto ni ticket clasificado). RLS: solo lectura para quien ya ve el gasto (incluidas las cuentas separadas); nadie escribe directamente. Sin DROP ni cambios de datos.
+
+**Ensayo en producción (REVERTIDO, 27/10/2026)**, con el usuario administrador de la familia y un gasto bancario real, todo dentro de una transacción que terminó en error a propósito (la base quedó intacta: sin tablas ni funciones nuevas y el gasto sin cambios): reparto de 2 clasificaciones válido (la principal es la de mayor parte); suma incorrecta, clasificación repetida y clasificación ajena rechazadas sin tocar el reparto previo; cambio de importe reescala exacto (4.000 céntimos); cambio de clasificación sencilla retira el reparto; una sola o vacío no crean filas; borrar + volver a insertar (Deshacer) recupera las dos partes y limpia el archivo; otra familia no puede tocarlo; la escritura directa está denegada; la lectura no enseña filas de otras familias; los repartos de etiquetas no cambian (0 → 0); `link_purchase_to_bank_expense` incluye clasificaciones y etiquetas.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| CLASIF-1a | Una sola clasificación por defecto; «Repartir entre varias clasificaciones» voluntario, con las clasificaciones de Compras existentes | **Implementado y probado; pendiente de validación real** | `classSharesField.test.tsx` (8) |
+| CLASIF-1b | Partes iguales, euros o %; suma exacta; mensajes claros | **Implementado y probado** | `classShares.test.ts` (15), `tagShares.test.ts` (editor compartido sin cambios para etiquetas) |
+| CLASIF-1c | «Reparto por clasificación» y demás estadísticas de Compras reflejan cada parte; un gasto cuenta una vez; Alimentación y Otros por separado | **Implementado y probado; pendiente de validación real** | `classSharesStats.test.tsx` (6) con el caso Amazon 47,97 € |
+| CLASIF-1d | Un ticket con productos clasificados manda; sin doble cómputo | **Implementado y probado** | servidor (`set_expense_classes`), estadísticas y aviso en pantalla; `classSharesStats.test.tsx` |
+| CLASIF-1e | Editar o quitar el reparto sin perder el movimiento; categoría y etiquetas intactas | **Implementado y probado** | `classShares.test.ts` (formulario), ensayo de la migración |
+| CLASIF-1f | Sin duplicidades ni cambios en datos existentes; permisos y aislamiento entre familias | **Ensayado en producción (revertido)** | `expenseClassSharesMigration.test.ts` (8) y ensayo |
+
+**Pendiente**: validar en iPhone (editar el movimiento de Amazon de 47,97 € y repartirlo; mirar «Reparto por clasificación» en Estadística compras); si una clasificación se renombra o se borra después, esa parte cae en «Sin clasificar» (igual que ya ocurre con la clasificación sencilla). Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
+## Correcciones finales de repartos, filtros y visualización de movimientos (COR-01, COR-02, COR-03, 27/10/2026)
+
+**Estado: implementado y probado en local; sin migraciones ni cambios de datos; pendiente de validación visual y funcional en el iPhone/Android, sin Aprobar.** No se tocó nada de lo que ya funcionaba: repartos entre etiquetas (iguales, euros, %), reparto entre clasificaciones, cálculo de importes en estadísticas y contabilización una sola vez.
+
+| ID | Incidencia | Causa encontrada | Corrección | Estado / evidencia |
+|---|---|---|---|---|
+| COR-01 | «Ver movimientos» de «Ropa y calzado» (Reparto del gasto en Otros por clasificación) mostraba movimientos de otras clasificaciones (6,39 € «Cable Ethernet 5m» → «Electrónica y hogar»; 23,94 € «Toallitas» → «Belleza y cuidado personal») | El filtro **ya viajaba por identificadores de gasto** (lista `expenseIds` calculada por la propia estadística; no hay búsqueda por texto ni coincidencias parciales de nombres de clasificación: se comprobó de extremo a extremo, `BudgetsTab` → `pendingMovementsFilter` → `ExpensesTab`). La causa que SÍ existía en el código (y la más probable) está en QUÉ gastos entraban en la lista de una clasificación: bastaba que un gasto tuviera **cualquier apunte de esa clasificación, aunque aportara 0 €** (una línea de 0 € o una parte a cero), para que apareciera con su importe completo. Además el contador decía «N movimientos» pero contaba productos. **No se pudo reproducir con los datos reales** (en esta sesión ya no hay acceso de lectura a la base de datos de PEPA): si aún aparece algún movimiento inesperado, ahora la lista enseña cuánto aporta a esa clasificación (COR-03) y se ve por qué. | Una clasificación solo incluye los gastos que **aportan importe (> 0)** a ella (sea el gasto completo, una línea de ticket o una parte de un reparto), con identificadores; el contador cuenta movimientos reales; periodo y filtros intactos. Un ticket con varias clasificaciones sale en cada una, sin duplicar el gasto global. | **Implementado y probado; pendiente de validación real.** `corClassFilterUi.test.tsx` (6): «Ropa y calzado» no trae «Electrónica y hogar» ni «Belleza y cuidado personal»; una línea de 0 € no cuenta; una compra repartida entre «Ropa y calzado» y «Papelería y oficina» sale en ambas con su parte; total de compras 104,69 € sin duplicar |
+| COR-02 | En Economía no se distinguían desde la lista todas las etiquetas de un movimiento repartido | La fila (`MovementRow`) pintaba un solo punto (la etiqueta principal) | Un punto por etiqueta asignada, en vertical, cada uno con su color, centrado en el hueco del indicador, **sin aumentar la altura de la fila** (los puntos se solapan algo a partir de 4) y **sin texto, contadores ni distintivos nuevos**. Con 0 o 1 etiqueta es exactamente el punto de siempre. Las clasificaciones **no** se muestran en las filas (sin cambios). | **Implementado y probado; pendiente de validación visual.** `corMovementsUi.test.tsx` (COR-02, 5): 1 / 2 / 3 / 5 etiquetas, colores en su orden, solape, sin líneas añadidas |
+| COR-03 | Desde la estadística de una etiqueta, «Ver movimientos» enseñaba el importe completo (13,55 €) sin aclarar qué parte era de la etiqueta filtrada | La lista no conocía el importe imputado: la estadística suma la parte de cada etiqueta, pero la lista solo mostraba `expense.amount` | Con filtro por etiqueta (o por una clasificación desde Compras), cada movimiento conserva su importe y, **solo si su parte difiere**, añade una línea «Correspondiente a Jennifer: 8.13 €»; la cabecera pasa a «28.13 € imputados a Jennifer» (suma de lo imputado, con una nota «Importe completo de estos movimientos» si difiere); el número de movimientos es el real. Sin filtro de reparto, la lista y su cabecera no cambian. Un ticket con productos clasificados sigue mandando sobre el reparto manual. | **Implementado y probado; pendiente de validación real.** `corMovementsUi.test.tsx` (COR-03, 5): Hiperber 13,55 € → Jennifer 8,13 € y Cumpleaños Álvaro 2026 5,42 €; lista general 13,55 €; el gasto global no sube (107,55 €); los totales por etiqueta suman el global |
+
+**Pendiente**: validar visualmente en iPhone y Android los puntos con 2, 3 y 5+ etiquetas y nombres largos; confirmar con datos reales que «Ropa y calzado» ya no trae los movimientos del cable ni de las toallitas (si siguen apareciendo, la línea «Correspondiente a…» dirá cuánto aportan y de qué línea viene). Nada pasa a **Aprobado** sin confirmación expresa.
 
 ---
 
@@ -1164,7 +1233,7 @@ Encargo del usuario (2026-10-27), Fase 2. Reglas que NO cambian: Comunidad solo 
 
 ## Centro de Control de IA y correcciones de Administración (PEPA-IA, 27/10/2026)
 
-Encargo del usuario (2026-10-27). Reglas que NO cambian: reglas de edad (Comunidad solo mayores de 18) y permisos de privacidad intactos; **todos los límites nuevos nacen en observación** (nada bloquea); no se activa ninguna función desactivada; no se cambian proveedores ni modelos; no se introducen servicios de pago; sin llamadas masivas reales ni datos de familias modificados para pruebas. Estado: **código listo y probado, SIN APLICAR EN PRODUCCIÓN** (la migración `supabase/pending-migrations/0332_ai_control_center.sql` y las funciones de servidor esperan autorización/acceso a la base de datos).
+Encargo del usuario (2026-10-27). Reglas que NO cambian: reglas de edad (Comunidad solo mayores de 18) y permisos de privacidad intactos; **todos los límites nuevos nacen en observación** (nada bloquea); no se activa ninguna función desactivada; no se cambian proveedores ni modelos; no se introducen servicios de pago; sin llamadas masivas reales ni datos de familias modificados para pruebas. Estado: **código listo y probado, SIN APLICAR EN PRODUCCIÓN** (la migración `supabase/pending-migrations/0335_ai_control_center.sql` y las funciones de servidor esperan autorización/acceso a la base de datos).
 
 | ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
 |---|---|---|---|---|---|
@@ -1178,7 +1247,40 @@ Encargo del usuario (2026-10-27). Reglas que NO cambian: reglas de edad (Comunid
 | IA-PLANES | Estructura para plan gratuito/de pago/excepciones/promociones con cuotas por plan y función, SIN efecto | Sí | Sí — `ai_plan*`, `plans_enforced = false`; ninguna puerta los lee | Sí — comprobado en la migración | No |
 | IA-VISUAL | Correcciones del Centro en iPhone: tarjeta «Tutoriales y vídeos» (código sin evaluar, título y contadores), bloques plegables, franja bajo los botones flotantes y zona segura inferior, títulos comprensibles de ajustes técnicos, buscador con las funciones nuevas | Sí | Sí — `AreaAyuda.tsx`, `administration.css`, `SETTING_META`, `adminTools.ts` | Sí — `adminLayout.test.tsx` (abierto y cerrado); **revisión visual en iPhone real pendiente** | No |
 
-**Pendiente (honesto)**: (1) aplicar la migración 0332 y desplegar las funciones de IA con la medición completa (hasta entonces las funciones siguen midiendo con el contador de siempre y la pantalla avisa de que no está disponible); (2) probar el SQL real en la base con una transacción revertida; (3) contrastar la tarifa de Gemini (estimada, plan gratuito) con la factura de Google; (4) revisión visual en iPhone. Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+**Pendiente (honesto)**: (1) aplicar la migración 0335 y desplegar las funciones de IA con la medición completa (hasta entonces las funciones siguen midiendo con el contador de siempre y la pantalla avisa de que no está disponible); (2) probar el SQL real en la base con una transacción revertida; (3) contrastar la tarifa de Gemini (estimada, plan gratuito) con la factura de Google; (4) revisión visual en iPhone. Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
+## Catálogo maestro de productos y normalización inteligente (NORM-1, 27/10/2026)
+
+Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estado: código implementado y probado en la rama principal; migración `0334_catalog_master_classes.sql` APLICADA en producción el 27/10/2026 (verificada: 3 clases aprobadas, +18 filas en 6 familias, ninguna renombrada ni otra tabla tocada); criterio «PEPA no adivina» CONFIRMADO por la persona responsable (Desatascador, Papel de cocina, Servilletas y Tortitas integrales se clasifican con las categorías existentes); prueba limpia con una familia real PENDIENTE. Sin Aprobar.**
+
+**Registro consultado antes de implementar.** Se respetan: CAT-1 (clasificador común y aprendizaje compartido: no se sustituyen ni se crea otro), COMP-1 (distinguir idéntico / equivalente / distinto sin inventar coincidencias), COMP-4 (las agrupaciones de PEPA salen «pendientes de revisar» y nunca se tocan los grupos confirmados), CLASIF-1 y el resto de Compras. **Decisión anterior que este encargo cambia, conscientemente y que necesita tu confirmación:** la corrección «PEPA NO ADIVINA» dejaba `Desatascador`, `Tortitas integrales`, `Papel de cocina` y `Servilletas` como «Sin clasificar» porque solo había una palabra suelta; ahora el catálogo maestro (una lista curada) los reconoce (Limpieza del hogar, Snacks y dulces) y esos cuatro casos del test se actualizaron. Lo que ni el catálogo ni las reglas reconocen sigue «Sin clasificar» (`Xilofón azul`, `PARKING`…).
+
+**Qué se ha construido.**
+- `src/domain/catalog`: catálogo maestro (**586 entradas = 549 productos + 37 de clase**, 2.324 alias, entradas en 30 de las 31 clases CAT-1), normalizador puro (`identify.ts`), lector del formato compacto, atributos que distinguen productos no equivalentes (tipo de leche, talla y tipo de pañal, etapa de leche infantil, sin lactosa/gluten/alcohol, zero/light, especie y edad de mascota), vocabulario (abreviaturas, marcas, sinónimos de género) y evaluación (`evaluate.ts`, `familyReport.ts`).
+- Una entrada «de clase» (clave con «~») solo clasifica y nunca agrupa.
+- Integrado en el resolutor único de clases (`productClass.ts`: manual > compartido > clase histórica > **catálogo** > reglas > sin clasificar), en la identidad de producto del comparador (`productIdentity.ts`: el catálogo veta lo distinto y reconoce lo igual escrito distinto) y en la agrupación automática (`autoGrouping.ts`: no agrupa lo que el catálogo distingue; agrupa por identidad completa; el grupo se llama como el producto normalizado).
+- Formato: se leen también «40 lavados», «12 rollos», «48 pañales», «docena»; nunca se supone el contenido («LECHE SEMI P-6» = 6 envases, sin litros); la capacidad de una bolsa de basura («30 L») no se toma por contenido.
+- Centro de Administración → Sistema → «Evaluación del catálogo de productos»: informe de solo lectura para la prueba limpia (ver `docs/EVALUACION_NORMALIZACION.md`).
+- Migración 0334 (aditiva, con reversión): tres clases nuevas — Alimentación infantil, Platos preparados, Higiene y cuidado del bebé —, propagadas a las familias que ya tienen sus clases (enlaza una clase propia del mismo nombre sin renombrar nada).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| NORM-1a | Auditoría previa de CAT-1, productos comunes, formatos, equivalencias y aprendizaje compartido | **Hecha** | Reutiliza `resolveProductClass`, `catalog_food_types`, `common_products`, `product_prices.pack_*`, `productIdentity`, `autoGrouping`; ninguna tabla ni clasificador paralelos |
+| NORM-1b | Catálogo maestro compartido, ampliable sin cambiar la estructura | **Implementado y probado** | `catalogIntegrity.test.ts` (claves únicas, todas las clases con entradas, ningún alias se «come» una variante o una marca, sin alias duplicados) |
+| NORM-1c | Ampliar CAT-1 (Alimentación infantil y lo que de verdad falta) sin duplicar ni reclasificar | **Implementado; migración 0334 APLICADA (27/10/2026)** | `catalogClasses.test.ts` (espejo de las migraciones, aditiva, idempotente, reversible); con la clase ausente la app sigue como antes |
+| NORM-1d | Normalizar el artículo: texto original intacto, producto, categoría, marca, formato, niveles seguro/probable/dudoso | **Implementado y probado** | `identify.test.ts` (los ejemplos del encargo, ingredientes ≠ platos, «zero», productos no equivalentes, confianza) |
+| NORM-1e | Un solo clasificador para Compras, Economía y Comparador; no clasificar dos veces | **Implementado y probado** | `productClass.test.ts` (cascada con el catálogo), `catalogGrouping.test.ts` |
+| NORM-1f | Formato sin inventar cantidades; datos originales separados de los interpretados | **Implementado y probado** | `identify.test.ts` («P-6» no supone 1 L), `productSize`; nada se escribe: el catálogo calcula al leer |
+| NORM-1g | Comparador: idéntico / comparable / distinto; nada de grupos en cadena; no deshacer lo confirmado ni tocar precios | **Implementado y probado** | `catalogGrouping.test.ts` (talla, etapa, leche, patata fresca ≠ frita, quesadilla ≠ pollo, zero…; idempotente; grupos confirmados intactos) |
+| NORM-1h | Aprendizaje compartido: mantenerlo y no crear otro | **Mantenido sin cambios** | Sigue por encima del catálogo en la cascada. Límite: el catálogo no aprende de las correcciones (aprender identidades compartidas queda como paso posterior) |
+| NORM-1i | Prueba limpia con una familia sin historial, sin contaminación | **Procedimiento y panel listos; falta ejecutarla con una familia real** | `familyReport.test.ts`, `catalogEvaluationPanel.test.tsx`, `docs/EVALUACION_NORMALIZACION.md` |
+| NORM-1j | Informe medido: identificación, clase, formato, agrupación, pendientes, no identificados, errores, intervenciones; automático ≠ corregido | **Implementado y probado** | Corpus A (280) y B (183, ciego en su primera pasada): ver el documento; NO son tickets reales |
+| NORM-1k | Sin cambios en tickets, importes, banco, permisos ni duplicados; migraciones seguras | **Verificado** | Solo lectura sobre datos; migración aditiva; conciliación y Banco sin tocar |
+| NORM-1l | Ayuda al día (AYUDA-01) | **Hecho** | `exp-compras-clasificar-productos` y la ficha `com-comparar-precios` actualizadas; inventario del Centro de Administración |
+
+**Pendiente (honesto).** (1) ~~Aplicar la migración 0334~~ hecha el 27/10/2026. (2) Ejecutar la prueba limpia con una familia real y revisar la muestra. (3) Validar en móvil. (4) ~~Confirmar el cambio de criterio de «PEPA no adivina»~~ confirmado el 27/10/2026. (5) Decidir si se quiere aprendizaje compartido de identidades de producto (hoy solo de clase). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---
 

@@ -817,6 +817,6 @@ export function aiErrorText(e: unknown): string {
   if (/NOT_ADMIN/.test(raw)) return 'Solo las personas administradoras de PEPA pueden hacer esto.'
   if (/BAD_RANGE/.test(raw)) return 'El intervalo de fechas no es válido (máximo 400 días).'
   if (/BAD_REQUEST/.test(raw)) return 'Los datos no son válidos. Revísalos.'
-  if (/could not find the function|PGRST202|does not exist/i.test(raw)) return 'El Centro de Control de IA todavía no está disponible en la base de datos (falta aplicar la migración 0332).'
+  if (/could not find the function|PGRST202|does not exist/i.test(raw)) return 'El Centro de Control de IA todavía no está disponible en la base de datos (falta aplicar la migración 0335).'
   return 'Algo ha fallado. Inténtalo de nuevo.'
 }

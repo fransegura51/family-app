@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { COMMUNITY_AI_PURPOSES } from '../../supabase/functions/_shared/communityAi.ts'
 
-// Contrato de la migración 0332 (Centro de Control de IA). Pruebas de «forma»: lo que NO se puede romper sin que alguien lo note. El comportamiento real se prueba en la base
+// Contrato de la migración 0335 (Centro de Control de IA). Pruebas de «forma»: lo que NO se puede romper sin que alguien lo note. El comportamiento real se prueba en la base
 // con una transacción revertida antes de aplicarla (ver el registro de requisitos).
-const FILES = import.meta.glob(['/supabase/pending-migrations/0332_ai_control_center.sql', '/supabase/migrations/0332_ai_control_center.sql', '/supabase/rollbacks/0332_ai_control_center_down.sql'], {
+const FILES = import.meta.glob(['/supabase/pending-migrations/0335_ai_control_center.sql', '/supabase/migrations/0335_ai_control_center.sql', '/supabase/rollbacks/0335_ai_control_center_down.sql'], {
   query: '?raw',
   import: 'default',
   eager: true,
 }) as Record<string, string>
-const UP = Object.entries(FILES).find(([k]) => k.endsWith('0332_ai_control_center.sql'))?.[1] as string
-const DOWN = Object.entries(FILES).find(([k]) => k.endsWith('0332_ai_control_center_down.sql'))?.[1] as string
+const UP = Object.entries(FILES).find(([k]) => k.endsWith('0335_ai_control_center.sql'))?.[1] as string
+const DOWN = Object.entries(FILES).find(([k]) => k.endsWith('0335_ai_control_center_down.sql'))?.[1] as string
 const code = UP.replace(/--.*$/gm, '')
 
 const PURPOSE_FILES = import.meta.glob('/supabase/functions/_shared/ai/purposes/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
@@ -19,7 +19,7 @@ function registered(): string[] {
   return [...block.matchAll(/^\s*\('([a-z0-9_-]+)',/gm)].map((m) => m[1])
 }
 
-describe('0332 · registro central de funciones con IA', () => {
+describe('0335 · registro central de funciones con IA', () => {
   it('toda función con IA del código está en el registro (y ninguna sobra)', () => {
     const inCode = new Set<string>(['mercadona-ticket-webhook', ...COMMUNITY_AI_PURPOSES])
     for (const src of Object.values(PURPOSE_FILES)) for (const m of src.matchAll(/^\s*purpose: '([a-z0-9-]+)'/gm)) inCode.add(m[1])
@@ -40,7 +40,7 @@ describe('0332 · registro central de funciones con IA', () => {
   })
 })
 
-describe('0332 · seguridad', () => {
+describe('0335 · seguridad', () => {
   it('las tablas nuevas tienen RLS y nadie las toca directamente', () => {
     for (const t of ['ai_function', 'ai_price', 'ai_call_log', 'ai_limit', 'ai_limit_exception', 'ai_admin_log', 'ai_alert', 'ai_plan', 'ai_plan_quota', 'ai_family_plan']) {
       expect(code, t).toMatch(new RegExp(`alter table public\\.${t} enable row level security`))
@@ -79,7 +79,7 @@ describe('0332 · seguridad', () => {
   })
 })
 
-describe('0332 · no cambia lo que ya funciona', () => {
+describe('0335 · no cambia lo que ya funciona', () => {
   it('todos los límites nacen en observación y la migración no crea ninguno', () => {
     expect(code).toMatch(/mode text not null default 'observe' check \(mode in \('observe', 'warn', 'block'\)\)/)
     // La única inserción está dentro de la función que usa un administrador: no hay ningún límite sembrado.
@@ -136,7 +136,7 @@ describe('0332 · no cambia lo que ya funciona', () => {
   })
 })
 
-describe('0332 · deshacer', () => {
+describe('0335 · deshacer', () => {
   it('el rollback restaura la puerta y quita lo nuevo', () => {
     expect(DOWN).toContain('create or replace function private.ai_gate_core(p_family uuid, p_purpose text)')
     expect(DOWN).toContain('drop table if exists public.ai_family_plan')

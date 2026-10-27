@@ -693,6 +693,16 @@ insert into public.ai_config (key, value) values
   ('plans_enforced', 'false'::jsonb)
 on conflict (key) do nothing;
 
+-- Estado inicial SIN activar nada: hasta hoy la generación editorial exigía «Inteligencia artificial de Comunidad» (ai_enabled). Si ese ajuste está apagado, sus cuatro funciones nacen
+-- APAGADAS en el Centro de Control (el comportamiento no cambia); un administrador las enciende a conciencia. Si ya estaba encendido, no se toca nada.
+insert into public.ai_config (key, value, updated_at)
+select 'purposes_disabled',
+       (select coalesce(jsonb_agg(distinct x), '[]'::jsonb)
+          from jsonb_array_elements_text(coalesce((select c.value from public.ai_config c where c.key = 'purposes_disabled'), '[]'::jsonb) || '["editorial_article","editorial_poll","editorial_menu","editorial_revise"]'::jsonb) x),
+       now()
+where private.community_setting_int('ai_enabled', 0) <> 1
+on conflict (key) do update set value = excluded.value, updated_at = now();
+
 create or replace function private.ai_detect()
 returns integer
 language plpgsql
@@ -1437,6 +1447,24 @@ begin
   perform private.ai_require_owner();
   delete from public.ai_plan_quota where plan_id = p_plan and purpose = coalesce(p_purpose, '*') and period = p_period and metric = p_metric;
   perform private.ai_audit('quota_delete', p_plan || ':' || coalesce(p_purpose, '*'), null, null);
+end;
+$$;
+
+-- Buscador de familias para poner un límite a CUALQUIER familia, tenga o no consumo previo. Solo devuelve id y nombre (máximo 30, por nombre).
+create or replace function public.ai_admin_family_search(p_query text default '')
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.ai_require_owner();
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('family_id', s.id, 'name', s.name) order by s.name)
+    from (select fa.id, fa.name from public.families fa
+          where coalesce(trim(p_query), '') = '' or fa.name ilike '%' || replace(replace(replace(trim(p_query), '\', '\\'), '%', '\%'), '_', '\_') || '%'
+          order by fa.name limit 30) s), '[]'::jsonb);
 end;
 $$;
 

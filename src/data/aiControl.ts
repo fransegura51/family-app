@@ -34,6 +34,15 @@ export const getAiOverview = async (from: Date, to: Date) => toAiOverview(await 
 export const getAiFamilies = async (from: Date, to: Date) => toAiFamilies(await call('ai_admin_families', { p_from: iso(from), p_to: iso(to) }))
 export const getAiFamilyDetail = async (familyId: string, from: Date, to: Date) => toAiFamilyDetail(await call('ai_admin_family_detail', { p_family: familyId, p_from: iso(from), p_to: iso(to) }))
 
+// Buscador de familias para límites y excepciones: devuelve cualquier familia (con o sin consumo previo), solo id y nombre.
+export const searchAiFamilies = async (query: string): Promise<{ id: string; name: string }[]> => {
+  const raw = await call<unknown>('ai_admin_family_search', { p_query: query })
+  return (Array.isArray(raw) ? raw : []).flatMap((r) => {
+    const o = r as { family_id?: unknown; name?: unknown }
+    return typeof o.family_id === 'string' ? [{ id: o.family_id, name: typeof o.name === 'string' && o.name ? o.name : 'Familia' }] : []
+  })
+}
+
 export const getAiLimits = async () => toAiLimits(await call('ai_admin_limits'))
 export interface SetLimitInput {
   scope: LimitScope

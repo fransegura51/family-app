@@ -3,7 +3,7 @@ import { COMMUNITY_AI_PURPOSES } from '../../supabase/functions/_shared/communit
 
 // Contrato de la migración 0335 (Centro de Control de IA). Pruebas de «forma»: lo que NO se puede romper sin que alguien lo note. El comportamiento real se prueba en la base
 // con una transacción revertida antes de aplicarla (ver el registro de requisitos).
-const FILES = import.meta.glob(['/supabase/pending-migrations/0335_ai_control_center.sql', '/supabase/migrations/0335_ai_control_center.sql', '/supabase/rollbacks/0335_ai_control_center_down.sql'], {
+const FILES = import.meta.glob(['/supabase/migrations/0335_ai_control_center.sql', '/supabase/migrations/0335_ai_control_center.sql', '/supabase/rollbacks/0335_ai_control_center_down.sql'], {
   query: '?raw',
   import: 'default',
   eager: true,

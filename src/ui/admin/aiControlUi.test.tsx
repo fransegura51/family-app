@@ -16,6 +16,7 @@ const api = vi.hoisted(() => ({
   getAiFamilies: vi.fn(),
   getAiFamilyDetail: vi.fn(),
   getAiLimits: vi.fn(),
+  searchAiFamilies: vi.fn(),
   setAiLimit: vi.fn(),
   deleteAiLimit: vi.fn(),
   setAiException: vi.fn(),
@@ -72,6 +73,7 @@ beforeEach(() => {
   api.setAiFunction.mockResolvedValue({})
   api.getAiOverview.mockResolvedValue(toAiOverview({}))
   api.getAiFamilies.mockResolvedValue(toAiFamilies([]))
+  api.searchAiFamilies.mockResolvedValue([{ id: 'f-nueva', name: 'Familia Sin Consumo' }])
   api.getAiLimits.mockResolvedValue(toAiLimits({ limits: [], exceptions: [], community_daily_cap: { cap: 300, used_today: 4 } }))
   api.getAiAlerts.mockResolvedValue(toAiAlerts([]))
   api.getAiPrices.mockResolvedValue([])
@@ -175,6 +177,22 @@ describe('Control de IA · límites', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar límite' }))
     expect(await screen.findByText('Escribe un máximo mayor que 0.')).toBeTruthy()
     expect(api.setAiLimit).not.toHaveBeenCalled()
+  })
+
+  it('permite poner un límite a una familia SIN consumo previo, buscándola por nombre', async () => {
+    api.setAiLimit.mockResolvedValue('id')
+    await openLimits()
+    fireEvent.click(screen.getByRole('button', { name: 'Añadir un límite' }))
+    fireEvent.change(screen.getByLabelText('Se aplica a'), { target: { value: 'family' } })
+    const form = within(screen.getByRole('form', { name: 'Nuevo límite' }))
+    fireEvent.change(form.getByLabelText('Buscar familia'), { target: { value: 'sin cons' } })
+    await waitFor(() => expect(api.searchAiFamilies).toHaveBeenCalledWith('sin cons'))
+    await form.findByRole('option', { name: 'Familia Sin Consumo' })
+    fireEvent.change(form.getByLabelText('Familia'), { target: { value: 'f-nueva' } })
+    fireEvent.change(form.getByLabelText(/^Máximo/), { target: { value: '5' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar límite' }))
+    await waitFor(() => expect(api.setAiLimit).toHaveBeenCalled())
+    expect(api.setAiLimit.mock.calls[0][0]).toMatchObject({ scope: 'family', key: 'f-nueva', mode: 'observe' })
   })
 
   it('enseña el límite de seguridad que ya existía en Comunidad', async () => {

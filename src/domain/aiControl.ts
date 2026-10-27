@@ -800,7 +800,7 @@ export function costKindNote(t: AiTotals): string {
   if (t.confirmedCalls > 0) parts.push(`${t.confirmedCalls} con coste confirmado`)
   if (t.estimatedCalls > 0) parts.push(`${t.estimatedCalls} con coste estimado`)
   if (t.unpricedCalls > 0) parts.push(`${t.unpricedCalls} sin coste calculable`)
-  return `${parts.join(' · ')}. Los importes son estimaciones a tarifa pública: no son la factura del proveedor.`
+  return `${parts.join(' · ')}. Los importes son estimaciones a tarifa pública y configurable: no son la factura del proveedor, que PEPA no recibe ni mide. El gasto facturado real solo se conoce en el panel de facturación del proveedor.`
 }
 
 export function originLabel(o: string): string {

@@ -189,7 +189,7 @@ describe('proyección de costes', () => {
 describe('textos de error y módulos', () => {
   it('traduce los errores del servidor sin enseñar códigos', () => {
     expect(aiErrorText(new Error('NOT_ADMIN'))).toMatch(/administradoras/)
-    expect(aiErrorText(new Error('Could not find the function public.ai_admin_state'))).toMatch(/0332/)
+    expect(aiErrorText(new Error('Could not find the function public.ai_admin_state'))).toMatch(/0335/)
     expect(aiErrorText(new Error('algo raro'))).toBe('Algo ha fallado. Inténtalo de nuevo.')
   })
   it('los siete módulos pedidos existen con nombre en español', () => {

@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { adminAreaPath } from '@/admin/adminAreas'
-import { deleteAiException, deleteAiLimit, getAiFamilies, getAiLimits, setAiException, setAiLimit } from '@/data/aiControl'
+import { deleteAiException, deleteAiLimit, getAiFamilies, getAiLimits, searchAiFamilies, setAiException, setAiLimit } from '@/data/aiControl'
 import {
   AI_MODULES,
   LIMIT_METRIC_LABEL,
@@ -34,6 +34,54 @@ interface FamilyOption {
   name: string
 }
 
+// Selector de familia con buscador: lista CUALQUIER familia (con o sin consumo previo), no solo las que ya han usado IA.
+function FamilyPicker({ value, onChange, initial, label = 'Familia' }: { value: string; onChange: (id: string) => void; initial: FamilyOption[]; label?: string }) {
+  const [query, setQuery] = useState('')
+  const [found, setFound] = useState<FamilyOption[] | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const t = setTimeout(() => {
+      searchAiFamilies(query).then(
+        (r) => {
+          if (alive) {
+            setFound(r)
+            setFailed(false)
+          }
+        },
+        () => {
+          if (alive) setFailed(true)
+        },
+      )
+    }, 250)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [query])
+  const options = found ?? initial
+  return (
+    <>
+      <label className="ai-field">
+        Buscar familia
+        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Escribe parte del nombre" autoComplete="off" />
+      </label>
+      <label className="ai-field">
+        {label}
+        <select value={value} onChange={(e) => onChange(e.target.value)}>
+          <option value="">{options.length === 0 ? 'Ninguna familia coincide' : 'Elige…'}</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        {failed && <span className="cadm-small muted">No se pudo buscar; se enseñan las familias con consumo.</span>}
+      </label>
+    </>
+  )
+}
+
 // Formulario de un límite. Todos los límites nuevos nacen en OBSERVACIÓN: pasar a Aviso o Bloqueo es una decisión explícita (el Bloqueo exige confirmarla).
 export function LimitForm({
   scopes,
@@ -62,7 +110,7 @@ export function LimitForm({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const keyOptions = scope === 'module' ? AI_MODULES.map((m) => ({ id: m.id, name: m.label })) : scope === 'function' ? functions.map((f) => ({ id: f.purpose, name: f.label })) : scope === 'family' ? families : []
+  const keyOptions = scope === 'module' ? AI_MODULES.map((m) => ({ id: m.id, name: m.label })) : scope === 'function' ? functions.map((f) => ({ id: f.purpose, name: f.label })) : []
   const needsKey = scope !== 'global' && !fixed
 
   const submit = async (e: React.FormEvent) => {
@@ -105,9 +153,10 @@ export function LimitForm({
               ))}
             </select>
           </label>
-          {needsKey && (
+          {needsKey && scope === 'family' && <FamilyPicker value={key} onChange={setKey} initial={families} />}
+          {needsKey && scope !== 'family' && (
             <label className="ai-field">
-              {scope === 'module' ? 'Módulo' : scope === 'function' ? 'Función' : 'Familia'}
+              {scope === 'module' ? 'Módulo' : 'Función'}
               <select value={key} onChange={(e) => setKey(e.target.value)}>
                 <option value="">Elige…</option>
                 {keyOptions.map((o) => (
@@ -344,17 +393,7 @@ function ExceptionList({ exceptions, functions, families, onChanged }: { excepti
         </ul>
       )}
       <form className="ai-form" onSubmit={(e) => void add(e)} aria-label="Nueva excepción">
-        <label className="ai-field">
-          Familia
-          <select value={family} onChange={(e) => setFamily(e.target.value)}>
-            <option value="">Elige…</option>
-            {families.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FamilyPicker value={family} onChange={setFamily} initial={families} />
         <label className="ai-field">
           Función
           <select value={purpose} onChange={(e) => setPurpose(e.target.value)}>

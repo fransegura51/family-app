@@ -100,7 +100,7 @@ export function AiUsage({ period }: { period: PeriodState }) {
     <div className="ai-stack" data-help-id="ia.resumen-consumo">
       <dl className="ai-metrics">
         <div className="ai-metric">
-          <dt>Coste estimado</dt>
+          <dt>Coste estimado (no es la factura)</dt>
           <dd>
             {formatMoney(t.cost)}
             <small className={trendClass(costChange.dir)}>{costChange.text} frente al periodo anterior ({formatMoney(data.previous.cost)})</small>

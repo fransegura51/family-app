@@ -14,6 +14,16 @@ export const SERIES_E: TutorialSeries[] = [
     access: { community: true },
   },
   {
+    id: 'ser-comunidad-editorial',
+    module: 'comunidad',
+    title: 'Generación semanal y Rectificar con Pepa (administración)',
+    summary: 'Los interruptores de la generación semanal, el programa de la semana y cómo pedirle a Pepa cambios en un borrador sin publicar nada.',
+    chapters: ['tut-comunidad-admin-generacion', 'tut-comunidad-admin-rectificar'],
+    cardIds: ['com-admin-generacion', 'com-admin-rectificar'],
+    synonyms: ['generación semanal', 'borradores', 'generar ahora', 'rectificar con pepa', 'programa de la semana', 'administración de comunidad'],
+    access: { ownerOnly: true, community: true },
+  },
+  {
     id: 'ser-comunidad-acceso',
     module: 'comunidad',
     title: 'Si Comunidad no me deja entrar',

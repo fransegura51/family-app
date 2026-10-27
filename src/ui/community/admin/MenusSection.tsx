@@ -1,4 +1,6 @@
-import { useCallback, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { MEAL_TEXT, type MealKind } from '@/domain/communityEditorial'
+import { RevisePanel, type DishTarget } from '@/ui/community/admin/RevisePanel'
 import { Link } from 'react-router-dom'
 import { adminApproveProposal, adminEditProposal, adminGetMenu, adminListMenus, adminRejectProposal, adminRescheduleMenu, adminRetryPublish } from '@/data/community'
 import {
@@ -27,7 +29,7 @@ import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
 // Menú semanal de Pepa: borradores, programados, publicados y con error. La publicación AUTOMÁTICA depende de un ajuste técnico de solo lectura
 // (weekly_menu_autopublish): mientras esté desactivado no se publica nada solo. Aprobar un menú semanal NO lo publica: lo programa para el próximo sábado a las 10:00.
-export function MenusSection({ topics, onChanged }: { topics: CommunityTopic[]; onChanged: () => void }) {
+export function MenusSection({ topics, onChanged, focus = null }: { topics: CommunityTopic[]; onChanged: () => void; focus?: { id: string; seq: number } | null }) {
   const [notice, setNotice] = useState<string | null>(null)
   const loader = useCallback(async () => toMenuList(await adminListMenus()), [])
   const { data, loading, error, reload } = useAdminData(loader)
@@ -51,6 +53,7 @@ export function MenusSection({ topics, onChanged }: { topics: CommunityTopic[]; 
               <MenuCard
                 menu={m}
                 topics={topics}
+                focus={focus && focus.id === m.id ? focus.seq : null}
                 onDone={(text) => {
                   setNotice(text)
                   reload()
@@ -69,8 +72,14 @@ function proposalOf(d: MenuDetail): Proposal {
   return toProposals([{ id: d.id, kind: 'menu', section: d.section, topicId: d.topicId, title: d.title, body: d.body, status: 'proposed', version: d.version, payload: {} }])[0]
 }
 
-export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: CommunityTopic[]; onDone: (message: string) => void }) {
-  const [mode, setMode] = useState<'view' | 'review' | 'edit' | 'reject' | 'reschedule'>('view')
+export function MenuCard({ menu: m, topics, onDone, focus = null }: { menu: MenuRow; topics: CommunityTopic[]; onDone: (message: string) => void; focus?: number | null }) {
+  const [mode, setMode] = useState<'view' | 'review' | 'edit' | 'reject' | 'reschedule' | 'revise'>('view')
+  const cardRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (focus == null) return
+    cardRef.current?.scrollIntoView?.({ block: 'start' })
+    cardRef.current?.focus({ preventScroll: true })
+  }, [focus])
   const [detail, setDetail] = useState<MenuDetail | null>(null)
   const [confirmText, setConfirmText] = useState(false)
   const [when, setWhen] = useState('')
@@ -81,7 +90,8 @@ export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: C
   const blocked = (detail?.check ?? []).some((c) => c.severity === 'error') || (m.checkErrors ?? 0) > 0
 
   // El detalle (menú + revisión de calidad) se pide una vez, al abrir la revisión o la edición (nunca al pintar la lista).
-  const loadDetail = async (next: 'review' | 'edit') => {
+  const revisable = m.state === 'draft' || m.state === 'scheduled' || m.state === 'error'
+  const loadDetail = async (next: 'review' | 'edit' | 'revise') => {
     if (detail) {
       setMode(next)
       return
@@ -94,7 +104,7 @@ export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: C
   }
 
   return (
-    <article className="cadm-card" aria-label={`Menú semanal de Pepa: ${m.title}`}>
+    <article ref={cardRef} tabIndex={focus != null ? -1 : undefined} className={`cadm-card${focus != null ? ' cadm-card-focus' : ''}`} aria-label={`Menú semanal de Pepa: ${m.title}`} data-proposal-id={m.id}>
       <header className="cadm-card-head">
         <h4>
           <span aria-hidden="true">🍽️ </span>
@@ -136,11 +146,25 @@ export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: C
         </Link>
       )}
 
-      <ActionNotice error={mode === 'view' || mode === 'review' ? action.error : null} />
+      <ActionNotice error={mode === 'view' || mode === 'review' || mode === 'revise' ? action.error : null} />
 
       {mode === 'review' && detail && <MenuReview detail={detail} />}
+      {mode === 'revise' && detail && (
+        <MenuReview
+          detail={detail}
+          revise={{
+            itemId: m.id,
+            onClose: () => setMode('view'),
+            onChanged: (message) => {
+              setDetail(null)
+              setMode('view')
+              onDone(message)
+            },
+          }}
+        />
+      )}
 
-      {(m.state === 'draft' || m.state === 'scheduled' || m.state === 'error') && mode !== 'edit' && mode !== 'reject' && mode !== 'reschedule' && (
+      {(m.state === 'draft' || m.state === 'scheduled' || m.state === 'error') && mode !== 'edit' && mode !== 'reject' && mode !== 'reschedule' && mode !== 'revise' && (
         <div className="cadm-actions" role="group" aria-label="Qué hacer con este menú">
           {mode === 'review' ? (
             <button type="button" className="cadm-btn cadm-btn-ghost" onClick={() => setMode('view')}>
@@ -149,6 +173,11 @@ export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: C
           ) : (
             <button type="button" className="cadm-btn cadm-btn-secondary" disabled={action.busy} onClick={() => void loadDetail('review')}>
               Revisar el menú
+            </button>
+          )}
+          {revisable && (
+            <button type="button" className="cadm-btn cadm-btn-secondary" disabled={action.busy} onClick={() => void loadDetail('revise')} data-help-id="comunidad.revise-open">
+              Rectificar con Pepa
             </button>
           )}
           {m.state === 'draft' && (
@@ -321,7 +350,15 @@ export function MenuCard({ menu: m, topics, onDone }: { menu: MenuRow; topics: C
 
 // Revisión antes de aprobar: avisos de calidad (los de «error» bloquean) y un resumen del menú: lo que se publicaría es el texto de abajo, y los datos son los que
 // se podrán guardar en la Cocina.
-export function MenuReview({ detail }: { detail: MenuDetail }) {
+export function MenuReview({
+  detail,
+  revise,
+}: {
+  detail: MenuDetail
+  /** Si se pasa, cada plato lleva «Cambiar este plato con Pepa» y hay «Pedir cambios generales del menú» (los demás platos no cambian). */
+  revise?: { itemId: string; onClose: () => void; onChanged: (message: string) => void }
+}) {
+  const [target, setTarget] = useState<DishTarget | 'general' | null>(null)
   const errors = detail.check.filter((c) => c.severity === 'error')
   const warnings = detail.check.filter((c) => c.severity === 'warning')
   return (
@@ -351,14 +388,53 @@ export function MenuReview({ detail }: { detail: MenuDetail }) {
         <>
           <h5>Datos del menú ({detail.menu.servings} raciones)</h5>
           <ul className="cadm-options">
-            {detail.menu.days.map((d) => (
+            {detail.menu.days.map((d, dayIndex) => (
               <li key={d.day}>
                 <strong>{d.day}</strong> — comida: {d.comida?.title ?? '—'}
                 {d.comida?.side ? ` (+ ${d.comida.side})` : ''}; cena: {d.cena?.title ?? '—'}
                 {d.cena?.side ? ` (+ ${d.cena.side})` : ''}
+                {revise && (
+                  <span className="cadm-dish-actions">
+                    {(['comida', 'cena'] as MealKind[]).map(
+                      (meal) =>
+                        d[meal] && (
+                          <button
+                            key={meal}
+                            type="button"
+                            className="cadm-btn cadm-btn-secondary cadm-btn-small"
+                            aria-label={`Cambiar este plato con Pepa: ${d.day}, ${meal}, ${d[meal]?.title}`}
+                            data-help-id="comunidad.revise-dish"
+                            onClick={() => setTarget({ day: dayIndex, meal, label: `${d.day} · ${MEAL_TEXT[meal]}` })}
+                          >
+                            Cambiar este plato con Pepa ({MEAL_TEXT[meal].toLowerCase()})
+                          </button>
+                        ),
+                    )}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
+          {revise && (
+            <div className="cadm-actions">
+              <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setTarget('general')} data-help-id="comunidad.revise-menu-general">
+                Pedir cambios generales del menú
+              </button>
+              <button type="button" className="cadm-btn cadm-btn-ghost" onClick={revise.onClose}>
+                Cerrar
+              </button>
+            </div>
+          )}
+          {revise && target && (
+            <RevisePanel
+              key={target === 'general' ? 'general' : `${target.day}-${target.meal}`}
+              itemId={revise.itemId}
+              kind="menu"
+              target={target === 'general' ? null : target}
+              onClose={() => setTarget(null)}
+              onChanged={revise.onChanged}
+            />
+          )}
         </>
       )}
       {detail.body && (

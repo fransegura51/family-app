@@ -36,6 +36,7 @@ export type CommunityErrorCode =
   | 'MENU_WEEK_TAKEN'
   | 'MENU_WEEK_PAST'
   | 'BAD_PUBLISH_AT'
+  | 'STALE'
   | 'UNKNOWN'
 
 export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
@@ -76,6 +77,7 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   MENU_WEEK_TAKEN: 'Esa semana ya tiene otro menú aprobado o publicado. Solo puede haber uno por semana: rechaza o reprograma el otro.',
   MENU_WEEK_PAST: 'La semana de este menú ya ha terminado: ya no se puede publicar. Reprográmalo a otro sábado o recházalo.',
   BAD_PUBLISH_AT: 'La fecha tiene que ser un sábado futuro a las 10:00 (hora peninsular).',
+  STALE: 'El borrador cambió mientras tanto, así que la propuesta de Pepa ya no vale. Pide una nueva y se aplicará sobre la versión actual.',
   UNKNOWN: 'Algo ha fallado. Inténtalo de nuevo.',
 }
 

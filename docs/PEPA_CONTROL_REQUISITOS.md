@@ -937,6 +937,29 @@ Antes de aplicar la 0322 se comprobó el estado real: 954 gastos, 24 etiquetas, 
 
 **Pendiente**: validación real en iPhone/Android; el justificante de Amazon de 6,99 € sin gasto; los 1.200 € (destino del dinero). Nada pasa a Aprobado sin confirmación expresa.
 
+## Comparar precios: quinta subsección, productos comunes, formatos del envase y fotografía (COMP-2, COMP-3, 27/10/2026)
+
+**Estado: PUBLICADO el 27/10/2026 (ver commit y despliegue en el informe); migraciones `0330_product_price_pack_format` y `0331_common_products` APLICADAS en producción (se renumeraron: 0323 y 0324 ya las había aplicado otra sesión); función de IA `analyze-package-photo` DESPLEGADA** (responde 401 sin sesión; **no se ha podido llamar con el proveedor real de IA** porque hace falta una sesión de usuario: no se entran credenciales ajenas). Implementado, pendiente de validación real en iPhone y Android; sin Aprobar.
+
+Comprobado al aplicar: huellas de `product_prices` (1.230 líneas) y de `products` (488) idénticas antes y después, `product_equivalences` (7) intacta, tablas nuevas vacías, `anon` sin acceso, 3 políticas por familia. El comparador no modifica nada de Banco y efectivo, de las etiquetas con reparto ni de OAuth/Enable Banking (rama `banco-capa-proveedor`): no comparten archivos de código.
+
+Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada en lugar de revisar 470 fichas; un artículo pertenece a UN producto común (no se emparejan de dos en dos); `product_equivalences` y el aprendizaje compartido se reutilizan sin cambios y los productos comunes solo añaden «comparables»; los productos comunes entran en el comparador de siempre (`RelationContext.commonOf`).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| COMP-3a | Quinta subsección «Comparar precios» (Resultados / Emparejar), con las otras cuatro intactas; el comparador general deja de estar escondido en Historial (se conserva el historial individual y la línea compacta bajo cada producto) | **Implementado y probado** | `compareScreen.test.tsx` (20), `compactPriceLine.test.tsx`, destino `compras.comparar` y `compras.comparar.emparejar` |
+| COMP-3b | Productos comunes: proponer, aceptar, buscar cualquiera, crear, corregir, separar, recordar; conservar nombres, formatos y precios originales | **Implementado y probado** | `commonProducts.test.ts` (20), `commonContext.test.ts` (6); migración 0324 ensayada REVERTIDA en producción: un artículo solo en un producto común, artículo de otra familia rechazado, nombre repetido rechazado, otra familia no ve ni borra, borrar el grupo no toca artículos (huella de `products` idéntica) |
+| COMP-3c | Mismo producto frente a comparable; sin propagar equivalencias dudosas; leche entera ≠ semidesnatada, con ≠ sin alcohol, con ≠ sin lactosa | **Implementado y probado** | variantes críticas en `suggestCommons`; solo se asigna solo un artículo IDÉNTICO a otro ya agrupado; una decisión «distinto» de la familia manda |
+| COMP-3d | «Emparejar»: cola priorizada por frecuencia (pesada por el precio), gasto, coincidencias y utilidad entre tiendas; filtros por tienda (cualquier número) y texto; no excluye productos no alimentarios; se puede dejar a medias | **Implementado y probado** | `pairingQueue`; al crear un producto común ofrece artículos parecidos para unir de una vez |
+| COMP-3e | Comparar formatos distintos por €/kg, €/l o €/ud: precio total, fecha, tienda, formato, cantidad total y diferencia con la más económica; sin sobrescribir el histórico; sin mezclar unidades | **Implementado y probado** | el ejemplo del encargo (6 × 1 l, 1 × 1,5 l, 1 × 1 l, 12 × 500 ml) ordena Hiperber 0,953 €/l, Otra tienda 1,00, Mercadona 1,05, Consum 1,10; el precio del paquete se enseña aparte |
+| COMP-3f | Formato del envase al registrar la compra: acceso discreto en cada línea, «Completar formatos de todos los artículos», «Ahora no», reutilizar lo confirmado, sin bloquear; compras con y sin ticket | **Implementado y probado** | `packFormatsPanel.test.tsx` (19), `packFormat.test.ts` (41); el mismo formulario sirve para «Sin ticket» |
+| COMP-3g | Fotografiar el envase (1 a 3 fotos), proponer los datos, confirmar y corregir; sin inventar; EAN solo auxiliar; fotos no guardadas | **Implementado y probado; función de IA DESPLEGADA, sin probar con el proveedor real** | `packagePhotoAi.test.ts` (12), `packPhoto.test.ts` (6), `packFormatsPanel.test.tsx`: una lectura dudosa no rellena nada, un total impreso incoherente baja la confianza, un EAN con dígito de control incorrecto se descarta. El modelo real **no** se ha llamado todavía |
+| COMP-3h | Coste de la IA | **Estimado, sin medir** (0,0004–0,0013 $ por lectura; tope 40 al día por familia) | ver `docs/EVALUACION_COMPARADOR_PRECIOS.md` |
+| COMP-3i | Aislamiento entre familias y permisos | **Probado en la base real (transacción revertida)** | RLS por familia en las tres tablas nuevas, guardas de familia, `anon` sin acceso |
+| COMP-3j | Histórico: aprovechar tickets, nombres, formatos y equivalencias sin borrar ni alterar | **Implementado** | el formato del nombre se lee al comparar (sin escribir); lo indicado a mano solo escribe las columnas nuevas; nunca el precio |
+
+**Pendiente**: validar en iPhone y Android; probar la lectura de envases con fotos reales y el proveedor real de IA con una sesión de usuario, y medir su coste real; agrupar los artículos (unos 24 productos comunes y ≈ 100 artículos agrupables según la evaluación) y completar formatos. Nada pasa a Aprobado sin confirmación expresa.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos
@@ -973,6 +996,42 @@ una página temporal (ya borrada) y un servidor simulado con las mismas reglas; 
 protección contra dos anulaciones simultáneas descansa en el bloqueo consultivo de PostgreSQL (el mismo patrón que ya usa el canje de premios), sin
 poder probarse con dos conexiones reales; (4) comprobar en iPhone y Android físicos; (5) un niño que ya gastó esos puntos no puede ser «descontado»
 (decisión de diseño para no dejar saldos negativos): hay que rechazar antes el canje pendiente. Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
+## Conciliación bancaria de pagos previstos: sugerencias fiables (ECO-02, 27/10/2026)
+
+**Estado: implementado y probado en local; sin migración (no cambia datos, permisos ni políticas). Se publica con el despliegue habitual. Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Causa real de los falsos positivos** (ENDESA ↔ ASADOR SESE / AMAZON, FLOW GOOGLE ↔ CONSUM, «Aire acondicionado SEQURA» ↔ «Eric Segura Hepburn»), comprobada en el código (`src/domain/forecastReconciliation.ts`, antes de la corrección):
+1. Los únicos filtros duros eran: no ingreso, mismo gasto vinculado, misma divisa, cuenta del pago y ventana de ±3 días. La **identidad del comercio era solo +10 puntos opcionales** (una palabra común), nunca obligatoria.
+2. La exclusión por importe exigía además que la **categoría** fuese fuertemente distinta en ambos lados (importe ≥ 50 % y ≥ 30 € de diferencia Y categorías reales distintas); el banco clasifica casi todo como «Otros», así que casi nunca se aplicaba. Los casos de 21,99 € ↔ 12,48 € (43 %) ni siquiera llegaban a ese umbral.
+3. Cuenta (30) + fecha cercana (15-30) sumaban ≥ «medio» (35) **sin ninguna evidencia del comercio**: cualquier cargo de la misma cuenta a ±3 días era «candidato», y se enseñaba el mejor «de entre varios malos».
+4. «No es este» solo descartaba esa pareja (correcto, y persistido en `forecast_reconciliation_dismissals`, 0174) y, por (3), salía el siguiente cargo cercano.
+5. El comentario de la pantalla decía que el nivel «bajo» no se enseñaba, pero el código no lo filtraba.
+No había ningún sistema de alias de comercios (no se creó uno paralelo).
+
+**Reglas nuevas** — elegibilidad primero, ordenación después (`forecastMerchantIdentity.ts` + `scoreReconciliationCandidate`):
+- Filtros estructurales (sin cambios): cargo (no ingreso) con gasto vinculado, misma divisa, cuenta del pago si la tiene, ±3 días.
+- **Identidad comercial obligatoria** (tres estados: coincide / en conflicto / no se puede comprobar; solo «coincide» propone): referencia de contrato común, variante verificada (Telefónica ↔ Movistar), una palabra distintiva común, o la misma frase marca + producto («GOOGLE ONE»). Se normalizan mayúsculas, tildes, puntuación, boilerplate bancario («COMPRA TARJ. 5402XXXX…»), formas jurídicas (S.A., SAU…), localidades añadidas («-Madrid», «-RAFAL») y palabras de sector («energía», «seguro»). **No cuentan**: compartir solo una palabra de sector, una localidad, o solo la marca de una empresa multiproducto (Google, Amazon, Apple…), ni parecidos como «segura» ≈ «sequra».
+- **Importe según el tipo de pago**: conocido → igual o casi igual (≤ 5 % y ≤ 10 €); estimado/variable → hasta un 50 % si la identidad coincide; desconocido → solo con identidad sólida (2+ palabras, 6+ letras o contrato) **y** la cuenta prevista coincidente. La fecha y la cuenta nunca compensan ni sustituyen a la identidad ni al importe.
+- Solo entonces se **ordena** (identidad, cuenta, importe, cercanía de fecha). Las razones se enseñan como frase («Mismo comercio · mismo importe · cargo 1 día después de lo previsto»), sin porcentajes ni puntuaciones.
+- **«No es este»**: se persiste la pareja exacta (sin bloquear el movimiento para otros pagos) y se vuelve a calcular; si no queda otro candidato fiable, la pantalla lo dice («No hemos encontrado ningún otro movimiento bancario que coincida…») y el pago sigue pendiente. Nunca se ofrece otro cargo incompatible.
+- **Asociación manual** (explícita, distinta de las sugerencias): ⋯ del pago → «🔗 Vincular con un movimiento del banco»; lista los cargos libres cercanos (buscador por comercio o importe), avisa del nombre, importe, cuenta o fecha que no encajan, sin impedir vincular. Usa la misma conciliación de siempre (`match_forecast_occurrence`): el índice único de la base de datos impide asociar dos veces el mismo gasto o la misma ocurrencia.
+- Sin migraciones, sin cambios de RLS. No se tocó ningún dato: movimientos, pagos previstos, conciliaciones confirmadas, categorías, etiquetas, repartos, saldos ni carteras.
+
+**Auditoría de conciliaciones históricas** (consulta de solo lectura en producción, 27/10/2026): 13 conciliaciones confirmadas (23/09–26/10), todas coherentes en comercio e importe (diferencias de 0 a 4,2 %). Ninguna sospechosa; no se modificó nada. Las 13 siguen siendo elegibles con las reglas nuevas (prueba de regresión con los datos reales).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| ECO-02a | No se proponen cargos de otro comercio (ENDESA ↔ ASADOR SESE/AMAZON, FLOW GOOGLE ↔ CONSUM, SEQURA ↔ Eric Segura Hepburn), ni con el mismo importe, cuenta y fecha | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts` (92), `forecastMerchantIdentity.test.ts` (16) |
+| ECO-02b | Tratamiento distinto de importe conocido, estimado y desconocido | **Implementado y probado; pendiente de validación real** | mismas pruebas (tolerancias 5 % y 10 €; 50 %; identidad sólida + cuenta) |
+| ECO-02c | «No es este»: se persiste, no aparece otro incompatible y se avisa si no hay más | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts`, `forecastManualMatchSheet.test.tsx`, `forecastReconciliationDismissalsMigration.test.ts` |
+| ECO-02d | Sin duplicados: un cargo por pago, un gasto por ocurrencia (índice único de 0157) | **Probado** | motor + migración existente |
+| ECO-02e | Asociación manual explícita con avisos | **Implementado y probado; pendiente de validación real** | `forecastManualMatchSheet.test.tsx` (10) |
+| ECO-02f | Las 13 conciliaciones reales confirmadas siguen siendo elegibles; datos históricos intactos | **Verificado** | prueba de regresión con datos reales; consulta de solo lectura |
+
+**Pendiente**: validar en el iPhone que las sugerencias de «Pagos por revisar» son las esperadas y que «Vincular con un movimiento del banco» funciona. **Límite conocido**: si el banco escribe el comercio con un nombre sin ninguna palabra en común con el título del pago (p. ej. un pago titulado «IBI» y un cargo «SUMA GESTION TRIBUTARIA», sin proveedor), PEPA ya no lo propone (antes sí, por cuenta + importe + fecha) y hay que vincularlo a mano o poner el emisor en «Proveedor». Nada pasa a **Aprobado** sin confirmación expresa.
 
 ---
 

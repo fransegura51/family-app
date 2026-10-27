@@ -32,6 +32,15 @@ export const SERIES_B: TutorialSeries[] = [
     synonyms: ['subir ticket', 'foto del ticket', 'leer ticket', 'compra sin ticket', 'añadir productos a mano', 'forma de pago', 'tickets guardados'],
   },
   {
+    id: 'ser-compras-comparar',
+    module: 'compras',
+    title: 'Comparar precios entre tiendas',
+    summary: 'Lee dónde sale más barato cada producto por litro, kilo o unidad y agrupa los artículos que se pueden comparar.',
+    chapters: ['tut-compras-comparar-resultados', 'tut-compras-comparar-emparejar'],
+    cardIds: ['com-comparar-precios'],
+    synonyms: ['comparar precios', 'producto común', 'emparejar', 'precio por litro', 'formato del envase', 'cuál sale más barato'],
+  },
+  {
     id: 'ser-compras-historial',
     module: 'compras',
     title: 'Historial y comparación de precios',

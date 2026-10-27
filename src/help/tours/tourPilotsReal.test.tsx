@@ -2,9 +2,12 @@
 // Los tres tutoriales piloto contra los FORMULARIOS REALES de PEPA (no contra una pantalla de mentira): Calendario → Crear un evento, Compras → Añadir un producto y
 // Familia → Añadir un miembro. La persona (la prueba) escribe y pulsa los botones de verdad; el tutorial avanza al comprobar cada acción y solo termina cuando la pantalla real
 // confirma que se guardó. Los datos (Supabase) están simulados: esto NO sustituye la prueba en dispositivos reales (ordenador y móvil).
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+// Pantallas reales cargadas en frío (trozos perezosos) pueden tardar más de 5 s con la máquina cargada: la espera de las pruebas no es parte de lo que se comprueba.
+configure({ asyncUtilTimeout: 12000 })
 
 const data = vi.hoisted(() => ({ addMember: vi.fn(async () => 'nuevo-id'), addItem: vi.fn(async () => undefined), createEvent: vi.fn(async () => undefined) }))
 vi.mock('@/data/supabaseClient', () => ({ supabase: new Proxy({}, { get: () => () => ({ then: (r: (v: unknown) => unknown) => r({ data: [], error: null }) }) }) }))

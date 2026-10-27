@@ -166,6 +166,7 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
 import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
@@ -179,7 +180,11 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setProductNonFood } from '@/data/products'
+import { listAllProductPrices, listProducts, setPriceLinePack, setProductEan, setProductNonFood } from '@/data/products'
+import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
+import { autoAssignToCommons } from '@/data/commonProducts'
+import { eanHint } from '@/domain/packPhoto'
+import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
@@ -6254,6 +6259,10 @@ interface DraftLine {
   // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
   // deja que se seguisa recalculando sola mientras cambia el nombre.
   classOverride?: { kind: FoodTypeKind; classification: string }
+  // Formato del envase (COMP-2): undefined = no decidido (se aplica lo que el nombre o las compras anteriores dicen con seguridad); null = «Ahora no».
+  pack?: PackFormat | null
+  // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
+  ean?: string
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -6460,6 +6469,7 @@ function ReceiptForm({
   // resolver el icono/"Nuevo" de cada línea leída — ver
   // resolveDraftLineClass.
   const [allProducts, setAllProducts] = useState<Product[]>([])
+  const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
   const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
     alimentacion: [],
     no_alimentos: [],
@@ -6579,6 +6589,8 @@ function ReceiptForm({
   }
 
   useEffect(() => {
+    // Los precios anteriores sirven para recordar el formato del envase y saber si el producto ya se compró en otra tienda (opcional: si falla, el formulario sigue igual).
+    listAllProductPrices().then(setAllPrices).catch(() => {})
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
       .then(([products, foodKinds, noFoodKinds]) => {
         setAllProducts(products)
@@ -6594,7 +6606,7 @@ function ReceiptForm({
         setLines(
           // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
           // nada, a diferencia de antes.
-          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2) })),
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), ...(l.pack ? { pack: l.pack } : {}) })),
         ),
       )
       .catch(() => {})
@@ -6644,6 +6656,7 @@ function ReceiptForm({
   }
 
   async function saveLines(receiptId: string) {
+    const savedProductIds: string[] = []
     // En paralelo, no uno a uno: con muchos productos leídos, guardarlos
     // en serie tardaba tanto (una llamada de red por línea) que parecía
     // que se había quedado colgado en "Subiendo…" — bug real detectado
@@ -6658,6 +6671,8 @@ function ReceiptForm({
           // (nunca el importe total de la línea): se guarda tal cual, sin dividir entre nada. Antes "Precio"
           // era el importe TOTAL de la línea y había que dividirlo entre las unidades; ahora quien revisa el
           // ticket edita directamente la magnitud comparable (€/ud o €/kg), igual que ya la da el OCR.
+          const known = productByNormalizedName.get(normalizeProductName(line.name))
+          const history = known ? allPrices.filter((p) => p.productId === known.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
           const { productId } = await recordProductPurchase({
             name: line.name.trim(),
             price: Number(line.unitPrice),
@@ -6666,9 +6681,13 @@ function ReceiptForm({
             store,
             date: receiptDate,
             receiptId,
+            // El formato del envase es opcional: lo que la persona indicó, o lo que el nombre / las compras anteriores dicen con seguridad.
+            pack: resolveLinePack(line, history).pack,
           })
           // Una línea que no es un producto (PARKING en Mercadona...) se descarta antes de persistir: sin producto, sin precio, sin clase.
           if (productId == null) return
+          savedProductIds.push(productId)
+          if (line.ean) await setProductEan(productId, line.ean).catch(() => undefined) // solo ayuda; si falla (o aún no hay columna) no importa
           // LA FAMILIA MANDA: solo la clase ELEGIDA A MANO al revisar este ticket se guarda en el producto (y queda confirmada).
           // La clase que resuelven solos el aprendizaje compartido, la clase histórica o las reglas NO se guarda: se resuelve al
           // leer (domain/productClass.ts), para no convertir una clasificación automática en una decisión falsamente humana.
@@ -6691,6 +6710,10 @@ function ReceiptForm({
           ])
         }),
     )
+    // Los formatos recién guardados cuentan ya para recordar el de la próxima compra.
+    listAllProductPrices().then(setAllPrices).catch(() => {})
+    // Un artículo idéntico a otro ya agrupado en un producto común se une solo a él (nunca retrasa ni rompe el guardado).
+    void autoAssignToCommons(savedProductIds)
   }
 
   // Deja el formulario de «Subir ticket» como nuevo (tras guardar, o al pulsar Cancelar con una foto ya escaneada por error).
@@ -7089,9 +7112,36 @@ function ReceiptForm({
                     </span>
                   )}
                 </div>
+                <LineFormatControl
+                  line={line}
+                  history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
+                  onPack={(pack) => updateLine(i, { pack })}
+                  onReading={(reading) => {
+                    const ean = eanHint(reading)
+                    if (ean) updateLine(i, { ean })
+                  }}
+                />
               </div>
             )
           })}
+          {lines.length > 0 && (
+            <PackFormatsPanel
+              lines={lines}
+              store={store}
+              products={allProducts}
+              prices={allPrices}
+              productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
+              onPack={(i, pack) => updateLine(i, { pack })}
+              onReading={(i, reading) => {
+                const ean = eanHint(reading)
+                if (ean) updateLine(i, { ean })
+              }}
+              onFixPast={async (priceId, pack) => {
+                await setPriceLinePack(priceId, pack)
+                setAllPrices(await listAllProductPrices())
+              }}
+            />
+          )}
           {lines.length === 0 && <p className="muted">{ocrStatus === 'done' ? 'No se ha reconocido ningún producto: añádelos con «+ Añadir línea».' : 'Todavía no hay productos: pulsa «+ Añadir línea».'}</p>}
           <button type="button" className="link-button" data-help-id="shopping.receipt-add-line" onClick={addBlankLine}>
             + Añadir línea
@@ -9634,6 +9684,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [reconciliationHistoryOpen, setReconciliationHistoryOpen] = useState(false)
   const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
+  // ECO-02 — aviso informativo (no es un error) cuando «No es este» no deja ninguna otra coincidencia fiable, y asociación manual explícita.
+  const [reconcileInfo, setReconcileInfo] = useState<string | null>(null)
+  const [manualMatchFor, setManualMatchFor] = useState<ForecastOccurrence | null>(null)
   // Fase 1D-f — "Gestionar movimiento": mismas etiquetas que ya usa Movimientos (nunca un sistema
   // paralelo). `managing` es el expense abierto en el paso de gestión — independiente de la lista de
   // candidatos, porque en cuanto se concilia, esa ocurrencia deja de ser candidata (ya tiene matchedExpenseId).
@@ -9873,8 +9926,8 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     return reconciliationPairKey(c.occurrence, c.movement)
   }
 
-  async function confirmCandidate(c: ReconciliationCandidate) {
-    if (!c.movement.expenseId) return
+  async function confirmCandidate(c: ReconciliationCandidate): Promise<boolean> {
+    if (!c.movement.expenseId) return false
     const key = candidateKey(c)
     setReconcileBusyKey(key)
     setReconcileError(null)
@@ -9900,8 +9953,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       if (stillPending) {
         setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
       }
+      return true
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo conciliar'))
+      return false
     } finally {
       setReconcileBusyKey(null)
     }
@@ -9914,12 +9969,33 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     setReconcileError(null)
     try {
       await dismissForecastReconciliationCandidate(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.bankTransactionId)
+      const nextDismissed = new Set(dismissedCandidateKeys).add(key)
       setDismissedCandidateKeys((prev) => new Set(prev).add(key))
+      // ECO-02: si tras descartar no queda otro movimiento FIABLE para este pago, se dice claramente (y el pago sigue pendiente), en vez de ofrecer otro cargo cualquiera.
+      const replacement = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds, nextDismissed).some(
+        (x) =>
+          x.occurrence.forecastPaymentId === c.occurrence.forecastPaymentId &&
+          x.occurrence.occurrenceDate === c.occurrence.occurrenceDate &&
+          (x.occurrence.installmentSequenceIndex ?? 0) === (c.occurrence.installmentSequenceIndex ?? 0),
+      )
+      setReconcileInfo(
+        replacement
+          ? null
+          : `No hemos encontrado ningún otro movimiento bancario que coincida con «${c.occurrence.title}». El pago sigue pendiente de conciliar; si sabes cuál es, puedes vincularlo tú desde ⋯ → «Vincular con un movimiento del banco».`,
+      )
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo descartar la propuesta'))
     } finally {
       setReconcileBusyKey(null)
     }
+  }
+  // ECO-02 — asociación manual explícita: usa la MISMA conciliación de siempre (confirmCandidate → match_forecast_occurrence); el índice único de la base de datos
+  // impide asociar dos veces el mismo movimiento o la misma ocurrencia.
+  async function linkManually(o: ForecastOccurrence, movement: BankMovementForMatching) {
+    const ok = await confirmCandidate({ occurrence: o, movement, score: 0, confidence: 'medium', reasons: [] })
+    if (!ok) return // el error se enseña en la propia hoja y el pago sigue sin vincular
+    setManualMatchFor(null)
+    setReconcileInfo(null)
   }
   async function unmatchOccurrence(o: ForecastOccurrence) {
     if (!o.matchedExpenseId) return
@@ -10086,6 +10162,19 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 >
                   Editar
                 </button>
+                {!o.matchedExpenseId && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-help-id="finance.reconcile-manual-open"
+                    onClick={() => {
+                      setManualMatchFor(o)
+                      setOccurrenceMenuKey(null)
+                    }}
+                  >
+                    🔗 Vincular con un movimiento del banco
+                  </button>
+                )}
                 {parent.active ? (
                   <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(parent, false).then(reload)} />
                 ) : (
@@ -10214,6 +10303,32 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               revisar. HIGH/MEDIUM se proponen para confirmar a mano — LOW nunca se enseña (demasiado
               ruido, no aporta confianza suficiente); ni siquiera "high" concilia solo (auditoría, sección
               7: sin auto-conciliación todavía). */}
+          {reconcileInfo && (
+            <p className="help-note" role="status" data-help-id="finance.reconcile-none">
+              {reconcileInfo}{' '}
+              <button type="button" className="link-button" onClick={() => setReconcileInfo(null)}>
+                Entendido
+              </button>
+            </p>
+          )}
+          {manualMatchFor && (
+            <ForecastManualMatchSheet
+              occurrence={manualMatchFor}
+              payment={reconciliationCandidateInputs.find((i) => i.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId)?.payment ?? { bankAccountId: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.bankAccountId ?? null, title: manualMatchFor.title, provider: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.provider ?? null }}
+              movements={reconciliationMovements.filter((m) => !!m.expenseId && !matchedExpenseIds.has(m.expenseId))}
+              accountNames={new Map(accounts.flatMap((a) => (a.name ? [[a.id, a.name] as const] : [])))}
+              hasSuggestion={reconciliationCandidates.some(
+                (x) =>
+                  x.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId &&
+                  x.occurrence.occurrenceDate === manualMatchFor.occurrenceDate &&
+                  (x.occurrence.installmentSequenceIndex ?? 0) === (manualMatchFor.installmentSequenceIndex ?? 0),
+              )}
+              busy={reconcileBusyKey !== null}
+              error={reconcileError}
+              onLink={(m) => void linkManually(manualMatchFor, m)}
+              onClose={() => setManualMatchFor(null)}
+            />
+          )}
           {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0 || reconciliationHistory.length > 0) && (
             <>
               <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} data-help-id="finance.reconcile-toggle" onClick={() => setReconcileOpen((v) => !v)}>
@@ -10250,7 +10365,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                             </p>
                           </div>
                         </div>
-                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{c.reasons.map((r) => r.label).join(' · ')}</p>
+                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{capitalizeFirst(c.reasons.map((r) => r.label).join(' · '))}</p>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button type="button" disabled={busy} data-help-id="finance.reconcile-confirm" onClick={() => confirmCandidate(c)}>
                             {busy ? 'Guardando…' : 'Confirmar'}
@@ -10635,6 +10750,10 @@ function ForecastDocumentImportModal({
 // 6C.2C) para la categoría, updateExpense para la etiqueta — nunca un camino paralelo ni un UPDATE
 // directo a expenses.category. category/tag_id son la única definición real de "movimiento gestionado"
 // que existe en esta base de datos (domain/pending.ts): no se inventa ningún estado nuevo.
+function capitalizeFirst(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text
+}
+
 function ManageReconciledExpense({
   expenseId,
   forecastCategoryId,

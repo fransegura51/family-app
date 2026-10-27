@@ -36,6 +36,8 @@ export default defineConfig(({ command }) => ({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // El paquete principal (catálogo de Ayuda incluido) ronda los 2 MiB, el límite por defecto de Workbox: sin esto, pasarse por unos KB hace fallar la compilación.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
       },
     }),
   ],

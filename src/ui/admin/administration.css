@@ -3,7 +3,22 @@
 /* La app es de columna estrecha (.screen = 480px); el Centro de Administración usa el ancho que haya (hasta 920px) para que en ordenador y tableta quepan los filtros y las fichas. */
 .screen.admin-center {
   max-width: 920px;
-  padding-bottom: 32px;
+  /* Que lo último no quede detrás de la barra inferior ni del indicador de inicio del iPhone. */
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+}
+
+/* Los botones redondos de Pepa y de compartir flotan arriba (position: fixed, z-index 40). Esta franja, del color del fondo y justo debajo de ellos, hace que al desplazar la página los
+   títulos, tarjetas y controles pasen POR DEBAJO de la franja y no se queden asomando entre los botones. Respeta la zona segura de arriba del iPhone y no recibe toques. */
+.screen.admin-center::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(54px + env(safe-area-inset-top, 0px));
+  background: var(--bg, #f5f6fa);
+  z-index: 39;
+  pointer-events: none;
 }
 
 .admin-center-inner {
@@ -34,8 +49,13 @@
 }
 
 .admin-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
   margin: 4px 0;
   line-height: 1.7;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .admin-plain-list {
@@ -49,6 +69,8 @@
 
 .admin-plain-list > li {
   margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Tarjetas de las áreas (Resumen) */
@@ -295,6 +317,7 @@
   width: 100%;
   min-height: 48px;
   padding: 10px 14px;
+  flex-wrap: wrap;
   background: transparent;
   color: inherit;
   font: inherit;
@@ -326,7 +349,8 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
-  flex: 1;
+  flex: 1 1 140px;
+  overflow-wrap: break-word;
 }
 
 .admin-group-name {
@@ -341,7 +365,10 @@
 }
 
 .admin-group-badge {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   padding: 2px 10px;
   border-radius: 999px;
   font-size: 13px;
@@ -366,6 +393,15 @@
 
 .admin-group-body > .section-title:first-child {
   margin-top: 0;
+}
+
+/* En pantallas estrechas el indicador pasa a su propia fila, bajo el título y alineado con el texto: nunca estrecha el título. */
+@media (max-width: 520px) {
+  .admin-group-badge {
+    flex: 1 0 100%;
+    margin-left: 28px;
+    max-width: calc(100% - 28px);
+  }
 }
 
 /* Buscador global de herramientas */

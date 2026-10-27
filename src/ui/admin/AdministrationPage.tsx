@@ -11,12 +11,13 @@ import { AdminLoading, TabBar } from '@/ui/community/admin/AdminShared'
 import '@/ui/community/communityAdmin.css'
 import '@/ui/admin/administration.css'
 
-// Centro de Administración único de PEPA (/administracion). Reúne en seis áreas lo que antes estaba repartido entre el «Panel de admin» (/admin-uso) y el Centro de Mando de
+// Centro de Administración único de PEPA (/administracion). Reúne en siete áreas lo que antes estaba repartido entre el «Panel de admin» (/admin-uso) y el Centro de Mando de
 // Comunidad (/comunidad/admin), con el diseño de este último. La puerta (AdminGate) decide el acceso preguntando al servidor; detrás de ella nada se monta ni se pide hasta que
 // alguien con permiso abre cada área, y cada área se monta la primera vez que se abre y se conserva (oculta) después, para no repetir consultas a Supabase al ir y volver.
 // Dentro de cada área, los grupos temáticos son plegables (AdminGroup) y el buscador global lleva directamente a una herramienta.
 const AreaUsuarios = lazy(() => import('@/ui/admin/AreaUsuarios').then((m) => ({ default: m.AreaUsuarios })))
 const AreaComunidad = lazy(() => import('@/ui/admin/AreaComunidad').then((m) => ({ default: m.AreaComunidad })))
+const AreaIA = lazy(() => import('@/ui/admin/AreaIA').then((m) => ({ default: m.AreaIA })))
 const AreaFuncionalidades = lazy(() => import('@/ui/admin/AreaFuncionalidades').then((m) => ({ default: m.AreaFuncionalidades })))
 const AreaAyuda = lazy(() => import('@/ui/admin/AreaAyuda').then((m) => ({ default: m.AreaAyuda })))
 const AreaSistema = lazy(() => import('@/ui/admin/AreaSistema').then((m) => ({ default: m.AreaSistema })))
@@ -50,8 +51,11 @@ function AdministrationCenter() {
     setVisited((v) => (v.includes(active) ? v : [...v, active]))
   }, [active])
 
-  // Ayuda («Llévame» / «Enséñame»): abre Comunidad → Contenido oficial.
-  useHelpDestinations({ 'admin.comunidad-oficial': () => setParams({ area: 'comunidad', tab: 'oficial' }, { replace: true }) })
+  // Ayuda («Llévame» / «Enséñame»): abre Comunidad → Contenido oficial o el Control de IA.
+  useHelpDestinations({
+    'admin.comunidad-oficial': () => setParams({ area: 'comunidad', tab: 'oficial' }, { replace: true }),
+    'admin.control-ia': () => setParams({ area: 'ia' }, { replace: true }),
+  })
 
   const select = (area: AdminAreaId) => {
     // Al cambiar de área se quitan los parámetros propios de la anterior (p. ej. la pestaña de Comunidad).
@@ -71,6 +75,7 @@ function AdministrationCenter() {
     resumen: <AreaResumen onGo={select} />,
     usuarios: <AreaUsuarios />,
     comunidad: <AreaComunidad />,
+    ia: <AreaIA />,
     funcionalidades: <AreaFuncionalidades />,
     ayuda: <AreaAyuda />,
     sistema: <AreaSistema />,

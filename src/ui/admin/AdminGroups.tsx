@@ -83,12 +83,14 @@ export interface AdminGroupProps {
   /** Tono del indicador: «alert» para avisos críticos. */
   badgeTone?: 'info' | 'alert'
   defaultOpen?: boolean
+  /** Marca para la Ayuda («Enséñame»): permite señalar el bloque aunque esté plegado (data-help-id). */
+  helpId?: string
   /** Fuerza el grupo abierto mientras haya un filtro activo (no cambia el estado guardado). */
   forceOpen?: boolean
   children: ReactNode
 }
 
-export function AdminGroup({ area, id, title, summary, badge, badgeTone = 'info', defaultOpen = false, forceOpen = false, children }: AdminGroupProps) {
+export function AdminGroup({ area, id, title, summary, badge, badgeTone = 'info', defaultOpen = false, helpId, forceOpen = false, children }: AdminGroupProps) {
   const groups = useGroups()
   const key = groupKey(area, id)
   const uid = useId()
@@ -116,7 +118,7 @@ export function AdminGroup({ area, id, title, summary, badge, badgeTone = 'info'
   }, [revealedN])
 
   return (
-    <section ref={ref} className={`admin-group${open ? ' admin-group-open' : ''}`} id={`admin-group-${area}-${id}`} aria-labelledby={`${uid}-h`}>
+    <section ref={ref} className={`admin-group${open ? ' admin-group-open' : ''}`} id={`admin-group-${area}-${id}`} data-help-id={helpId} aria-labelledby={`${uid}-h`}>
       <h3 className="admin-group-title" id={`${uid}-h`}>
         <button type="button" ref={headRef} className="admin-group-head" aria-expanded={open} aria-controls={`${uid}-body`} onClick={() => groups.setOpen(key, !open)}>
           <span className="admin-group-chevron" aria-hidden="true">

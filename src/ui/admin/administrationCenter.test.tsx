@@ -1,4 +1,4 @@
-// Centro de Administración único (B2): acceso y denegación, seis áreas, conservación de TODAS las herramientas de los dos paneles antiguos, redirecciones y «Invitar amigos».
+// Centro de Administración único (B2): acceso y denegación, siete áreas, conservación de TODAS las herramientas de los dos paneles antiguos, redirecciones y «Invitar amigos».
 // Renderizado real con react-dom/server (sin navegador): lo que se ve es el primer pintado; las pantallas con datos se comprueban además leyendo su código.
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -89,16 +89,16 @@ describe('acceso: solo cuentas propietarias, verificado en el servidor', () => {
   })
 })
 
-describe('el Centro: seis áreas accesibles', () => {
-  it('propietaria: barra de seis áreas (tablist), la del parámetro ?area= activa y el resumen por defecto', () => {
+describe('el Centro: siete áreas accesibles', () => {
+  it('propietaria: barra de siete áreas (tablist), la del parámetro ?area= activa y el resumen por defecto', () => {
     owner.state = 'owner'
     const out = html(createElement(AdministrationPage))
     expect(out).toContain('Centro de Administración')
     expect(out).toContain('role="tablist"')
-    for (const label of ['Resumen general', 'Usuarios, familias e invitaciones', 'Comunidad y moderación', 'Estado de funcionalidades', 'Ayuda y documentación', 'Sistema']) {
+    for (const label of ['Resumen general', 'Usuarios, familias e invitaciones', 'Comunidad y moderación', 'Control de IA', 'Estado de funcionalidades', 'Ayuda y documentación', 'Sistema']) {
       expect(out).toContain(label)
     }
-    expect((out.match(/role="tab"/g) ?? []).length).toBe(6)
+    expect((out.match(/role="tab"/g) ?? []).length).toBe(7)
     expect(out).toMatch(/id="admin-tab-resumen"[^>]*aria-selected="true"/)
   })
   it('?area=sistema abre esa área y solo ella está seleccionada', () => {
@@ -114,9 +114,9 @@ describe('el Centro: seis áreas accesibles', () => {
     expect(css).toContain('overflow-wrap: anywhere')
     expect(read('src/ui/community/communityAdmin.css')).toContain('flex-wrap: wrap')
   })
-  it('el Resumen enseña las seis áreas y NO pide datos al servidor al abrirse (solo con el botón)', () => {
+  it('el Resumen enseña las siete áreas y NO pide datos al servidor al abrirse (solo con el botón)', () => {
     const out = html(createElement(AreaResumen, { onGo: () => undefined }))
-    expect(out).toContain('Las seis áreas')
+    expect(out).toContain('Las siete áreas')
     expect(out).toContain('Datos en vivo')
     expect(out).toContain('Invitar amigos')
     const src = read('src/ui/admin/AreaResumen.tsx')

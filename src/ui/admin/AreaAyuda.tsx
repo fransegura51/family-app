@@ -107,8 +107,22 @@ export function AreaAyuda() {
         id="tutoriales"
         title="Tutoriales y vídeos"
         summary="Vídeos publicados, tutoriales «Enséñame» disponibles y los que faltan"
-        badge={`${inventory.reduce((n, r) => n + r.visits.length, 0)} visitas · ${inventory.reduce((n, r) => n + r.series.length, 0)} tutoriales ({inventory.reduce((n, r) => n + r.tutorials.length, 0)} capítulos) · ${EXPLAINERS.length} explicaciones · ${Object.keys(HELP_VIDEOS).length} vídeos`}
+        badge={`${inventory.reduce((n, r) => n + r.series.length, 0)} tutoriales`}
       >
+        <p className="admin-counts">
+          <span>
+            Visitas: <strong>{inventory.reduce((n, r) => n + r.visits.length, 0)}</strong>
+          </span>
+          <span>
+            Tutoriales: <strong>{inventory.reduce((n, r) => n + r.series.length, 0)}</strong> ({inventory.reduce((n, r) => n + r.tutorials.length, 0)} capítulos)
+          </span>
+          <span>
+            Explicaciones: <strong>{EXPLAINERS.length}</strong>
+          </span>
+          <span>
+            Vídeos: <strong>{Object.keys(HELP_VIDEOS).length}</strong>
+          </span>
+        </p>
         <h4 className="section-title" style={{ marginTop: 0 }}>
           Catálogo maestro por sección
         </h4>

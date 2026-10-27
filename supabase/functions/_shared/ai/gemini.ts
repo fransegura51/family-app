@@ -29,6 +29,7 @@ export function createGeminiProvider(apiKey: string): AiProvider {
       }
 
       let res: Response
+      let attempts = 0
       for (let attempt = 0; ; attempt++) {
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${req.model}:generateContent`, {
           method: 'POST',
@@ -38,6 +39,7 @@ export function createGeminiProvider(apiKey: string): AiProvider {
           body: JSON.stringify(body),
         })
         if (res.status !== 429 || attempt >= RETRY_DELAYS_MS.length) break
+        attempts++
         await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
       }
 
@@ -45,7 +47,7 @@ export function createGeminiProvider(apiKey: string): AiProvider {
         // No se lee ni se devuelve el cuerpo del error: no hace falta y
         // podría arrastrar contenido de la petición.
         await res.body?.cancel()
-        throw new AiProviderError(res.status, `gemini_http_${res.status}`)
+        throw new AiProviderError(res.status, `gemini_http_${res.status}`, attempts)
       }
 
       const json = await res.json()
@@ -53,6 +55,8 @@ export function createGeminiProvider(apiKey: string): AiProvider {
         text: json.candidates?.[0]?.content?.parts?.[0]?.text ?? '',
         tokensIn: Number(json.usageMetadata?.promptTokenCount) || 0,
         tokensOut: Number(json.usageMetadata?.candidatesTokenCount) || 0,
+        tokensExtra: Number(json.usageMetadata?.thoughtsTokenCount) || 0,
+        retries: attempts,
       }
     },
   }

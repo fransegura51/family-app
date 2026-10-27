@@ -3,12 +3,13 @@ import { ADMIN_AREAS, adminAreaPath, legacyAdminUsagePath, legacyCommunityAdminP
 import { ADMIN_TABS } from '@/domain/communityAdmin'
 
 describe('áreas del Centro de Administración', () => {
-  it('son exactamente las seis pedidas, en orden', () => {
-    expect(ADMIN_AREAS.map((a) => a.id)).toEqual(['resumen', 'usuarios', 'comunidad', 'funcionalidades', 'ayuda', 'sistema'])
+  it('son exactamente las siete, en orden, en orden', () => {
+    expect(ADMIN_AREAS.map((a) => a.id)).toEqual(['resumen', 'usuarios', 'comunidad', 'ia', 'funcionalidades', 'ayuda', 'sistema'])
     expect(ADMIN_AREAS.map((a) => a.label)).toEqual([
       'Resumen general',
       'Usuarios, familias e invitaciones',
       'Comunidad y moderación',
+      'Control de IA',
       'Estado de funcionalidades',
       'Ayuda y documentación',
       'Sistema',

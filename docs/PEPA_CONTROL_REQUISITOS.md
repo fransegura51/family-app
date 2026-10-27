@@ -1162,6 +1162,26 @@ Encargo del usuario (2026-10-27), Fase 2. Reglas que NO cambian: Comunidad solo 
 
 ---
 
+## Centro de Control de IA y correcciones de Administración (PEPA-IA, 27/10/2026)
+
+Encargo del usuario (2026-10-27). Reglas que NO cambian: reglas de edad (Comunidad solo mayores de 18) y permisos de privacidad intactos; **todos los límites nuevos nacen en observación** (nada bloquea); no se activa ninguna función desactivada; no se cambian proveedores ni modelos; no se introducen servicios de pago; sin llamadas masivas reales ni datos de familias modificados para pruebas. Estado: **código listo y probado, SIN APLICAR EN PRODUCCIÓN** (la migración `supabase/pending-migrations/0332_ai_control_center.sql` y las funciones de servidor esperan autorización/acceso a la base de datos).
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| IA-AUDIT | Auditoría de la IA existente: 26 funciones por tres rutas (puerta central `ai_gate`, IA de Comunidad con contadores propios y dos webhooks por token de familia); contradicción detectada entre `ai_enabled` de Comunidad y los interruptores editoriales | Sí | Sí — registro central `ai_function` (nombres en español, módulo, origen, dependencias) | Sí — `aiControlMigration.test.ts` comprueba que toda función del código está registrada y viceversa | No |
+| IA-SWITCH | Interruptor general + uno por función, aplicado en el SERVIDOR; reactivar recupera la selección anterior; no borra datos; los módulos siguen sin IA | Sí | Sí — reutiliza `ai_config.enabled` y `purposes_disabled`; la IA de Comunidad y la generación editorial programada también lo respetan; sincronización inmediata (Realtime solo para administradores) | Sí — forma de la migración, `aiControlUi.test.tsx`; **la prueba real en base (transacción revertida) está pendiente** | No |
+| IA-MEDIR | Registro de cada llamada (fecha, familia, persona, función, módulo, proveedor, modelo, tokens, coste estimado, estado, duración, reintentos, id idempotente) sin guardar frases, imágenes ni respuestas; automático separado de familias | Sí | Sí — `ai_call_log`, `ai_price` versionada (estimado/confirmado/sin coste), `ai_record_call`; las firmas antiguas siguen valiendo y anotan igual | Sí — `aiMeter.test.ts`; compatible con la base sin migrar | No |
+| IA-PANEL | Pantalla de análisis: resumen, filtros de periodo, por función, módulo, modelo, familia y persona, gráficos adaptados a iPhone, comparación con el periodo anterior | Sí | Sí — área «Control de IA» del Centro de Administración (no hay un tercer panel) | Sí — dominio y UI; **revisión visual en iPhone real pendiente** | No |
+| IA-LIMITES | Límites global/módulo/función/familia/persona, diario y mensual, por coste o llamadas; modos observación/aviso/bloqueo; excepciones por familia; quién cambió qué | Sí | Sí — `ai_limit`, `ai_limit_exception`, `ai_admin_log`; el bloqueo solo actúa si un administrador lo elige y nunca rompe una función si falla su comprobación | Sí — forma de la migración y UI | No |
+| IA-ALERTAS | Alertas por subida de llamadas/coste, familia excepcional, función en crecimiento, reintentos, posibles bucles, errores del proveedor y límites cercanos; umbrales editables; sin repeticiones | Sí | Sí — `ai_detect` cada hora (solo lee el registro), revisión manual | Parcial — lógica probada en la forma; **el SQL real se probará al aplicar la migración** | No |
+| IA-PROYECCION | Simulador 1.000/10.000/100.000/personalizado con consumo real o hipótesis, bajo/medio/alto, tope por familia y cambio de modelo; marcado como proyección provisional si faltan datos; margen preparado sin inventar precios | Sí | Sí — `AiProjection.tsx`, `projectCosts` | Sí — `aiControl.test.ts` | No |
+| IA-PLANES | Estructura para plan gratuito/de pago/excepciones/promociones con cuotas por plan y función, SIN efecto | Sí | Sí — `ai_plan*`, `plans_enforced = false`; ninguna puerta los lee | Sí — comprobado en la migración | No |
+| IA-VISUAL | Correcciones del Centro en iPhone: tarjeta «Tutoriales y vídeos» (código sin evaluar, título y contadores), bloques plegables, franja bajo los botones flotantes y zona segura inferior, títulos comprensibles de ajustes técnicos, buscador con las funciones nuevas | Sí | Sí — `AreaAyuda.tsx`, `administration.css`, `SETTING_META`, `adminTools.ts` | Sí — `adminLayout.test.tsx` (abierto y cerrado); **revisión visual en iPhone real pendiente** | No |
+
+**Pendiente (honesto)**: (1) aplicar la migración 0332 y desplegar las funciones de IA con la medición completa (hasta entonces las funciones siguen midiendo con el contador de siempre y la pantalla avisa de que no está disponible); (2) probar el SQL real en la base con una transacción revertida; (3) contrastar la tarifa de Gemini (estimada, plan gratuito) con la factura de Google; (4) revisión visual en iPhone. Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

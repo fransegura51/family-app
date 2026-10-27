@@ -180,7 +180,7 @@ describe('B2-UX02 · bloques plegables', () => {
   })
 })
 
-describe('B2-UX02 · el Centro con sus seis áreas', () => {
+describe('B2-UX02 · el Centro con sus siete áreas', () => {
   const page = (url = '/administracion') =>
     render(
       <MemoryRouter initialEntries={[url]}>
@@ -292,6 +292,7 @@ describe('registro de herramientas del buscador', () => {
   const sources: Record<string, string> = {
     resumen: read('src/ui/admin/AreaResumen.tsx'),
     usuarios: read('src/ui/admin/AreaUsuarios.tsx'),
+    ia: read('src/ui/admin/AreaIA.tsx'),
     ayuda: read('src/ui/admin/AreaAyuda.tsx'),
     sistema: read('src/ui/admin/AreaSistema.tsx'),
   }

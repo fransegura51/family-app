@@ -24,6 +24,16 @@ export const SERIES_E: TutorialSeries[] = [
     access: { ownerOnly: true, community: true },
   },
   {
+    id: 'ser-admin-control-ia',
+    module: 'configuracion',
+    title: 'Control de IA (administración)',
+    summary: 'El interruptor general y los de cada función, el consumo y el coste estimado, los límites, las alertas y la proyección de costes de la inteligencia artificial de PEPA.',
+    chapters: ['tut-admin-ia-interruptores', 'tut-admin-ia-consumo'],
+    cardIds: ['adm-control-ia'],
+    synonyms: ['control de ia', 'inteligencia artificial', 'apagar la ia', 'activar ia', 'consumo de ia', 'coste de la ia', 'límites de ia', 'gasto de ia', 'alertas de consumo'],
+    access: { ownerOnly: true },
+  },
+  {
     id: 'ser-comunidad-acceso',
     module: 'comunidad',
     title: 'Si Comunidad no me deja entrar',

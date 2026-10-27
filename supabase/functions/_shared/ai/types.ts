@@ -19,6 +19,10 @@ export interface AiGenerateResult {
   text: string
   tokensIn: number
   tokensOut: number
+  // Tokens facturables adicionales (p. ej. de razonamiento), si el proveedor los informa.
+  tokensExtra?: number
+  // Reintentos hechos dentro del proveedor (p. ej. por límite de minuto) antes de la respuesta.
+  retries?: number
 }
 
 export interface AiProvider {
@@ -28,9 +32,11 @@ export interface AiProvider {
 
 export class AiProviderError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly retries: number
+  constructor(status: number, message: string, retries = 0) {
     super(message)
     this.status = status
+    this.retries = retries
   }
 }
 

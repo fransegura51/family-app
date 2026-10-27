@@ -324,7 +324,7 @@ describe('gemini', () => {
     )
     vi.stubGlobal('fetch', fetchMock)
     const result = await createGeminiProvider('SECRETA').generate({ model: 'gemini-flash-lite-latest', parts: [{ text: 'pregunta' }] })
-    expect(result).toEqual({ text: 'hola', tokensIn: 12, tokensOut: 3 })
+    expect(result).toEqual({ text: 'hola', tokensIn: 12, tokensOut: 3, tokensExtra: 0, retries: 0 })
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent')
     expect(String(url)).not.toContain('SECRETA')
@@ -341,7 +341,7 @@ describe('gemini', () => {
 
   it('sin texto ni contadores devuelve vacío y ceros', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({}))))
-    expect(await createGeminiProvider('k').generate({ model: 'm', parts: [{ text: 'a' }] })).toEqual({ text: '', tokensIn: 0, tokensOut: 0 })
+    expect(await createGeminiProvider('k').generate({ model: 'm', parts: [{ text: 'a' }] })).toEqual({ text: '', tokensIn: 0, tokensOut: 0, tokensExtra: 0, retries: 0 })
   })
 
   it('reintenta tras un 429 y termina bien', async () => {

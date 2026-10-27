@@ -14,6 +14,7 @@ const DESCRIPTIONS: Record<AdminAreaId, string> = {
   resumen: 'Esta vista.',
   usuarios: 'Familias y cuentas, actividad de uso y códigos de invitación para familias nuevas.',
   comunidad: 'El Centro de Mando de Comunidad completo: moderación, usuarios, contenido oficial, encuestas, destacados, configuración e historial.',
+  ia: 'Interruptores de la inteligencia artificial, consumo y costes por función y familia, límites, alertas y proyección.',
   funcionalidades: 'Qué hace PEPA hoy, función por función, con su estado, lo que falta y cómo se ha comprobado.',
   ayuda: 'Qué cubre la Ayuda, qué tutoriales hay y qué funciones no están contadas todavía.',
   sistema: 'Errores de la app, automatizaciones técnicas y vistas administrativas de Sugerencias y Reseñas.',
@@ -58,7 +59,7 @@ export function AreaResumen({ onGo }: { onGo: (area: AdminAreaId) => void }) {
         Centro de Administración de PEPA. Solo lo ven las cuentas propietarias de la app (se comprueba en el servidor). No es lo mismo que el administrador de una familia.
       </p>
 
-      <AdminGroup area="resumen" id="areas" title="Las seis áreas" summary="Entrada rápida a cada área del Centro" defaultOpen>
+      <AdminGroup area="resumen" id="areas" title="Las siete áreas" summary="Entrada rápida a cada área del Centro" defaultOpen>
       <ul className="admin-area-cards">
         {ADMIN_AREAS.filter((a) => a.id !== 'resumen').map((a) => (
           <li key={a.id}>

@@ -1319,6 +1319,11 @@ export const SETTING_META: Record<string, SettingMeta> = {
   report_autohide_distinct_reporters: { label: 'Denunciantes distintos para ocultar provisionalmente', unit: 'personas', editable: true, min: 1, max: 10 },
   max_links_per_post: { label: 'Enlaces por publicación o comentario', unit: 'enlaces', editable: true, min: 1, max: 50 },
   ai_daily_cap: { label: 'Tope diario de llamadas de IA (0 = sin tope)', unit: 'al día', editable: true, min: 0, max: 5000 },
+  // Interruptores del programa de IA y editorial: nombres claros (el identificador interno no cambia). Se activan desde Comunidad → Oficial y el Centro de Control de IA.
+  ai_enabled: { label: 'Inteligencia artificial de Comunidad (0 = desactivada, 1 = activada)', editable: false },
+  editorial_articles_enabled: { label: 'Generación de artículos (0 = en pausa, 1 = activada)', editable: false },
+  editorial_polls_enabled: { label: 'Generación de encuestas (0 = en pausa, 1 = activada)', editable: false },
+  editorial_menu_enabled: { label: 'Generación de menús (0 = en pausa, 1 = activada)', editable: false },
   // Fijados por la especificación aprobada: solo lectura.
   summary_comment_threshold: { label: 'Comentarios para el resumen de Pepa', unit: 'comentarios', editable: false },
   summary_refresh_every: { label: 'Comentarios nuevos para renovar el resumen', unit: 'comentarios', editable: false },

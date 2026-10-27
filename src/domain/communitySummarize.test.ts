@@ -118,7 +118,7 @@ describe('flujo completo', () => {
     expect(res.status).toBe(200)
     expect(await json(res)).toEqual({ ok: true, summary: GOOD_SUMMARY })
     expect(s.admin.argsOf('community_service_save_summary')).toEqual([{ p_post: POST, p_summary: GOOD_SUMMARY, p_comment_count: 16 }])
-    expect(s.admin.argsOf('community_service_record_ai')).toEqual([{ p_purpose: 'summary', p_error: false }])
+    expect(s.admin.argsOf('community_service_record_ai')).toEqual([expect.objectContaining({ p_purpose: 'summary', p_error: false })])
     expect(s.admin.calls.map((c) => c.fn)).not.toContain('ai_gate')
     expect(s.provider.requests[0].responseSchema).toMatchObject({ type: 'OBJECT', required: ['summary'] })
   })
@@ -176,7 +176,7 @@ describe('flujo completo', () => {
       expect(res.status).toBe(200)
       expect(await json(res)).toMatchObject({ ok: false, reason: 'provider_error' })
       expect(s.admin.count('community_service_save_summary')).toBe(0)
-      expect(s.admin.argsOf('community_service_record_ai')).toEqual([{ p_purpose: 'summary', p_error: true }])
+      expect(s.admin.argsOf('community_service_record_ai')).toEqual([expect.objectContaining({ p_purpose: 'summary', p_error: true })])
     })
     it('IA sin configurar o apagada', async () => {
       const s = setup({ ai: false })

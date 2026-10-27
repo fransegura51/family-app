@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { partitionTicketLines } from "./ticketLines.ts"
+import { modalityOfParts, newCallId, recordAiCall } from "../_shared/ai/meter.ts"
 import { createProvider, secretNameFor } from "../_shared/ai/providers.ts"
 import { AiProviderError } from "../_shared/ai/types.ts"
 import { receiptPhotoSpec, parseReceiptPhotoOutput, type ReceiptPhotoItem } from "../_shared/ai/purposes/receiptPhoto.ts"
@@ -189,32 +190,46 @@ Deno.serve(async (req) => {
 
       let tokensIn = 0
       let tokensOut = 0
+      let tokensExtra = 0
+      let retries = 0
       let aiFailed = false
+      const startedAt = Date.now()
+      const parts = receiptPhotoSpec.buildParts({ imageBase64: fileBase64, mimeType })
       try {
         const provider = createProvider(providerName, geminiKey)
         const result = await provider.generate({
           model,
-          parts: receiptPhotoSpec.buildParts({ imageBase64: fileBase64, mimeType }),
+          parts,
           maxOutputTokens: receiptPhotoSpec.maxOutputTokens,
         })
         tokensIn = result.tokensIn
         tokensOut = result.tokensOut
+        tokensExtra = result.tokensExtra ?? 0
+        retries = result.retries ?? 0
         const parsed = parseReceiptPhotoOutput(result.text)
         date = parsed.date
         total = parsed.total
         items = parsed.items
       } catch (err) {
         aiFailed = true
+        if (err instanceof AiProviderError) retries = err.retries
         console.error("[mercadona-ticket-webhook] fallo del proveedor:", err instanceof AiProviderError ? err.status : "unknown")
       }
-      const { error: usageError } = await admin.rpc("ai_record_usage", {
-        p_family: familyId,
-        p_purpose: "mercadona-ticket-webhook",
-        p_tokens_in: tokensIn,
-        p_tokens_out: tokensOut,
-        p_error: aiFailed,
+      await recordAiCall(admin, {
+        callId: newCallId(),
+        familyId,
+        userId: null,
+        purpose: "mercadona-ticket-webhook",
+        provider: providerName,
+        model,
+        modality: modalityOfParts(parts),
+        tokensIn,
+        tokensOut,
+        tokensExtra,
+        failed: aiFailed,
+        retries,
+        durationMs: Date.now() - startedAt,
       })
-      if (usageError) console.error("[mercadona-ticket-webhook] no se pudo anotar el uso:", usageError.message)
     }
 
     const receiptDate = date ?? new Date().toISOString().slice(0, 10)

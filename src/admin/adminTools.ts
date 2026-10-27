@@ -24,6 +24,7 @@ export interface AdminTool {
 export const ADMIN_GROUP_IDS: Record<Exclude<AdminAreaId, 'funcionalidades' | 'comunidad'>, string[]> = {
   resumen: ['areas', 'funcionalidades', 'vivo', 'invitar'],
   usuarios: ['invitar-amigos', 'codigos', 'actividad', 'familias'],
+  ia: ['interruptores', 'consumo', 'familias', 'limites', 'alertas', 'proyeccion', 'planes', 'tarifas'],
   ayuda: ['cobertura', 'modulos', 'fichas', 'tutoriales', 'rutas', 'valoraciones', 'prioridades'],
   // «soporte» solo se pinta con el Soporte técnico encendido (src/support/flags.ts); el identificador del bloque existe siempre.
   sistema: ['errores', 'automatizaciones', 'soporte', 'vistas'],
@@ -31,7 +32,7 @@ export const ADMIN_GROUP_IDS: Record<Exclude<AdminAreaId, 'funcionalidades' | 'c
 
 export const ADMIN_TOOLS: AdminTool[] = [
   // Resumen
-  { id: 'resumen-areas', label: 'Las seis áreas del Centro', area: 'resumen', group: 'areas', keywords: 'areas inicio panel indice' },
+  { id: 'resumen-areas', label: 'Las siete áreas del Centro', area: 'resumen', group: 'areas', keywords: 'areas inicio panel indice' },
   { id: 'resumen-funcionalidades', label: 'Recuento de funcionalidades y Ayuda', area: 'resumen', group: 'funcionalidades', keywords: 'estado operativas parciales desactivadas cobertura ayuda recuento' },
   { id: 'resumen-vivo', label: 'Datos en vivo (familias, cuentas, errores)', area: 'resumen', group: 'vivo', keywords: 'numeros estadisticas familias cuentas contador' },
   { id: 'resumen-invitar', label: 'Invitar amigos (estado)', area: 'resumen', group: 'invitar', keywords: 'invitar amigos proximamente preparacion' },
@@ -56,6 +57,17 @@ export const ADMIN_TOOLS: AdminTool[] = [
   { id: 'com-destacados', label: 'Comunidad: Destacados', area: 'comunidad', tab: 'destacados', keywords: 'destacados destacar portada' },
   { id: 'com-configuracion', label: 'Comunidad: Configuración (apertura, interruptores, parámetros)', area: 'comunidad', tab: 'configuracion', keywords: 'configuracion apertura lanzamiento interruptor parametros limites ia publica' },
   { id: 'com-historial', label: 'Comunidad: Historial de acciones de administración', area: 'comunidad', tab: 'historial', keywords: 'historial registro log acciones auditoria' },
+  // Control de IA
+  { id: 'ia-interruptor', label: 'Inteligencia artificial: interruptor general y por función', area: 'ia', group: 'interruptores', keywords: 'ia inteligencia artificial activar ia desactivar apagar encender interruptor general funcion gemini pepa' },
+  { id: 'ia-comunidad', label: 'IA de Comunidad: artículos, menús, encuestas y respuestas de Pepa', area: 'ia', group: 'interruptores', keywords: 'ia comunidad generacion articulos menus encuestas respuestas automaticas pepa resumenes rectificar' },
+  { id: 'ia-tickets', label: 'IA de tickets: lectura inteligente y clasificación', area: 'ia', group: 'interruptores', keywords: 'ia tickets recibos compras lectura inteligente clasificacion productos envases fotos' },
+  { id: 'ia-consumo', label: 'Consumo y costes de la IA (por función, módulo y modelo)', area: 'ia', group: 'consumo', keywords: 'consumo costes coste gasto tokens llamadas modelo graficos estadisticas dinero ia' },
+  { id: 'ia-familias', label: 'Consumo de IA por familias y por persona', area: 'ia', group: 'familias', keywords: 'familias consumo coste ranking personas usuarios detalle ia limites familia' },
+  { id: 'ia-limites', label: 'Límites y presupuestos de IA (observación, aviso, bloqueo)', area: 'ia', group: 'limites', keywords: 'limites limite presupuesto tope maximo bloqueo aviso observacion excepciones familias ia' },
+  { id: 'ia-alertas', label: 'Alertas y anomalías de consumo de IA', area: 'ia', group: 'alertas', keywords: 'alertas anomalias consumo anormal bucle reintentos errores proveedor umbrales avisos ia' },
+  { id: 'ia-proyeccion', label: 'Proyección de costes de IA (1.000, 10.000, 100.000 familias)', area: 'ia', group: 'proyeccion', keywords: 'proyeccion simulador escenarios 1000 10000 100000 familias coste mensual anual rentabilidad margen crecimiento ia' },
+  { id: 'ia-planes', label: 'Planes y cuotas de IA (gratuito, de pago): preparación', area: 'ia', group: 'planes', keywords: 'planes gratuito pago freemium cuotas suscripcion promociones excepciones ia' },
+  { id: 'ia-tarifas', label: 'Tarifas de los modelos de IA y registro de cambios', area: 'ia', group: 'tarifas', keywords: 'tarifas precios modelos tokens registro cambios auditoria quien cambio ia costes' },
   // Funcionalidades
   { id: 'func-inventario', label: 'Inventario de funcionalidades (buscar y filtrar)', area: 'funcionalidades', keywords: 'funcionalidades inventario funciones estado operativa parcial desactivada verificacion buscar filtrar modulos' },
   // Ayuda
@@ -89,8 +101,10 @@ export function searchAdminTools(query: string, tools: AdminTool[] = ADMIN_TOOLS
     .map((t) => {
       const label = normalizeHelpText(t.label)
       const hay = `${label} ${normalizeHelpText(t.keywords)}`
-      if (!words.every((w) => hay.includes(w))) return null
-      const inLabel = words.filter((w) => label.includes(w)).length
+      // Una palabra de 1-2 letras («IA») solo cuenta como palabra entera: si no, "ia" casaría con "familias" o "auditoría".
+      const has = (text: string, w: string) => (w.length <= 2 ? new RegExp(`(^|[^a-z0-9])${w}([^a-z0-9]|$)`).test(text) : text.includes(w))
+      if (!words.every((w) => has(hay, w))) return null
+      const inLabel = words.filter((w) => has(label, w)).length
       return { t, score: inLabel * 2 + (label.startsWith(words[0]) ? 1 : 0) }
     })
     .filter((x): x is { t: AdminTool; score: number } => x !== null)

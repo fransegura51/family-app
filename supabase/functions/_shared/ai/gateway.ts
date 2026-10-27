@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { createProvider, secretNameFor } from "./providers.ts"
+import { modalityOfParts, newCallId, recordAiCall } from "./meter.ts"
 import { AiProviderError, type AiPurposeSpec } from "./types.ts"
 
 // Puerta única de la IA de PEPA en el servidor. Cada función (pepa-intent,
@@ -104,33 +105,46 @@ export function createAiHandler<TInput, TOutput>(spec: AiPurposeSpec<TInput, TOu
 
       let tokensIn = 0
       let tokensOut = 0
+      let tokensExtra = 0
+      let retries = 0
       let rawText = ""
       let failed = false
+      const startedAt = Date.now()
+      const parts = spec.buildParts(read.input)
       try {
         const result = await provider.generate({
           model,
-          parts: spec.buildParts(read.input),
+          parts,
           responseSchema: spec.responseSchema,
           maxOutputTokens: spec.maxOutputTokens,
         })
         rawText = result.text
         tokensIn = result.tokensIn
         tokensOut = result.tokensOut
+        tokensExtra = result.tokensExtra ?? 0
+        retries = result.retries ?? 0
       } catch (err) {
         failed = true
+        if (err instanceof AiProviderError) retries = err.retries
         console.error("[ai] fallo del proveedor:", spec.purpose, err instanceof AiProviderError ? err.status : "unknown")
       }
 
-      if (familyId) {
-        const { error: usageError } = await adminClient.rpc("ai_record_usage", {
-          p_family: familyId,
-          p_purpose: spec.purpose,
-          p_tokens_in: tokensIn,
-          p_tokens_out: tokensOut,
-          p_error: failed,
-        })
-        if (usageError) console.error("[ai] no se pudo anotar el uso:", spec.purpose)
-      }
+      // Medición central (solo números). Si la parte de control falla, la función sigue como antes.
+      await recordAiCall(adminClient, {
+        callId: newCallId(),
+        familyId,
+        userId: userData.user.id,
+        purpose: spec.purpose,
+        provider: providerName,
+        model,
+        modality: modalityOfParts(parts),
+        tokensIn,
+        tokensOut,
+        tokensExtra,
+        failed,
+        retries,
+        durationMs: Date.now() - startedAt,
+      })
 
       if (failed) return json({ error: "ai_provider_error" }, 502)
 

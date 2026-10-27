@@ -1,3 +1,4 @@
+import { modalityOfParts, newCallId } from './ai/meter.ts'
 import { createProvider, secretNameFor } from './ai/providers.ts'
 import { AiProviderError, type AiPart, type AiProvider } from './ai/types.ts'
 import { type ServiceClient, asRows } from './communityServer.ts'
@@ -40,6 +41,9 @@ export function parseAiSettings(rows: unknown): AiSettings {
   return out
 }
 
+// La función de la base de datos todavía no existe (migración sin aplicar): se usa la versión de siempre.
+const isMissingRpc = (message: string): boolean => /could not find the function|does not exist|PGRST202/i.test(message)
+
 export type AiFailure = 'not_allowed' | 'provider_error' | 'invalid_output'
 export type AiResult<T> = { ok: true; value: T } | { ok: false; reason: AiFailure }
 
@@ -64,8 +68,15 @@ export class CommunityAi {
   async generate<T>(purpose: CommunityAiPurpose, req: AiRequest, parse: (rawText: string) => T | null): Promise<AiResult<T>> {
     let allowed: unknown = false
     try {
-      const { data, error } = await this.client.rpc('community_service_ai_allowed')
-      allowed = !error && data === true
+      // Primero la versión por función (interruptor global + el de esta función + límites en bloqueo). Si la base de datos aún no la tiene, la de siempre.
+      const first = await this.client.rpc('community_service_ai_allowed', { p_purpose: purpose })
+      if (first.error && isMissingRpc(first.error.message)) {
+        const old = await this.client.rpc('community_service_ai_allowed')
+        allowed = !old.error && old.data === true
+      } else {
+        // Cualquier otro error: no se comprueba el presupuesto, se cierra el paso.
+        allowed = !first.error && first.data === true
+      }
     } catch {
       allowed = false
     }
@@ -74,11 +85,21 @@ export class CommunityAi {
 
     let raw = ''
     let failed = false
+    let tokensIn = 0
+    let tokensOut = 0
+    let tokensExtra = 0
+    let retries = 0
+    const startedAt = Date.now()
     try {
       const result = await this.provider.generate({ model: this.model, parts: req.parts, responseSchema: req.responseSchema, maxOutputTokens: req.maxOutputTokens })
       raw = result.text
+      tokensIn = result.tokensIn
+      tokensOut = result.tokensOut
+      tokensExtra = result.tokensExtra ?? 0
+      retries = result.retries ?? 0
     } catch (err) {
       failed = true
+      if (err instanceof AiProviderError) retries = err.retries
       // Solo el código HTTP: nunca el cuerpo ni el texto enviado.
       console.error('[community-ai] fallo del proveedor:', purpose, err instanceof AiProviderError ? err.status : 'unknown')
     }
@@ -92,16 +113,31 @@ export class CommunityAi {
       }
     }
     const bad = failed || value === null
-    await this.record(purpose, bad)
+    await this.record(purpose, bad, { parts: req.parts, tokensIn, tokensOut, tokensExtra, retries, durationMs: Date.now() - startedAt })
     if (failed) return { ok: false, reason: 'provider_error' }
     if (value === null) return { ok: false, reason: 'invalid_output' }
     return { ok: true, value }
   }
 
-  private async record(purpose: CommunityAiPurpose, error: boolean): Promise<void> {
+  // Se cuenta SIEMPRE (solo números). Primero la versión completa (tokens, coste, duración); si la base de datos aún no la tiene, el contador de siempre.
+  private async record(purpose: CommunityAiPurpose, error: boolean, m: { parts: AiPart[]; tokensIn: number; tokensOut: number; tokensExtra: number; retries: number; durationMs: number }): Promise<void> {
     try {
-      const { error: e } = await this.client.rpc('community_service_record_ai', { p_purpose: purpose, p_error: error })
-      if (e) console.error('[community-ai] no se pudo anotar el uso:', purpose)
+      let res = await this.client.rpc('community_service_record_ai', {
+        p_purpose: purpose,
+        p_error: error,
+        p_provider: this.provider.name,
+        p_model: this.model,
+        p_call_id: newCallId(),
+        p_modality: modalityOfParts(m.parts),
+        p_tokens_in: m.tokensIn,
+        p_tokens_out: m.tokensOut,
+        p_tokens_extra: m.tokensExtra,
+        p_retries: m.retries,
+        p_duration_ms: m.durationMs,
+      })
+      // Base de datos sin la migración 0332: la llamada de siempre.
+      if (res.error && isMissingRpc(res.error.message)) res = await this.client.rpc('community_service_record_ai', { p_purpose: purpose, p_error: error })
+      if (res.error) console.error('[community-ai] no se pudo anotar el uso:', purpose)
     } catch {
       console.error('[community-ai] no se pudo anotar el uso:', purpose)
     }

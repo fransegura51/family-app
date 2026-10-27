@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { modalityOfParts, newCallId, recordAiCall } from "../_shared/ai/meter.ts"
 import { createProvider, secretNameFor } from "../_shared/ai/providers.ts"
 import { AiProviderError } from "../_shared/ai/types.ts"
 import { eventFromEmailSpec, type EventFromEmailOutput } from "../_shared/ai/purposes/eventFromEmail.ts"
@@ -78,29 +79,43 @@ Deno.serve(async (req) => {
     let parsed: EventFromEmailOutput = { found: false, title: null, date: null, allDay: false, startTime: null, endTime: null, location: null }
     let tokensIn = 0
     let tokensOut = 0
+    let tokensExtra = 0
+    let retries = 0
     let aiFailed = false
+    const startedAt = Date.now()
+    const parts = eventFromEmailSpec.buildParts(read.input)
     try {
       const provider = createProvider(providerName, geminiKey)
       const result = await provider.generate({
         model,
-        parts: eventFromEmailSpec.buildParts(read.input),
+        parts,
         maxOutputTokens: eventFromEmailSpec.maxOutputTokens,
       })
       tokensIn = result.tokensIn
       tokensOut = result.tokensOut
+      tokensExtra = result.tokensExtra ?? 0
+      retries = result.retries ?? 0
       parsed = eventFromEmailSpec.parseOutput(result.text, read.input)
     } catch (err) {
       aiFailed = true
+      if (err instanceof AiProviderError) retries = err.retries
       console.error("[import-event-email-webhook] fallo del proveedor:", err instanceof AiProviderError ? err.status : "unknown")
     }
-    const { error: usageError } = await admin.rpc("ai_record_usage", {
-      p_family: familyId,
-      p_purpose: eventFromEmailSpec.purpose,
-      p_tokens_in: tokensIn,
-      p_tokens_out: tokensOut,
-      p_error: aiFailed,
+    await recordAiCall(admin, {
+      callId: newCallId(),
+      familyId,
+      userId: null,
+      purpose: eventFromEmailSpec.purpose,
+      provider: providerName,
+      model,
+      modality: modalityOfParts(parts),
+      tokensIn,
+      tokensOut,
+      tokensExtra,
+      failed: aiFailed,
+      retries,
+      durationMs: Date.now() - startedAt,
     })
-    if (usageError) console.error("[import-event-email-webhook] no se pudo anotar el uso:", usageError.message)
 
     if (!parsed.found || !parsed.date) {
       return json({ ok: true, created: false, reason: aiFailed ? "ai_provider_error" : "no_clear_event" })

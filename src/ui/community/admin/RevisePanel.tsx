@@ -9,13 +9,11 @@ import {
   decideResultText,
   diffMenu,
   diffOptions,
-  diffRecipes,
   diffWords,
   formatMadridSlot,
   generalQuality,
   hasChanges,
   optionsOf,
-  recipeChangesText,
   restoreResultText,
   reviseErrorText,
   shortcutsFor,
@@ -27,7 +25,9 @@ import {
   type ReviseProposal,
   type RevisionRow,
 } from '@/domain/communityEditorial'
+import { checkReviseClaims, compareRecipeCards, recipeCardsOf } from '@/domain/communityEditorialRecipes'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
+import { RecipeCardsList, RecipeChangesView, ReviseWarnings } from '@/ui/community/admin/EditorialRecipes'
 import { AdminLoading, InfoBox, TwoTapButton } from '@/ui/community/admin/AdminShared'
 
 // «Rectificar con Pepa»: la persona escribe qué quiere cambiar, Pepa PROPONE una versión nueva, se compara con la anterior y se acepta o se rechaza. Aceptar guarda una
@@ -41,12 +41,15 @@ export interface DishTarget {
 export function RevisePanel({
   itemId,
   kind,
+  section,
   target,
   onClose,
   onChanged,
 }: {
   itemId: string
   kind: EditorialItemKind
+  /** Sección del artículo: decide si admite fichas de recetas (solo «recetas» o los que ya las traen). */
+  section?: string
   /** Solo en menús: cambiar UN plato (los demás no cambian). Sin él, la rectificación es general. */
   target?: DishTarget | null
   onClose: () => void
@@ -178,7 +181,7 @@ export function RevisePanel({
 
       {proposal && (
         <div className="cadm-compare-block" data-help-id="comunidad.revise-compare">
-          <RevisionCompare kind={kind} proposal={proposal} />
+          <RevisionCompare kind={kind} proposal={proposal} section={section} instruction={instruction} />
           <div className="cadm-actions" role="group" aria-label="Qué hacer con la propuesta de Pepa">
             <button type="button" className="cadm-btn cadm-btn-primary" disabled={busy !== null} onClick={() => void decide(true, proposal.revisionId)} data-help-id="comunidad.revise-accept">
               {busy === 'deciding' ? 'Guardando…' : 'Aceptar esta versión'}
@@ -302,16 +305,16 @@ function RevisionHistory({ itemId, busy, onResume, onRestored }: { itemId: strin
 }
 
 // ---- Comparación antes / después
-export function RevisionCompare({ kind, proposal }: { kind: EditorialItemKind; proposal: ReviseProposal }) {
+export function RevisionCompare({ kind, proposal, section, instruction = '' }: { kind: EditorialItemKind; proposal: ReviseProposal; section?: string; instruction?: string }) {
   const { before, result, notes, quality } = proposal
   const titleDiff = diffWords(before.title, result.title)
   const bodyDiff = diffWords(before.body, result.body)
-  const recipes = diffRecipes(before.payload, result.payload)
-  const recipeLines = recipeChangesText(recipes)
+  const recipeChanges = compareRecipeCards(recipeCardsOf(before.payload), recipeCardsOf(result.payload))
+  const claimWarnings = kind === 'menu' ? [] : checkReviseClaims({ notes, instruction, section, before: before.payload, result: result.payload })
   const options = diffOptions(before.payload, result.payload)
   const dishes = diffMenu(before.payload, result.payload, quality)
   const general = generalQuality(quality)
-  const nothing = !hasChanges(titleDiff) && !hasChanges(bodyDiff) && recipeLines.length === 0 && options.added.length === 0 && options.removed.length === 0 && dishes.length === 0
+  const nothing = !hasChanges(titleDiff) && !hasChanges(bodyDiff) && recipeChanges.length === 0 && options.added.length === 0 && options.removed.length === 0 && dishes.length === 0
 
   return (
     <div className="cadm-compare" aria-label="Comparación con la versión anterior">
@@ -325,6 +328,7 @@ export function RevisionCompare({ kind, proposal }: { kind: EditorialItemKind; p
         </p>
       )}
       {nothing && <p className="cadm-notice cadm-notice-error" role="note">Pepa no ha cambiado nada visible. Puedes rechazarla o reformular la instrucción.</p>}
+      <ReviseWarnings warnings={claimWarnings} />
 
       {hasChanges(titleDiff) && (
         <>
@@ -338,16 +342,7 @@ export function RevisionCompare({ kind, proposal }: { kind: EditorialItemKind; p
           <DiffText segments={bodyDiff} />
         </>
       )}
-      {recipeLines.length > 0 && (
-        <>
-          <h5>Fichas de recetas</h5>
-          <ul className="cadm-options">
-            {recipeLines.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
-        </>
-      )}
+      <RecipeChangesView changes={recipeChanges} />
       {kind === 'poll' && (options.added.length > 0 || options.removed.length > 0) && (
         <>
           <h5>Opciones de la encuesta</h5>
@@ -415,6 +410,7 @@ function FullContent({ content }: { content: ReviseContent }) {
     <div className="cadm-proposal">
       <p className="cadm-title">{content.title}</p>
       {content.body && <CommunityRichText text={content.body} className="cadm-body" />}
+      <RecipeCardsList recipes={recipeCardsOf(content.payload)} heading="Fichas de recetas de la versión nueva" open />
     </div>
   )
 }

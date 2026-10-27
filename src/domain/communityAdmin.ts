@@ -2,6 +2,7 @@
 // El servidor devuelve cada lista como filas sueltas (`Record<string, unknown>[]`, ya en camelCase). Aquí se convierten en tipos propios con funciones que
 // nunca fallan (un dato que falta se queda en un valor neutro) y se guardan los textos de estado y las reglas de validación para poder probarlos sin pantalla.
 import { REPORT_REASONS } from '@/domain/community'
+import { applyRecipeEdits, cardsToEdits, recipeCardsOf, recipesChanged, validateRecipeEdits, type RecipeCardEdit } from '@/domain/communityEditorialRecipes'
 
 type Rec = Record<string, unknown>
 
@@ -931,6 +932,8 @@ export function safeSourceUrl(raw: string): string | null {
 }
 
 export interface ProposalForm {
+  // Fichas de recetas del artículo, tal como las ofrece el editor (vacío si el borrador no lleva fichas o no es un artículo).
+  recipes: RecipeCardEdit[]
   title: string
   body: string
   topicId: string
@@ -942,6 +945,7 @@ export interface ProposalForm {
 
 export function proposalToForm(p: Proposal): ProposalForm {
   return {
+    recipes: p.kind === 'article' ? cardsToEdits(recipeCardsOf(p.payload.raw)) : [],
     title: p.title,
     body: p.body,
     topicId: p.topicId,
@@ -955,7 +959,7 @@ export function proposalToForm(p: Proposal): ProposalForm {
 export const MAX_POLL_OPTIONS = 6
 export const MIN_POLL_OPTIONS = 2
 
-export function validateProposalForm(kind: ProposalKind, f: ProposalForm): string | null {
+export function validateProposalForm(kind: ProposalKind, f: ProposalForm, original?: ProposalPayload): string | null {
   const title = f.title.trim()
   if (title.length < 3) return 'El título necesita al menos 3 letras.'
   if (title.length > 140) return 'El título es demasiado largo (máximo 140 letras).'
@@ -970,6 +974,11 @@ export function validateProposalForm(kind: ProposalKind, f: ProposalForm): strin
     for (const s of f.sources) {
       if (s.url.trim() !== '' && !safeSourceUrl(s.url)) return 'Una fuente tiene un enlace no válido (debe empezar por https://).'
     }
+    // El servidor no revisa las fichas al guardar un borrador (sí al publicar): se exigen las mismas reglas aquí para no guardar algo que luego no se pueda publicar.
+    if (f.recipes.length > 0 && original && recipesChanged(original.raw.recipes, f.recipes)) {
+      const bad = validateRecipeEdits(original.raw.recipes, f.recipes)
+      if (bad) return `Una ficha de receta no es válida: ${bad}`
+    }
   }
   return null
 }
@@ -982,7 +991,10 @@ export function buildProposalPayload(kind: ProposalKind, original: ProposalPaylo
   const sources = f.sources
     .map((s) => ({ title: s.title.trim(), publisher: s.publisher.trim(), url: s.url.trim(), date: s.date.trim() }))
     .filter((s) => s.title !== '' || s.url !== '' || s.publisher !== '')
-  return { ...original.raw, sources, methodology: f.methodology.trim(), comparison: f.comparison.trim() }
+  const next: Record<string, unknown> = { ...original.raw, sources, methodology: f.methodology.trim(), comparison: f.comparison.trim() }
+  // Las fichas solo viajan si se han cambiado de verdad: si no, se conservan las que ya había, byte a byte.
+  if (f.recipes.length > 0 && recipesChanged(original.raw.recipes, f.recipes)) next.recipes = applyRecipeEdits(original.raw.recipes, f.recipes)
+  return next
 }
 
 export function approveResultText(kind: ProposalKind, result: unknown): string {

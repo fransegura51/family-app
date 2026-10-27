@@ -40,6 +40,8 @@ import { HelpDestMark } from '@/help/ui/HelpDest'
 import { ScheduleForm, isScheduled, publishAtOf } from '@/ui/community/admin/ScheduleForm'
 import { EditorialPanel } from '@/ui/community/admin/EditorialPanel'
 import { MenusSection } from '@/ui/community/admin/MenusSection'
+import { recipeCardsOf } from '@/domain/communityEditorialRecipes'
+import { RecipeCardsEditor, RecipeCardsList } from '@/ui/community/admin/EditorialRecipes'
 import { RevisePanel } from '@/ui/community/admin/RevisePanel'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
@@ -251,7 +253,7 @@ export function ProposalCard({
       {editable && mode === 'view' && p.status === 'approved' && <p className="muted cadm-small">Si la editas, hay que aprobarla de nuevo.</p>}
 
       {mode === 'revise' && revisable && (
-        <RevisePanel itemId={p.id} kind={p.kind as 'article' | 'poll'} onClose={() => setMode('view')} onChanged={(message) => onDone(message, p.status === 'approved')} />
+        <RevisePanel itemId={p.id} kind={p.kind as 'article' | 'poll'} section={p.section} onClose={() => setMode('view')} onChanged={(message) => onDone(message, p.status === 'approved')} />
       )}
       {mode === 'schedule' && p.publishAt && (
         <ScheduleForm
@@ -325,6 +327,7 @@ export function ProposalContent({ proposal: p }: { proposal: Proposal }) {
   return (
     <div className="cadm-proposal">
       {p.body && <CommunityRichText text={p.body} className="cadm-body" />}
+      {(p.kind === 'article' || p.kind === 'tip') && <RecipeCardsList recipes={recipeCardsOf(p.payload.raw)} />}
       {p.kind === 'poll' && (
         <>
           <h5>Opciones de la encuesta</h5>
@@ -430,7 +433,7 @@ export function ProposalEditForm({
       className="cadm-noteform"
       onSubmit={(e) => {
         e.preventDefault()
-        const msg = validateProposalForm(p.kind, form)
+        const msg = validateProposalForm(p.kind, form, p.payload)
         setProblem(msg)
         if (!msg) onSave(form)
       }}
@@ -509,6 +512,7 @@ export function ProposalEditForm({
           <textarea id={`${id}-met`} rows={3} value={form.methodology} onChange={(e) => set({ methodology: e.target.value })} />
           <label htmlFor={`${id}-cmp`}>Comparación y contexto</label>
           <textarea id={`${id}-cmp`} rows={3} value={form.comparison} onChange={(e) => set({ comparison: e.target.value })} />
+          <RecipeCardsEditor value={form.recipes} onChange={(recipes) => set({ recipes })} disabled={busy} />
         </>
       )}
 

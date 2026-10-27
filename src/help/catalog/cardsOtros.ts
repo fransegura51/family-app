@@ -470,8 +470,8 @@ export const CARDS_OTROS: HelpCard[] = [
     steps: [
       'En Contenido oficial, abre un borrador y pulsa «Rectificar con Pepa» (en un menú, «Cambiar este plato con Pepa» junto a cada plato).',
       'Escribe la instrucción o elige un ejemplo y pulsa «Pedir una nueva versión».',
-      'Lee la comparación: lo añadido y lo eliminado, las recetas, las opciones o los platos que cambian.',
-      'Pulsa «Aceptar esta versión» o «Rechazar». Si aceptas, aprueba el borrador de nuevo; el historial permite «Restaurar esta versión».',
+      'Lee la comparación: lo añadido y lo eliminado, las opciones o los platos que cambian y, en los artículos, cada ficha de receta (nueva, modificada o eliminada) con sus ingredientes, cantidades y pasos. Si Pepa dice que ha añadido una receta y no es verdad, verás un aviso. «Ver la versión nueva completa» enseña también todas las fichas.',
+      'Pulsa «Aceptar esta versión» o «Rechazar». Si aceptas, aprueba el borrador de nuevo; el historial permite «Restaurar esta versión». También puedes revisar y corregir las fichas a mano con «Editar» (no publica ni importa nada a Cocina).',
     ],
     state: 'parcial',
     limits: 'La función de servidor que redacta las propuestas (community-editorial) está pendiente de desplegar.',

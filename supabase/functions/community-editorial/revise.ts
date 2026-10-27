@@ -52,6 +52,7 @@ export type ReviseOutcome = { ok: true; result: Content; notes: string; quality?
 
 export const REVISE_MAX_ATTEMPTS = 2
 export const NO_CHANGE_NOTE = 'La instrucción no ha supuesto ningún cambio en el contenido.'
+export const RECIPES_NOT_ADMITTED_NOTE = 'Aviso: este artículo no admite fichas de recetas según las reglas actuales (solo los de la sección «recetas» o los que ya las traen): NO se ha añadido ninguna ficha.'
 
 export function parseItem(data: unknown): ItemContent | null {
   const r = asRecord(data)
@@ -119,12 +120,15 @@ async function reviseArticle(ctx: GenContext, item: ItemContent, req: ReviseRequ
   const originalIntro = (text.split(/\n\s*\n/)[0] ?? '').length
   const bodyMax = Math.max(5000, text.length)
 
-  const validate = (raw: string): Validation<{ title: string; body: string; recipes: Record<string, unknown>[] | null; notes: string }> => {
+  const validate = (raw: string): Validation<{ title: string; body: string; recipes: Record<string, unknown>[] | null; notes: string; recipesIgnored: boolean }> => {
     const rec = asRecord(parseJsonLoose(raw))
     if (!rec) return { ok: false, reason: 'no era un JSON válido' }
     const title = cleanAiText(rec.title, { min: 3, max: 140 })
     if (!title) return { ok: false, reason: 'el título no es válido (3-140 letras, sin enlaces)' }
     let recipes = originalRecipes
+    // Regla editorial de siempre (sin cambios): solo los artículos de la sección «recetas» o los que ya traen fichas admiten fichas. Si la IA las manda igualmente, se descartan
+    // y se deja constancia (no se afirma haber añadido una ficha que no existe).
+    const recipesIgnored = !canHaveRecipes && Array.isArray(rec.recipes) && rec.recipes.length > 0
     if (canHaveRecipes && Array.isArray(rec.recipes) && rec.recipes.length > 0) {
       const r = cleanPostRecipes(rec.recipes)
       if (!r.ok) return { ok: false, reason: r.reason }
@@ -134,7 +138,7 @@ async function reviseArticle(ctx: GenContext, item: ItemContent, req: ReviseRequ
     if (!body) return { ok: false, reason: `el cuerpo debe tener de 200 a ${bodyMax} letras y no llevar enlaces, HTML, correos ni teléfonos` }
     const bad = checkArticleText(title, body, { hasRecipes: recipes !== null, introMax: Math.max(ARTICLE_INTRO_MAX, originalIntro), allowStats: hasSources })
     if (bad) return { ok: false, reason: bad }
-    return { ok: true, value: { title, body, recipes, notes: cleanNotes(rec.notes) } }
+    return { ok: true, value: { title, body, recipes, notes: cleanNotes(rec.notes), recipesIgnored } }
   }
 
   const current = [`Título: ${item.title}`, '', text, ...(originalRecipes ? ['', 'Fichas de recetas (JSON):', JSON.stringify(originalRecipes)] : [])].join('\n')
@@ -146,7 +150,9 @@ async function reviseArticle(ctx: GenContext, item: ItemContent, req: ReviseRequ
         {
           text:
             header('un artículo', req.instruction) +
-            '\nDevuelve un JSON con "title", "body", "notes" y, SOLO si la instrucción afecta a las recetas, "recipes" con TODAS las fichas (si no se tocan, omítelo y se conservan las actuales).' +
+            (canHaveRecipes
+              ? '\nDevuelve un JSON con "title", "body", "notes" y, SOLO si la instrucción afecta a las recetas, "recipes" con TODAS las fichas (si no se tocan, omítelo y se conservan las actuales).'
+              : '\nDevuelve un JSON con "title", "body" y "notes". Este artículo NO admite fichas de recetas: no incluyas "recipes" ni digas que has añadido una ficha; si la instrucción pide una receta, dilo en "notes".') +
             hintLine(hint),
         },
         { text: untrusted('CONTENIDO_ACTUAL', current, 30000) },
@@ -163,7 +169,8 @@ async function reviseArticle(ctx: GenContext, item: ItemContent, req: ReviseRequ
   if (v.recipes) payload.recipes = v.recipes
   const result: Content = { title: v.title, body, payload }
   const same = JSON.stringify(result) === JSON.stringify({ title: item.title, body: item.body, payload: item.payload })
-  return { ok: true, result, notes: same ? NO_CHANGE_NOTE : v.notes }
+  const notes = v.recipesIgnored ? `${v.notes.slice(0, 500 - RECIPES_NOT_ADMITTED_NOTE.length - 1)} ${RECIPES_NOT_ADMITTED_NOTE}` : v.notes
+  return { ok: true, result, notes: same && !v.recipesIgnored ? NO_CHANGE_NOTE : notes }
 }
 
 function failure(code: string): ReviseOutcome {

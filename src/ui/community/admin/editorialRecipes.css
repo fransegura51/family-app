@@ -1,0 +1,68 @@
+/* Fichas de recetas en la revisión de borradores y en la rectificación con Pepa (Centro de Mando de Comunidad). Pensado para iPhone: todo se parte en líneas, nada fuerza el ancho. */
+.cadm-recipes {
+  min-width: 0;
+  margin: 8px 0;
+}
+
+.cadm-recipe-card,
+.cadm-recipe-edit {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cadm-recipe-name {
+  margin: 0 0 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.cadm-recipe-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #eef0f4;
+  color: #3b4252;
+}
+
+.cadm-recipe-tag-added {
+  background: #e7f6ec;
+  color: #14532d;
+}
+
+.cadm-recipe-tag-removed {
+  background: #fde8e8;
+  color: #8a1c1c;
+}
+
+.cadm-recipe-tag-changed {
+  background: #fff6db;
+  color: #7a4b00;
+}
+
+.cadm-recipe-card h6 {
+  margin: 10px 0 2px;
+  font-size: 14px;
+}
+
+.cadm-recipe-card details > summary,
+.cadm-recipe-edit > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.cadm-recipes-edit {
+  min-width: 0;
+}
+
+.cadm-recipes-edit input,
+.cadm-recipes-edit textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}

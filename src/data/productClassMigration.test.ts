@@ -113,7 +113,8 @@ describe('Fase 5: un único resolutor central', () => {
       .filter(([, text]) => /classifyFoodType\(/.test(text))
       .map(([file]) => file)
       .sort()
-    expect(users).toEqual(['/src/domain/foodTypes.ts', '/src/domain/productClass.ts', '/src/ui/FinanceScreen.tsx', '/src/ui/ShoppingScreen.tsx'])
+    // El catálogo maestro (catalog/evaluate.ts) lo usa solo para MEDIR cuánto mejora frente al clasificador por palabras clave anterior; no clasifica nada con él.
+    expect(users).toEqual(['/src/domain/catalog/evaluate.ts', '/src/domain/foodTypes.ts', '/src/domain/productClass.ts', '/src/ui/FinanceScreen.tsx', '/src/ui/ShoppingScreen.tsx'])
     // en la interfaz, solo su icono/etiqueta de icono, nunca para decidir el nombre de la clase
     // (Economía lo guarda en «auto» solo para elegir el icono; el nombre de la clase sale del resolutor)
     for (const file of ['ShoppingScreen.tsx', 'FinanceScreen.tsx']) {
@@ -215,7 +216,8 @@ describe('Fase 5: privacidad y seguridad de lectura', () => {
 
   it('el resolutor central es puro: no importa la capa de datos ni la interfaz', () => {
     const imports = [...APP['/src/domain/productClass.ts'].matchAll(/^import .* from '([^']+)'/gm)].map((m) => m[1])
-    expect(imports).toEqual(['./foodTypes'])
+    // El catálogo maestro (catalog/*) es puro como el resto: sin red, sin datos de familias.
+    expect(imports).toEqual(['./catalog/classes', './catalog/identify', './foodTypes'])
     for (const file of ['/src/domain/productClass.ts', '/src/domain/sharedClassLoader.ts']) {
       expect(APP[file], file).not.toMatch(/@\/data|@\/ui|supabase/)
     }

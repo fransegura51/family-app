@@ -22,6 +22,8 @@ const WEIGHT_VOLUME_UNITS = 'kg|kgs|g|gr|grs|gramos?|ml|cl|l|lt|lts|litros?'
 const MULTIPACK = new RegExp(`(?<![\\p{L}\\d])(\\d{1,3})\\s*[x×]\\s*${NUM}\\s*(${WEIGHT_VOLUME_UNITS})(?![\\p{L}\\d])`, 'iu')
 const SINGLE = new RegExp(`(?<![\\p{L}\\d.,])${NUM}\\s*(${WEIGHT_VOLUME_UNITS})(?![\\p{L}\\d])`, 'iu')
 const COUNT_PATTERNS: RegExp[] = [
+  // «40 lavados», «12 rollos», «48 pañales»: lo que se cuenta es la unidad de uso (€/lavado, €/rollo...). El nombre del producto dice qué es.
+  /(?<![\p{L}\d])(\d{1,3})\s*(?:lavados?|rollos?|dosis|c[aá]psulas?|pastillas?|toallitas?|pa[ñn]ales|compresas?|tampones?|servicios?|bolsas?|sobres?)(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])(\d{1,3})\s*(?:uds?|unid(?:ades?)?|u)(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])pack\s*(?:de\s*)?(\d{1,3})(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])p-(\d{1,3})(?![\p{L}\d])/iu,
@@ -64,8 +66,11 @@ export function parseProductSize(name: string): ParsedSize | null {
     if (SINGLE.test(rest)) return null // un segundo tamaño distinto: ambiguo
   }
   if (found.length === 0) {
-    if (/\bmedia\s+docena\b/iu.test(text)) found.push({ magnitude: 'unidades', amount: 6, raw: 'media docena' })
-    else if (/\bdocena\b/iu.test(text)) found.push({ magnitude: 'unidades', amount: 12, raw: 'docena' })
+    // El texto exacto tal como viene en el ticket (puede ir en mayúsculas): stripSize lo quita del nombre con él.
+    const half = text.match(/\bmedia\s+docena\b/iu)
+    const dozen = text.match(/\bdocena\b/iu)
+    if (half) found.push({ magnitude: 'unidades', amount: 6, raw: half[0] })
+    else if (dozen) found.push({ magnitude: 'unidades', amount: 12, raw: dozen[0] })
     else {
       for (const re of COUNT_PATTERNS) {
         const m = text.match(re)
@@ -175,6 +180,17 @@ function round(value: number): number {
 }
 
 /**
+ * Tamaño que dice el NOMBRE. En bolsas de basura, de congelar o herméticas el «30 L» es su CAPACIDAD, no lo que contiene lo que se compra: ahí solo cuenta
+ * el número de unidades («20 uds»), nunca un volumen o un peso (no tiene sentido un precio por litro de una bolsa de basura).
+ */
+function nameSize(productName: string): ParsedSize | null {
+  const size = parseProductSize(productName)
+  const plain = productName.normalize('NFD').replace(/\p{M}+/gu, '')
+  if (size && size.magnitude !== 'unidades' && /\b(basura|residuos|congelar|hermetic\w*)\b/i.test(plain)) return null
+  return size
+}
+
+/**
  * Normaliza UN registro de product_prices:
  *  · unit='kg' (vendido por peso): ya es €/kg.
  *  · unit='ud' (o legado seguro) con formato guardado (pack) o tamaño en el nombre: peso → €/kg, volumen → €/l, recuento → €/ud (cada huevo).
@@ -184,7 +200,7 @@ export function normalizePrice(record: { price: number; unit: string | null; pac
   const unit = normalizeMeasurementUnit(record.unit)
   if (unit === 'kg') return { value: round(record.price), basis: 'kg', exact: true, packagePrice: null, size: null }
   // El formato confirmado al registrar la compra manda sobre el que se lea del nombre.
-  const size = (record.pack ? packTotalSize(record.pack) : null) ?? parseProductSize(productName)
+  const size = (record.pack ? packTotalSize(record.pack) : null) ?? nameSize(productName)
   if (!size) return { value: round(record.price), basis: 'envase', exact: false, packagePrice: round(record.price), size: null }
   if (size.magnitude === 'peso') return { value: round(record.price / (size.amount / 1000)), basis: 'kg', exact: true, packagePrice: round(record.price), size }
   if (size.magnitude === 'volumen') return { value: round(record.price / (size.amount / 1000)), basis: 'l', exact: true, packagePrice: round(record.price), size }

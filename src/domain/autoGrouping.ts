@@ -9,6 +9,7 @@
 //   · NUNCA se toca un grupo confirmado por la familia: lo que PEPA ve parecido a sus artículos se ofrece aparte («Para tus grupos») y lo añade la persona.
 //   · Un grupo de PEPA que sigue pendiente puede crecer con compras nuevas; lo que la persona separó o descartó (rechazos) no se vuelve a proponer.
 //   · Es idempotente: con el mismo estado no propone nada nuevo.
+import { compareIdentities, identifyProduct, type ProductIdentity } from './catalog/identify'
 import { productTextKey } from './productText'
 import { productSignature } from './productIdentity'
 import { type CmpPrice, type CmpProduct, type RelationContext } from './priceComparison'
@@ -36,6 +37,14 @@ export interface Norm {
   nums: string[]
   /** Texto completo sin tamaño ni ruido de pack: dos artículos con el mismo texto son el mismo producto en distinto tamaño. */
   text: string
+  /** Lo que el catálogo maestro entiende del artículo (producto, atributos, confianza). */
+  cat: ProductIdentity
+}
+
+/** Una palabra genérica sola («ARROZ», «POLLO»): puede ser cualquiera de los productos de esa familia, así que por sí sola no agrupa. */
+function bareGeneric(c: ProductIdentity): boolean {
+  const words = productTextKey(c.entry?.name ?? '').split(' ').filter(Boolean)
+  return words.length === 1 && AMBIGUOUS_SINGLE.has(words[0]) && c.leftover.length === 0
 }
 
 export function normalizeForGrouping(p: CmpProduct): Norm {
@@ -49,7 +58,7 @@ export function normalizeForGrouping(p: CmpProduct): Norm {
     .replace(/\b\d+\s?(pack|pk|ud|uds|unid\w*)\b/g, ' ')
   const nums = (stripped.match(/\b\d+\b/g) ?? []).sort()
   const text = stripped.replace(/\s+/g, ' ').trim()
-  return { p, brand: sig.brand, tokens: [...new Set(tokens)].sort(), variants: [...new Set(variants)].sort(), nums, text }
+  return { p, brand: sig.brand, tokens: [...new Set(tokens)].sort(), variants: [...new Set(variants)].sort(), nums, text, cat: identifyProduct(p.displayName, p.brand) }
 }
 
 /** Un token del ticket puede venir cortado por el límite de caracteres («CAC» por «CACAO», «EMP» por «EMPAN»): coincide si es prefijo (≥ 3 letras) del otro. */
@@ -80,6 +89,12 @@ function decidedDifferent(a: CmpProduct, b: CmpProduct, ctx: RelationContext): b
 /** ¿Dos artículos son lo bastante claramente el mismo producto (otra marca, otro tamaño, nombre cortado) como para agruparlos? */
 export function sameProductForGrouping(a: Norm, b: Norm, ctx: RelationContext = {}): boolean {
   if (a.p.id === b.p.id || decidedDifferent(a.p, b.p, ctx)) return false
+  // CATÁLOGO MAESTRO: si distingue los dos productos (talla, etapa, tipo de leche, patata fresca ≠ frita...) NUNCA se agrupan; si los identifica con seguridad como el
+  // mismo (misma identidad completa: producto + atributos + variante) se agrupan aunque el ticket los escriba distinto («O.V.E.» / «aceite de oliva virgen extra»).
+  // El tamaño no cuenta para agrupar («LECHE SEMI P-6» y «LECHE SEMIDESNATADA 1 L» son la misma leche); sí lo que distingue el producto.
+  const verdict = compareIdentities(a.cat, b.cat, { ignoreSize: true })
+  if (verdict?.relation === 'different') return false
+  if (verdict && !bareGeneric(a.cat) && a.cat.identityKey != null && a.cat.identityKey === b.cat.identityKey) return true
   if (!sameSet(a.nums, b.nums) || !sameSet(a.variants, b.variants)) return false
   if (a.text !== '' && a.text === b.text) return a.tokens.length > 0 && !(a.tokens.length === 1 && AMBIGUOUS_SINGLE.has(a.tokens[0]))
   const specific = (n: Norm) => n.tokens.length >= 2
@@ -126,6 +141,9 @@ const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
 /** Nombre del grupo: las palabras de producto del artículo más comprado, completando las cortadas con la versión más larga que aparezca en el grupo, con tildes. */
 export function groupName(members: readonly Norm[], rawNames: ReadonlyMap<string, string>): string {
   const lead = members[0]
+  // Todos son el MISMO producto del catálogo maestro, sin palabras sueltas: el grupo se llama como el producto normalizado («Pañales talla 4»).
+  const key = lead.cat.identityKey
+  if (key != null && lead.cat.name && lead.cat.leftover.length === 0 && members.every((m) => m.cat.identityKey === key)) return lead.cat.name
   const raw = new Map<string, string>() // texto sin tildes → palabra con tildes (minúsculas)
   for (const m of members) for (const w of (rawNames.get(m.p.id) ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u)) if (w) raw.set(productTextKey(w), w)
   const order = productTextKey(stripSize(lead.p.displayName)).split(' ')

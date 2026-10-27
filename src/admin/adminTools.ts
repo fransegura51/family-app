@@ -26,7 +26,7 @@ export const ADMIN_GROUP_IDS: Record<Exclude<AdminAreaId, 'funcionalidades' | 'c
   usuarios: ['invitar-amigos', 'codigos', 'actividad', 'familias'],
   ayuda: ['cobertura', 'modulos', 'fichas', 'tutoriales', 'rutas', 'valoraciones', 'prioridades'],
   // «soporte» solo se pinta con el Soporte técnico encendido (src/support/flags.ts); el identificador del bloque existe siempre.
-  sistema: ['errores', 'automatizaciones', 'soporte', 'vistas'],
+  sistema: ['errores', 'automatizaciones', 'catalogo', 'soporte', 'vistas'],
 }
 
 export const ADMIN_TOOLS: AdminTool[] = [
@@ -71,6 +71,7 @@ export const ADMIN_TOOLS: AdminTool[] = [
   { id: 'sistema-diagnostico', label: 'Diagnóstico temporal de sincronización', area: 'sistema', group: 'errores', keywords: 'diagnostico sincronizacion prefs-diag preferencias temporal' },
   { id: 'sistema-amazon', label: 'Automatizaciones: Amazon, Mercadona y correo de eventos (webhooks)', area: 'sistema', group: 'automatizaciones', keywords: 'automatizaciones webhook amazon mercadona tickets eventos correo pipedream' },
   { id: 'sistema-token', label: 'Regenerar token de automatizaciones', area: 'sistema', group: 'automatizaciones', keywords: 'token regenerar copiar url secreto' },
+  { id: 'sistema-catalogo', label: 'Evaluación del catálogo de productos (prueba limpia, informe de normalización)', area: 'sistema', group: 'catalogo', keywords: 'catalogo maestro normalizacion productos evaluacion prueba limpia informe clases formatos agrupaciones' },
   ...(SUPPORT_ENABLED
     ? [{ id: 'sistema-soporte', label: 'Soporte técnico: incidencias de las personas usuarias', area: 'sistema' as const, group: 'soporte', keywords: 'soporte tecnico incidencias ayuda tickets responder asignar notas internas estadisticas' }]
     : []),

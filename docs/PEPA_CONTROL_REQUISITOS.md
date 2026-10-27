@@ -1217,6 +1217,39 @@ Encargo del usuario (2026-10-27), Fase 2. Reglas que NO cambian: Comunidad solo 
 
 ---
 
+## Catálogo maestro de productos y normalización inteligente (NORM-1, 27/10/2026)
+
+Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estado: código implementado y probado en la rama principal; migración `0334_catalog_master_classes.sql` PREPARADA y NO APLICADA (el conector de Supabase de esta sesión dejó de ver el proyecto `family-app`: «sin permiso»); prueba limpia con una familia real PENDIENTE. Sin Aprobar.**
+
+**Registro consultado antes de implementar.** Se respetan: CAT-1 (clasificador común y aprendizaje compartido: no se sustituyen ni se crea otro), COMP-1 (distinguir idéntico / equivalente / distinto sin inventar coincidencias), COMP-4 (las agrupaciones de PEPA salen «pendientes de revisar» y nunca se tocan los grupos confirmados), CLASIF-1 y el resto de Compras. **Decisión anterior que este encargo cambia, conscientemente y que necesita tu confirmación:** la corrección «PEPA NO ADIVINA» dejaba `Desatascador`, `Tortitas integrales`, `Papel de cocina` y `Servilletas` como «Sin clasificar» porque solo había una palabra suelta; ahora el catálogo maestro (una lista curada) los reconoce (Limpieza del hogar, Snacks y dulces) y esos cuatro casos del test se actualizaron. Lo que ni el catálogo ni las reglas reconocen sigue «Sin clasificar» (`Xilofón azul`, `PARKING`…).
+
+**Qué se ha construido.**
+- `src/domain/catalog`: catálogo maestro (**586 entradas = 549 productos + 37 de clase**, 2.324 alias, entradas en 30 de las 31 clases CAT-1), normalizador puro (`identify.ts`), lector del formato compacto, atributos que distinguen productos no equivalentes (tipo de leche, talla y tipo de pañal, etapa de leche infantil, sin lactosa/gluten/alcohol, zero/light, especie y edad de mascota), vocabulario (abreviaturas, marcas, sinónimos de género) y evaluación (`evaluate.ts`, `familyReport.ts`).
+- Una entrada «de clase» (clave con «~») solo clasifica y nunca agrupa.
+- Integrado en el resolutor único de clases (`productClass.ts`: manual > compartido > clase histórica > **catálogo** > reglas > sin clasificar), en la identidad de producto del comparador (`productIdentity.ts`: el catálogo veta lo distinto y reconoce lo igual escrito distinto) y en la agrupación automática (`autoGrouping.ts`: no agrupa lo que el catálogo distingue; agrupa por identidad completa; el grupo se llama como el producto normalizado).
+- Formato: se leen también «40 lavados», «12 rollos», «48 pañales», «docena»; nunca se supone el contenido («LECHE SEMI P-6» = 6 envases, sin litros); la capacidad de una bolsa de basura («30 L») no se toma por contenido.
+- Centro de Administración → Sistema → «Evaluación del catálogo de productos»: informe de solo lectura para la prueba limpia (ver `docs/EVALUACION_NORMALIZACION.md`).
+- Migración 0334 (aditiva, con reversión): tres clases nuevas — Alimentación infantil, Platos preparados, Higiene y cuidado del bebé —, propagadas a las familias que ya tienen sus clases (enlaza una clase propia del mismo nombre sin renombrar nada).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| NORM-1a | Auditoría previa de CAT-1, productos comunes, formatos, equivalencias y aprendizaje compartido | **Hecha** | Reutiliza `resolveProductClass`, `catalog_food_types`, `common_products`, `product_prices.pack_*`, `productIdentity`, `autoGrouping`; ninguna tabla ni clasificador paralelos |
+| NORM-1b | Catálogo maestro compartido, ampliable sin cambiar la estructura | **Implementado y probado** | `catalogIntegrity.test.ts` (claves únicas, todas las clases con entradas, ningún alias se «come» una variante o una marca, sin alias duplicados) |
+| NORM-1c | Ampliar CAT-1 (Alimentación infantil y lo que de verdad falta) sin duplicar ni reclasificar | **Código y migración 0334 preparados; migración NO aplicada** | `catalogClasses.test.ts` (espejo de las migraciones, aditiva, idempotente, reversible); con la clase ausente la app sigue como antes |
+| NORM-1d | Normalizar el artículo: texto original intacto, producto, categoría, marca, formato, niveles seguro/probable/dudoso | **Implementado y probado** | `identify.test.ts` (los ejemplos del encargo, ingredientes ≠ platos, «zero», productos no equivalentes, confianza) |
+| NORM-1e | Un solo clasificador para Compras, Economía y Comparador; no clasificar dos veces | **Implementado y probado** | `productClass.test.ts` (cascada con el catálogo), `catalogGrouping.test.ts` |
+| NORM-1f | Formato sin inventar cantidades; datos originales separados de los interpretados | **Implementado y probado** | `identify.test.ts` («P-6» no supone 1 L), `productSize`; nada se escribe: el catálogo calcula al leer |
+| NORM-1g | Comparador: idéntico / comparable / distinto; nada de grupos en cadena; no deshacer lo confirmado ni tocar precios | **Implementado y probado** | `catalogGrouping.test.ts` (talla, etapa, leche, patata fresca ≠ frita, quesadilla ≠ pollo, zero…; idempotente; grupos confirmados intactos) |
+| NORM-1h | Aprendizaje compartido: mantenerlo y no crear otro | **Mantenido sin cambios** | Sigue por encima del catálogo en la cascada. Límite: el catálogo no aprende de las correcciones (aprender identidades compartidas queda como paso posterior) |
+| NORM-1i | Prueba limpia con una familia sin historial, sin contaminación | **Procedimiento y panel listos; falta ejecutarla con una familia real** | `familyReport.test.ts`, `catalogEvaluationPanel.test.tsx`, `docs/EVALUACION_NORMALIZACION.md` |
+| NORM-1j | Informe medido: identificación, clase, formato, agrupación, pendientes, no identificados, errores, intervenciones; automático ≠ corregido | **Implementado y probado** | Corpus A (280) y B (183, ciego en su primera pasada): ver el documento; NO son tickets reales |
+| NORM-1k | Sin cambios en tickets, importes, banco, permisos ni duplicados; migraciones seguras | **Verificado** | Solo lectura sobre datos; migración aditiva; conciliación y Banco sin tocar |
+| NORM-1l | Ayuda al día (AYUDA-01) | **Hecho** | `exp-compras-clasificar-productos` y la ficha `com-comparar-precios` actualizadas; inventario del Centro de Administración |
+
+**Pendiente (honesto).** (1) Aplicar la migración 0334 en producción (hace falta reconectar el acceso a Supabase). (2) Ejecutar la prueba limpia con una familia real y revisar la muestra. (3) Validar en móvil. (4) Confirmar el cambio de criterio de «PEPA no adivina» descrito arriba. (5) Decidir si se quiere aprendizaje compartido de identidades de producto (hoy solo de clase). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

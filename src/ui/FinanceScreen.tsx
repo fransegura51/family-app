@@ -6411,7 +6411,7 @@ interface ResolvedDraftLine {
   icon: string
   // De dónde sale `kind`: 'override' = elección explícita de la familia; 'shared' = aprendizaje compartido aprobado; 'default' = solo la
   // suposición de un producto NUEVO (comida) o lo ya guardado del producto. Solo las dos primeras son evidencia que se puede guardar.
-  kindSource: 'override' | 'shared' | 'default'
+  kindSource: 'override' | 'shared' | 'catalog' | 'default'
 }
 
 function resolveDraftLineClass(
@@ -6454,6 +6454,11 @@ function resolveDraftLineClass(
     if (resolved.source === 'shared') {
       kind = resolved.kind
       kindSource = 'shared'
+    } else if (resolved.source === 'catalog') {
+      // El catálogo maestro fija el conjunto para MOSTRAR (un detergente nuevo es de «Otros»), pero NO se guarda como marca del producto: solo evidencia
+      // de la familia o del aprendizaje compartido se persiste.
+      kind = resolved.kind
+      kindSource = 'catalog'
     }
   }
   const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined

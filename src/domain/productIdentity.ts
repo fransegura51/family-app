@@ -10,6 +10,8 @@
 //
 // Puro: sin red, sin IA. Los nombres de marca vienen de una lista corta + products.brand; lo que no se reconoce como marca cuenta como
 // palabra del producto (más conservador: ante la duda, «possible» o «different», nunca una coincidencia inventada).
+import { compareIdentities } from './catalog/identify'
+import { identifyProduct } from './catalog/identify'
 import { productTextKey } from './productText'
 import { parseProductSize, stripSize, type ParsedSize } from './productSize'
 
@@ -131,6 +133,21 @@ export function compareProducts(
 
   if (classes.a && classes.b && classes.a !== classes.b) return { relation: 'different', reasons: ['clases distintas'] }
   if (sa.core.length === 0 || sb.core.length === 0) return { relation: 'different', reasons: ['sin datos suficientes del nombre'] }
+
+  // CATÁLOGO MAESTRO: si ambos artículos se identifican, el catálogo manda en lo que NO son el mismo producto (talla 3 ≠ talla 4, leche entera ≠ semidesnatada,
+  // patata fresca ≠ patata frita) y en lo que SÍ lo es aunque el ticket lo escriba distinto («O.V.E.»). Si solo es una sugerencia, nunca sube la relación.
+  const catalog = compareIdentities(identifyProduct(a.name, a.brand), identifyProduct(b.name, b.brand))
+  if (catalog) {
+    if (catalog.relation === 'different') return { relation: 'different', reasons: catalog.reasons }
+    if (catalog.relation === 'identical' || catalog.relation === 'equivalent') return catalog
+    const old = compareByWords(sa, sb)
+    return isAutomatic(old.relation) ? { relation: 'possible', reasons: catalog.reasons } : old
+  }
+  return compareByWords(sa, sb)
+}
+
+/** Las reglas de siempre: palabras del nombre, marca, variantes y tamaño. Es lo que se usa cuando el catálogo maestro no identifica alguno de los dos. */
+function compareByWords(sa: ProductSignature, sb: ProductSignature): RelationVerdict {
 
   // Magnitud de envase: peso con volumen o con recuento no se comparan.
   if (sa.size && sb.size && sa.size.magnitude !== sb.size.magnitude) return { relation: 'different', reasons: ['una se vende por peso/volumen y la otra por unidades'] }

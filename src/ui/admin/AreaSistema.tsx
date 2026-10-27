@@ -4,6 +4,7 @@ import { deleteClientErrors, listClientErrors, type ClientErrorRow } from '@/dat
 import { errorMessage } from '@/domain/errorMessage'
 import { AdminGroup, groupKey, useAdminGroups } from '@/ui/admin/AdminGroups'
 import { AmazonWebhookSettings } from '@/ui/admin/AmazonWebhookSettings'
+import { CatalogEvaluationPanel } from '@/ui/admin/CatalogEvaluationPanel'
 import { formatDate } from '@/ui/admin/adminFormat'
 import { SupportAdminPanel } from '@/ui/admin/SupportAdminPanel'
 import { SUPPORT_ENABLED } from '@/support/flags'
@@ -140,6 +141,10 @@ export function AreaSistema() {
 
       <AdminGroup area="sistema" id="automatizaciones" title="⚙️ Automatizaciones" summary="Direcciones y token para que Amazon, Mercadona y el correo de eventos lleguen solos">
         <AmazonWebhookSettings />
+      </AdminGroup>
+
+      <AdminGroup area="sistema" id="catalogo" title="🧪 Evaluación del catálogo de productos" summary="Qué entiende el catálogo maestro de los artículos de esta familia: producto, clase, formato y grupos (solo lectura, para la prueba limpia)">
+        <CatalogEvaluationPanel />
       </AdminGroup>
 
       {SUPPORT_ENABLED && (

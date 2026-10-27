@@ -51,7 +51,7 @@ const resolve = (over: Partial<ResolveProductClassInput> & { name: string }) =>
   resolveProductClass({ kind: 'alimentacion', familyClasses: FAMILY, ...over })
 const matched = (key: string) => ({ status: 'matched', foodTypeKey: key })
 
-describe('precedencia: MANUAL > SHARED > LEGACY > RULE > FALLBACK', () => {
+describe('precedencia: MANUAL > SHARED > LEGACY > CATALOG > RULE > FALLBACK', () => {
   it('1. manual: la clase confirmada por la familia gana a todo', () => {
     const r = resolve({ name: 'LECHE SEMI P-6', product: { category: 'Bebidas alcohólicas', classConfirmedAt: '2026-09-21', nonFood: false }, shared: matched('food.lacteos_huevos') })
     expect(r).toMatchObject({ className: 'Bebidas alcohólicas', source: 'manual', foodTypeKey: 'food.bebidas_alcoholicas', sharedOutcome: 'skipped_by_manual' })
@@ -70,13 +70,47 @@ describe('precedencia: MANUAL > SHARED > LEGACY > RULE > FALLBACK', () => {
     expect(resolve({ name: 'LECHE SEMI P-6', product, shared: matched('food.lacteos_huevos') })).toMatchObject({ className: 'Lácteos y huevos', source: 'shared' })
   })
 
-  it('4. rule: sin nada anterior, el clasificador por palabras clave', () => {
-    expect(resolve({ name: 'BERENJENA RAYADA GR' })).toMatchObject({ className: 'Verdura y hortalizas', source: 'rule', foodTypeKey: 'food.verdura_hortalizas' })
+  it('4. catalog: sin nada anterior, el catálogo maestro identifica el producto y da su clase', () => {
+    expect(resolve({ name: 'BERENJENA RAYADA GR' })).toMatchObject({ className: 'Verdura y hortalizas', source: 'catalog', foodTypeKey: 'food.verdura_hortalizas' })
   })
 
-  it('5. fallback: nada resuelve → «Otros alimentos» en Alimentos y «sin clasificar» en Otros', () => {
+  it('5. rule: si el catálogo no identifica el producto, el clasificador por palabras clave de siempre', () => {
+    expect(resolve({ name: 'SOLOMILLO' })).toMatchObject({ className: 'Carne', source: 'rule', foodTypeKey: 'food.carne' })
+  })
+
+  it('6. fallback: nada resuelve → «Otros alimentos» en Alimentos y «sin clasificar» en Otros', () => {
     expect(resolve({ name: 'BENTO MIX' })).toMatchObject({ className: 'Otros alimentos', source: 'fallback' })
-    expect(resolve({ name: 'Auriculares', kind: 'no_alimentos' })).toMatchObject({ className: '', source: 'fallback', foodTypeKey: null })
+    expect(resolve({ name: 'Xilofón azul', kind: 'no_alimentos' })).toMatchObject({ className: '', source: 'fallback', foodTypeKey: null })
+  })
+
+  it('el catálogo va por debajo de la familia y de lo compartido, y por encima de las reglas', () => {
+    const lecheManual = { category: 'Carne', classConfirmedAt: 'x', nonFood: false }
+    expect(resolve({ name: 'LECHE SEMI P-6', product: lecheManual })).toMatchObject({ className: 'Carne', source: 'manual' })
+    expect(resolve({ name: 'LECHE SEMI P-6', shared: matched('food.fruta') })).toMatchObject({ className: 'Fruta', source: 'shared' })
+    expect(resolve({ name: 'LECHE SEMI P-6', product: { category: 'Carne', classConfirmedAt: null, nonFood: false } })).toMatchObject({ className: 'Carne', source: 'legacy' })
+    expect(resolve({ name: 'LECHE SEMI P-6' })).toMatchObject({ className: nameOf('food.lacteos_huevos'), source: 'catalog', foodTypeKey: 'food.lacteos_huevos' })
+  })
+
+  it('el catálogo solo clasifica cuando identifica el producto: un ingrediente en un plato no es el ingrediente', () => {
+    // «QUESADILLA POLLO» NO es Carne por llevar «pollo»; sin la clase «Platos preparados» en la familia (migración pendiente) se sigue como antes.
+    expect(classifyFoodType('QUESADILLA POLLO').key).toBe('carne')
+    const conClase = [...FAMILY, { name: 'Platos preparados', kind: 'alimentacion' as const, catalogKey: 'food.platos_preparados' }]
+    expect(resolve({ name: 'QUESADILLA POLLO', familyClasses: conClase })).toMatchObject({ className: 'Platos preparados', source: 'catalog' })
+    expect(resolve({ name: 'PECHUGA POLLO', familyClasses: conClase })).toMatchObject({ className: 'Carne', source: 'catalog' })
+  })
+
+  it('el catálogo no cambia un conjunto ya sabido (solo lo fija cuando es una suposición por defecto)', () => {
+    expect(resolve({ name: 'DETERGENTE LIQUIDO' })).toMatchObject({ source: 'fallback', className: 'Otros alimentos' }) // Alimentos sabido: no se cuela una clase de Otros
+    expect(resolve({ name: 'DETERGENTE LIQUIDO', kindIsDefault: true })).toMatchObject({ className: 'Limpieza del hogar', kind: 'no_alimentos', source: 'catalog' })
+  })
+
+  it('una clase que la familia no tiene (migración pendiente o clase borrada) no rompe nada: se sigue con las reglas', () => {
+    const sinLacteos = FAMILY.filter((c) => c.catalogKey !== 'food.lacteos_huevos')
+    expect(resolve({ name: 'LECHE SEMI P-6', familyClasses: sinLacteos }).source).toBe('rule')
+  })
+
+  it('un producto dudoso para el catálogo no se clasifica con él', () => {
+    expect(resolve({ name: 'LASAÑA', kindIsDefault: true }).source).not.toBe('catalog')
   })
 
   it('la cascada completa, paso a paso, sobre el mismo producto', () => {
@@ -137,8 +171,8 @@ describe('lo compartido no decide → se sigue (nunca rompe)', () => {
     ['chain_unresolved', { status: 'chain_unresolved', foodTypeKey: null }],
     ['chain_not_learnable', { status: 'chain_not_learnable', foodTypeKey: null }],
   ])('%s → reglas', (status, shared) => {
-    const r = resolve({ name: 'BERENJENA RAYADA GR', shared })
-    expect(r).toMatchObject({ className: 'Verdura y hortalizas', source: 'rule', sharedOutcome: status })
+    const r = resolve({ name: 'SOLOMILLO', shared })
+    expect(r).toMatchObject({ className: 'Carne', source: 'rule', sharedOutcome: status })
   })
 
   it('ambiguous con una clase guardada sin confirmar → esa clase histórica (nunca una clase compartida inventada)', () => {
@@ -147,7 +181,7 @@ describe('lo compartido no decide → se sigue (nunca rompe)', () => {
   })
 
   it('«matched» sin clave, o con la clave de una clase que la familia no tiene → se ignora', () => {
-    expect(resolve({ name: 'BERENJENA RAYADA GR', shared: { status: 'matched', foodTypeKey: null } }).source).toBe('rule')
+    expect(resolve({ name: 'SOLOMILLO', shared: { status: 'matched', foodTypeKey: null } }).source).toBe('rule')
     const sinPostres = FAMILY.filter((c) => c.catalogKey !== 'food.postres')
     const r = resolve({ name: 'FLAN', familyClasses: sinPostres, shared: matched('food.postres') })
     expect(r.sharedOutcome).toBe('class_not_in_family')
@@ -156,7 +190,7 @@ describe('lo compartido no decide → se sigue (nunca rompe)', () => {
 
   it('la RPC caída o sin tienda: sin resultado compartido (null/undefined) → igual que antes', () => {
     for (const shared of [null, undefined]) {
-      expect(resolve({ name: 'BERENJENA RAYADA GR', shared })).toMatchObject({ source: 'rule', sharedOutcome: 'not_consulted' })
+      expect(resolve({ name: 'SOLOMILLO', shared })).toMatchObject({ source: 'rule', sharedOutcome: 'not_consulted' })
     }
   })
 
@@ -217,7 +251,7 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
   })
 
   it('Charter + SUP.BEBIDA FRÍA → lo compartido NO decide: cae a reglas/respaldo (COM-03: "bebida" sin más datos es no alcohólica, nunca la genérica "Bebidas"), o a la clase manual', () => {
-    expect(classFor('Charter', 'SUP.BEBIDA FRÍA')).toMatchObject({ source: 'rule', sharedOutcome: 'ambiguous', className: 'Bebidas no alcohólicas', foodTypeKey: 'food.bebidas_no_alcoholicas' })
+    expect(classFor('Charter', 'SUP.BEBIDA FRÍA')).toMatchObject({ source: 'catalog', sharedOutcome: 'ambiguous', className: 'Bebidas no alcohólicas', foodTypeKey: 'food.bebidas_no_alcoholicas' })
     const manual = { category: 'Bebidas alcohólicas', classConfirmedAt: 'x', nonFood: false }
     expect(classFor('Charter', 'SUP.BEBIDA FRÍA', manual)).toMatchObject({ source: 'manual', className: 'Bebidas alcohólicas' })
     const legacy = { category: 'Bebidas alcohólicas', classConfirmedAt: null, nonFood: false }
@@ -236,7 +270,7 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
   })
 
   describe('PEPA NO ADIVINA — los 4 casos reales obligatorios de esta corrección', () => {
-    it('A) Desatascador — fila en products SOLO por una foto (category/class_confirmed_at null, non_food false), sin shared, sin regla fiable → Sin clasificar', () => {
+    it('A) Desatascador — fila en products SOLO por una foto (category/class_confirmed_at null, non_food false), sin shared: el catálogo maestro lo identifica → Limpieza del hogar', () => {
       // La foto no debe afectar a la clasificación: una fila vacía no es una clasificación conocida.
       const productoSoloConFoto = { category: null, classConfirmedAt: null, nonFood: false }
       const r = resolveProductClass({
@@ -247,36 +281,44 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
         familyClasses: FAMILY,
         shared: null,
       })
-      expect(r).toMatchObject({ className: '', source: 'fallback' })
+      // ANTES (decisión «PEPA no adivina») esto quedaba «Sin clasificar» porque solo había una palabra suelta. Ahora hay una señal fiable: el catálogo maestro.
+      expect(r).toMatchObject({ className: 'Limpieza del hogar', kind: 'no_alimentos', source: 'catalog' })
     })
 
-    it('B) Tortitas integrales — producto nuevo, sin manual/shared/legacy, classifyFoodType no lo reconoce → Sin clasificar, NUNCA Otros ni Otros alimentos', () => {
+    it('B) Tortitas integrales — producto nuevo, sin manual/shared/legacy: el catálogo lo conoce → Snacks y dulces (nunca Otros ni Otros alimentos)', () => {
       const r = resolveProductClass({ name: 'Tortitas integrales', kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
-      expect(r).toMatchObject({ className: '', source: 'fallback' })
+      expect(r).toMatchObject({ className: 'Snacks y dulces', source: 'catalog' })
       expect(r.className).not.toBe('Otros alimentos')
       expect(r.className).not.toBe('Otros')
     })
 
-    it('C) Papel de cocina — mismas condiciones sin señales fiables → Sin clasificar, aunque "Otros" acertara casualmente antes', () => {
+    it('C) Papel de cocina — el catálogo lo conoce → Limpieza del hogar', () => {
       const r = resolveProductClass({ name: 'Papel de cocina', kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
-      expect(r).toMatchObject({ className: '', source: 'fallback' })
+      expect(r).toMatchObject({ className: 'Limpieza del hogar', source: 'catalog' })
     })
 
-    it('D) Servilletas — mismas condiciones → Sin clasificar', () => {
+    it('D) Servilletas — el catálogo lo conoce → Limpieza del hogar', () => {
       const r = resolveProductClass({ name: 'Servilletas', kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
-      expect(r).toMatchObject({ className: '', source: 'fallback' })
+      expect(r).toMatchObject({ className: 'Limpieza del hogar', source: 'catalog' })
+    })
+
+    it('lo que NI el catálogo NI las reglas reconocen sigue «Sin clasificar»: PEPA no adivina', () => {
+      for (const name of ['Xilofón azul', 'Cosa rara 77', 'ZZ TOP']) {
+        const r = resolveProductClass({ name, kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
+        expect(r, name).toMatchObject({ className: '', source: 'fallback' })
+      }
     })
 
     it('"Sin clasificar" es temporal: clasificar el mismo producto a mano hace que deje de estar Sin clasificar y no vuelva a serlo', () => {
-      // Antes de clasificar: exactamente como el caso B.
-      const antes = resolveProductClass({ name: 'Tortitas integrales', kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
+      // Antes de clasificar: un producto que ni el catálogo ni las reglas reconocen.
+      const antes = resolveProductClass({ name: 'Xilofón azul', kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
       expect(antes.className).toBe('')
       // La familia lo clasifica a mano (setProductFoodType → category + class_confirmed_at, ver productClassMigration.test.ts).
       const confirmado = { category: 'Panadería y bollería', classConfirmedAt: '2026-09-24T18:00:00Z', nonFood: false }
-      const despues = resolveProductClass({ name: 'Tortitas integrales', product: confirmado, kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
+      const despues = resolveProductClass({ name: 'Xilofón azul', product: confirmado, kind: 'alimentacion', kindIsDefault: true, familyClasses: FAMILY, shared: null })
       expect(despues).toMatchObject({ className: 'Panadería y bollería', source: 'manual' })
       // Una compra posterior (kindIsDefault ya no aplica: el producto es conocido) tampoco vuelve a dejarlo Sin clasificar.
-      const compraPosterior = resolveProductClass({ name: 'Tortitas integrales', product: confirmado, kind: 'alimentacion', kindIsDefault: false, familyClasses: FAMILY, shared: null })
+      const compraPosterior = resolveProductClass({ name: 'Xilofón azul', product: confirmado, kind: 'alimentacion', kindIsDefault: false, familyClasses: FAMILY, shared: null })
       expect(compraPosterior).toMatchObject({ className: 'Panadería y bollería', source: 'manual' })
     })
   })
@@ -322,8 +364,8 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
   })
 
   it('sin tienda o con tienda no reconocida: lo compartido se salta', () => {
-    expect(classFor(null, 'LECHE SEMI P-6')).toMatchObject({ source: 'rule', sharedOutcome: 'not_consulted' })
-    expect(classFor('Huperber', 'BURGER MEAT MIXTA')).toMatchObject({ source: 'rule', sharedOutcome: 'chain_unresolved' })
+    expect(classFor(null, 'LECHE SEMI P-6')).toMatchObject({ source: 'catalog', sharedOutcome: 'not_consulted' })
+    expect(classFor('Huperber', 'BURGER MEAT MIXTA')).toMatchObject({ source: 'catalog', sharedOutcome: 'chain_unresolved' })
     expect(classFor('COFIDIS AMAZON-CORNELLA DE L', 'BERENJENA').sharedOutcome).toBe('chain_unresolved')
   })
 
@@ -356,7 +398,8 @@ describe('casos reales del inventario aprobado (cadena real + texto real, resolu
 })
 
 describe('equivalencia con el comportamiento anterior cuando lo compartido no interviene', () => {
-  const NAMES = ['LECHE ENTERA', 'CERVEZA MAHOU', 'TIBURON', 'BENTO MIX', 'Pechuga de pollo (kg)', 'PAN DE MOLDE', 'REFRES COCA-COLA', '', 'X']
+  // Nombres que el catálogo maestro NO identifica: ahí el comportamiento es exactamente el de siempre (las reglas por palabras clave).
+  const NAMES = ['SOLOMILLO', 'JIBIA', 'TIBURON', 'BENTO MIX', 'SALAMI', 'X', '']
   const STORED = [null, 'Carne', 'Mascotas', '  Fruta  ', '']
 
   it('sin resultado compartido y sin confirmar → misma clase que antes (guardada, o por reglas en Alimentos)', () => {
@@ -427,7 +470,8 @@ describe('«Automático» (restablecer): sin clase histórica guardada NO puede 
     expect(resolve({ name: 'LECHE SEMI P-6', product: manual, shared: matched('food.lacteos_huevos') }).source).toBe('manual')
     // tras restablecer:
     expect(resolve({ name: 'LECHE SEMI P-6', product: RESET, shared: matched('food.lacteos_huevos') })).toMatchObject({ className: 'Lácteos y huevos', source: 'shared' })
-    expect(resolve({ name: 'BERENJENA RAYADA GR', product: RESET, shared: { status: 'not_found', foodTypeKey: null } })).toMatchObject({ className: 'Verdura y hortalizas', source: 'rule' })
+    expect(resolve({ name: 'BERENJENA RAYADA GR', product: RESET, shared: { status: 'not_found', foodTypeKey: null } })).toMatchObject({ className: 'Verdura y hortalizas', source: 'catalog' })
+    expect(resolve({ name: 'SOLOMILLO', product: RESET, shared: { status: 'not_found', foodTypeKey: null } })).toMatchObject({ className: 'Carne', source: 'rule' })
     expect(resolve({ name: 'BENTO MIX', product: RESET, shared: null })).toMatchObject({ className: 'Otros alimentos', source: 'fallback' })
   })
 
@@ -439,7 +483,7 @@ describe('«Automático» (restablecer): sin clase histórica guardada NO puede 
         for (const kind of KINDS)
           for (const name of ['LECHE ENTERA', 'BENTO MIX', 'GEL WC']) {
             const r = resolve({ name, kind, product: { category, classConfirmedAt: null, nonFood: kind === 'no_alimentos' }, shared })
-            expect(['shared', 'rule', 'fallback'], `${name}|${category}|${kind}`).toContain(r.source)
+            expect(['shared', 'catalog', 'rule', 'fallback'], `${name}|${category}|${kind}`).toContain(r.source)
           }
   })
 

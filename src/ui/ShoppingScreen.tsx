@@ -1017,7 +1017,7 @@ function ShoppingListTab() {
       shared: sharedHintFor(listShared, item.store, item.name),
     })
     const classification = resolved.className
-    const kind: FoodTypeKind = resolved.source === 'shared' ? resolved.kind : contextKind
+    const kind: FoodTypeKind = resolved.source === 'shared' || resolved.source === 'catalog' ? resolved.kind : contextKind
     const known = classification ? foodTypesByKind[kind].find((t) => t.name === classification) : undefined
     const label = classification || 'Sin clasificar'
     const icon = known?.icon ?? (classification ? (kind === 'alimentacion' ? classifyFoodType(item.name).icon : '❓') : '❓')

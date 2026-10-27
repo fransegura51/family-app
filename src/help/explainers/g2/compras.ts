@@ -95,8 +95,17 @@ export const expComprasClasificarProductos: HelpExplainer = {
         '1. Lo que elegiste tú. Si fijaste la clase de un producto, esa gana siempre en tu familia, diga lo que diga el resto.',
         '2. El conocimiento compartido de PEPA, que se mira por el texto del producto. Dentro de él manda, por este orden: la lista que la administración de PEPA ha revisado a mano para tres cadenas (Mercadona, Hiperber y Charter; solo si la tienda se reconoce como una de ellas), una revisión de la administración, una clase «validada» (dos o más familias distintas coinciden y ninguna discrepa) y una «provisional» (solo una familia la ha confirmado). Si las familias discrepan, no se sugiere nada. Se consulta aunque no se sepa la tienda.',
         '3. Una clase antigua guardada sin confirmar.',
-        '4. Reglas por palabras del nombre, solo para comida («cerveza», «helado»…). Lo que no es comida (limpieza, ropa…) no se adivina.',
-        '5. Si nada encaja, queda «Sin clasificar» (o «Otros alimentos» cuando ya se sabe que es comida): PEPA prefiere no adivinar a equivocarse.',
+        '4. El catálogo maestro de PEPA: interpreta el nombre del ticket (abreviaturas, formato pegado al nombre, el producto principal) y da la clase del producto que ES. Por ejemplo, «PAÑALES T4» es un pañal de talla 4 y «QUESADILLA POLLO» es una quesadilla, no pollo. Solo clasifica cuando identifica el producto con seguridad o como probable; si dos productos de clases distintas encajan por igual, no decide. No se guarda en el producto: se calcula al leer.',
+        '5. Reglas por palabras del nombre, solo para comida («cerveza», «helado»…), cuando el catálogo no reconoce el producto.',
+        '6. Si nada encaja, queda «Sin clasificar» (o «Otros alimentos» cuando ya se sabe que es comida): PEPA prefiere no adivinar a equivocarse.',
+      ],
+    },
+    {
+      heading: 'Qué reconoce el catálogo maestro',
+      paragraphs: [
+        'Es una lista propia de PEPA de productos habituales en España (alimentación, bebidas, bebé, limpieza, higiene, mascotas, papelería…). Para cada uno sabe su clase, sus formas de escribirlo en un ticket y los datos que lo distinguen de otro: el tipo de leche, la talla de un pañal, la etapa de una leche infantil, «sin lactosa», «zero»…',
+        'Un producto distinto nunca se confunde con otro por compartir una palabra: la leche entera no es la semidesnatada, el pañal de talla 3 no es el de talla 4, y las patatas frescas no son las fritas.',
+        'Las clases «Alimentación infantil», «Platos preparados» y «Higiene y cuidado del bebé» solo se usan cuando tu familia las tiene; hasta entonces esos productos siguen como antes.',
       ],
     },
     {
@@ -125,7 +134,8 @@ export const expComprasClasificarProductos: HelpExplainer = {
   ],
   limits: [
     'Una corrección vale para ese texto de producto exacto. Si el mismo artículo llega escrito de otra forma (abreviatura, otra tilde), se trata como un producto nuevo.',
-    'Las reglas por palabras solo conocen comida. En Otros, la clase se elige a mano o sale del conocimiento compartido.',
+    'Las reglas por palabras solo conocen comida. En Otros, la clase la da el catálogo maestro si reconoce el producto; si no, se elige a mano o sale del conocimiento compartido.',
+    'El catálogo maestro es una lista curada, no infinita: un artículo que no reconoce se queda sin clasificar o con la regla por palabras, y se puede corregir a mano.',
     'Lo compartido es una sugerencia: puede ser provisional (un solo voto) y no se aplica si las familias no coinciden. No es un catálogo cerrado ni lo corrige nadie a mano en cada caso.',
     'Solo cuentan como voto las clases estándar de PEPA. Si falta la clase que necesitas, puedes crearla en «⚙️ Gestionar clases de productos» o en «Clasificaciones de productos», pero esa no se comparte.',
   ],
@@ -136,6 +146,8 @@ export const expComprasClasificarProductos: HelpExplainer = {
   verified: V,
   basedOn: [
     'src/domain/productClass.ts',
+    'src/domain/catalog/identify.ts',
+    'src/domain/catalog/catalogData.ts',
     'src/domain/foodTypes.ts',
     'src/domain/productText.ts',
     'src/domain/sharedClassLoader.ts',

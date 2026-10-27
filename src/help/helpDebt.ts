@@ -3,7 +3,7 @@
 // No añadir funciones nuevas a esta lista para esquivar la regla: documentar la función es lo que toca.
 
 /** Funciones del inventario sin ficha de Ayuda para familias porque son herramientas internas de la administración de PEPA (se explican en el propio Centro de Administración). */
-export const INTERNAL_ADMIN_FEATURES: readonly string[] = ['admin-centro', 'admin-errores', 'admin-invitaciones-familia', 'admin-automatizaciones']
+export const INTERNAL_ADMIN_FEATURES: readonly string[] = ['admin-centro', 'admin-errores', 'admin-invitaciones-familia', 'admin-automatizaciones', 'admin-evaluacion-catalogo']
 
 /** Funciones operativas o parciales que todavía no tienen sus puntos clave de Ayuda definidos («pendiente de revisión»). Vacío = no hay deuda. */
 export const FEATURES_PENDING_HELP_REVIEW: readonly string[] = ['admin-errores', 'admin-invitaciones-familia', 'admin-automatizaciones']

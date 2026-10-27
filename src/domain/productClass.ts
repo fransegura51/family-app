@@ -7,18 +7,22 @@
 //   2. shared   — aprendizaje compartido PEPA aprobado para (cadena de ESTE contexto, texto comercial);
 //   3. legacy   — clase histórica guardada SIN confirmar (products.category antigua): ya no tiene autoridad manual, pero se
 //                 respeta por debajo del aprendizaje compartido y por encima de las reglas (equivale a lo que se veía antes);
-//   4. rule     — clasificador local por palabras clave (classifyFoodType);
-//   5. fallback — nada resuelve ("Otros alimentos" en Alimentos, "Sin clasificar" en Otros).
+//   4. catalog  — catálogo maestro PEPA (catalog/identify.ts): interpreta el nombre del ticket («PAÑALES T4», «LECHE INF 2») y da la clase CAT-1 del producto
+//                 que ES, no la de una palabra suelta («QUESADILLA POLLO» no es Carne). Solo con identificación segura o probable;
+//   5. rule     — clasificador local por palabras clave (classifyFoodType), como antes cuando el catálogo no identifica nada;
+//   6. fallback — nada resuelve ("Otros alimentos" en Alimentos, "Sin clasificar" en Otros).
 //
 // El aprendizaje compartido es una MEJORA, no una dependencia: si no hay resultado (sin cadena, cadena no aprendible, error de la
 // RPC...) se sigue con legacy → reglas → respaldo, es decir, igual que antes. Nunca se guarda un resultado compartido, de reglas o de
 // respaldo en products.category: se resuelve dinámicamente.
 //
 // Este módulo es PURO: el resultado compartido ya viene resuelto (lo carga sharedClassLoader por lotes).
+import { catalogClass } from './catalog/classes'
+import { identifyProduct } from './catalog/identify'
 import { classifyFoodType } from './foodTypes'
 
 export type ProductClassKind = 'alimentacion' | 'no_alimentos'
-export type ProductClassSource = 'manual' | 'shared' | 'legacy' | 'rule' | 'fallback'
+export type ProductClassSource = 'manual' | 'shared' | 'legacy' | 'catalog' | 'rule' | 'fallback'
 
 /** Clase de la familia (family_food_types). catalogKey = clave estable del catálogo PEPA, o null si es personal. */
 export interface FamilyClassRef {
@@ -94,6 +98,24 @@ const RULE_KEY_TO_FOOD_TYPE_KEY: Record<string, string | null> = {
   otros: 'food.otros_alimentos',
 }
 
+/**
+ * Clase que da el catálogo maestro, o null si no identifica el producto (dudoso) o la clase no puede usarse aquí. Nunca cambia un conjunto ya sabido
+ * (Alimentos/Otros): solo lo fija cuando es una suposición por defecto, igual que el aprendizaje compartido. Si la familia no tiene esa clase (porque la
+ * migración que la crea aún no se ha aplicado, o la borró), se sigue como antes con las reglas por palabras clave.
+ */
+function resolveFromCatalog(input: ResolveProductClassInput, sharedOutcome: SharedOutcome): ResolvedProductClass | null {
+  if (!input.name?.trim()) return null
+  const id = identifyProduct(input.name)
+  if (!id.entry || id.confidence === 'dudoso' || !id.classKey) return null
+  const cls = catalogClass(id.classKey)
+  if (!cls) return null
+  if (cls.kind !== input.kind && !input.kindIsDefault) return null
+  if (input.familyClasses.length === 0) return { className: cls.name, foodTypeKey: cls.key, kind: cls.kind, source: 'catalog', sharedOutcome, classKnown: false }
+  const own = input.familyClasses.find((c) => c.catalogKey === cls.key)
+  if (!own) return null
+  return { className: own.name, foodTypeKey: own.catalogKey, kind: own.kind, source: 'catalog', sharedOutcome, classKnown: true }
+}
+
 function findClassByName(classes: readonly FamilyClassRef[], name: string): FamilyClassRef | undefined {
   return classes.find((c) => c.name === name)
 }
@@ -136,7 +158,11 @@ export function resolveProductClass(input: ResolveProductClassInput): ResolvedPr
     return { className: stored, foodTypeKey: known?.catalogKey ?? null, kind: input.kind, source: 'legacy', sharedOutcome, classKnown: known != null }
   }
 
-  // 4-5. RULE / FALLBACK
+  // 4. CATALOG: el producto que es según el catálogo maestro.
+  const fromCatalog = resolveFromCatalog(input, sharedOutcome)
+  if (fromCatalog) return fromCatalog
+
+  // 5-6. RULE / FALLBACK
   if (input.kind === 'alimentacion') {
     const guess = classifyFoodType(input.name)
     const hit = guess.key !== 'otros'

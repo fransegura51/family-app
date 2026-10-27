@@ -44,7 +44,7 @@ describe('Un solo formulario para crear y editar (anti-divergencia)', () => {
 
 describe('A/B. Campos del formulario compartido', () => {
   it('A. Gasto: categoría, fecha + importe en la misma fila, establecimiento, clasificación, etiqueta, concepto y Necesito (en este orden)', () => {
-    const order = ['Categoría', 'Fecha', 'Importe (€)', 'Establecimiento (opcional)', 'Clasificación (opcional)', 'Etiqueta (opcional)', 'Concepto (opcional)', 'Según categoría', 'Fijo', 'Variable']
+    const order = ['Categoría', 'Fecha', 'Importe (€)', 'Establecimiento (opcional)', '<ClassSharesField', 'Etiqueta (opcional)', 'Concepto (opcional)', 'Según categoría', 'Fijo', 'Variable']
     let last = -1
     for (const marker of order) {
       const idx = FIELDS.indexOf(marker, last + 1)
@@ -73,8 +73,7 @@ describe('Clasificación, etiquetas, concepto y Necesito', () => {
     expect(FIELDS).toContain('[classificationKind, classesVersion]')
   })
   it('se conserva el texto explicativo de Clasificación', () => {
-    expect(FIELDS).toContain('Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por')
-    expect(FIELDS).toContain('clasificación" de Estadística compras.')
+    expect(FS).toContain('Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.')
   })
   it('R/S. Gestionar etiquetas sigue accesible y la lista de etiquetas del alta se recarga cuando cambian (sin cerrar el formulario)', () => {
     expect(FS).toContain('⚙️ Gestionar etiquetas')

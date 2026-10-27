@@ -21,6 +21,8 @@ export const KNOWN_APP_ROUTES: readonly string[] = [
   '/sugerencias',
   '/resenas',
   '/comunidad',
+  // Centro de Administración (solo cuentas propietarias): lo usan las fichas y recorridos marcados con `ownerOnly`.
+  '/administracion',
 ]
 
 // Ruta de Comunidad (varias pantallas bajo /comunidad/…): la Ayuda solo lleva a su portada.

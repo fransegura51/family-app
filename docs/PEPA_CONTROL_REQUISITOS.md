@@ -999,6 +999,71 @@ poder probarse con dos conexiones reales; (4) comprobar en iPhone y Android fís
 
 ---
 
+## Conciliación bancaria de pagos previstos: sugerencias fiables (ECO-02, 27/10/2026)
+
+**Estado: implementado y probado en local; sin migración (no cambia datos, permisos ni políticas). Se publica con el despliegue habitual. Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Causa real de los falsos positivos** (ENDESA ↔ ASADOR SESE / AMAZON, FLOW GOOGLE ↔ CONSUM, «Aire acondicionado SEQURA» ↔ «Eric Segura Hepburn»), comprobada en el código (`src/domain/forecastReconciliation.ts`, antes de la corrección):
+1. Los únicos filtros duros eran: no ingreso, mismo gasto vinculado, misma divisa, cuenta del pago y ventana de ±3 días. La **identidad del comercio era solo +10 puntos opcionales** (una palabra común), nunca obligatoria.
+2. La exclusión por importe exigía además que la **categoría** fuese fuertemente distinta en ambos lados (importe ≥ 50 % y ≥ 30 € de diferencia Y categorías reales distintas); el banco clasifica casi todo como «Otros», así que casi nunca se aplicaba. Los casos de 21,99 € ↔ 12,48 € (43 %) ni siquiera llegaban a ese umbral.
+3. Cuenta (30) + fecha cercana (15-30) sumaban ≥ «medio» (35) **sin ninguna evidencia del comercio**: cualquier cargo de la misma cuenta a ±3 días era «candidato», y se enseñaba el mejor «de entre varios malos».
+4. «No es este» solo descartaba esa pareja (correcto, y persistido en `forecast_reconciliation_dismissals`, 0174) y, por (3), salía el siguiente cargo cercano.
+5. El comentario de la pantalla decía que el nivel «bajo» no se enseñaba, pero el código no lo filtraba.
+No había ningún sistema de alias de comercios (no se creó uno paralelo).
+
+**Reglas nuevas** — elegibilidad primero, ordenación después (`forecastMerchantIdentity.ts` + `scoreReconciliationCandidate`):
+- Filtros estructurales (sin cambios): cargo (no ingreso) con gasto vinculado, misma divisa, cuenta del pago si la tiene, ±3 días.
+- **Identidad comercial obligatoria** (tres estados: coincide / en conflicto / no se puede comprobar; solo «coincide» propone): referencia de contrato común, variante verificada (Telefónica ↔ Movistar), una palabra distintiva común, o la misma frase marca + producto («GOOGLE ONE»). Se normalizan mayúsculas, tildes, puntuación, boilerplate bancario («COMPRA TARJ. 5402XXXX…»), formas jurídicas (S.A., SAU…), localidades añadidas («-Madrid», «-RAFAL») y palabras de sector («energía», «seguro»). **No cuentan**: compartir solo una palabra de sector, una localidad, o solo la marca de una empresa multiproducto (Google, Amazon, Apple…), ni parecidos como «segura» ≈ «sequra».
+- **Importe según el tipo de pago**: conocido → igual o casi igual (≤ 5 % y ≤ 10 €); estimado/variable → hasta un 50 % si la identidad coincide; desconocido → solo con identidad sólida (2+ palabras, 6+ letras o contrato) **y** la cuenta prevista coincidente. La fecha y la cuenta nunca compensan ni sustituyen a la identidad ni al importe.
+- Solo entonces se **ordena** (identidad, cuenta, importe, cercanía de fecha). Las razones se enseñan como frase («Mismo comercio · mismo importe · cargo 1 día después de lo previsto»), sin porcentajes ni puntuaciones.
+- **«No es este»**: se persiste la pareja exacta (sin bloquear el movimiento para otros pagos) y se vuelve a calcular; si no queda otro candidato fiable, la pantalla lo dice («No hemos encontrado ningún otro movimiento bancario que coincida…») y el pago sigue pendiente. Nunca se ofrece otro cargo incompatible.
+- **Asociación manual** (explícita, distinta de las sugerencias): ⋯ del pago → «🔗 Vincular con un movimiento del banco»; lista los cargos libres cercanos (buscador por comercio o importe), avisa del nombre, importe, cuenta o fecha que no encajan, sin impedir vincular. Usa la misma conciliación de siempre (`match_forecast_occurrence`): el índice único de la base de datos impide asociar dos veces el mismo gasto o la misma ocurrencia.
+- Sin migraciones, sin cambios de RLS. No se tocó ningún dato: movimientos, pagos previstos, conciliaciones confirmadas, categorías, etiquetas, repartos, saldos ni carteras.
+
+**Auditoría de conciliaciones históricas** (consulta de solo lectura en producción, 27/10/2026): 13 conciliaciones confirmadas (23/09–26/10), todas coherentes en comercio e importe (diferencias de 0 a 4,2 %). Ninguna sospechosa; no se modificó nada. Las 13 siguen siendo elegibles con las reglas nuevas (prueba de regresión con los datos reales).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| ECO-02a | No se proponen cargos de otro comercio (ENDESA ↔ ASADOR SESE/AMAZON, FLOW GOOGLE ↔ CONSUM, SEQURA ↔ Eric Segura Hepburn), ni con el mismo importe, cuenta y fecha | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts` (92), `forecastMerchantIdentity.test.ts` (16) |
+| ECO-02b | Tratamiento distinto de importe conocido, estimado y desconocido | **Implementado y probado; pendiente de validación real** | mismas pruebas (tolerancias 5 % y 10 €; 50 %; identidad sólida + cuenta) |
+| ECO-02c | «No es este»: se persiste, no aparece otro incompatible y se avisa si no hay más | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts`, `forecastManualMatchSheet.test.tsx`, `forecastReconciliationDismissalsMigration.test.ts` |
+| ECO-02d | Sin duplicados: un cargo por pago, un gasto por ocurrencia (índice único de 0157) | **Probado** | motor + migración existente |
+| ECO-02e | Asociación manual explícita con avisos | **Implementado y probado; pendiente de validación real** | `forecastManualMatchSheet.test.tsx` (10) |
+| ECO-02f | Las 13 conciliaciones reales confirmadas siguen siendo elegibles; datos históricos intactos | **Verificado** | prueba de regresión con datos reales; consulta de solo lectura |
+
+**Pendiente**: validar en el iPhone que las sugerencias de «Pagos por revisar» son las esperadas y que «Vincular con un movimiento del banco» funciona. **Límite conocido**: si el banco escribe el comercio con un nombre sin ninguna palabra en común con el título del pago (p. ej. un pago titulado «IBI» y un cargo «SUMA GESTION TRIBUTARIA», sin proveedor), PEPA ya no lo propone (antes sí, por cuenta + importe + fecha) y hay que vincularlo a mano o poner el emisor en «Proveedor». Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
+## Reparto de un gasto entre varias clasificaciones de Compras (CLASIF-1, 27/10/2026)
+
+**Estado: PUBLICADO el 27/10/2026 con la migración `0332_expense_class_shares.sql` APLICADA en producción tras ensayarla en una transacción REVERTIDA sobre la base real (ver más abajo; tras aplicarla: 0 repartos, RLS activa, solo lectura para `authenticated`, 954 gastos intactos). Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Qué hace.** En el campo «Clasificación» de un gasto (Economía → Movimientos: «+ Nuevo movimiento» y «Editar movimiento»), la opción sencilla de siempre sigue siendo una sola clasificación. Nueva opción voluntaria: **«＋ Repartir entre varias clasificaciones»**, con las clasificaciones de Compras ya existentes, a partes iguales, en euros o en porcentaje, y la suma debe coincidir EXACTAMENTE con el gasto (al céntimo; el reparto por porcentaje y por partes iguales reparte los céntimos sueltos sin perder ninguno). Reutiliza la lógica y el editor del reparto por etiquetas (ETQ-1): el mismo editor sirve ahora para etiquetas y clasificaciones.
+- Ejemplo real: Amazon 47,97 € = Ropa y calzado 40,98 € + otra clasificación 6,99 €.
+- Un solo gasto y un solo movimiento bancario, sin duplicados: el gasto cuenta UNA vez en el total, en «por tienda» y en la comparativa; cada clasificación recibe solo su parte en «Reparto por clasificación» (Alimentación y Otros, cada parte en su lado).
+- La categoría contable y las etiquetas son conceptos distintos y no se tocan.
+- **Si el gasto tiene un ticket con productos clasificados línea a línea, ese desglose manda**: el reparto manual no se admite (el servidor lo rechaza y la pantalla avisa) y, si existiera, no se vuelve a contar.
+- Editar o quitar el reparto: se vuelve a una sola clasificación («Volver a una sola clasificación») o se cambia el reparto; el gasto y su movimiento original no se pierden. Si el importe del gasto cambia por otra vía, el reparto se reescala (suma exacta); si se cambia la clasificación con el selector sencillo, manda esa y el reparto se retira.
+- **No se cambia ninguna clasificación histórica** ni se migra ningún dato: las clasificaciones actuales siguen siendo la «principal» (`expenses.product_classification`) y no tienen filas de reparto.
+
+**Migración 0332 (aditiva, con reversión `supabase/rollbacks/0332_expense_class_shares_down.sql`).** Tabla `expense_class_shares` (+ archivo para «Deshacer»), función `set_expense_classes` (valida acceso a Economía, gasto propio y tocable, clasificaciones de la familia, sin repetidas, importes positivos, suma exacta y ausencia de ticket clasificado), disparadores de coherencia (reescala, retirada, archivo/restauración) y `link_purchase_to_bank_expense` (la de 0322 + que el reparto del cargo pase a la compra solo si ella no tenía clasificación ni reparto ni ticket clasificado). RLS: solo lectura para quien ya ve el gasto (incluidas las cuentas separadas); nadie escribe directamente. Sin DROP ni cambios de datos.
+
+**Ensayo en producción (REVERTIDO, 27/10/2026)**, con el usuario administrador de la familia y un gasto bancario real, todo dentro de una transacción que terminó en error a propósito (la base quedó intacta: sin tablas ni funciones nuevas y el gasto sin cambios): reparto de 2 clasificaciones válido (la principal es la de mayor parte); suma incorrecta, clasificación repetida y clasificación ajena rechazadas sin tocar el reparto previo; cambio de importe reescala exacto (4.000 céntimos); cambio de clasificación sencilla retira el reparto; una sola o vacío no crean filas; borrar + volver a insertar (Deshacer) recupera las dos partes y limpia el archivo; otra familia no puede tocarlo; la escritura directa está denegada; la lectura no enseña filas de otras familias; los repartos de etiquetas no cambian (0 → 0); `link_purchase_to_bank_expense` incluye clasificaciones y etiquetas.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| CLASIF-1a | Una sola clasificación por defecto; «Repartir entre varias clasificaciones» voluntario, con las clasificaciones de Compras existentes | **Implementado y probado; pendiente de validación real** | `classSharesField.test.tsx` (8) |
+| CLASIF-1b | Partes iguales, euros o %; suma exacta; mensajes claros | **Implementado y probado** | `classShares.test.ts` (15), `tagShares.test.ts` (editor compartido sin cambios para etiquetas) |
+| CLASIF-1c | «Reparto por clasificación» y demás estadísticas de Compras reflejan cada parte; un gasto cuenta una vez; Alimentación y Otros por separado | **Implementado y probado; pendiente de validación real** | `classSharesStats.test.tsx` (6) con el caso Amazon 47,97 € |
+| CLASIF-1d | Un ticket con productos clasificados manda; sin doble cómputo | **Implementado y probado** | servidor (`set_expense_classes`), estadísticas y aviso en pantalla; `classSharesStats.test.tsx` |
+| CLASIF-1e | Editar o quitar el reparto sin perder el movimiento; categoría y etiquetas intactas | **Implementado y probado** | `classShares.test.ts` (formulario), ensayo de la migración |
+| CLASIF-1f | Sin duplicidades ni cambios en datos existentes; permisos y aislamiento entre familias | **Ensayado en producción (revertido)** | `expenseClassSharesMigration.test.ts` (8) y ensayo |
+
+**Pendiente**: validar en iPhone (editar el movimiento de Amazon de 47,97 € y repartirlo; mirar «Reparto por clasificación» en Estadística compras); si una clasificación se renombra o se borra después, esa parte cae en «Sin clasificar» (igual que ya ocurre con la clasificación sencilla). Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
 ## «Pepa te acompaña»: ampliación y Soporte técnico (PEPA-AYUDA-AMPL, 24/10/2026)
 
 Detalle técnico: [`docs/PEPA_TE_ACOMPANA_AMPLIACION.md`](PEPA_TE_ACOMPANA_AMPLIACION.md). Estado de cada pieza (implementado · probado · publicado · pendiente de autorización):
@@ -1101,7 +1166,28 @@ Encargo del usuario (2026-10-27): «Correcciones prioritarias, automatización e
 
 **Cobertura de la sincronización** (recarga silenciosa, sin «Cargando…»; se pausa si hay un formulario o edición abierta): Cocina (menú semanal, recetas), Compras (productos y tiendas), Calendario (eventos, tareas y estados), Economía (movimientos, cuentas, carteras, tickets, presupuestos), Eventos (lista, preparativos, invitados, presupuesto, proveedores, mesas, decoración, actividades y menú del evento), Pequeños Grandes (puntos, canjes, recompensas, monedero), Mis listas (lista y carpetas), Galería, Documentos. Lo privado respeta sus permisos: el canal solo avisa y cada dispositivo vuelve a pedir sus datos con su sesión. **No cubierto todavía**: Comunidad (sus datos), Contactos, Familia y Ubicación (solo recargan al abrir la pantalla); los borrados no se pueden filtrar por familia en Realtime (se avisa a todos de «algo cambió» en esa tabla, sin contenido).
 
+**Publicado el 27/10/2026**: commit `462b066` en master (despliegue de GitHub Pages correcto); migraciones **0323** y **0324** aplicadas en producción (66 platos del menú con el mismo orden y los mismos datos; 56 tablas en Realtime). Pruebas del cierre: 677 archivos y 13 048 pruebas, PostgreSQL local (93 + 22 + 29 + 14 + 10), tipos, lint y compilación sin errores. La web publicada lleva los 13 logotipos incrustados en el código (no hay peticiones externas).
+
 **Pendiente (honesto)**: comprobar en los móviles y el ordenador reales (1) que el menú reordenado en un dispositivo aparece solo en el otro, (2) logotipos en Safari de iPhone y Android, (3) el selector de iconos. Carrefour, Caprabo e Hipercor usan insignia de texto (su favicon solo existe a 16 px). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
+---
+
+## Fase 2 (27/10/2026): programa editorial semanal de Comunidad con IA (PEPA-F2)
+
+Encargo del usuario (2026-10-27), Fase 2. Reglas que NO cambian: Comunidad solo para mayores de 18 años; **generar no es publicar** (todo nace como borrador «proposed» y solo una persona administradora lo aprueba); sin publicación automática sin revisión; los permisos de Comunidad no se amplían.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| F2-PROGRAMA | Semana editorial: 7 artículos (uno por día; sábado y domingo también), 1 encuesta (abre el sábado y cierra el domingo a las 17:00, hora de Madrid) y 1 menú semanal; borradores generados con antelación | Sí | Sí — migración **0325/0325b** (hueco único por día, sábado y semana; ciclo con hora de Madrid incluido el cambio de hora; trabajo `community-editorial` cada hora al minuto 7); función `community-editorial` **desplegada** | Sí — 198 pruebas de la función por simulación; SQL de producción en transacción deshecha (huecos únicos, duplicados, programación) | No |
+| F2-TEMAS | Prioridad de temas: 1 subtemas sin publicaciones, 2 ideas de «Propón un tema», 3 subtemas con pocas, 4 el resto; sin duplicar con publicado/programado/borrador; conserva el vínculo a la propuesta | Sí | Sí — `community_service_editorial_plan_articles` (una idea no repite subtema) | Sí — SQL deshecho en producción | No |
+| F2-CONTROLES | Panel en Administración → Comunidad → Oficial: tres controles independientes (artículos, encuestas, menú), próxima ejecución, última ejecución y resultado, «Generar ahora» manual, borradores y errores; pausar conserva lo ya generado | Sí | Sí — `EditorialPanel.tsx`; interruptores guardados de verdad (`community_settings`), **los tres nacen en PAUSA** | Sí — `communityEditorialUi.test.tsx`, `communityEditorialData.test.ts`; estado real de producción comprobado (tres a 0, sin ejecuciones, sin elementos generados) | No |
+| F2-RECTIFICAR | Rectificar con IA artículos, encuestas y menús: leer, instruir, versión nueva, comparar, aceptar/rechazar, repetir, editar a mano, aprobar/programar/descartar; conserva lo no afectado; aceptar NO publica | Sí | Sí — `RevisePanel.tsx`, `ScheduleForm.tsx`, tablas de rectificaciones y versiones; límites de uso (30 por elemento y 100 por persona al día) | Sí — `communityEditorialRevise.test.ts`; SQL deshecho (versión obsoleta, restauración) | No |
+| F2-MENU | Menú de 7 comidas + 7 cenas con recetas completas enlazadas; sustituir un plato o pedir cambios generales manteniendo el resto; compatible con varios platos por comida; importación a Cocina y Compras | Sí | Sí — plan de 14 títulos + 7 días en paralelo; rectificación por plato; interruptor propio «Publicar a su hora el menú ya aprobado» (apagado) | Parcial — validado por simulación y por la validación SQL del menú; **la generación real con la IA y la importación a Cocina se probarán en la Fase 3** | No |
+| F2-ENCUESTA | Encuesta de la semana: generar, revisar, rectificar, aprobar/programar, cierra el domingo 17:00 | Sí | Sí — reutiliza las reglas de participación y resultados ya existentes | Parcial — por simulación; el cierre real se verá en la Fase 3 | No |
+
+**Publicado el 27/10/2026** (commit `8463224a` en master, despliegue de GitHub Pages correcto; 696 archivos y 13 417 pruebas, tipos, lint y compilación sin errores): migraciones 0325, 0325b y 0326 aplicadas en producción; función `community-editorial` desplegada (`verify_jwt` desactivado a propósito: se autentica sola con el secreto del trabajo programado o con el JWT de una persona administradora; sin credenciales responde 401 y el preflight 204). Estado verificado: interruptores de artículos, encuestas y menú en **0**, publicación automática del menú en **0**, **0 ejecuciones** y **0 elementos generados**; no se ha generado ni publicado ningún contenido de prueba.
+
+**Pendiente (honesto)**: la llamada real a la IA (formato de salida, tiempos por debajo del límite de la función) no se ha podido probar sin generar contenido; se hará en la Fase 3 con el usuario desde el Centro de Administración. Los artículos sin fuentes externas se aceptan solo si el borrador está marcado como editorial práctico (sin cifras ni estudios). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---
 

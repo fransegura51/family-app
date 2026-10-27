@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { ADMIN_AREAS, parseAdminArea, type AdminAreaId } from '@/admin/adminAreas'
 import type { AdminTool } from '@/admin/adminTools'
+import { useHelpDestinations } from '@/help/destinations'
 import { AdminGate } from '@/ui/admin/AdminGate'
 import { AdminGroupsProvider, AdminGroupsToolbar, groupKey, useAdminGroups } from '@/ui/admin/AdminGroups'
 import { AdminSearch } from '@/ui/admin/AdminSearch'
@@ -48,6 +49,9 @@ function AdministrationCenter() {
   useEffect(() => {
     setVisited((v) => (v.includes(active) ? v : [...v, active]))
   }, [active])
+
+  // Ayuda («Llévame» / «Enséñame»): abre Comunidad → Contenido oficial.
+  useHelpDestinations({ 'admin.comunidad-oficial': () => setParams({ area: 'comunidad', tab: 'oficial' }, { replace: true }) })
 
   const select = (area: AdminAreaId) => {
     // Al cambiar de área se quitan los parámetros propios de la anterior (p. ej. la pestaña de Comunidad).

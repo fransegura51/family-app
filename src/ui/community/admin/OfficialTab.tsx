@@ -1,7 +1,15 @@
-import { useCallback, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { ARTICLE_CRITERIA, checkArticleCriteria } from '@/domain/communityArticleCriteria'
 import { Link } from 'react-router-dom'
 import { adminApproveProposal, adminEditProposal, adminListProposals, adminRejectProposal, listCommunityTopics } from '@/data/community'
+import { scheduleItem } from '@/data/communityEditorial'
+import {
+  canRevise,
+  dayShort,
+  scheduledApprovalText,
+  slotLine,
+  type EditorialItemRow,
+} from '@/domain/communityEditorial'
 import {
   ADMIN_TEXT,
   MAX_POLL_OPTIONS,
@@ -28,7 +36,11 @@ import { SECTIONS } from '@/domain/community'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { paths } from '@/ui/community/communityNav'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox, NoteForm, TwoTapButton } from '@/ui/community/admin/AdminShared'
+import { HelpDestMark } from '@/help/ui/HelpDest'
+import { ScheduleForm, isScheduled, publishAtOf } from '@/ui/community/admin/ScheduleForm'
+import { EditorialPanel } from '@/ui/community/admin/EditorialPanel'
 import { MenusSection } from '@/ui/community/admin/MenusSection'
+import { RevisePanel } from '@/ui/community/admin/RevisePanel'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
 // Contenido oficial: lo que Pepa propone cada semana (consejos, encuesta y, si hay datos externos fiables, un artículo).
@@ -42,11 +54,28 @@ export function OfficialTab({ onChanged }: { onChanged: () => void }) {
   // Los temas (para el nombre bonito y para cambiar el tema al editar) se piden UNA vez, al abrir esta pestaña.
   const topicsLoader = useCallback(() => listCommunityTopics(), [])
   const topics = useAdminData<CommunityTopic[]>(topicsLoader)
+  // «Revisar» desde el programa de la semana: abre ESE elemento en su tarjeta (cambia al filtro que le corresponde y se desplaza hasta ella).
+  const [focus, setFocus] = useState<{ id: string; seq: number } | null>(null)
+  const [menuFocus, setMenuFocus] = useState<{ id: string; seq: number } | null>(null)
+  const noticeRef = useRef<HTMLDivElement | null>(null)
+  const review = (item: EditorialItemRow) => {
+    if (item.kind === 'menu') {
+      setMenuFocus({ id: item.id, seq: Date.now() })
+      return
+    }
+    setStatus(item.status === 'approved' || item.status === 'published' ? item.status : 'proposed')
+    setFocus({ id: item.id, seq: Date.now() })
+  }
+  useEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [notice])
 
   return (
     <div className="cadm-stack">
+      <HelpDestMark id="admin.comunidad-oficial" />
       <InfoBox tone="warn">{ADMIN_TEXT.noPublishWithoutApproval}</InfoBox>
-      <MenusSection topics={topics.data ?? []} onChanged={onChanged} />
+      <EditorialPanel onReview={review} onGenerated={() => { reload(); onChanged() }} />
+      <MenusSection topics={topics.data ?? []} onChanged={onChanged} focus={menuFocus} />
       <h3>Consejos, encuestas y artículos</h3>
       <div className="cadm-filter" role="group" aria-label="Qué propuestas ver">
         {PROPOSAL_FILTERS.map((f) => (
@@ -64,7 +93,9 @@ export function OfficialTab({ onChanged }: { onChanged: () => void }) {
           </button>
         ))}
       </div>
-      <ActionNotice message={notice} />
+      <div ref={noticeRef}>
+        <ActionNotice message={notice} />
+      </div>
       {loading && <AdminLoading label="Cargando propuestas…" />}
       {error && <AdminError message={error} onRetry={reload} />}
       {!loading && !error && data && data.length === 0 && (
@@ -77,6 +108,7 @@ export function OfficialTab({ onChanged }: { onChanged: () => void }) {
               <ProposalCard
                 proposal={p}
                 topics={topics.data ?? []}
+                focus={focus && focus.id === p.id ? focus.seq : null}
                 onDone={(text, remove) => {
                   setNotice(text)
                   if (remove) setData((prev) => (prev ? prev.filter((x) => x.id !== p.id) : prev))
@@ -96,16 +128,43 @@ function topicName(topics: CommunityTopic[], id: string): string {
   return topics.find((t) => t.id === id)?.label ?? id.replace(/-/g, ' ')
 }
 
-export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Proposal; topics: CommunityTopic[]; onDone: (message: string, removeFromList: boolean) => void }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'reject'>('view')
+export function ProposalCard({
+  proposal: p,
+  topics,
+  onDone,
+  focus = null,
+}: {
+  proposal: Proposal
+  topics: CommunityTopic[]
+  onDone: (message: string, removeFromList: boolean) => void
+  /** Cambia cuando «Revisar» (programa de la semana) pide abrir esta tarjeta: se desplaza hasta ella y se resalta. */
+  focus?: number | null
+}) {
+  const [mode, setMode] = useState<'view' | 'edit' | 'reject' | 'revise' | 'schedule'>('view')
   const action = useAdminAction()
+  const cardRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    if (focus == null) return
+    cardRef.current?.scrollIntoView?.({ block: 'start' })
+    cardRef.current?.focus({ preventScroll: true })
+  }, [focus])
   const sectionTitle = SECTIONS.find((s) => s.id === p.section)?.title ?? p.section
   const approval = approvalLine(p)
   const editable = p.status === 'proposed' || p.status === 'approved'
-  const noSources = p.kind === 'article' && p.payload.sources.length === 0
+  // Un artículo práctico del programa semanal (payload.editorial) puede aprobarse sin fuentes externas; uno con datos externos las sigue exigiendo.
+  const noSources = p.kind === 'article' && p.payload.sources.length === 0 && !p.payload.editorial
+  const programArticle = p.kind === 'article' && p.slotDate !== null
+  const slot = slotLine(p.slotDate, p.tier, p.kind)
+  const revisable = canRevise({ kind: p.kind, status: p.status, publishedPostId: p.publishedPostId })
 
   return (
-    <article className="cadm-card" aria-label={`${PROPOSAL_KIND_TEXT[p.kind]}: ${p.title}`}>
+    <article
+      ref={cardRef}
+      tabIndex={focus != null ? -1 : undefined}
+      className={`cadm-card${focus != null ? ' cadm-card-focus' : ''}`}
+      aria-label={`${PROPOSAL_KIND_TEXT[p.kind]}: ${p.title}`}
+      data-proposal-id={p.id}
+    >
       <header className="cadm-card-head">
         <h4>
           <span aria-hidden="true">{PROPOSAL_KIND_ICON[p.kind]} </span>
@@ -116,6 +175,13 @@ export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Propos
       <p className="muted cadm-small">
         {sectionTitle} · Tema: {topicName(topics, p.topicId)} · {batchWeekText(p.batchWeek)} · Versión {p.version}
       </p>
+      {(slot || p.generated) && (
+        <p className="cadm-small cadm-slot">
+          {slot}
+          {slot && p.generated ? ' · ' : ''}
+          {p.generated ? 'Borrador preparado por Pepa (IA)' : ''}
+        </p>
+      )}
       <p className="cadm-title">{p.title}</p>
       {mode !== 'edit' && <ProposalContent proposal={p} />}
       {noSources && p.status !== 'published' && (
@@ -126,6 +192,11 @@ export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Propos
 
       {approval && <p className="cadm-small cadm-approval">{approval}</p>}
       {p.status === 'approved' && p.publishAt && <p className="cadm-small">Se publicará el {formatMadrid(p.publishAt, 'full')} (hora peninsular).</p>}
+      {p.status === 'approved' && p.publishError && (
+        <p className="cadm-notice cadm-notice-error" role="alert">
+          La publicación programada ha fallado: {p.publishError}
+        </p>
+      )}
       {p.status === 'rejected' && p.reviewNote && <p className="cadm-small">Motivo del rechazo: {p.reviewNote}</p>}
       {p.status === 'published' && p.publishedPostId && (
         <Link className="link-button cadm-linkbtn" to={paths.post(p.publishedPostId)}>
@@ -140,15 +211,25 @@ export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Propos
           <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('edit')}>
             Editar
           </button>
+          {revisable && (
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('revise')} data-help-id="comunidad.revise-open">
+              Rectificar con Pepa
+            </button>
+          )}
+          {p.status === 'approved' && p.kind === 'article' && p.publishAt && (
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('schedule')}>
+              Reprogramar
+            </button>
+          )}
           {p.status === 'proposed' && (
             <TwoTapButton
               label="Aprobar"
-              armedLabel={p.kind === 'poll' ? 'Toca otra vez: aprobar y programar' : 'Toca otra vez: aprobar y publicar ya'}
+              armedLabel={p.kind === 'poll' ? 'Toca otra vez: aprobar y programar' : programArticle ? 'Toca otra vez: aprobar y programar para su día' : 'Toca otra vez: aprobar y publicar ya'}
               disabled={action.busy}
               onConfirm={() => {
                 void (async () => {
                   const r = await action.run(() => adminApproveProposal(p.id))
-                  if (r.ok) onDone(approveResultText(p.kind, r.result), true)
+                  if (r.ok) onDone(programArticle && isScheduled(r.result) ? scheduledApprovalText(publishAtOf(r.result)) : approveResultText(p.kind, r.result), true)
                 })()
               }}
             />
@@ -162,10 +243,36 @@ export function ProposalCard({ proposal: p, topics, onDone }: { proposal: Propos
         <p className="muted cadm-small">
           {p.kind === 'poll'
             ? 'Al aprobar, la encuesta NO se publica al momento: se programa y sale sola el próximo sábado a las 10:00 y cierra el domingo a las 17:00 (hora peninsular). Aprobar el mismo sábado a las 10:00 o más tarde la deja para el sábado siguiente.'
-            : 'Al aprobar, se publica al momento, con la identidad oficial de Pepa o de Equipo PEPA.'}
+            : programArticle
+              ? `Al aprobar, el artículo NO se publica al momento: se programa para el ${dayShort(p.slotDate)} a las 10:00 (hora de Madrid). Podrás reprogramarlo.`
+              : 'Al aprobar, se publica al momento, con la identidad oficial de Pepa o de Equipo PEPA.'}
         </p>
       )}
       {editable && mode === 'view' && p.status === 'approved' && <p className="muted cadm-small">Si la editas, hay que aprobarla de nuevo.</p>}
+
+      {mode === 'revise' && revisable && (
+        <RevisePanel itemId={p.id} kind={p.kind as 'article' | 'poll'} onClose={() => setMode('view')} onChanged={(message) => onDone(message, p.status === 'approved')} />
+      )}
+      {mode === 'schedule' && p.publishAt && (
+        <ScheduleForm
+          current={p.publishAt}
+          busy={action.busy}
+          error={action.error}
+          onCancel={() => {
+            setMode('view')
+            action.clear()
+          }}
+          onSave={(iso) => {
+            void (async () => {
+              const r = await action.run(() => scheduleItem(p.id, iso))
+              if (r.ok) {
+                setMode('view')
+                onDone(scheduledApprovalText(iso), false)
+              }
+            })()
+          }}
+        />
+      )}
 
       {mode === 'edit' && (
         <ProposalEditForm

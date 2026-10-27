@@ -643,3 +643,141 @@
   list-style: none;
   color: #8a5a00;
 }
+
+/* ---- Generación semanal, programa de la semana y «Rectificar con Pepa» */
+.cadm-switch-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 8px 0;
+}
+
+.cadm-switch-row p {
+  margin: 0;
+  flex: 1 1 220px;
+}
+
+.cadm-block {
+  display: block;
+}
+
+.cadm-warnline {
+  color: #8a5a00;
+}
+
+.cadm-slot {
+  color: #374151;
+  font-weight: 600;
+}
+
+.cadm-card-focus {
+  outline: 3px solid var(--primary, #4c6ef5);
+  outline-offset: 2px;
+}
+
+.cadm-btn-small {
+  min-height: 44px;
+  padding: 6px 12px;
+  font-size: 14px;
+}
+
+.cadm-dish-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.cadm-program {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cadm-program th,
+.cadm-program td {
+  text-align: left;
+  vertical-align: top;
+  padding: 8px 6px;
+  border-top: 1px solid var(--border, #e5e7eb);
+  overflow-wrap: anywhere;
+}
+
+.cadm-program th[scope='row'] {
+  width: 28%;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.cadm-program-item + .cadm-program-item {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border, #e5e7eb);
+}
+
+.cadm-program-item p {
+  margin: 2px 0;
+}
+
+.cadm-diff {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 4px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border, #d9dee8);
+  line-height: 1.5;
+}
+
+.cadm-ins {
+  background: #d3f5df;
+  color: #0b5b2a;
+  text-decoration: none;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.cadm-del {
+  background: #fde2e0;
+  color: #8a1c14;
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.cadm-revise {
+  margin-top: 12px;
+}
+
+.cadm-compare {
+  margin-top: 8px;
+}
+
+.cadm-shortcuts-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cadm-history {
+  margin-top: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cadm-ins {
+    background: #14532d;
+    color: #d3f5df;
+  }
+  .cadm-del {
+    background: #7f1d1d;
+    color: #fde2e0;
+  }
+  .cadm-slot {
+    color: inherit;
+  }
+  .cadm-warnline {
+    color: #fbbf24;
+  }
+}

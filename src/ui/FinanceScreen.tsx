@@ -1,11 +1,14 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
-import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, toggleSplitTag, totalsByTag, type SharesByExpense, type SplitMode, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   addExpense,
+  listClassSharesSafe,
   listTagSharesSafe,
+  setExpenseClasses,
   setExpenseTags,
   addTaxFundExpense,
   addWalletTransaction,
@@ -166,6 +169,7 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
 import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
@@ -1550,6 +1554,7 @@ export function BankTab({
   focusAccountId?: string | null
 } = {}) {
   const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [connections, setConnections] = useState<BankConnection[]>([])
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [members, setMembers] = useState<FamilyMember[]>([])
@@ -1649,9 +1654,11 @@ export function BankTab({
       getFinanceMonthStartDay(),
       listFamilyMembers(),
       listTagSharesSafe(),
+      listClassSharesSafe(),
     ])
-      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m, shares]) => {
+      .then(([c, a, t, allExpenses, cats, tgs, monthStart, m, shares, clsShares]) => {
         setTagShares(shares)
+        setClassShares(clsShares)
         setConnections(c)
         setAccounts(a)
         setCategories(cats)
@@ -1899,6 +1906,7 @@ export function BankTab({
                   categories={categories}
                   tags={tags}
                   tagShares={tagShares.get(e.id)}
+                  classShares={classShares.get(e.id)}
                   onDone={() => {
                     setEditingId(null)
                     reload()
@@ -3497,6 +3505,7 @@ export function ExpensesTab({
   const [scope, setScope] = useState<'personal' | 'comun'>('personal')
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [tagShares, setTagShares] = useState<Map<string, TagShare[]>>(new Map())
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [categories, setCategories] = useState<BudgetCategory[]>([])
   const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
@@ -3574,9 +3583,11 @@ export function ExpensesTab({
       listWalletsSafe(),
       listAllMovementsSafe(),
       listTagSharesSafe(),
+      listClassSharesSafe(),
     ])
-      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares]) => {
+      .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares, clsShares]) => {
         setTagShares(shares)
+        setClassShares(clsShares)
         if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
           seededIncomeRef.current = true
           await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
@@ -3996,6 +4007,7 @@ export function ExpensesTab({
               categories={categories}
               tags={tags}
               tagShares={tagShares.get(e.id)}
+              classShares={classShares.get(e.id)}
               onDone={() => {
                 setEditingId(null)
                 reload()
@@ -4282,6 +4294,98 @@ function TagSelect({ value, onChange, tags }: { value: string; onChange: (v: str
 // Con una sola etiqueta todo funciona como antes; el reparto es opcional y arranca a partes iguales para que no haya que rellenar nada.
 const SPLIT_MODE_LABELS: Record<SplitMode, string> = { equal: 'A partes iguales', amount: 'En euros', percent: 'En %' }
 
+const capitalizeWord = (w: string) => w.charAt(0).toUpperCase() + w.slice(1)
+
+// Editor de reparto COMPARTIDO por etiquetas y por clasificaciones (mismo comportamiento, mismos modos, mismo texto salvo el nombre de lo que se reparte): elige qué
+// entra, el modo (partes iguales, euros o %), lo escrito en cada parte y la comprobación de que suma el importe exacto.
+function ShareSplitEditor({
+  items,
+  noun,
+  split,
+  total,
+  helpId,
+  preferredSingle,
+  onSplit,
+  onSingle,
+}: {
+  items: { id: string; label: string }[]
+  noun: SplitNoun
+  split: TagSplitDraft
+  total: number
+  helpId: string
+  /** Lo que queda si se vuelve a uno solo (si sigue entre los elegidos). */
+  preferredSingle: string
+  onSplit: (next: TagSplitDraft) => void
+  /** Se vuelve a una sola: recibe el id que se conserva ('' si ninguno). */
+  onSingle: (id: string) => void
+}) {
+  const resolved = resolveTagSplit(split, total, noun)
+  const shownAmount = new Map((resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
+  const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
+  return (
+    <div className="card" data-help-id={helpId} style={{ padding: 8 }}>
+      <div className="chip-row" role="group" aria-label={`${capitalizeWord(noun.plural)} del movimiento`}>
+        {items.map((t) => {
+          const on = split.ids.includes(t.id)
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={on}
+              className={on ? 'chip chip-active' : 'chip'}
+              onClick={() => {
+                const next = toggleSplitTag(split, t.id, total)
+                if (next) onSplit(next)
+                else onSingle(split.ids.filter((x) => x !== t.id)[0] ?? '')
+              }}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
+        {(['equal', 'amount', 'percent'] as const).map((m) => (
+          <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onSplit(changeSplitMode(split, m, total))}>
+            {SPLIT_MODE_LABELS[m]}
+          </button>
+        ))}
+      </div>
+      {split.ids.map((id) => {
+        const item = items.find((t) => t.id === id)
+        const euros = shownAmount.get(id)
+        return (
+          <div key={id} className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
+            <span style={{ flex: 1 }}>{item?.label ?? capitalizeWord(noun.singular)}</span>
+            {split.mode === 'equal' ? (
+              <strong>{euros != null ? euros.toFixed(2).replace('.', ',') + ' €' : '—'}</strong>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  aria-label={`${split.mode === 'percent' ? 'Porcentaje' : 'Importe'} de ${item?.label ?? `la ${noun.singular}`}`}
+                  style={{ width: 90 }}
+                  value={split.inputs[id] ?? ''}
+                  onChange={(e) => onSplit({ ...split, inputs: { ...split.inputs, [id]: e.target.value } })}
+                />
+                <span>{split.mode === 'percent' ? '%' : '€'}</span>
+                {split.mode === 'percent' && euros != null && <span className="muted">= {euros.toFixed(2).replace('.', ',')} €</span>}
+              </>
+            )}
+          </div>
+        )
+      })}
+      <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
+        {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada ${noun.singular} recibe su parte.` : resolved.error}
+      </p>
+      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
+        Volver a una sola {noun.singular}
+      </button>
+    </div>
+  )
+}
+
 export function TagSharesField({
   tags,
   tagId,
@@ -4317,68 +4421,86 @@ export function TagSharesField({
       </div>
     )
   }
-  const resolved = resolveTagSplit(split, total)
-  const shownAmount = new Map((resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
-  const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
   return (
-    <div className="card" data-help-id="finance.tag-split-editor" style={{ padding: 8 }}>
-      <div className="chip-row" role="group" aria-label="Etiquetas del movimiento">
-        {tags.map((t) => {
-          const on = split.ids.includes(t.id)
-          return (
-            <button
-              key={t.id}
-              type="button"
-              aria-pressed={on}
-              className={on ? 'chip chip-active' : 'chip'}
-              onClick={() => {
-                const next = toggleSplitTag(split, t.id, total)
-                onChange(next ? { tagId, split: next } : { tagId: split.ids.filter((x) => x !== t.id)[0] ?? '', split: null })
-              }}
-            >
-              {t.name}
-            </button>
-          )
-        })}
-      </div>
-      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
-        {(['equal', 'amount', 'percent'] as const).map((m) => (
-          <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onChange({ tagId, split: changeSplitMode(split, m, total) })}>
-            {SPLIT_MODE_LABELS[m]}
+    <ShareSplitEditor
+      items={tags.map((t) => ({ id: t.id, label: t.name }))}
+      noun={TAG_NOUN}
+      split={split}
+      total={total}
+      helpId="finance.tag-split-editor"
+      preferredSingle={tagId}
+      onSplit={(next) => onChange({ tagId, split: next })}
+      onSingle={(id) => onChange({ tagId: id, split: null })}
+    />
+  )
+}
+
+// Clasificación de un gasto SIN desglose de ticket (CLASIF-1): una sola (el desplegable de siempre, por defecto) o VARIAS con reparto del importe — a partes iguales, en
+// euros o en porcentaje. La categoría contable y las etiquetas no cambian: son otros conceptos. Si el gasto tiene un ticket con productos clasificados, manda ese desglose.
+export function ClassSharesField({
+  options,
+  value,
+  split,
+  total,
+  onChange,
+}: {
+  options: FamilyFoodType[]
+  value: string
+  split: ClassSplitDraft | null
+  total: number
+  onChange: (next: { value: string; split: ClassSplitDraft | null }) => void
+}) {
+  if (!split) {
+    return (
+      <div>
+        <label>
+          Clasificación (opcional)
+          <select value={value} onChange={(e) => onChange({ value: e.target.value, split: null })}>
+            <option value="">Sin clasificar</option>
+            {options.map((t) => (
+              <option key={t.id} value={t.name}>
+                {t.icon} {t.name}
+              </option>
+            ))}
+          </select>
+          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
+            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.
+          </p>
+        </label>
+        {options.length >= 2 && (
+          <button
+            type="button"
+            className="link-button"
+            data-help-id="finance.class-split"
+            style={{ fontSize: 12, padding: '4px 0' }}
+            onClick={() => {
+              const first = value || options[0].name
+              const second = (options.find((t) => t.name !== first) ?? options[1]).name
+              onChange({ value: first, split: startClassSplit([first, second], total) })
+            }}
+          >
+            ＋ Repartir entre varias clasificaciones
           </button>
-        ))}
+        )}
       </div>
-      {split.ids.map((id) => {
-        const tag = tags.find((t) => t.id === id)
-        const euros = shownAmount.get(id)
-        return (
-          <div key={id} className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
-            <span style={{ flex: 1 }}>{tag?.name ?? 'Etiqueta'}</span>
-            {split.mode === 'equal' ? (
-              <strong>{euros != null ? euros.toFixed(2).replace('.', ',') + ' €' : '—'}</strong>
-            ) : (
-              <>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  aria-label={`${split.mode === 'percent' ? 'Porcentaje' : 'Importe'} de ${tag?.name ?? 'la etiqueta'}`}
-                  style={{ width: 90 }}
-                  value={split.inputs[id] ?? ''}
-                  onChange={(e) => onChange({ tagId, split: { ...split, inputs: { ...split.inputs, [id]: e.target.value } } })}
-                />
-                <span>{split.mode === 'percent' ? '%' : '€'}</span>
-                {split.mode === 'percent' && euros != null && <span className="muted">= {euros.toFixed(2).replace('.', ',')} €</span>}
-              </>
-            )}
-          </div>
-        )
-      })}
-      <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
-        {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada etiqueta recibe su parte.` : resolved.error}
+    )
+  }
+  return (
+    <div>
+      <span style={{ display: 'block', margin: '4px 0 2px' }}>Clasificación (opcional)</span>
+      <ShareSplitEditor
+        items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
+        noun={CLASS_NOUN}
+        split={split}
+        total={total}
+        helpId="finance.class-split-editor"
+        preferredSingle={value}
+        onSplit={(next) => onChange({ value, split: next })}
+        onSingle={(name) => onChange({ value: name, split: null })}
+      />
+      <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+        Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
       </p>
-      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onChange({ tagId: tagId && split.ids.includes(tagId) ? tagId : split.ids[0], split: null })}>
-        Volver a una sola etiqueta
-      </button>
     </div>
   )
 }
@@ -4489,21 +4611,13 @@ function MovementFormFields({
         </label>
       )}
       {classificationKind && (
-        <label>
-          Clasificación (opcional)
-          <select value={draft.productClassification} onChange={(e) => onChange({ ...draft, productClassification: e.target.value })}>
-            <option value="">Sin clasificar</option>
-            {classificationOptions.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.icon} {t.name}
-              </option>
-            ))}
-          </select>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por
-            clasificación" de Estadística compras.
-          </p>
-        </label>
+        <ClassSharesField
+          options={classificationOptions}
+          value={draft.productClassification}
+          split={draft.classSplit}
+          total={Number(draft.amount)}
+          onChange={(next) => onChange({ ...draft, productClassification: next.value, classSplit: next.split })}
+        />
       )}
       <div data-help-id="finance.movement-tag">
         <span style={{ display: 'block', margin: '4px 0 2px' }}>Etiqueta (opcional)</span>
@@ -4547,6 +4661,7 @@ function EditExpenseInline({
   categories,
   tags,
   tagShares,
+  classShares,
   onDone,
   onCancel,
   onAddToForecast,
@@ -4557,6 +4672,8 @@ function EditExpenseInline({
   tags: Tag[]
   /** Reparto actual entre varias etiquetas (si lo tiene). */
   tagShares?: readonly TagShare[]
+  /** Reparto actual entre varias clasificaciones (si lo tiene). */
+  classShares?: readonly ClassShare[]
   onDone: () => void
   onCancel: () => void
   // Fase 1D-g.2 — "🔮 Añadir a Previsión": opcional, undefined en Banco (mismo componente, sin tocarlo
@@ -4574,6 +4691,7 @@ function EditExpenseInline({
     amount: String(expense.amount),
     store: expense.store ?? '',
     productClassification: expense.productClassification ?? '',
+    classSplit: classSplitFromShares(classShares ?? []),
     tagId: expense.tagId ?? '',
     tagSplit: splitFromShares(tagShares ?? []),
     notes: expense.notes ?? '',
@@ -4585,8 +4703,8 @@ function EditExpenseInline({
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
-    if (checked.tagSplitError) {
-      setError(checked.tagSplitError)
+    if (checked.tagSplitError || checked.classSplitError) {
+      setError(checked.tagSplitError ?? checked.classSplitError)
       return
     }
     setSaving(true)
@@ -4622,6 +4740,9 @@ function EditExpenseInline({
       // Varias etiquetas: el reparto se guarda DESPUÉS del importe (tiene que sumarlo exacto). Si tenía reparto y ahora lleva una sola, se retira.
       if (values.tagShares.length >= 2) await setExpenseTags(expense.id, values.tagShares)
       else if ((tagShares?.length ?? 0) >= 2) await setExpenseTags(expense.id, values.tagId ? [{ tagId: values.tagId, amount: values.amount }] : [])
+      // Varias clasificaciones (CLASIF-1): igual que las etiquetas, después del importe. Si tenía reparto y ahora lleva una sola, se retira.
+      if (values.classShares.length >= 2) await setExpenseClasses(expense.id, values.classShares)
+      else if ((classShares?.length ?? 0) >= 2) await setExpenseClasses(expense.id, values.productClassification ? [{ className: values.productClassification, amount: values.amount }] : [])
       emitHelpEvent('finance.movement-updated') // para los tutoriales «Enséñame»: el cambio YA está guardado
       onDone()
     } catch (err) {
@@ -5023,12 +5144,13 @@ function AddExpenseToAnyCategoryInline({
     setError(null)
     try {
       const checked = movementFieldValues(draft)
-      if (checked.tagSplitError) {
-        setError(checked.tagSplitError)
+      if (checked.tagSplitError || checked.classSplitError) {
+        setError(checked.tagSplitError ?? checked.classSplitError)
         return
       }
       const newId = await addExpense(buildNewExpenseInput(draft, categories))
       if (checked.tagShares.length >= 2) await setExpenseTags(newId, checked.tagShares)
+      if (checked.classShares.length >= 2) await setExpenseClasses(newId, checked.classShares)
       emitHelpEvent('finance.movement-added') // para los tutoriales «Enséñame»: el movimiento YA está guardado
       onAdded()
     } catch (err) {
@@ -7646,6 +7768,8 @@ export function BudgetsTab({
   // pintar el dónut/lista aunque sea una clase propia de la familia,
   // no una de las 11 de fábrica.
   const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
+  // Reparto de un gasto entre varias clasificaciones (CLASIF-1): solo cuenta para gastos SIN desglose de ticket.
+  const [classShares, setClassShares] = useState<Map<string, ClassShare[]>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Petición real: "que una cosa filtre por mes físico y la otra por
@@ -7690,8 +7814,9 @@ export function BudgetsTab({
       group === 'alimentacion' ? listProducts() : Promise.resolve([]),
       group === 'alimentacion' ? listFamilyFoodTypes('alimentacion') : Promise.resolve([]),
       group === 'alimentacion' ? listFamilyFoodTypes('no_alimentos') : Promise.resolve([]),
+      group === 'alimentacion' ? listClassSharesSafe() : Promise.resolve(new Map<string, ClassShare[]>()),
     ])
-      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes]) => {
+      .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes, clsShares]) => {
         // Primera vez que se abre esta pestaña y no tiene categorías
         // propias todavía — se dan de alta las sugeridas solas, sin
         // pedirlo (petición real: "me pones todas esas categorías").
@@ -7712,6 +7837,7 @@ export function BudgetsTab({
         setPrices(p)
         setProducts(prod)
         setFoodTypes([...foodKindTypes, ...noFoodKindTypes])
+        setClassShares(clsShares)
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => {
@@ -7901,6 +8027,28 @@ export function BudgetsTab({
           target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
           if (baseIsFood) foodAmount += remainder
           else nonFoodAmount += remainder
+        }
+      }
+    } else if ((classShares.get(e.id)?.length ?? 0) >= 2) {
+      // Gasto SIN desglose de ticket repartido a mano entre varias clasificaciones (CLASIF-1): cada parte va a su lado (Alimentos / Otros) y a su clasificación; el gasto cuenta
+      // UNA vez (la suma de las partes es su importe). Lo no repartido, o una clasificación que ya no existe, cae en «Sin clasificar» del lado de su categoría.
+      const baseTarget = baseIsFood ? foodClassEntries : noAlimentosClassEntries
+      const shares = classSharesOf(e, classShares)
+      for (const share of shares) {
+        if (share.amount <= 0) continue
+        const kind = share.className ? foodTypeKindByName.get(share.className) : undefined
+        if (kind === 'alimentacion' && share.className) {
+          foodAmount += share.amount
+          foodClassEntries.push({ itemId: `${e.id}:${share.className}`, displayName: e.store ?? 'Compra', amount: share.amount, type: { name: share.className, icon: foodTypeIconByName.get(share.className) ?? '🍽️' }, expenseId: e.id })
+        } else if (kind === 'no_alimentos' && share.className) {
+          nonFoodAmount += share.amount
+          noAlimentosClassEntries.push({ itemId: `${e.id}:${share.className}`, displayName: e.store ?? 'Compra', amount: share.amount, type: { name: share.className, icon: noAlimentosTypeIconByName.get(share.className) ?? '❓' }, expenseId: e.id })
+        } else if (isPending) {
+          unknownAmount += share.amount // pendiente de clasificar: no se atribuye ni a Alimentos ni a Otros
+        } else {
+          if (baseIsFood) foodAmount += share.amount
+          else nonFoodAmount += share.amount
+          baseTarget.push({ itemId: `${e.id}:sin-clasificar`, displayName: e.store ?? 'Compra', amount: share.amount, type: SIN_CLASIFICAR, expenseId: e.id })
         }
       }
     } else {
@@ -9683,6 +9831,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [reconciliationHistoryOpen, setReconciliationHistoryOpen] = useState(false)
   const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
+  // ECO-02 — aviso informativo (no es un error) cuando «No es este» no deja ninguna otra coincidencia fiable, y asociación manual explícita.
+  const [reconcileInfo, setReconcileInfo] = useState<string | null>(null)
+  const [manualMatchFor, setManualMatchFor] = useState<ForecastOccurrence | null>(null)
   // Fase 1D-f — "Gestionar movimiento": mismas etiquetas que ya usa Movimientos (nunca un sistema
   // paralelo). `managing` es el expense abierto en el paso de gestión — independiente de la lista de
   // candidatos, porque en cuanto se concilia, esa ocurrencia deja de ser candidata (ya tiene matchedExpenseId).
@@ -9922,8 +10073,8 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     return reconciliationPairKey(c.occurrence, c.movement)
   }
 
-  async function confirmCandidate(c: ReconciliationCandidate) {
-    if (!c.movement.expenseId) return
+  async function confirmCandidate(c: ReconciliationCandidate): Promise<boolean> {
+    if (!c.movement.expenseId) return false
     const key = candidateKey(c)
     setReconcileBusyKey(key)
     setReconcileError(null)
@@ -9949,8 +10100,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       if (stillPending) {
         setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
       }
+      return true
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo conciliar'))
+      return false
     } finally {
       setReconcileBusyKey(null)
     }
@@ -9963,12 +10116,33 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     setReconcileError(null)
     try {
       await dismissForecastReconciliationCandidate(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.bankTransactionId)
+      const nextDismissed = new Set(dismissedCandidateKeys).add(key)
       setDismissedCandidateKeys((prev) => new Set(prev).add(key))
+      // ECO-02: si tras descartar no queda otro movimiento FIABLE para este pago, se dice claramente (y el pago sigue pendiente), en vez de ofrecer otro cargo cualquiera.
+      const replacement = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds, nextDismissed).some(
+        (x) =>
+          x.occurrence.forecastPaymentId === c.occurrence.forecastPaymentId &&
+          x.occurrence.occurrenceDate === c.occurrence.occurrenceDate &&
+          (x.occurrence.installmentSequenceIndex ?? 0) === (c.occurrence.installmentSequenceIndex ?? 0),
+      )
+      setReconcileInfo(
+        replacement
+          ? null
+          : `No hemos encontrado ningún otro movimiento bancario que coincida con «${c.occurrence.title}». El pago sigue pendiente de conciliar; si sabes cuál es, puedes vincularlo tú desde ⋯ → «Vincular con un movimiento del banco».`,
+      )
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo descartar la propuesta'))
     } finally {
       setReconcileBusyKey(null)
     }
+  }
+  // ECO-02 — asociación manual explícita: usa la MISMA conciliación de siempre (confirmCandidate → match_forecast_occurrence); el índice único de la base de datos
+  // impide asociar dos veces el mismo movimiento o la misma ocurrencia.
+  async function linkManually(o: ForecastOccurrence, movement: BankMovementForMatching) {
+    const ok = await confirmCandidate({ occurrence: o, movement, score: 0, confidence: 'medium', reasons: [] })
+    if (!ok) return // el error se enseña en la propia hoja y el pago sigue sin vincular
+    setManualMatchFor(null)
+    setReconcileInfo(null)
   }
   async function unmatchOccurrence(o: ForecastOccurrence) {
     if (!o.matchedExpenseId) return
@@ -10135,6 +10309,19 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 >
                   Editar
                 </button>
+                {!o.matchedExpenseId && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-help-id="finance.reconcile-manual-open"
+                    onClick={() => {
+                      setManualMatchFor(o)
+                      setOccurrenceMenuKey(null)
+                    }}
+                  >
+                    🔗 Vincular con un movimiento del banco
+                  </button>
+                )}
                 {parent.active ? (
                   <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(parent, false).then(reload)} />
                 ) : (
@@ -10263,6 +10450,32 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               revisar. HIGH/MEDIUM se proponen para confirmar a mano — LOW nunca se enseña (demasiado
               ruido, no aporta confianza suficiente); ni siquiera "high" concilia solo (auditoría, sección
               7: sin auto-conciliación todavía). */}
+          {reconcileInfo && (
+            <p className="help-note" role="status" data-help-id="finance.reconcile-none">
+              {reconcileInfo}{' '}
+              <button type="button" className="link-button" onClick={() => setReconcileInfo(null)}>
+                Entendido
+              </button>
+            </p>
+          )}
+          {manualMatchFor && (
+            <ForecastManualMatchSheet
+              occurrence={manualMatchFor}
+              payment={reconciliationCandidateInputs.find((i) => i.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId)?.payment ?? { bankAccountId: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.bankAccountId ?? null, title: manualMatchFor.title, provider: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.provider ?? null }}
+              movements={reconciliationMovements.filter((m) => !!m.expenseId && !matchedExpenseIds.has(m.expenseId))}
+              accountNames={new Map(accounts.flatMap((a) => (a.name ? [[a.id, a.name] as const] : [])))}
+              hasSuggestion={reconciliationCandidates.some(
+                (x) =>
+                  x.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId &&
+                  x.occurrence.occurrenceDate === manualMatchFor.occurrenceDate &&
+                  (x.occurrence.installmentSequenceIndex ?? 0) === (manualMatchFor.installmentSequenceIndex ?? 0),
+              )}
+              busy={reconcileBusyKey !== null}
+              error={reconcileError}
+              onLink={(m) => void linkManually(manualMatchFor, m)}
+              onClose={() => setManualMatchFor(null)}
+            />
+          )}
           {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0 || reconciliationHistory.length > 0) && (
             <>
               <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} data-help-id="finance.reconcile-toggle" onClick={() => setReconcileOpen((v) => !v)}>
@@ -10299,7 +10512,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                             </p>
                           </div>
                         </div>
-                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{c.reasons.map((r) => r.label).join(' · ')}</p>
+                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{capitalizeFirst(c.reasons.map((r) => r.label).join(' · '))}</p>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button type="button" disabled={busy} data-help-id="finance.reconcile-confirm" onClick={() => confirmCandidate(c)}>
                             {busy ? 'Guardando…' : 'Confirmar'}
@@ -10684,6 +10897,10 @@ function ForecastDocumentImportModal({
 // 6C.2C) para la categoría, updateExpense para la etiqueta — nunca un camino paralelo ni un UPDATE
 // directo a expenses.category. category/tag_id son la única definición real de "movimiento gestionado"
 // que existe en esta base de datos (domain/pending.ts): no se inventa ningún estado nuevo.
+function capitalizeFirst(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text
+}
+
 function ManageReconciledExpense({
   expenseId,
   forecastCategoryId,

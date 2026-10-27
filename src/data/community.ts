@@ -46,7 +46,7 @@ export function camelize<T>(value: unknown): T {
   return value as T
 }
 
-async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
+export async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(name, args ?? {})
   if (error) throw toCommunityError(error)
   return camelize<T>(data)

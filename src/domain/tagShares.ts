@@ -42,11 +42,11 @@ export function splitEqual(total: number, tagIds: readonly string[]): TagShare[]
 }
 
 /** Por porcentajes (admite coma). Deben sumar 100 %; el reparto en euros sale exacto, con los céntimos sueltos a quien tenga mayor resto. */
-export function splitByPercent(total: number, parts: readonly { tagId: string; percent: string }[]): SplitResult {
+export function splitByPercent(total: number, parts: readonly { tagId: string; percent: string }[], noun: SplitNoun = TAG_NOUN): SplitResult {
   const nums: number[] = []
   for (const p of parts) {
     const n = parseNumber(p.percent)
-    if (n == null || n <= 0) return { ok: false, error: 'Escribe un porcentaje mayor que cero en cada etiqueta.' }
+    if (n == null || n <= 0) return { ok: false, error: `Escribe un porcentaje mayor que cero en cada ${noun.singular}.` }
     nums.push(n)
   }
   const sum = nums.reduce((s, n) => s + n, 0)
@@ -56,11 +56,11 @@ export function splitByPercent(total: number, parts: readonly { tagId: string; p
 }
 
 /** Por importes en euros (admite coma): deben sumar exactamente el importe del movimiento. */
-export function splitByAmounts(total: number, parts: readonly { tagId: string; amount: string }[]): SplitResult {
+export function splitByAmounts(total: number, parts: readonly { tagId: string; amount: string }[], noun: SplitNoun = TAG_NOUN): SplitResult {
   const out: TagShare[] = []
   for (const p of parts) {
     const n = parseNumber(p.amount)
-    if (n == null || n <= 0) return { ok: false, error: 'Escribe un importe mayor que cero en cada etiqueta.' }
+    if (n == null || n <= 0) return { ok: false, error: `Escribe un importe mayor que cero en cada ${noun.singular}.` }
     out.push({ tagId: p.tagId, amount: fromCents(toCents(n)) })
   }
   const diff = toCents(total) - out.reduce((s, x) => s + toCents(x.amount), 0)
@@ -71,6 +71,13 @@ export function splitByAmounts(total: number, parts: readonly { tagId: string; a
 }
 
 export type SplitResult = { ok: true; shares: TagShare[] } | { ok: false; error: string }
+
+/** Cómo se llama lo que se reparte en los mensajes (el mismo editor sirve para etiquetas y para clasificaciones). */
+export interface SplitNoun {
+  singular: string
+  plural: string
+}
+export const TAG_NOUN: SplitNoun = { singular: 'etiqueta', plural: 'etiquetas' }
 
 function parseNumber(s: string): number | null {
   const t = s.trim().replace(',', '.')
@@ -91,12 +98,12 @@ export interface TagSplitDraft {
 }
 
 /** Resuelve el borrador del formulario contra el importe actual. Con menos de 2 etiquetas no hay reparto (ok con []). */
-export function resolveTagSplit(split: TagSplitDraft | null, total: number): SplitResult {
+export function resolveTagSplit(split: TagSplitDraft | null, total: number, noun: SplitNoun = TAG_NOUN): SplitResult {
   if (!split || split.ids.length < 2) return { ok: true, shares: [] }
   if (!Number.isFinite(total) || total <= 0) return { ok: false, error: 'Escribe primero el importe del movimiento para poder repartirlo.' }
   if (split.mode === 'equal') return { ok: true, shares: splitEqual(total, split.ids) }
-  if (split.mode === 'percent') return splitByPercent(total, split.ids.map((tagId) => ({ tagId, percent: split.inputs[tagId] ?? '' })))
-  return splitByAmounts(total, split.ids.map((tagId) => ({ tagId, amount: split.inputs[tagId] ?? '' })))
+  if (split.mode === 'percent') return splitByPercent(total, split.ids.map((tagId) => ({ tagId, percent: split.inputs[tagId] ?? '' })), noun)
+  return splitByAmounts(total, split.ids.map((tagId) => ({ tagId, amount: split.inputs[tagId] ?? '' })), noun)
 }
 
 /** Reparto inicial al añadir una segunda etiqueta: a partes iguales (el usuario puede cambiarlo). */

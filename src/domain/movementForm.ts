@@ -8,6 +8,7 @@
 //  · Solo Gasto: establecimiento, clasificación del producto (solo categorías de Alimentación / Compras y
 //    familia, para «Reparto por clasificación» de Estadística compras) y Necesito/Fijo-Variable.
 import { incomeSelectableCategories } from '@/domain/cancelledCharge'
+import { mainClassOf, resolveClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { isComprasFamiliaCategory, isFoodCategory } from '@/domain/finance'
 import { resolveTagSplit, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
 import type { BudgetCategory } from '@/domain/types'
@@ -23,6 +24,8 @@ export interface MovementDraft {
   amount: string
   store: string
   productClassification: string
+  // Varias clasificaciones con reparto (CLASIF-1). null = una sola clasificación (productClassification), como siempre.
+  classSplit: ClassSplitDraft | null
   tagId: string
   // Varias etiquetas con reparto (ETQ-1). null = una sola etiqueta (tagId), como siempre.
   tagSplit: TagSplitDraft | null
@@ -71,6 +74,7 @@ export function emptyMovementDraft(categories: BudgetCategory[], today: string):
     amount: '',
     store: '',
     productClassification: '',
+    classSplit: null,
     tagId: '',
     tagSplit: null,
     notes: '',
@@ -84,7 +88,8 @@ export function emptyMovementDraft(categories: BudgetCategory[], today: string):
 export function changeExpenseCategory(draft: MovementDraft, next: string, categories: BudgetCategory[]): MovementDraft {
   const before = classificationKindFor(draft.expenseCategory, categories)
   const after = classificationKindFor(next, categories)
-  return { ...draft, expenseCategory: next, productClassification: after !== null && after === before ? draft.productClassification : '' }
+  const keep = after !== null && after === before
+  return { ...draft, expenseCategory: next, productClassification: keep ? draft.productClassification : '', classSplit: keep ? draft.classSplit : null }
 }
 
 export function changeIncomeCategory(draft: MovementDraft, next: string): MovementDraft {
@@ -97,7 +102,7 @@ export function changeIncomeCategory(draft: MovementDraft, next: string): Moveme
 // «Según categoría», nunca con lo que se escribió antes de cambiar.
 export function switchMovementType(draft: MovementDraft, toIncome: boolean): MovementDraft {
   if (draft.isIncome === toIncome) return draft
-  return toIncome ? { ...draft, isIncome: true, store: '', productClassification: '', isFixedOverride: null } : { ...draft, isIncome: false }
+  return toIncome ? { ...draft, isIncome: true, store: '', productClassification: '', classSplit: null, isFixedOverride: null } : { ...draft, isIncome: false }
 }
 
 // Valores de un movimiento tal y como se guardan — LOS MISMOS al crear que al editar (por construcción: ambos
@@ -115,7 +120,12 @@ export interface MovementFieldValues {
   tagSplitError: string | null
   notes: string | null
   isFixedOverride: boolean | null
+  /** Clasificación única o, con reparto, la principal (la de mayor parte). */
   productClassification: string | null
+  /** Reparto entre varias clasificaciones (2 o más) ya validado contra el importe; vacío si el gasto lleva una sola. */
+  classShares: ClassShare[]
+  /** Por qué el reparto de clasificaciones no es válido (no se debe guardar hasta corregirlo); null si está bien o no hay reparto. */
+  classSplitError: string | null
   store: string
 }
 
@@ -130,6 +140,8 @@ export function movementFieldValues(draft: MovementDraft): MovementFieldValues {
   const amount = Number(draft.amount)
   const split = draft.tagSplit && draft.tagSplit.ids.length >= 2 ? resolveTagSplit(draft.tagSplit, amount) : null
   const shares = split && split.ok ? split.shares : []
+  const classSplit = draft.classSplit && draft.classSplit.ids.length >= 2 ? resolveClassSplit(draft.classSplit, amount) : null
+  const classShares = classSplit && classSplit.ok ? classSplit.shares : []
   return {
     date: draft.date,
     amount,
@@ -138,7 +150,9 @@ export function movementFieldValues(draft: MovementDraft): MovementFieldValues {
     tagSplitError: split && !split.ok ? split.error : null,
     notes: draft.notes.trim() || null,
     isFixedOverride: draft.isFixedOverride,
-    productClassification: draft.productClassification || null,
+    productClassification: classSplit ? mainClassOf(classShares) : draft.productClassification || null,
+    classShares,
+    classSplitError: classSplit && !classSplit.ok ? classSplit.error : null,
     store: draft.store,
   }
 }

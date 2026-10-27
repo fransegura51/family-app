@@ -1035,6 +1035,35 @@ No había ningún sistema de alias de comercios (no se creó uno paralelo).
 
 ---
 
+## Reparto de un gasto entre varias clasificaciones de Compras (CLASIF-1, 27/10/2026)
+
+**Estado: implementado y probado en local; migración `0332_expense_class_shares.sql` ensayada en una transacción REVERTIDA sobre la base real (ver más abajo). Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Qué hace.** En el campo «Clasificación» de un gasto (Economía → Movimientos: «+ Nuevo movimiento» y «Editar movimiento»), la opción sencilla de siempre sigue siendo una sola clasificación. Nueva opción voluntaria: **«＋ Repartir entre varias clasificaciones»**, con las clasificaciones de Compras ya existentes, a partes iguales, en euros o en porcentaje, y la suma debe coincidir EXACTAMENTE con el gasto (al céntimo; el reparto por porcentaje y por partes iguales reparte los céntimos sueltos sin perder ninguno). Reutiliza la lógica y el editor del reparto por etiquetas (ETQ-1): el mismo editor sirve ahora para etiquetas y clasificaciones.
+- Ejemplo real: Amazon 47,97 € = Ropa y calzado 40,98 € + otra clasificación 6,99 €.
+- Un solo gasto y un solo movimiento bancario, sin duplicados: el gasto cuenta UNA vez en el total, en «por tienda» y en la comparativa; cada clasificación recibe solo su parte en «Reparto por clasificación» (Alimentación y Otros, cada parte en su lado).
+- La categoría contable y las etiquetas son conceptos distintos y no se tocan.
+- **Si el gasto tiene un ticket con productos clasificados línea a línea, ese desglose manda**: el reparto manual no se admite (el servidor lo rechaza y la pantalla avisa) y, si existiera, no se vuelve a contar.
+- Editar o quitar el reparto: se vuelve a una sola clasificación («Volver a una sola clasificación») o se cambia el reparto; el gasto y su movimiento original no se pierden. Si el importe del gasto cambia por otra vía, el reparto se reescala (suma exacta); si se cambia la clasificación con el selector sencillo, manda esa y el reparto se retira.
+- **No se cambia ninguna clasificación histórica** ni se migra ningún dato: las clasificaciones actuales siguen siendo la «principal» (`expenses.product_classification`) y no tienen filas de reparto.
+
+**Migración 0332 (aditiva, con reversión `supabase/rollbacks/0332_expense_class_shares_down.sql`).** Tabla `expense_class_shares` (+ archivo para «Deshacer»), función `set_expense_classes` (valida acceso a Economía, gasto propio y tocable, clasificaciones de la familia, sin repetidas, importes positivos, suma exacta y ausencia de ticket clasificado), disparadores de coherencia (reescala, retirada, archivo/restauración) y `link_purchase_to_bank_expense` (la de 0322 + que el reparto del cargo pase a la compra solo si ella no tenía clasificación ni reparto ni ticket clasificado). RLS: solo lectura para quien ya ve el gasto (incluidas las cuentas separadas); nadie escribe directamente. Sin DROP ni cambios de datos.
+
+**Ensayo en producción (REVERTIDO, 27/10/2026)**, con el usuario administrador de la familia y un gasto bancario real, todo dentro de una transacción que terminó en error a propósito (la base quedó intacta: sin tablas ni funciones nuevas y el gasto sin cambios): reparto de 2 clasificaciones válido (la principal es la de mayor parte); suma incorrecta, clasificación repetida y clasificación ajena rechazadas sin tocar el reparto previo; cambio de importe reescala exacto (4.000 céntimos); cambio de clasificación sencilla retira el reparto; una sola o vacío no crean filas; borrar + volver a insertar (Deshacer) recupera las dos partes y limpia el archivo; otra familia no puede tocarlo; la escritura directa está denegada; la lectura no enseña filas de otras familias; los repartos de etiquetas no cambian (0 → 0); `link_purchase_to_bank_expense` incluye clasificaciones y etiquetas.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| CLASIF-1a | Una sola clasificación por defecto; «Repartir entre varias clasificaciones» voluntario, con las clasificaciones de Compras existentes | **Implementado y probado; pendiente de validación real** | `classSharesField.test.tsx` (8) |
+| CLASIF-1b | Partes iguales, euros o %; suma exacta; mensajes claros | **Implementado y probado** | `classShares.test.ts` (15), `tagShares.test.ts` (editor compartido sin cambios para etiquetas) |
+| CLASIF-1c | «Reparto por clasificación» y demás estadísticas de Compras reflejan cada parte; un gasto cuenta una vez; Alimentación y Otros por separado | **Implementado y probado; pendiente de validación real** | `classSharesStats.test.tsx` (6) con el caso Amazon 47,97 € |
+| CLASIF-1d | Un ticket con productos clasificados manda; sin doble cómputo | **Implementado y probado** | servidor (`set_expense_classes`), estadísticas y aviso en pantalla; `classSharesStats.test.tsx` |
+| CLASIF-1e | Editar o quitar el reparto sin perder el movimiento; categoría y etiquetas intactas | **Implementado y probado** | `classShares.test.ts` (formulario), ensayo de la migración |
+| CLASIF-1f | Sin duplicidades ni cambios en datos existentes; permisos y aislamiento entre familias | **Ensayado en producción (revertido)** | `expenseClassSharesMigration.test.ts` (8) y ensayo |
+
+**Pendiente**: validar en iPhone (editar el movimiento de Amazon de 47,97 € y repartirlo; mirar «Reparto por clasificación» en Estadística compras); si una clasificación se renombra o se borra después, esa parte cae en «Sin clasificar» (igual que ya ocurre con la clasificación sencilla). Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
 ## «Pepa te acompaña»: ampliación y Soporte técnico (PEPA-AYUDA-AMPL, 24/10/2026)
 
 Detalle técnico: [`docs/PEPA_TE_ACOMPANA_AMPLIACION.md`](PEPA_TE_ACOMPANA_AMPLIACION.md). Estado de cada pieza (implementado · probado · publicado · pendiente de autorización):

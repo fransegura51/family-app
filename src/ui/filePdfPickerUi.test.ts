@@ -133,7 +133,9 @@ describe('El pipeline de tickets no se toca — FileOrPdfPicker no conoce ni imp
   })
 
   it('analyzeReceiptPhoto (OCR) sigue intacta: construye el body con imageBase64/mimeType, sin ninguna rama por origen de archivo', () => {
-    expect(RECEIPT_PHOTO_SRC).toContain('imageBase64, mimeType: file.type')
+    // Siempre se reduce igual (cámara, galería o archivo) antes de enviar: la foto directa de cámara pesaba tanto que la petición se caía en red.
+    expect(RECEIPT_PHOTO_SRC).toContain('imageBase64, mimeType: prepared.type')
+    expect(RECEIPT_PHOTO_SRC).toContain('compressImageFile(file, RECEIPT_MAX_DIMENSION)')
   })
 
   it('uploadReceipt (subida + conciliación + receipts) sigue intacta: comprime, sube a Storage y concilia igual que antes', () => {

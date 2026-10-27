@@ -8,7 +8,8 @@
 const MAX_DIMENSION = 1600
 const JPEG_QUALITY = 0.82
 
-export async function compressImageFile(file: File): Promise<File> {
+// maxDimension: un ticket largo y estrecho necesita más resolución que una foto normal para que se lea la letra pequeña.
+export async function compressImageFile(file: File, maxDimension: number = MAX_DIMENSION): Promise<File> {
   // Un PDF, o algo que no sea imagen, pasa tal cual — nada que
   // recomprimir. SVG tampoco: ya es texto vectorial, pequeño de por sí,
   // y recodificarlo a JPEG lo estropearía (se convertiría en mapa de
@@ -17,7 +18,7 @@ export async function compressImageFile(file: File): Promise<File> {
 
   try {
     const bitmap = await createImageBitmap(file)
-    const scale = Math.min(1, MAX_DIMENSION / Math.max(bitmap.width, bitmap.height))
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height))
     const width = Math.round(bitmap.width * scale)
     const height = Math.round(bitmap.height * scale)
 

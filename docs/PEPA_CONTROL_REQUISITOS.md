@@ -976,6 +976,42 @@ poder probarse con dos conexiones reales; (4) comprobar en iPhone y Android fís
 
 ---
 
+## Conciliación bancaria de pagos previstos: sugerencias fiables (ECO-02, 27/10/2026)
+
+**Estado: implementado y probado en local; sin migración (no cambia datos, permisos ni políticas). Se publica con el despliegue habitual. Pendiente de validación real en iPhone, sin Aprobar.**
+
+**Causa real de los falsos positivos** (ENDESA ↔ ASADOR SESE / AMAZON, FLOW GOOGLE ↔ CONSUM, «Aire acondicionado SEQURA» ↔ «Eric Segura Hepburn»), comprobada en el código (`src/domain/forecastReconciliation.ts`, antes de la corrección):
+1. Los únicos filtros duros eran: no ingreso, mismo gasto vinculado, misma divisa, cuenta del pago y ventana de ±3 días. La **identidad del comercio era solo +10 puntos opcionales** (una palabra común), nunca obligatoria.
+2. La exclusión por importe exigía además que la **categoría** fuese fuertemente distinta en ambos lados (importe ≥ 50 % y ≥ 30 € de diferencia Y categorías reales distintas); el banco clasifica casi todo como «Otros», así que casi nunca se aplicaba. Los casos de 21,99 € ↔ 12,48 € (43 %) ni siquiera llegaban a ese umbral.
+3. Cuenta (30) + fecha cercana (15-30) sumaban ≥ «medio» (35) **sin ninguna evidencia del comercio**: cualquier cargo de la misma cuenta a ±3 días era «candidato», y se enseñaba el mejor «de entre varios malos».
+4. «No es este» solo descartaba esa pareja (correcto, y persistido en `forecast_reconciliation_dismissals`, 0174) y, por (3), salía el siguiente cargo cercano.
+5. El comentario de la pantalla decía que el nivel «bajo» no se enseñaba, pero el código no lo filtraba.
+No había ningún sistema de alias de comercios (no se creó uno paralelo).
+
+**Reglas nuevas** — elegibilidad primero, ordenación después (`forecastMerchantIdentity.ts` + `scoreReconciliationCandidate`):
+- Filtros estructurales (sin cambios): cargo (no ingreso) con gasto vinculado, misma divisa, cuenta del pago si la tiene, ±3 días.
+- **Identidad comercial obligatoria** (tres estados: coincide / en conflicto / no se puede comprobar; solo «coincide» propone): referencia de contrato común, variante verificada (Telefónica ↔ Movistar), una palabra distintiva común, o la misma frase marca + producto («GOOGLE ONE»). Se normalizan mayúsculas, tildes, puntuación, boilerplate bancario («COMPRA TARJ. 5402XXXX…»), formas jurídicas (S.A., SAU…), localidades añadidas («-Madrid», «-RAFAL») y palabras de sector («energía», «seguro»). **No cuentan**: compartir solo una palabra de sector, una localidad, o solo la marca de una empresa multiproducto (Google, Amazon, Apple…), ni parecidos como «segura» ≈ «sequra».
+- **Importe según el tipo de pago**: conocido → igual o casi igual (≤ 5 % y ≤ 10 €); estimado/variable → hasta un 50 % si la identidad coincide; desconocido → solo con identidad sólida (2+ palabras, 6+ letras o contrato) **y** la cuenta prevista coincidente. La fecha y la cuenta nunca compensan ni sustituyen a la identidad ni al importe.
+- Solo entonces se **ordena** (identidad, cuenta, importe, cercanía de fecha). Las razones se enseñan como frase («Mismo comercio · mismo importe · cargo 1 día después de lo previsto»), sin porcentajes ni puntuaciones.
+- **«No es este»**: se persiste la pareja exacta (sin bloquear el movimiento para otros pagos) y se vuelve a calcular; si no queda otro candidato fiable, la pantalla lo dice («No hemos encontrado ningún otro movimiento bancario que coincida…») y el pago sigue pendiente. Nunca se ofrece otro cargo incompatible.
+- **Asociación manual** (explícita, distinta de las sugerencias): ⋯ del pago → «🔗 Vincular con un movimiento del banco»; lista los cargos libres cercanos (buscador por comercio o importe), avisa del nombre, importe, cuenta o fecha que no encajan, sin impedir vincular. Usa la misma conciliación de siempre (`match_forecast_occurrence`): el índice único de la base de datos impide asociar dos veces el mismo gasto o la misma ocurrencia.
+- Sin migraciones, sin cambios de RLS. No se tocó ningún dato: movimientos, pagos previstos, conciliaciones confirmadas, categorías, etiquetas, repartos, saldos ni carteras.
+
+**Auditoría de conciliaciones históricas** (consulta de solo lectura en producción, 27/10/2026): 13 conciliaciones confirmadas (23/09–26/10), todas coherentes en comercio e importe (diferencias de 0 a 4,2 %). Ninguna sospechosa; no se modificó nada. Las 13 siguen siendo elegibles con las reglas nuevas (prueba de regresión con los datos reales).
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| ECO-02a | No se proponen cargos de otro comercio (ENDESA ↔ ASADOR SESE/AMAZON, FLOW GOOGLE ↔ CONSUM, SEQURA ↔ Eric Segura Hepburn), ni con el mismo importe, cuenta y fecha | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts` (92), `forecastMerchantIdentity.test.ts` (16) |
+| ECO-02b | Tratamiento distinto de importe conocido, estimado y desconocido | **Implementado y probado; pendiente de validación real** | mismas pruebas (tolerancias 5 % y 10 €; 50 %; identidad sólida + cuenta) |
+| ECO-02c | «No es este»: se persiste, no aparece otro incompatible y se avisa si no hay más | **Implementado y probado; pendiente de validación real** | `forecastReconciliation.test.ts`, `forecastManualMatchSheet.test.tsx`, `forecastReconciliationDismissalsMigration.test.ts` |
+| ECO-02d | Sin duplicados: un cargo por pago, un gasto por ocurrencia (índice único de 0157) | **Probado** | motor + migración existente |
+| ECO-02e | Asociación manual explícita con avisos | **Implementado y probado; pendiente de validación real** | `forecastManualMatchSheet.test.tsx` (10) |
+| ECO-02f | Las 13 conciliaciones reales confirmadas siguen siendo elegibles; datos históricos intactos | **Verificado** | prueba de regresión con datos reales; consulta de solo lectura |
+
+**Pendiente**: validar en el iPhone que las sugerencias de «Pagos por revisar» son las esperadas y que «Vincular con un movimiento del banco» funciona. **Límite conocido**: si el banco escribe el comercio con un nombre sin ninguna palabra en común con el título del pago (p. ej. un pago titulado «IBI» y un cargo «SUMA GESTION TRIBUTARIA», sin proveedor), PEPA ya no lo propone (antes sí, por cuenta + importe + fecha) y hay que vincularlo a mano o poner el emisor en «Proveedor». Nada pasa a **Aprobado** sin confirmación expresa.
+
+---
+
 ## «Pepa te acompaña»: ampliación y Soporte técnico (PEPA-AYUDA-AMPL, 24/10/2026)
 
 Detalle técnico: [`docs/PEPA_TE_ACOMPANA_AMPLIACION.md`](PEPA_TE_ACOMPANA_AMPLIACION.md). Estado de cada pieza (implementado · probado · publicado · pendiente de autorización):

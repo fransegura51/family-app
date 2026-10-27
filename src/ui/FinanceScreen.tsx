@@ -166,6 +166,7 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
+import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
 import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
@@ -9624,6 +9625,9 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
   const [reconciliationHistoryOpen, setReconciliationHistoryOpen] = useState(false)
   const [reconcileBusyKey, setReconcileBusyKey] = useState<string | null>(null)
   const [reconcileError, setReconcileError] = useState<string | null>(null)
+  // ECO-02 — aviso informativo (no es un error) cuando «No es este» no deja ninguna otra coincidencia fiable, y asociación manual explícita.
+  const [reconcileInfo, setReconcileInfo] = useState<string | null>(null)
+  const [manualMatchFor, setManualMatchFor] = useState<ForecastOccurrence | null>(null)
   // Fase 1D-f — "Gestionar movimiento": mismas etiquetas que ya usa Movimientos (nunca un sistema
   // paralelo). `managing` es el expense abierto en el paso de gestión — independiente de la lista de
   // candidatos, porque en cuanto se concilia, esa ocurrencia deja de ser candidata (ya tiene matchedExpenseId).
@@ -9863,8 +9867,8 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     return reconciliationPairKey(c.occurrence, c.movement)
   }
 
-  async function confirmCandidate(c: ReconciliationCandidate) {
-    if (!c.movement.expenseId) return
+  async function confirmCandidate(c: ReconciliationCandidate): Promise<boolean> {
+    if (!c.movement.expenseId) return false
     const key = candidateKey(c)
     setReconcileBusyKey(key)
     setReconcileError(null)
@@ -9890,8 +9894,10 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
       if (stillPending) {
         setManaging({ expenseId: c.movement.expenseId, forecastCategoryId: c.occurrence.categoryId })
       }
+      return true
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo conciliar'))
+      return false
     } finally {
       setReconcileBusyKey(null)
     }
@@ -9904,12 +9910,33 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
     setReconcileError(null)
     try {
       await dismissForecastReconciliationCandidate(c.occurrence.forecastPaymentId, c.occurrence.occurrenceDate, c.occurrence.installmentSequenceIndex, c.movement.bankTransactionId)
+      const nextDismissed = new Set(dismissedCandidateKeys).add(key)
       setDismissedCandidateKeys((prev) => new Set(prev).add(key))
+      // ECO-02: si tras descartar no queda otro movimiento FIABLE para este pago, se dice claramente (y el pago sigue pendiente), en vez de ofrecer otro cargo cualquiera.
+      const replacement = findReconciliationCandidates(reconciliationCandidateInputs, reconciliationMovements, matchedExpenseIds, nextDismissed).some(
+        (x) =>
+          x.occurrence.forecastPaymentId === c.occurrence.forecastPaymentId &&
+          x.occurrence.occurrenceDate === c.occurrence.occurrenceDate &&
+          (x.occurrence.installmentSequenceIndex ?? 0) === (c.occurrence.installmentSequenceIndex ?? 0),
+      )
+      setReconcileInfo(
+        replacement
+          ? null
+          : `No hemos encontrado ningún otro movimiento bancario que coincida con «${c.occurrence.title}». El pago sigue pendiente de conciliar; si sabes cuál es, puedes vincularlo tú desde ⋯ → «Vincular con un movimiento del banco».`,
+      )
     } catch (err) {
       setReconcileError(errorMessage(err, 'No se pudo descartar la propuesta'))
     } finally {
       setReconcileBusyKey(null)
     }
+  }
+  // ECO-02 — asociación manual explícita: usa la MISMA conciliación de siempre (confirmCandidate → match_forecast_occurrence); el índice único de la base de datos
+  // impide asociar dos veces el mismo movimiento o la misma ocurrencia.
+  async function linkManually(o: ForecastOccurrence, movement: BankMovementForMatching) {
+    const ok = await confirmCandidate({ occurrence: o, movement, score: 0, confidence: 'medium', reasons: [] })
+    if (!ok) return // el error se enseña en la propia hoja y el pago sigue sin vincular
+    setManualMatchFor(null)
+    setReconcileInfo(null)
   }
   async function unmatchOccurrence(o: ForecastOccurrence) {
     if (!o.matchedExpenseId) return
@@ -10076,6 +10103,19 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                 >
                   Editar
                 </button>
+                {!o.matchedExpenseId && (
+                  <button
+                    type="button"
+                    className="link-button"
+                    data-help-id="finance.reconcile-manual-open"
+                    onClick={() => {
+                      setManualMatchFor(o)
+                      setOccurrenceMenuKey(null)
+                    }}
+                  >
+                    🔗 Vincular con un movimiento del banco
+                  </button>
+                )}
                 {parent.active ? (
                   <ConfirmButton label="Desactivar" onConfirm={() => setForecastPaymentActive(parent, false).then(reload)} />
                 ) : (
@@ -10204,6 +10244,32 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
               revisar. HIGH/MEDIUM se proponen para confirmar a mano — LOW nunca se enseña (demasiado
               ruido, no aporta confianza suficiente); ni siquiera "high" concilia solo (auditoría, sección
               7: sin auto-conciliación todavía). */}
+          {reconcileInfo && (
+            <p className="help-note" role="status" data-help-id="finance.reconcile-none">
+              {reconcileInfo}{' '}
+              <button type="button" className="link-button" onClick={() => setReconcileInfo(null)}>
+                Entendido
+              </button>
+            </p>
+          )}
+          {manualMatchFor && (
+            <ForecastManualMatchSheet
+              occurrence={manualMatchFor}
+              payment={reconciliationCandidateInputs.find((i) => i.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId)?.payment ?? { bankAccountId: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.bankAccountId ?? null, title: manualMatchFor.title, provider: payments.find((p) => p.id === manualMatchFor.forecastPaymentId)?.provider ?? null }}
+              movements={reconciliationMovements.filter((m) => !!m.expenseId && !matchedExpenseIds.has(m.expenseId))}
+              accountNames={new Map(accounts.flatMap((a) => (a.name ? [[a.id, a.name] as const] : [])))}
+              hasSuggestion={reconciliationCandidates.some(
+                (x) =>
+                  x.occurrence.forecastPaymentId === manualMatchFor.forecastPaymentId &&
+                  x.occurrence.occurrenceDate === manualMatchFor.occurrenceDate &&
+                  (x.occurrence.installmentSequenceIndex ?? 0) === (manualMatchFor.installmentSequenceIndex ?? 0),
+              )}
+              busy={reconcileBusyKey !== null}
+              error={reconcileError}
+              onLink={(m) => void linkManually(manualMatchFor, m)}
+              onClose={() => setManualMatchFor(null)}
+            />
+          )}
           {(reconciliationCandidates.length > 0 || reconciledRecently.length > 0 || reconciliationHistory.length > 0) && (
             <>
               <button type="button" className="link-button section-title" style={{ marginTop: 16, display: 'block' }} data-help-id="finance.reconcile-toggle" onClick={() => setReconcileOpen((v) => !v)}>
@@ -10240,7 +10306,7 @@ function PrevisionPagosTab({ categories }: { categories: BudgetCategory[] }) {
                             </p>
                           </div>
                         </div>
-                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{c.reasons.map((r) => r.label).join(' · ')}</p>
+                        <p className="muted" style={{ fontSize: 12, margin: '4px 0 8px' }}>{capitalizeFirst(c.reasons.map((r) => r.label).join(' · '))}</p>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button type="button" disabled={busy} data-help-id="finance.reconcile-confirm" onClick={() => confirmCandidate(c)}>
                             {busy ? 'Guardando…' : 'Confirmar'}
@@ -10625,6 +10691,10 @@ function ForecastDocumentImportModal({
 // 6C.2C) para la categoría, updateExpense para la etiqueta — nunca un camino paralelo ni un UPDATE
 // directo a expenses.category. category/tag_id son la única definición real de "movimiento gestionado"
 // que existe en esta base de datos (domain/pending.ts): no se inventa ningún estado nuevo.
+function capitalizeFirst(text: string): string {
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text
+}
+
 function ManageReconciledExpense({
   expenseId,
   forecastCategoryId,

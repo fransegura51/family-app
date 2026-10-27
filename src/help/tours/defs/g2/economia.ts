@@ -599,7 +599,7 @@ export const tutEconomiaRevisarConciliacion: TourDef = {
     },
     {
       id: 'tarjeta',
-      text: 'A un lado, lo Previsto; al otro, el movimiento del Banco; debajo, por qué los une (misma cuenta, mismo importe, mismo día…). Si hay dudas, dice «Puede que sea este cargo — revísalo».',
+      text: 'A un lado, lo Previsto; al otro, el movimiento del Banco; debajo, por qué los une (mismo comercio, mismo importe, cargo un día después…). Si hay dudas, dice «Puede que sea este cargo — revísalo».',
       target: 'finance.reconcile-card',
       completeOn: [],
       manualNext: true,

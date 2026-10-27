@@ -141,7 +141,8 @@ export const expEconomiaConciliacion: HelpExplainer = {
       heading: 'B) Banco con pago previsto: PEPA propone, tú confirmas',
       paragraphs: [
         'En Previsión de pagos, «🔎 N pagos por revisar» abre las propuestas. Solo se comparan cargos (no ingresos) ya convertidos en gasto, en la misma divisa, dentro de ±3 días de la fecha prevista, y de la misma cuenta si el pago tiene una asignada.',
-        'Cada candidato puntúa por misma cuenta, importe igual (o parecido, hasta un 15 % de diferencia), mismo día, una palabra en común y categoría coincidente. Si el importe y la categoría chocan a la vez, se descarta. Es una cuenta determinista: no hay IA.',
+        'Para proponer un cargo tienen que cumplirse TRES cosas a la vez: que sea el mismo comercio o beneficiario (el nombre del banco coincide con el del pago, con su número de contrato o con una variante conocida), que el importe encaje con el tipo de pago, y que la fecha y la cuenta sean compatibles. Compartir solo la cuenta o la fecha nunca basta, y una marca con muchos productos (Google, Amazon…) tampoco: tiene que coincidir también el servicio.',
+        'Importe: si el pago tiene importe conocido, el cargo debe ser igual o casi igual (hasta un 5 % y 10 €). Si es estimado (facturas variables), se admite más diferencia (hasta un 50 %) porque ya coincide el comercio. Si el importe está pendiente, solo se propone con un nombre muy claro y en la cuenta prevista. Después, entre los que cumplen, se ordenan por cuenta, importe y cercanía de fecha. Es una cuenta determinista: no hay IA.',
         'La tarjeta enseña lo Previsto y lo del Banco con los motivos. Si está muy claro dice «PEPA ha encontrado un posible cargo»; si hay dudas, «Puede que sea este cargo — revísalo».',
       ],
     },
@@ -150,7 +151,8 @@ export const expEconomiaConciliacion: HelpExplainer = {
       paragraphs: [
         '«Confirmar» une el cargo con el pago (queda «✓ Cobrado») y, si el pago previsto tiene categoría, el movimiento del banco pasa a tener esa categoría, sustituyendo la que tuviera. Si por algún motivo no se puede aplicar, se abre «Gestionar movimiento» para que decidas tú.',
         '«Desconciliar» solo quita la unión: el movimiento se queda con la categoría que tiene en ese momento, no se le devuelve la anterior.',
-        '«No es este» guarda el descarte y esa pareja no se vuelve a proponer. No hay en la pantalla un botón para deshacer un descarte.',
+        '«No es este» guarda el descarte y esa pareja no se vuelve a proponer. Si no queda ningún otro cargo que coincida de verdad, PEPA te lo dice y el pago sigue pendiente: no te va enseñando otros cargos al azar. No hay en la pantalla un botón para deshacer un descarte.',
+        'Si PEPA no encuentra el cargo (por ejemplo, el banco lo escribe con un nombre muy distinto), tú puedes vincularlo a mano: en el ⋯ del pago, «🔗 Vincular con un movimiento del banco». Si no encaja en nombre, importe, cuenta o fecha, te avisa antes, pero decides tú.',
       ],
       example:
         'Ejemplo inventado: tienes «Seguro del coche» previsto el 5 de mayo por 300,00 € en la cuenta principal. El 6 de mayo el banco cobra 300,00 € a «EJEMPLO SEGUROS S.A.» en esa cuenta. PEPA los propone (misma cuenta, mismo importe, un día de diferencia). Tú pulsas «Confirmar» y el cargo queda como cobrado con la categoría Seguros.',
@@ -159,7 +161,7 @@ export const expEconomiaConciliacion: HelpExplainer = {
   limits: [
     'En A solo une si el importe es casi idéntico: una propina o un redondeo impide la unión. Con dos compras del mismo importe en 7 días puede unir la que no era.',
     'Si el apunte ya estaba unido a otro movimiento, el cargo crea un gasto nuevo y puede quedar un duplicado que hay que revisar.',
-    'En B no se proponen ingresos ni cargos fuera de los ±3 días, y solo hay una propuesta por pago. No hay una forma de unir a mano un cargo que PEPA no propone.',
+    'En B no se proponen ingresos ni cargos fuera de los ±3 días, y solo hay una propuesta por pago. Es preferible no proponer nada a proponer un cargo que no es: si el banco escribe el comercio con un nombre muy distinto del que pusiste al pago, no lo propondrá y tendrás que vincularlo a mano.',
     'PEPA nunca confirma por su cuenta una conciliación con un pago previsto.',
   ],
   ifWrong: [

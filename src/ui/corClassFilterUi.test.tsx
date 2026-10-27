@@ -139,3 +139,82 @@ describe('Ver movimientos desde una clasificación', () => {
     expect(text).toContain('104.69 €')
   })
 })
+
+// CAUSA REAL de COR-01 (datos de producción): compras de Amazon cuyo ÚNICO «producto» es el marcador «Pendiente», que alguien clasificó como «Ropa y calzado». Esa clase
+// la heredaban TODAS las compras con marcador, aunque el gasto dijera «Electrónica y hogar» (cable 6,39 €) o no dijera nada (toallitas 23,94 €).
+describe('COR-01 · líneas del producto marcador «Pendiente»', () => {
+  const pendiente = (): Product => product('p-pend', 'Pendiente', 'Ropa y calzado')
+  const realExpense = (o: Partial<Expense> & Pick<Expense, 'id'>) => ex({ source: 'ticket_banco', ...o })
+
+  beforeEach(() => {
+    categories.push(cat({ id: 'tec', name: 'Tecnología y electrónica' }), cat({ id: 'bel', name: 'Belleza y cuidado personal' }))
+    data.products = [pendiente(), product('p-cami', 'Camiseta', 'Ropa y calzado'), product('p-cable', 'Cable Ethernet 5m', 'Electrónica y hogar')]
+    data.expenses = [
+      realExpense({ id: 'cable', amount: 6.39, category: 'Tecnología y electrónica', productClassification: 'Electrónica y hogar', notes: 'Cable Ethernet 5m' }),
+      realExpense({ id: 'toallitas', amount: 23.94, category: 'Belleza y cuidado personal', notes: 'Toallitas' }),
+      realExpense({ id: 'ropa', amount: 22.8, category: 'Compras y familia', productClassification: 'Ropa y calzado', notes: 'Disfraz' }),
+      realExpense({ id: 'reparto', amount: 47.97, category: 'Compras y familia' }), // marcador + reparto manual 40,98 + 6,99
+      realExpense({ id: 'mixta', amount: 49.98, category: 'Compras y familia', productClassification: 'Ropa y calzado' }), // marcador 24,99 + camiseta real 24,99
+      ex({ id: 'sin-ticket', amount: 10, source: 'banco', productClassification: 'Ropa y calzado' }),
+    ]
+    data.shares = new Map([['reparto', [{ className: 'Ropa y calzado', amount: 40.98 }, { className: 'Papelería y oficina', amount: 6.99 }]]])
+    data.receipts = ['cable', 'toallitas', 'ropa', 'reparto', 'mixta'].map((id) => receipt(`r-${id}`, id))
+    data.prices = [
+      price('1', 'p-pend', 'r-cable', 6.39),
+      { ...price('2', 'p-pend', 'r-toallitas', 11.97), quantity: '2' } as ProductPrice, // 2 × 11,97 = 23,94
+      price('3', 'p-pend', 'r-ropa', 22.8),
+      price('4', 'p-pend', 'r-reparto', 47.97),
+      price('5', 'p-pend', 'r-mixta', 24.99),
+      price('6', 'p-cami', 'r-mixta', 24.99),
+    ]
+  })
+  afterEach(() => {
+    categories.splice(2)
+  })
+
+  it('el cable (6,39 €, «Electrónica y hogar») y las toallitas (23,94 €) NO están en «Ropa y calzado»', async () => {
+    const f = await viewMovementsOf('Ropa y calzado')
+    expect(f.expenseIds).not.toContain('cable')
+    expect(f.expenseIds).not.toContain('toallitas')
+    expect(f.imputed?.byExpense.cable).toBeUndefined()
+  })
+
+  it('el cable sale en «Electrónica y hogar» con 6,39 € y las toallitas no se atribuyen a una clase que no han elegido', async () => {
+    const f = await viewMovementsOf('Electrónica y hogar')
+    expect(f.expenseIds).toEqual(['cable'])
+    expect(f.imputed?.byExpense.cable).toBe(6.39)
+    cleanup()
+    const sin = await viewMovementsOf('Sin clasificar')
+    expect(sin.expenseIds).toContain('toallitas')
+    expect(sin.imputed?.byExpense.toallitas).toBe(23.94)
+  })
+
+  it('la compra de 47,97 € repartida (40,98 + 6,99) sale en las dos clasificaciones con su parte, aunque su ticket tenga el marcador', async () => {
+    const ropa = await viewMovementsOf('Ropa y calzado')
+    expect(ropa.expenseIds).toContain('reparto')
+    expect(ropa.imputed?.byExpense.reparto).toBe(40.98)
+    cleanup()
+    const papeleria = await viewMovementsOf('Papelería y oficina')
+    expect(papeleria.expenseIds).toEqual(['reparto'])
+    expect(papeleria.imputed?.byExpense.reparto).toBe(6.99)
+  })
+
+  it('un ticket con marcador + línea real: la línea real manda y el resto del gasto va a la clasificación propia del gasto', async () => {
+    const f = await viewMovementsOf('Ropa y calzado')
+    expect(f.expenseIds).toContain('mixta')
+    expect(f.imputed?.byExpense.mixta).toBe(49.98) // camiseta real 24,99 + resto 24,99 clasificado «Ropa y calzado» por el propio gasto
+  })
+
+  it('un gasto de «Ropa y calzado» con marcador, y uno sin ticket, siguen en «Ropa y calzado»', async () => {
+    const f = await viewMovementsOf('Ropa y calzado')
+    expect(f.expenseIds).toEqual(expect.arrayContaining(['ropa', 'sin-ticket', 'reparto', 'mixta']))
+  })
+
+  it('la suma de lo imputado en la lista = el importe de la clasificación en la estadística; y las compras no se duplican', async () => {
+    const f = await viewMovementsOf('Ropa y calzado')
+    const sum = Math.round(Object.values(f.imputed?.byExpense ?? {}).reduce((a, b) => a + b, 0) * 100) / 100
+    expect(sum).toBe(Math.round((22.8 + 40.98 + 49.98 + 10) * 100) / 100) // ropa + reparto + mixta + sin-ticket
+    // 6,39 + 23,94 + 22,8 + 47,97 + 49,98 + 10 = 161,08 € de compras, cada una una sola vez
+    expect(document.body.textContent ?? '').toContain('161.08 €')
+  })
+})

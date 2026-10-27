@@ -10,7 +10,8 @@ const SRC = (import.meta.glob('/src/state/dateFilterPreset.ts', { query: '?raw',
 
 describe('useDateFilterPreset — arranca en "mes" y solo se actualiza si hay un favorito real', () => {
   it('el valor inicial es "mes" (mismo comportamiento de siempre antes de que existiera esta preferencia)', () => {
-    expect(SRC).toContain("useState<SpendRangePreset>('mes')")
+    // COR-04: sin filtro restaurado (`restored`) arranca en «mes», igual que siempre.
+    expect(SRC).toContain("useState<SpendRangePreset>(restored ?? 'mes')")
   })
 
   it('reutiliza getDateFilterPreferences (data/family.ts) — no reimplementa la lectura aquí', () => {

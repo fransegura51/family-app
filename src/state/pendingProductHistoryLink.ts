@@ -6,6 +6,11 @@
 export interface PendingProductHistoryLink {
   productId: string
   productName: string
+  /**
+   * COR-04 — desde una fila de producto de Estadística compras: abre directamente la FICHA de ese producto (por identificador, nunca por nombre), en el conjunto
+   * (Alimentos / Otros) desde el que se tocó, y al cerrarla vuelve a Estadística compras. Sin esto (el «+info →» de siempre) solo se filtra la lista por nombre.
+   */
+  openSheet?: { kind: 'alimentacion' | 'no_alimentos' }
 }
 
 let pending: PendingProductHistoryLink | null = null

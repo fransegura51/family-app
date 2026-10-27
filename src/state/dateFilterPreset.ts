@@ -10,9 +10,11 @@ import type { SpendRangePreset } from '@/domain/dateRanges'
 // asíncrona desde el favorito real en vez de partir siempre de 'mes' a pelo. El favorito en sí (marcarlo/
 // desmarcarlo) se administra desde Configuración → Filtros temporales (MenuSettingsScreen.tsx), nunca desde
 // aquí — FAVORITO != FILTRO ACTUAL: elegir un filtro para esta sesión nunca reescribe el favorito guardado.
-export function useDateFilterPreset(): [SpendRangePreset, (p: SpendRangePreset) => void] {
-  const [preset, setPreset] = useState<SpendRangePreset>('mes')
+// `restored` (COR-04): el filtro que la persona tenía al salir de la pantalla y vuelve a ella; si llega, manda sobre el favorito (que no se lee).
+export function useDateFilterPreset(restored?: SpendRangePreset | null): [SpendRangePreset, (p: SpendRangePreset) => void] {
+  const [preset, setPreset] = useState<SpendRangePreset>(restored ?? 'mes')
   useEffect(() => {
+    if (restored) return
     getDateFilterPreferences()
       .then(({ favorite }) => {
         if (favorite) setPreset(favorite)
@@ -23,6 +25,6 @@ export function useDateFilterPreset(): [SpendRangePreset, (p: SpendRangePreset) 
       })
     // Solo al montar — cambiar el preset después (el usuario elige otro filtro para esta sesión) nunca
     // debe volver a sobrescribirse solo con el favorito.
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   return [preset, setPreset]
 }

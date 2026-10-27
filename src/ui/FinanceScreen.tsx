@@ -215,7 +215,8 @@ import {
   type ClassificationKind,
   type MovementDraft,
 } from '@/domain/movementForm'
-import { buildFoodReceiptIds, buildProductKindSets, purchaseNature } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseNature } from '@/domain/products'
+import { saveStatsReturnContext, takeStatsReturnContext } from '@/state/statsReturnContext'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
 import { resolveProductClassSafe, type SharedClassHint } from '@/domain/productClass'
@@ -5366,13 +5367,15 @@ interface ClassifiableEntry {
   // los movimientos que en las otras estadísticas", igual que ya tenía
   // el dónut por tienda (buildStorePieSlices).
   expenseId: string
+  /** La línea es de un producto real (itemId = id de products); las compras sin desglose no lo son (COR-04). */
+  isProduct?: boolean
 }
 
 function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
-  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number }>; byExpense: Map<string, number> }>()
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number; isProduct: boolean }>; byExpense: Map<string, number> }>()
   for (const entry of entries) {
-    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number }>(), byExpense: new Map<string, number>() }
-    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0 }
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number; isProduct: boolean }>(), byExpense: new Map<string, number>() }
+    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0, isProduct: entry.isProduct === true }
     p.total += entry.amount
     group.products.set(entry.itemId, p)
     // Importe imputado a esta clasificación por cada gasto (en céntimos enteros para que la suma no arrastre decimales).
@@ -5385,7 +5388,7 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
   return [...totals.entries()]
     .map(([name, group]) => {
       const productList = [...group.products.entries()]
-        .map(([productId, p]) => ({ productId, name: p.name, total: p.total }))
+        .map(([productId, p]) => ({ productId, name: p.name, total: p.total, isProduct: p.isProduct }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
       // Solo cuentan los gastos que APORTAN importe a esta clasificación: un gasto con una línea de 0 € (o un reparto a cero) de esta clase no es «de esta clase».
@@ -7555,7 +7558,8 @@ interface FoodTypeBreakdownEntry {
   color: string
   total: number
   count: number
-  products: { productId: string; name: string; total: number }[]
+  /** `productId` es la clave de la fila; `isProduct` = es un producto REAL (id de la tabla products), no una compra sin desglose (tienda/gasto). */
+  products: { productId: string; name: string; total: number; isProduct: boolean }[]
   /** Gastos que de verdad aportan importe a esta clasificación (importe imputado > 0), en la MISMA lista que se enseña en «Ver movimientos». */
   expenseIds: string[]
   /** Lo que cada uno de esos gastos aporta a esta clasificación (no su importe completo): una compra repartida o con varios productos aporta solo su parte. */
@@ -7573,10 +7577,12 @@ function FoodTypeBreakdownList({
   types,
   expandedKey,
   onToggle,
+  onOpenProduct,
 }: {
   types: FoodTypeBreakdownEntry[]
   expandedKey: string | null
   onToggle: (key: string) => void
+  onOpenProduct?: (product: { productId: string; name: string }) => void
 }) {
   if (types.length === 0) return null
   const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
@@ -7616,15 +7622,38 @@ function FoodTypeBreakdownList({
                 {/* Zebra blanco/color de la propia clase — mismo criterio
                     que Historial de precios, para diferenciar filas sin
                     depender solo del texto. */}
-                {t.products.map((p, i) => (
-                  <div key={p.productId} className="price-row" style={{ background: i % 2 === 1 ? t.color : undefined }}>
-                    <span className="price-row-name">{p.name}</span>
-                    <span className="price-row-price">
-                      {p.total.toFixed(2)} €{' '}
-                      <span className="muted">({t.total > 0 ? ((p.total / t.total) * 100).toFixed(0) : 0}%)</span>
-                    </span>
-                  </div>
-                ))}
+                {t.products.map((p, i) => {
+                  const rowStyle = { background: i % 2 === 1 ? t.color : undefined }
+                  const content = (
+                    <>
+                      <span className="price-row-name">{p.name}</span>
+                      <span className="price-row-price">
+                        {p.total.toFixed(2)} €{' '}
+                        <span className="muted">({t.total > 0 ? ((p.total / t.total) * 100).toFixed(0) : 0}%)</span>
+                      </span>
+                    </>
+                  )
+                  // COR-04: solo las filas que SON un producto real (identificador de producto) se pueden tocar; una compra sin desglose de ticket (tienda / gasto) no lo es.
+                  if (!onOpenProduct || !p.isProduct) {
+                    return (
+                      <div key={p.productId} className="price-row" style={rowStyle}>
+                        {content}
+                      </div>
+                    )
+                  }
+                  return (
+                    <button
+                      key={p.productId}
+                      type="button"
+                      className="price-row price-row-tappable"
+                      style={{ ...rowStyle, width: '100%', border: 'none', textAlign: 'left', color: 'var(--text)', font: 'inherit', cursor: 'pointer', minHeight: 44 }}
+                      aria-label={`Abrir la ficha de ${p.name} en Historial de precios`}
+                      onClick={() => onOpenProduct({ productId: p.productId, name: p.name })}
+                    >
+                      {content}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -7832,6 +7861,7 @@ export function BudgetsTab({
   accountsMode = 'compartido',
   myMemberId = null,
   onViewMovements,
+  onOpenProduct,
 }: {
   group: string
   seedCategories: CategorySeed[]
@@ -7842,6 +7872,8 @@ export function BudgetsTab({
   // Estadística compras (group === 'alimentacion'); Presupuesto
   // Generales no lo pasa, así que sigue sin estos enlaces por ahora.
   onViewMovements?: (filter: MovementsFilter) => void
+  // COR-04: tocar un producto del desglose abre SU ficha en Compras → Historial de precios (por identificador). Solo lo pasa Compras; sin él, las filas no son tocables.
+  onOpenProduct?: (product: { productId: string; name: string; kind: FoodTypeKind }) => void
 }) {
   // Piso compartido — solo aplica a Presupuesto Generales ('generales');
   // Alimentación se sigue viendo entera por todos siempre (RLS ya lo
@@ -7852,11 +7884,13 @@ export function BudgetsTab({
   // clasificación" — ver FoodTypeBreakdownList más abajo. Uno solo,
   // porque ahora Alimentos y Otros comparten el mismo dónut (ver
   // storeDonutScope) en vez de mostrarse los dos a la vez.
-  const [expandedClassType, setExpandedClassType] = useState<string | null>(null)
+  // COR-04: al volver desde la ficha de un producto se recupera lo que la persona tenía (periodo, Alimentos/Otros, clasificación desplegada, scroll); se lee una sola vez.
+  const [returnCtx] = useState(() => (group === 'alimentacion' ? takeStatsReturnContext() : null))
+  const [expandedClassType, setExpandedClassType] = useState<string | null>(returnCtx?.expandedClassType ?? null)
   // Petición real: "falta otro [dónut por tienda] de Otros. Se podría
   // usar el mismo dónut con botón Alimentación/Otros" — luego extendido
   // también al dónut "por clasificación": un solo chip gobierna los dos.
-  const [storeDonutScope, setStoreDonutScope] = useState<FoodTypeKind>('alimentacion')
+  const [storeDonutScope, setStoreDonutScope] = useState<FoodTypeKind>(returnCtx?.scope ?? 'alimentacion')
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -7884,9 +7918,9 @@ export function BudgetsTab({
   // navegación ‹ Mes › de aquí y el propio "Fecha" de BudgetsOverview),
   // que podían quedar desincronizados. Ahora uno solo, para toda la
   // pestaña — mismo componente que ya se usaba en Resumen.
-  const [preset, setPreset] = useDateFilterPreset()
-  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
-  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [preset, setPreset] = useDateFilterPreset(returnCtx?.preset)
+  const [customFrom, setCustomFrom] = useState(returnCtx?.customFrom ?? toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(returnCtx?.customTo ?? toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   // Petición real: "cuando se anota manualmente el ingreso se refleja
   // en Movimientos y descuadra las cuentas reales... si hay cuentas
@@ -7955,6 +7989,11 @@ export function BudgetsTab({
   useEffect(() => {
     void reload()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // COR-04: al volver de la ficha de un producto, se recupera la posición de la página en cuanto hay contenido.
+  useEffect(() => {
+    if (!loading && returnCtx) window.scrollTo(0, returnCtx.scrollY)
+  }, [loading]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Un presupuesto creado o cambiado desde fuera de esta pantalla (Hablar con PEPA) llega por aviso y se vuelve a
   // cargar aquí, sin cambiar de página. Siempre la última versión de reload (no la del primer render).
@@ -8076,7 +8115,11 @@ export function BudgetsTab({
     // usa la comparativa "Comparado con el periodo anterior" de más abajo, para que nunca puedan divergir.
     if (!isComprasExpense(e, categories, receipt ?? null)) continue
     const store = canonicalStoreName(e.store, knownStores)
-    const lines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
+    // COR-01: las líneas del producto marcador «Pendiente» no son desglose real y no clasifican (ver isPlaceholderProduct): se ignoran como fuente de clase y la compra se
+    // clasifica por su propio reparto / clasificación / categoría, igual que una compra sin desglose.
+    const allLines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
+    const lines = allLines.filter((pr) => !isPlaceholderProduct(productById.get(pr.productId)))
+    const hadPlaceholderLines = lines.length < allLines.length
     let foodAmount = 0
     let nonFoodAmount = 0
     let unknownAmount = 0
@@ -8105,7 +8148,7 @@ export function BudgetsTab({
             shared: sharedHintFor(priceShared, pr.store, displayName),
           }).className
           const icon = foodTypeIconByName.get(typeName) ?? (typeName === auto.label ? auto.icon : '🍽️')
-          foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
+          foodClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id, isProduct: true })
         } else {
           itemizedNonFood += amount
           const typeName =
@@ -8117,7 +8160,7 @@ export function BudgetsTab({
               shared: sharedHintFor(priceShared, pr.store, displayName),
             }).className || SIN_CLASIFICAR.name
           const icon = noAlimentosTypeIconByName.get(typeName) ?? SIN_CLASIFICAR.icon
-          noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id })
+          noAlimentosClassEntries.push({ itemId: pr.productId, displayName, amount, type: { name: typeName, icon }, expenseId: e.id, isProduct: true })
         }
       }
       foodAmount = itemizedFood
@@ -8129,10 +8172,20 @@ export function BudgetsTab({
           // Lo que el ticket no desglosa, en un gasto pendiente, no se atribuye a Otros: no se sabe qué es.
           unknownAmount += remainder
         } else {
-          const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
-          target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
-          if (baseIsFood) foodAmount += remainder
-          else nonFoodAmount += remainder
+          // Lo no desglosado por líneas reales: si una línea «Pendiente» se ha ignorado y el gasto tiene su propia clasificación, esa parte va a ella; si no, «Sin clasificar».
+          const ownKind = hadPlaceholderLines && e.productClassification ? foodTypeKindByName.get(e.productClassification) : undefined
+          if (ownKind === 'alimentacion' && e.productClassification) {
+            foodAmount += remainder
+            foodClassEntries.push({ itemId: `${e.id}:resto`, displayName: e.store ?? 'Compra', amount: remainder, type: { name: e.productClassification, icon: foodTypeIconByName.get(e.productClassification) ?? '🍽️' }, expenseId: e.id })
+          } else if (ownKind === 'no_alimentos' && e.productClassification) {
+            nonFoodAmount += remainder
+            noAlimentosClassEntries.push({ itemId: `${e.id}:resto`, displayName: e.store ?? 'Compra', amount: remainder, type: { name: e.productClassification, icon: noAlimentosTypeIconByName.get(e.productClassification) ?? '❓' }, expenseId: e.id })
+          } else {
+            const target = baseIsFood ? foodClassEntries : noAlimentosClassEntries
+            target.push({ itemId: `sin-detalle:${e.id}`, displayName: e.store ?? 'Compra', amount: remainder, type: SIN_CLASIFICAR, expenseId: e.id })
+            if (baseIsFood) foodAmount += remainder
+            else nonFoodAmount += remainder
+          }
         }
       }
     } else if ((classShares.get(e.id)?.length ?? 0) >= 2) {
@@ -8575,6 +8628,14 @@ export function BudgetsTab({
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
             expandedKey={expandedClassType}
             onToggle={(key) => setExpandedClassType((prev) => (prev === key ? null : key))}
+            onOpenProduct={
+              onOpenProduct
+                ? (p) => {
+                    saveStatsReturnContext({ preset, customFrom, customTo, scope: storeDonutScope, expandedClassType, scrollY: window.scrollY })
+                    onOpenProduct({ ...p, kind: storeDonutScope })
+                  }
+                : undefined
+            }
           />
           {ticketDisplayReceipts.length > 0 && (
             <>

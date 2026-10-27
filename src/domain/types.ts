@@ -562,6 +562,8 @@ export interface Product {
   // Inciso Compras — Parte B: foto OPCIONAL para reconocer el producto en la tienda (bucket privado
   // product-photos, signed URL) — null = sin foto, el caso normal para la mayoría de productos.
   photoPath: string | null
+  // Producto del catálogo maestro CONFIRMADO o corregido por la familia al revisar un ticket (products.catalog_product_key, migración 0336); null = lo lee el catálogo del nombre.
+  catalogProductKey?: string | null
 }
 
 export interface ProductPrice {

@@ -263,18 +263,20 @@ const CACHE = new Map<string, ProductIdentity>()
 const CACHE_MAX = 5000
 
 /** Interpreta el texto de un artículo de ticket. `declaredBrand` es la marca que la familia ya guardó para el producto, si la hay. */
-export function identifyProduct(raw: string, declaredBrand?: string | null): ProductIdentity {
-  const key = `${raw ?? ''} ${declaredBrand ?? ''}`
+export function identifyProduct(raw: string, declaredBrand?: string | null, confirmedKey?: string | null): ProductIdentity {
+  const key = [raw ?? '', declaredBrand ?? '', confirmedKey ?? ''].join('\u0000')
   const hit = CACHE.get(key)
   if (hit) return hit
-  const out = compute(raw, declaredBrand)
+  const out = compute(raw, declaredBrand, confirmedKey)
   if (CACHE.size >= CACHE_MAX) CACHE.clear()
   CACHE.set(key, out)
   return out
 }
 
-function compute(raw: string, declaredBrand?: string | null): ProductIdentity {
+function compute(raw: string, declaredBrand?: string | null, confirmedKey?: string | null): ProductIdentity {
   build()
+  // Producto CONFIRMADO o corregido por la familia (products.catalog_product_key): manda sobre lo que adivine el catálogo.
+  const forced = confirmedKey ? BY_KEY?.get(confirmedKey) : undefined
   const original = raw ?? ''
   const size = parseProductSize(original)
   const pack = parseProductPack(original)
@@ -286,7 +288,7 @@ function compute(raw: string, declaredBrand?: string | null): ProductIdentity {
   const tokens = first.tokens
   const hint = brand ? BRAND_HINTS[brand] : undefined
   const hinted = hint ? BY_KEY?.get(hint.entry) : undefined
-  if (tokens.length === 0 && !hinted) return none(original, brand, size, pack, [], ['sin palabras de producto'])
+  if (tokens.length === 0 && !hinted && !forced) return none(original, brand, size, pack, [], ['sin palabras de producto'])
 
   // La marca fija la CLASE («FANTA NARANJA» es un refresco, no fruta): solo compiten entradas de esa clase.
   // Palabras que fijan la CLASE sin ser el producto: «gato» o «perro» en un nombre es de mascotas («LATA GATO ATUN» no es atún en lata).
@@ -308,7 +310,16 @@ function compute(raw: string, declaredBrand?: string | null): ProductIdentity {
   }
   let entry: CatalogEntry
   let aliasTokens: readonly string[] = []
-  if (hinted && (!chosen || (!hint?.weak && (chosen.ref.entry.broad || chosen.count === 1) && chosen.ref.entry !== hinted))) {
+  if (forced) {
+    entry = forced
+    top = []
+    // Las palabras del nombre que ya dicen qué producto es (sus alias y su nombre) no son diferencia; lo que sobra (un sabor, un relleno) sí.
+    const nameWords = tokenize(forced.name).tokens
+    aliasTokens = chosen?.ref.entry === forced ? chosen.matched : [...forced.aliases.flatMap((a) => a.filter((w) => tokens.includes(w))), ...nameWords.filter((w) => tokens.includes(w))]
+    confidence = 'seguro'
+    reasons.length = 0
+    reasons.push('confirmado por la familia')
+  } else if (hinted && (!chosen || (!hint?.weak && (chosen.ref.entry.broad || chosen.count === 1) && chosen.ref.entry !== hinted))) {
     entry = hinted
     top = []
     // Las palabras del nombre que ya dice la marca-producto («PATATAS» en «PATATAS LAYS») no son diferencia.
@@ -333,11 +344,11 @@ function compute(raw: string, declaredBrand?: string | null): ProductIdentity {
     confidence = 'probable'
     reasons.push('dos productos parecidos encajan por igual')
   }
-  if (chosen && top.length > 0 && chosen.count === 1 && chosen.head > 0 && confidence === 'seguro') {
+  if (!forced && chosen && top.length > 0 && chosen.count === 1 && chosen.head > 0 && confidence === 'seguro') {
     confidence = 'probable'
     reasons.push('la palabra del producto no es la primera del nombre')
   }
-  if (first.soft.length > 0 && confidence === 'seguro') {
+  if (!forced && first.soft.length > 0 && confidence === 'seguro') {
     confidence = 'probable'
     reasons.push(`abreviatura poco segura (${first.soft.join(', ')})`)
   }
@@ -374,7 +385,7 @@ function compute(raw: string, declaredBrand?: string | null): ProductIdentity {
       if (at >= 0) {
         value = left[at]
         left.splice(at, 1)
-        if (confidence === 'seguro') confidence = 'probable'
+        if (confidence === 'seguro' && !forced) confidence = 'probable'
         reasons.push('la etapa es un número suelto del nombre')
       }
     }

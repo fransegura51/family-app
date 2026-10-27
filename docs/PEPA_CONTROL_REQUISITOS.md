@@ -1280,6 +1280,23 @@ Encargo «CATÁLOGO MAESTRO Y NORMALIZACIÓN INTELIGENTE DE PRODUCTOS». **Estad
 | NORM-1k | Sin cambios en tickets, importes, banco, permisos ni duplicados; migraciones seguras | **Verificado** | Solo lectura sobre datos; migración aditiva; conciliación y Banco sin tocar |
 | NORM-1l | Ayuda al día (AYUDA-01) | **Hecho** | `exp-compras-clasificar-productos` y la ficha `com-comparar-precios` actualizadas; inventario del Centro de Administración |
 
+### NORM-2 · Normalización visible al importar el ticket (27/10/2026)
+
+Encargo «CORRECCIÓN PRIORITARIA: NORMALIZACIÓN VISIBLE AL IMPORTAR TICKETS». **Estado: implementado y probado; migración 0336 aplicada; publicado. Verificación en iPhone con tickets reales PENDIENTE. Sin Aprobar.**
+
+**Qué estaba desconectado.** El catálogo ya fijaba la CLASE (icono) de cada línea en «Productos leídos», pero el producto normalizado, la variante, el formato, la confianza y «si está listo para comparar» se calculaban en el motor y no llegaban a la pantalla; y una corrección de la familia sobre el producto no se guardaba en ningún sitio.
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| NORM-2a | Cada línea enseña lo que PEPA ha entendido (producto, variante, marca, categoría, formato, qué falta, listo para comparar) sin perder el texto original | **Implementado y probado** | `ReceiptLineReading.tsx`, `catalog/lineReading.ts` (mismo normalizador, ninguno nuevo); `receiptLineReading.test.tsx`, `lineReading.test.ts`; revisado a 375 px sin desbordamiento |
+| NORM-2b | Confirmar («Es correcto») o corregir el producto desde la misma ficha | **Implementado y probado** | Buscador del catálogo en la ficha; `identifyProduct(..., confirmedKey)` |
+| NORM-2c | Casos de la primera prueba: PATATA 5 KG, LECHE SEMI P-6, FTE MERLUZA AL HUEVO, TUBOS FRESA, CRUNCHY CHICKEN, ACEITE VIRGEN EX, QUESO GOUDA LONCHAS, MOZZARELLA FRESCA, KÉTCHUP ZERO, PAÑALES T4 | **Corregidos y probados** | `lineReading.test.ts`. Cambios mínimos: abreviaturas «fte» y «virgen ex», entradas «Pescado rebozado o empanado» y «Golosinas en tubo», alias de «crunchy chicken» en Nuggets (el catálogo NO se ha ampliado más) |
+| NORM-2d | Persistencia mínima de la identidad confirmada, reutilizando estructuras | **Implementado; migración 0336 APLICADA** | Columna opcional `products.catalog_product_key`; Compras (clase), Economía (clase) y Comparador (identidad y agrupación) la leen; solo se escribe si la familia confirma o corrige. No toca nombres, precios, tickets ni el aprendizaje compartido |
+| NORM-2e | Una sola intervención para categoría y formato; guardar sin formato; sin comparar sin datos fiables | **Implementado y probado** | El formato falta → «pendiente»; la compra se guarda igual; «Listo para comparar» solo con identidad segura y formato fiable |
+| NORM-2f | Sin reclasificación masiva ni cambios en tickets históricos | **Verificado** | Solo se escribe `catalog_product_key` de los artículos del ticket que se guarda y que la familia confirmó |
+
+**Pendiente (honesto).** (1) Probar en iPhone con un ticket real de la familia de prueba. (2) La confirmación no mejora aún el aprendizaje compartido entre familias. (3) «Resultados» y «Emparejar» no se han rediseñado, por orden expresa. Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
 **Pendiente (honesto).** (1) ~~Aplicar la migración 0334~~ hecha el 27/10/2026. (2) Ejecutar la prueba limpia con una familia real y revisar la muestra. (3) Validar en móvil. (4) ~~Confirmar el cambio de criterio de «PEPA no adivina»~~ confirmado el 27/10/2026. (5) Decidir si se quiere aprendizaje compartido de identidades de producto (hoy solo de clase). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
 ---

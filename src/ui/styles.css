@@ -8551,4 +8551,58 @@ input[type='search'] {
 .movement-row-imputed {
   font-size: 13px;
   font-weight: 600;
+
+/* «Qué ha entendido PEPA» bajo cada línea de «Productos leídos» (catálogo maestro): compacto, sin desbordar en móvil. */
+.receipt-line-reading {
+  margin-top: 4px;
+  padding-left: 36px;
+  font-size: 13px;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.receipt-line-reading-sub {
+  margin-top: 1px;
+  font-size: 12px;
+}
+.receipt-line-reading-state {
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.receipt-line-reading-state.ok {
+  color: #2f9e44;
+}
+.receipt-line-reading-state.warn {
+  color: #c77700;
+}
+.receipt-line-reading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 2px;
+}
+.receipt-line-reading-actions .link-button {
+  font-size: 12px;
+  padding: 2px 0;
+}
+.receipt-line-reading-picker {
+  margin-top: 4px;
+}
+.receipt-line-reading-picker input[type='search'] {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 16px; /* 16 px: iOS no hace zoom al enfocar */
+}
+.receipt-line-reading-hit {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
 }

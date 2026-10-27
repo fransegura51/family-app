@@ -45,7 +45,7 @@ export async function listProducts(): Promise<Product[]> {
     fetchAllRows((from, to) =>
       supabase
         .from('products')
-        .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at, photo_path')
+        .select('id, family_id, normalized_name, display_name, category, brand, non_food, class_confirmed_at, photo_path, catalog_product_key')
         .order('id')
         .range(from, to),
     ),
@@ -65,6 +65,7 @@ export async function listProducts(): Promise<Product[]> {
     classConfirmedAt: r.class_confirmed_at ?? null,
     classKind: storedClassKind(r.category, familyClasses),
     photoPath: r.photo_path ?? null,
+    catalogProductKey: r.catalog_product_key ?? null,
   }))
 }
 
@@ -289,5 +290,11 @@ export async function listProductEansSafe(): Promise<Map<string, string>> {
 
 export async function setProductEan(productId: string, ean: string | null): Promise<void> {
   const { error } = await supabase.from('products').update({ ean }).eq('id', productId)
+  if (error) throw error
+}
+
+/** Guarda (o quita, con null) el producto del catálogo maestro que la familia confirmó o corrigió al revisar un ticket (migración 0336). */
+export async function setProductCatalogKey(productId: string, productKey: string | null): Promise<void> {
+  const { error } = await supabase.from('products').update({ catalog_product_key: productKey }).eq('id', productId)
   if (error) throw error
 }

@@ -58,7 +58,7 @@ export function normalizeForGrouping(p: CmpProduct): Norm {
     .replace(/\b\d+\s?(pack|pk|ud|uds|unid\w*)\b/g, ' ')
   const nums = (stripped.match(/\b\d+\b/g) ?? []).sort()
   const text = stripped.replace(/\s+/g, ' ').trim()
-  return { p, brand: sig.brand, tokens: [...new Set(tokens)].sort(), variants: [...new Set(variants)].sort(), nums, text, cat: identifyProduct(p.displayName, p.brand) }
+  return { p, brand: sig.brand, tokens: [...new Set(tokens)].sort(), variants: [...new Set(variants)].sort(), nums, text, cat: identifyProduct(p.displayName, p.brand, p.catalogProductKey) }
 }
 
 /** Un token del ticket puede venir cortado por el límite de caracteres («CAC» por «CACAO», «EMP» por «EMPAN»): coincide si es prefijo (≥ 3 letras) del otro. */

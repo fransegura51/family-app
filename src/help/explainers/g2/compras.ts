@@ -42,7 +42,7 @@ export const expComprasLeerTicket: HelpExplainer = {
     {
       heading: 'Qué revisas tú y qué se guarda',
       paragraphs: [
-        'En «Productos leídos — revisa y corrige antes de guardar» puedes cambiar nombre, cantidad, unidad y precio de cada línea, quitar las que sobren con ✕ y tocar el símbolo de la izquierda para cambiar la clase. «Nuevo» marca los productos que PEPA no conocía. También revisas Establecimiento, Fecha, Importe total y Categoría.',
+        'En «Productos leídos — revisa y corrige antes de guardar» puedes cambiar nombre, cantidad, unidad y precio de cada línea, quitar las que sobren con ✕ y tocar el símbolo de la izquierda para cambiar la clase. «Nuevo» marca los productos que PEPA no conocía. Debajo de cada nombre, PEPA enseña lo que ha entendido (producto, categoría y formato, y qué falta para compararlo): con «Es correcto» confirmas una propuesta dudosa y con «Cambiar producto» eliges otro. Lo que confirmas o cambias se guarda con la compra y se usa igual en Compras, Economía y el comparador; si falta el formato queda pendiente, nunca se inventa. También revisas Establecimiento, Fecha, Importe total y Categoría.',
         'Nada se guarda hasta que pulsas «Guardar ticket». Entonces se guardan la foto (en un almacén privado de tu familia), el ticket, el precio de cada línea en el historial y, si hay importe, el gasto en Economía (o se une al gasto del banco que ya estuviera). Cómo se une, en otra explicación.',
       ],
       example:
@@ -75,10 +75,12 @@ export const expComprasLeerTicket: HelpExplainer = {
     'supabase/functions/_shared/ai/gateway.ts',
     'supabase/functions/mercadona-ticket-webhook/index.ts',
     'supabase/migrations/0056_purge_old_receipt_photos.sql',
+    'src/ui/ReceiptLineReading.tsx',
+    'src/domain/catalog/lineReading.ts',
   ],
   tour: 'tut-compras-subir-ticket',
   go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Compras registradas' },
-  labels: ['📷 Leer ticket', 'Guardar ticket', 'Guardar compra', '✍️ Sin ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea'],
+  labels: ['📷 Leer ticket', 'Guardar ticket', 'Guardar compra', '✍️ Sin ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea', 'Es correcto', 'Cambiar producto'],
   cardIds: ['com-ticket'],
   synonyms: ['leer ticket', 'ocr', 'foto del ticket', 'ia ticket', 'como lee el ticket', 'productos leidos', 'por que se equivoca el ticket', 'que envia a la ia', 'privacidad ticket', 'sin ticket', 'sin ia', 'compra sin ticket'],
 }

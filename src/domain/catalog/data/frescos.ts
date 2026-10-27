@@ -122,7 +122,7 @@ emb.chopped | Chopped | carne | chopped pork | k
 emb.pate | Paté | carne | pate; pate campaña; mousse pate; foie; foie gras; bloc foie | k
 ~emb.otros | Embutido | carne | embutido; embutido variado; fiambre; fiambre variado; charcuteria; lonchas | k
 # Pescado y marisco
-pes.merluza | Merluza | pes | merluza filete; merluza rodaja; merluza lomo; filete merluza; pescadilla; pescadilla filete | k | | empanado rebozado congelado
+pes.merluza | Merluza | pes | merluza filete; merluza rodaja; merluza lomo; filete merluza; pescadilla; pescadilla filete | k | | empanado rebozado congelado huevo
 pes.salmon | Salmón | pes | salmon filete; salmon lomo; salmon trozo; filete salmon; salmon noruego; lomo salmon | k | | ahumado lata
 pes.salmon.ahumado | Salmón ahumado | pes | salmon ahumado; salmon ahumado lonchas | k
 pes.atun.fresco | Atún fresco | pes | atun fresco; atun filete; atun lomo; atun rodaja; bonito fresco; bonito del norte | k | | lata aceite natural conserva

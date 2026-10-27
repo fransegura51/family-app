@@ -36,6 +36,8 @@ export interface ProductClassProduct {
   category: string | null
   classConfirmedAt: string | null
   nonFood: boolean
+  /** Producto del catálogo maestro confirmado o corregido por la familia (products.catalog_product_key). */
+  catalogProductKey?: string | null
 }
 
 /** Resultado del aprendizaje compartido para el (tienda, texto) de ESTE contexto; undefined/null = no consultado o no disponible. */
@@ -59,6 +61,8 @@ export interface ResolveProductClassInput {
   kindIsDefault?: boolean
   familyClasses: readonly FamilyClassRef[]
   shared?: SharedClassHint | null
+  /** Producto del catálogo maestro que la familia confirmó o eligió al revisar un ticket (aún sin guardar); si falta se usa el del producto guardado. */
+  catalogProductKey?: string | null
   /** "Automático": ignora la clase guardada (manual y legacy) y devuelve lo que resolvería sin ella. */
   ignoreStored?: boolean
 }
@@ -105,7 +109,7 @@ const RULE_KEY_TO_FOOD_TYPE_KEY: Record<string, string | null> = {
  */
 function resolveFromCatalog(input: ResolveProductClassInput, sharedOutcome: SharedOutcome): ResolvedProductClass | null {
   if (!input.name?.trim()) return null
-  const id = identifyProduct(input.name)
+  const id = identifyProduct(input.name, null, input.catalogProductKey ?? input.product?.catalogProductKey)
   if (!id.entry || id.confidence === 'dudoso' || !id.classKey) return null
   const cls = catalogClass(id.classKey)
   if (!cls) return null

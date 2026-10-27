@@ -20,6 +20,8 @@ export interface CmpProduct {
   brand?: string | null
   /** Clave CAT-1 de la clase (food.lacteos_huevos...) si se conoce: solo sirve para descartar. */
   classKey?: string | null
+  /** Producto del catálogo maestro CONFIRMADO o corregido por la familia (products.catalog_product_key); manda sobre lo que lea el catálogo del nombre. */
+  catalogProductKey?: string | null
 }
 
 export interface CmpPrice {
@@ -76,7 +78,7 @@ export function relationBetween(a: CmpProduct, b: CmpProduct, ctx: RelationConte
     return { relation, source: 'family', automatic: true, reasons: ['así lo habéis indicado en vuestra familia'] }
   }
 
-  const inferred = compareProducts({ name: a.displayName, brand: a.brand }, { name: b.displayName, brand: b.brand }, { a: a.classKey, b: b.classKey })
+  const inferred = compareProducts({ name: a.displayName, brand: a.brand, catalogProductKey: a.catalogProductKey }, { name: b.displayName, brand: b.brand, catalogProductKey: b.catalogProductKey }, { a: a.classKey, b: b.classKey })
 
   // 1b. Mismo producto común (lo agrupó la familia): comparables, salvo que el nombre ya los dé por idénticos.
   const commonA = ctx.commonOf?.get(a.id)

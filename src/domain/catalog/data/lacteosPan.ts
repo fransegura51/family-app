@@ -98,7 +98,8 @@ snk.chocolatina | Chocolatinas | snk | chocolatina | u
 snk.caramelo | Caramelos | snk | caramelo | u
 snk.piruleta | Piruletas | snk | piruleta | u
 snk.chicle | Chicles | snk | chicle | u
-snk.gominola | Gominolas | snk | gominola; golosina; chuche | k
+snk.gominola | Gominolas y golosinas | snk | gominola; golosina; chuche | k
+snk.tubos | Golosinas en tubo | snk | tubo | k
 snk.regaliz | Regaliz | snk | | k
 snk.turron | Turrón | snk | | k
 snk.polvoron | Polvorones | snk | polvoron; mantecado | k

@@ -183,11 +183,13 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setPriceLinePack, setProductEan, setProductNonFood } from '@/data/products'
+import { listAllProductPrices, listProducts, setPriceLinePack, setProductCatalogKey, setProductEan, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
 import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
 import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
+import { ReceiptLineReading } from '@/ui/ReceiptLineReading'
+import { readLine } from '@/domain/catalog/lineReading'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
 import { computePeriodFinancials, isRealIncome, isRealSpending } from '@/domain/financeCompute'
@@ -6453,6 +6455,8 @@ interface DraftLine {
   pack?: PackFormat | null
   // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
   ean?: string
+  // Producto del catálogo maestro que la familia confirmó o corrigió en esta revisión (se guarda en el producto al guardar el ticket).
+  catalogProductKey?: string
 }
 
 type OcrStatus = 'idle' | 'reading' | 'done' | 'error'
@@ -6517,6 +6521,7 @@ function resolveDraftLineClass(
       kindIsDefault: existing == null || (existing.classKind == null && !existing.nonFood),
       familyClasses: [...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos],
       shared: line.name.trim() ? shared : null,
+      catalogProductKey: line.catalogProductKey ?? null,
     })
     // Sin nombre todavía no hay nada que adivinar (igual que antes).
     classification = existing || line.name.trim() ? resolved.className : ''
@@ -6901,6 +6906,8 @@ function ReceiptForm({
           const explicitClass = line.classOverride?.classification || null
           await Promise.all([
             ...(line.classOverride ? [setProductFoodType(productId, explicitClass, line.classOverride.kind)] : []),
+            // El producto del catálogo que la familia confirmó o corrigió: se guarda para que Compras, Economía y el Comparador usen la misma identidad.
+            ...(line.catalogProductKey ? [setProductCatalogKey(productId, line.catalogProductKey)] : []),
             ...(resolved.kindSource === 'shared' || (resolved.kindSource === 'override' && !explicitClass)
               ? [setProductNonFood(productId, resolved.kind === 'no_alimentos')]
               : []),
@@ -7224,7 +7231,7 @@ function ReceiptForm({
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
             <p className="muted" style={{ flex: 1, margin: 0 }}>
               {ocrStatus === 'done' || mode === 'edit' ? 'Productos leídos — revisa y corrige antes de guardar.' : 'Productos del ticket — añade los que quieras antes de guardar.'} El símbolo de la izquierda es la
-              clasificación del producto (toca para cambiarla); "Nuevo" marca los que no reconoce de antes, para
+              clasificación del producto (toca para cambiarla); debajo de cada nombre, PEPA enseña lo que ha entendido (producto, categoría y formato) y puedes confirmarlo o cambiarlo ahí mismo; "Nuevo" marca los que no reconoce de antes, para
               que repases si la ha adivinado bien. La cantidad es cuántas unidades se compraron, o el peso en
               kg si se vendió por peso (fruta, verdura, carne al corte...); el precio es siempre por unidad —o
               por kg cuando la unidad es "kg"—, nunca el importe total de la línea, que se ve aparte.
@@ -7258,7 +7265,7 @@ function ReceiptForm({
                   <input
                     type="text"
                     value={line.name}
-                    onChange={(e) => updateLine(i, { name: e.target.value, classOverride: undefined })}
+                    onChange={(e) => updateLine(i, { name: e.target.value, classOverride: undefined, catalogProductKey: undefined })}
                     placeholder="Producto"
                     data-help-id="shopping.receipt-line-name"
                   />
@@ -7309,6 +7316,25 @@ function ReceiptForm({
                     </span>
                   )}
                 </div>
+                {(() => {
+                  const existingProduct = productByNormalizedName.get(normalizeProductName(line.name))
+                  const lineHistory = existingProduct ? allPrices.filter((p) => p.productId === existingProduct.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
+                  const linePack = resolveLinePack(line, lineHistory)
+                  const reading = readLine({
+                    name: line.name,
+                    brand: existingProduct?.brand ?? null,
+                    catalogProductKey: line.catalogProductKey ?? existingProduct?.catalogProductKey ?? null,
+                    effectivePack: linePack.pack,
+                    soldByWeight: linePack.status.kind === 'peso',
+                  })
+                  return (
+                    <ReceiptLineReading
+                      reading={reading}
+                      classLabel={resolved.classification}
+                      onChoose={(key) => updateLine(i, key === reading.entryKey ? { catalogProductKey: key } : { catalogProductKey: key, classOverride: undefined })}
+                    />
+                  )
+                })()}
                 <LineFormatControl
                   line={line}
                   history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}

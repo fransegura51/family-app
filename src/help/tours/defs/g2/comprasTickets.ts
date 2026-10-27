@@ -196,6 +196,14 @@ export const tutComprasRevisarTicket: TourDef = {
       optional: true,
     },
     {
+      id: 'entendido',
+      text: 'Debajo de cada nombre, PEPA enseña lo que ha entendido: el producto, su categoría y el formato, y si está listo para compararse. Con «Es correcto» confirmas una propuesta dudosa y con «Cambiar producto» eliges otro; se guarda con la compra. Si falta el formato, sale como pendiente: nunca se inventa.',
+      target: 'shopping.receipt-reading',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'cuadre',
       text: 'PEPA compara la suma de las líneas con el importe total y avisa si cuadra, falta o sobra. Puedes guardar igualmente. Las líneas sin precio válido no se guardan; las de importe negativo (descuentos) tampoco: van aparte.',
       target: 'shopping.receipt-lines-summary',

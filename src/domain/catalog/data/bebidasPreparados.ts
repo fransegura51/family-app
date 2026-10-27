@@ -50,8 +50,9 @@ pre.canelon | Canelones preparados | pre | canelon | u | | placa
 pre.croqueta | Croquetas | pre | croqueta | u
 pre.empanadilla | Empanadillas | pre | empanadilla | u
 pre.empanada | Empanada | pre | | u
-pre.nugget | Nuggets | pre | nugget | u
+pre.nugget | Nuggets y pollo crujiente | pre | nugget; crunchy chicken; chicken crunchy; crispy chicken; pollo crujiente; pollo crunchy; tiras pollo crujiente | u
 pre.sanjacobo | San Jacobos | pre | san jacobo; sanjacobo; cordon bleu | u
+pre.pescado.rebozado | Pescado rebozado o empanado | pre | merluza al huevo; merluza huevo; filete merluza huevo; merluza empanada; merluza rebozada; pescado empanado; pescado rebozado; varitas merluza; palitos merluza | u
 pre.escalope | Escalopes y filetes empanados | pre | escalope; filete empanado; milanesa; flamenquin | u
 pre.quesadilla | Quesadillas | pre | quesadilla | u
 pre.fajita | Fajitas y tacos | pre | fajita; burrito; enchilada | u

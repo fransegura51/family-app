@@ -124,8 +124,8 @@ export interface ClassHint {
 }
 
 export function compareProducts(
-  a: { name: string; brand?: string | null },
-  b: { name: string; brand?: string | null },
+  a: { name: string; brand?: string | null; catalogProductKey?: string | null },
+  b: { name: string; brand?: string | null; catalogProductKey?: string | null },
   classes: ClassHint = {},
 ): RelationVerdict {
   const sa = productSignature(a.name, a.brand)
@@ -136,7 +136,7 @@ export function compareProducts(
 
   // CATÁLOGO MAESTRO: si ambos artículos se identifican, el catálogo manda en lo que NO son el mismo producto (talla 3 ≠ talla 4, leche entera ≠ semidesnatada,
   // patata fresca ≠ patata frita) y en lo que SÍ lo es aunque el ticket lo escriba distinto («O.V.E.»). Si solo es una sugerencia, nunca sube la relación.
-  const catalog = compareIdentities(identifyProduct(a.name, a.brand), identifyProduct(b.name, b.brand))
+  const catalog = compareIdentities(identifyProduct(a.name, a.brand, a.catalogProductKey), identifyProduct(b.name, b.brand, b.catalogProductKey))
   if (catalog) {
     if (catalog.relation === 'different') return { relation: 'different', reasons: catalog.reasons }
     if (catalog.relation === 'identical' || catalog.relation === 'equivalent') return catalog

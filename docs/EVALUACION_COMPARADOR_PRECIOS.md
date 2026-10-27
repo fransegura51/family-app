@@ -63,3 +63,12 @@ La evaluación anterior concluía que el cuello de botella era **reconocer que d
 * Los precios públicos de los modelos Flash-Lite varían según la versión y las fuentes consultadas no coinciden (de 0,10 $ a 0,30 $ por millón de tokens de entrada y de 0,40 $ a 2,50 $ por millón de salida; hay que confirmarlo en la página oficial de precios de Google antes de fiarse). Con el precio más alto citado, una lectura costaría **alrededor de 0,0013 $ (≈ 0,1 céntimo)**; con el más bajo, **≈ 0,0004 $**. El máximo diario por familia (40 lecturas) quedaría por debajo de **0,06 $**.
 * Hoy la IA corre en el nivel gratuito de Google AI Studio, así que el coste directo sería cero mientras no se supere su límite.
 * Para gastar lo mínimo: las fotos se reducen en el móvil, solo se llama cuando la persona pulsa «📷 Fotografiar envase», un formato ya confirmado se reutiliza en las compras siguientes (no se vuelve a preguntar) y el EAN, cuando se lee, se guarda aparte como ayuda. **No se guardan las fotos.**
+
+## Agrupación automática sobre el historial real (27/10/2026)
+
+Motor `src/domain/autoGrouping.ts` aplicado a los 403 artículos con compras de la familia principal (ejecución real, no estimación):
+
+- **12 productos comunes propuestos con 24 artículos**, todos «pendientes de revisar»: 5 juntan tiendas distintas (banderilla dulce, batido de cacao, limón, mini empanadillas de pisto, picos campero) y 7 son el mismo producto en otro tamaño dentro de Mercadona (burger, guacamole, naranja zero, papel higiénico, patata, tostada 0,0, refresco Coca-Cola de Hiperber).
+- **Comparaciones útiles al instante: 3** (burger 500 g/1 kg, guacamole 200/500 g, patata 3/5 kg: el nombre ya trae el tamaño, son provisionales hasta confirmar). Las otras 9 necesitan el formato (cuánto contiene cada envase) para compararse por litro o kilo.
+- Quedan **pendientes de emparejar ≈ 375 artículos**: el motor no agrupa por «tipo de producto» (cervezas de distintas marcas, croissants de distinto relleno…) porque eso ya son decisiones de la familia, no coincidencias fiables; siguen saliendo en «Emparejar» con su sugerencia.
+- Idempotente: una segunda pasada sobre los datos ya agrupados propone 0 grupos nuevos. Huellas de `product_prices`, `products` y `receipts` idénticas antes y después.

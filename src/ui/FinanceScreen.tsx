@@ -185,7 +185,7 @@ import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ti
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
 import { listAllProductPrices, listProducts, setPriceLinePack, setProductEan, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
-import { autoAssignToCommons } from '@/data/commonProducts'
+import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
 import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
@@ -6591,6 +6591,7 @@ function ReceiptForm({
   // resolveDraftLineClass.
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const [allPrices, setAllPrices] = useState<ProductPrice[]>([])
+  const [commonOf, setCommonOf] = useState<ReadonlyMap<string, string>>(new Map())
   const [foodTypesByKind, setFoodTypesByKind] = useState<Record<FoodTypeKind, FamilyFoodType[]>>({
     alimentacion: [],
     no_alimentos: [],
@@ -6712,6 +6713,7 @@ function ReceiptForm({
   useEffect(() => {
     // Los precios anteriores sirven para recordar el formato del envase y saber si el producto ya se compró en otra tienda (opcional: si falla, el formulario sigue igual).
     listAllProductPrices().then(setAllPrices).catch(() => {})
+    listCommonProductsData().then((d) => setCommonOf(new Map(d.members.map((m) => [m.productId, m.commonId])))).catch(() => {})
     Promise.all([listProducts(), listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
       .then(([products, foodKinds, noFoodKinds]) => {
         setAllProducts(products)
@@ -7252,6 +7254,7 @@ function ReceiptForm({
               products={allProducts}
               prices={allPrices}
               productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
+              commonOf={commonOf}
               onPack={(i, pack) => updateLine(i, { pack })}
               onReading={(i, reading) => {
                 const ean = eanHint(reading)

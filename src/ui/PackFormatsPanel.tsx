@@ -253,9 +253,11 @@ interface Props {
   onFixPast?: (priceId: string, pack: PackFormat) => Promise<void> | void
   onReading?: (index: number, reading: PackPhotoReading) => void
   analyze?: (files: File[]) => Promise<PackPhotoReading>
+  /** Producto común de cada artículo agrupado: si el artículo está en un grupo con formatos por completar, se pregunta aunque el grupo sea de la misma tienda. */
+  commonOf?: ReadonlyMap<string, string>
 }
 
-export function PackFormatsPanel({ lines, store, products, prices, productIdFor, onPack, onFixPast, onReading, analyze }: Props) {
+export function PackFormatsPanel({ lines, store, products, prices, productIdFor, onPack, onFixPast, onReading, analyze, commonOf }: Props) {
   const [open, setOpen] = useState(false)
   const [all, setAll] = useState(false)
   const [editing, setEditing] = useState<number | null>(null)
@@ -282,17 +284,18 @@ export function PackFormatsPanel({ lines, store, products, prices, productIdFor,
           const resolved = resolveLinePack(line, pid ? (historyByProduct.get(pid) ?? []) : [])
           if (resolved.status.kind === 'peso') return null
           const target = pid ? (cmpProducts.find((p) => p.id === pid) ?? null) : null
-          const others = otherStorePrices(target, store, cmpProducts, cmpPrices)
-          return { line, index, ...resolved, others }
+          const others = otherStorePrices(target, store, cmpProducts, cmpPrices, { commonOf })
+          const inGroup = !!pid && !!commonOf?.has(pid)
+          return { line, index, ...resolved, others, inGroup }
         })
         .filter((r): r is NonNullable<typeof r> => r !== null),
-    [lines, store, productIdFor, historyByProduct, cmpProducts, cmpPrices],
+    [lines, store, productIdFor, historyByProduct, cmpProducts, cmpPrices, commonOf],
   )
   if (rows.length === 0) return null
 
   const missing = rows.filter((r) => r.pack == null).length
   // Lo que más sirve para comparar: productos que ya se compraron en otra tienda y siguen sin formato.
-  const ask = rows.filter((r) => needsAnswer(r.status) && r.line.pack === undefined && r.others.length > 0)
+  const ask = rows.filter((r) => needsAnswer(r.status) && r.line.pack === undefined && (r.others.length > 0 || r.inGroup))
   const recognized = rows.filter((r) => (r.status.kind === 'nombre' || r.status.kind === 'recordado') && r.line.pack === undefined)
 
   function renderEditor(r: (typeof rows)[number]) {

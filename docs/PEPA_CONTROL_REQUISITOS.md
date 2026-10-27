@@ -960,6 +960,32 @@ Decisiones de diseño (de «Emparejar» frente a la ficha): una cola priorizada 
 
 **Pendiente**: validar en iPhone y Android; probar la lectura de envases con fotos reales y el proveedor real de IA con una sesión de usuario, y medir su coste real; agrupar los artículos (unos 24 productos comunes y ≈ 100 artículos agrupables según la evaluación) y completar formatos. Nada pasa a Aprobado sin confirmación expresa.
 
+## Retoques del comparador tras la primera validación real (COMP-4, 27/10/2026)
+
+Encargo del usuario (27/10/2026, tras probar en iPhone: «el emparejamiento manual funciona, hemos agrupado tres artículos bajo Leche semidesnatada»). **Migración 0333 APLICADA el 27/10/2026**
+(`supabase/migrations/0333_common_products_pepa_review.sql`; reversión en `supabase/rollbacks/`): columna `status` en `common_products` (los grupos de la familia quedan `confirmed`), valor `pepa` en
+`source` y tabla `common_product_auto_rejects`. Antes y después: huellas de `product_prices`, `products` y `receipts` idénticas; el grupo «Leche semidesnatada» (3 artículos) intacto.
+
+| ID | Descripción | Estado | Evidencia |
+|---|---|---|---|
+| COMP-4a | Agrupación automática inicial: PEPA identifica artículos que son el mismo producto (otra marca, otro tamaño, nombre cortado por el ticket) sin depender del EAN, sin mezclar variantes ni números distintos, sin tocar grupos confirmados ni compras; idempotente | **Implementado y probado; ejecutado sobre el historial de la familia** (12 grupos, 24 artículos, todos «pendientes de revisar») | `src/domain/autoGrouping.ts` + `autoGrouping.test.ts` (21); `runAutoGrouping` en `src/data/commonProducts.ts`; segunda pasada sobre los datos reales: 0 grupos nuevos |
+| COMP-4b | Tres estados visibles: confirmados por la familia / agrupados por PEPA pendientes de revisar / pendientes de emparejar; revisar, confirmar, corregir (nombre, separar), descartar; lo separado o descartado no se vuelve a proponer; lo parecido a un grupo confirmado se ofrece aparte («Para tus grupos») y lo añade la persona | **Implementado y probado** | `ReviewView` («Revisar PEPA») y `PairingView` en `CompareScreen.tsx`; `compareReview.test.tsx` (12); aislamiento y RLS probados en transacción revertida (0333) |
+| COMP-4c | Agrupaciones pendientes = comparación provisional (no definitiva) | **Implementado y probado** | Resultados marca «pendiente de revisar» y «(provisional)» |
+| COMP-4d | Nuevas compras: reconocer el producto común y aprovechar los grupos; lo dudoso queda como sugerencia | **Implementado y probado** | `autoAssignToCommons` (idénticos a un artículo agrupado) + `runAutoGrouping` al guardar una compra y al abrir Comparar precios |
+| COMP-4e | Formatos poco a poco: por grupo, qué artículos tienen formato y cuáles faltan; confirmar el propuesto, escribirlo, fotografiar el envase o dejarlo; se ofrece discretamente al volver a comprar el artículo; sin bloquear el ticket; sin inventar formatos históricos | **Implementado y probado** | `memberFormats`, `GroupFormats`; `PackFormatsPanel` recibe `commonOf` |
+| COMP-4f | Contraste de los buscadores (selector «¿Con qué se compara?» y Ayuda) | **Corregido; pendiente de ver en iPhone/Android** | `styles.css`, `help.css` (texto oscuro explícito en tarjetas-botón y campos de búsqueda) |
+| COMP-4g | Orden de Compras: Inicio, Lista, Compras registradas, Historial de precios, Comparar precios, Estadística compras (menú y tarjetas de Inicio); los menús guardados con el orden anterior se actualizan, los personalizados no | **Implementado y probado** | `comprasMenu.ts`, `ShoppingScreen.tsx` |
+| COMP-4h | Precio de packs: precio del paquete ≠ precio por unidad; sin contenido conocido no se declara «la más económica» (ni con una sola presentación) | **Implementado y probado** | `commonResult.reliable`; caso «LECHE SEMI P-6» abajo |
+| COMP-4i | Formulario de formato con etiquetas visibles («N.º de envases», «Cantidad por envase», «Unidad de medida») | **Implementado y probado** | `PackEditor` |
+| COMP-4j | «Fotografiar envase» usa el mismo selector de tickets (cámara, galería, archivos), hasta 3 fotos por lectura | **Implementado y probado** | `FileSourceSheet` compartido; no se creó otro selector |
+
+**LECHE SEMI P-6 (Mercadona)**: la compra se guardó con precio 10,74 € y cantidad 1 (= 6 bricks × 1,79 €; el mismo producto suelto, «LECHE SEMI DESNATADA», costó 1,79 €). Los 1,79 €/ud son
+10,74 ÷ 6 (el «P-6» del nombre) y el paquete es 10,74 €: no se multiplica dos veces. Lo que no se sabe es el contenido de cada brick (el nombre solo da el número de unidades), así que no se
+puede dar un precio por litro ni decir «la más económica» hasta confirmar 6 × 1 l. No se ha modificado ningún precio histórico.
+
+**Pendiente**: ver el contraste y el nuevo selector de fotos en iPhone y Android; probar «Fotografiar envase» con la IA real (de día, con envases); revisar los 12 grupos propuestos; completar formatos
+(sin ellos solo se comparan por litro/kilo los artículos cuyo nombre trae el tamaño). Nada pasa a **Aprobado** sin confirmación expresa del usuario.
+
 ## Corregir o anular puntos concedidos por error (PEPA-PUNTOS-CORR)
 
 Encargo del usuario (2026-10-23, tras probar Mi Camino en PEPA con los usuarios reales): «poder corregir o eliminar puntos

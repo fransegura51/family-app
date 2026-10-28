@@ -610,7 +610,7 @@ export const FEATURE_INVENTORY: FeatureEntry[] = [
     verification: 'probada',
     verificationNote: 'Pruebas de dominio y de interfaz (jsdom) con el servidor simulado: contadores, listas compactas, filtros, detalle, actualización tras aprobar/rechazar, error de recarga y editor del menú. No se ha visto en un iPhone real ni se han aplicado las migraciones.',
     reviewed: '2026-10-29',
-    evidence: ['src/ui/community/admin/editorial/EditorialCenter.tsx', 'src/ui/community/admin/editorial/EditorialRegistry.tsx', 'src/ui/community/admin/editorial/CenterList.tsx', 'src/domain/communityEditorialCenter.ts', 'src/ui/community/admin/MenuEditor.tsx', 'src/ui/community/admin/MenuPreview.tsx', 'src/domain/communityMenuEdit.ts', 'supabase/pending-migrations/0344_community_poll_reschedule.sql', 'supabase/pending-migrations/0345_realtime_community_official_items.sql'],
+    evidence: ['src/ui/community/admin/editorial/EditorialCenter.tsx', 'src/ui/community/admin/editorial/EditorialRegistry.tsx', 'src/ui/community/admin/editorial/CenterList.tsx', 'src/domain/communityEditorialCenter.ts', 'src/ui/community/admin/MenuEditor.tsx', 'src/ui/community/admin/MenuPreview.tsx', 'src/domain/communityMenuEdit.ts', 'supabase/pending-migrations/0345_community_poll_reschedule.sql', 'supabase/pending-migrations/0346_realtime_community_official_items.sql'],
     tests: ['src/ui/community/communityEditorialCenterUi.test.tsx', 'src/domain/communityEditorialCenter.test.ts', 'src/ui/community/communityMenuEditorUi.test.tsx', 'src/domain/communityMenuEdit.test.ts'],
     help: { module: 'comunidad', terms: ['centro editorial', 'editar el menu semanal'] },
   },

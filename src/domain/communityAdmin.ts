@@ -1221,6 +1221,14 @@ export function menuRetryText(result: unknown): { ok: boolean; text: string } {
   return { ok: false, text: `Sigue sin poder publicarse (intento ${num(r.attempts, 1)}). ${str(r.error)}`.trim() }
 }
 
+export function pollRescheduleText(result: unknown): string {
+  const r = asRec(result)
+  const opens = toDate(r.opens_at ?? r.opensAt)
+  const closes = toDate(r.closes_at ?? r.closesAt)
+  if (opens && closes) return `Encuesta reprogramada: abre el ${formatMadrid(opens, 'full')} y cierra el ${formatMadrid(closes, 'full')} (hora peninsular). El contenido no ha cambiado.`
+  return 'Encuesta reprogramada. El contenido no ha cambiado.'
+}
+
 export function menuRescheduleText(result: unknown): string {
   const r = asRec(result)
   const at = toDate(r.publishAt)

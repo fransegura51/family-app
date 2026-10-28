@@ -11,6 +11,7 @@ import {
 } from '@/domain/communityEditorialCenter'
 import type { EditorialItemRow } from '@/domain/communityEditorial'
 import { HelpDestMark } from '@/help/ui/HelpDest'
+import { ConfirmDiscardDialog } from '@/ui/community/ConfirmDiscardDialog'
 import { ActionNotice, AdminError, AdminLoading, InfoBox } from '@/ui/community/admin/AdminShared'
 import { EditorialPanel } from '@/ui/community/admin/EditorialPanel'
 import { MenuCard } from '@/ui/community/admin/MenusSection'
@@ -56,6 +57,25 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
   const scrollBefore = useRef(0)
   const detailRef = useRef<HTMLDivElement | null>(null)
   const noticeRef = useRef<HTMLDivElement | null>(null)
+  // Cambios sin guardar en el editor del menú: antes de salir (otra sección, volver a la lista o cerrar la pestaña) se pregunta. Nada se descarta sin que la persona lo confirme.
+  const dirty = useRef(false)
+  const [leaving, setLeaving] = useState<(() => void) | null>(null)
+  const onDirtyChange = useCallback((d: boolean) => {
+    dirty.current = d
+  }, [])
+  const guarded = useCallback((fn: () => void) => {
+    if (dirty.current) setLeaving(() => fn)
+    else fn()
+  }, [])
+  useEffect(() => {
+    const warn = (e: BeforeUnloadEvent) => {
+      if (!dirty.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [])
 
   const go = useCallback(
     (next: CenterSectionId) => {
@@ -75,9 +95,10 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
     setVisited((v) => (v.includes(section) ? v : [...v, section]))
   }, [section])
   // Mientras hay un detalle abierto (quizá con un formulario) no se recarga sola la pantalla; al cerrarlo se recarga.
+  const setPaused = reg.setPaused
   useEffect(() => {
-    reg.setPaused(openId !== null)
-  }, [openId, reg])
+    setPaused(openId !== null)
+  }, [openId, setPaused])
   useEffect(() => {
     if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' })
   }, [notice])
@@ -92,6 +113,7 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
     setOpenId(id)
   }, [])
   const close = useCallback(() => {
+    dirty.current = false
     setOpenId(null)
     void reg.refresh()
     // Se vuelve a donde estaba la persona en la lista.
@@ -100,6 +122,15 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
   useEffect(() => {
     if (openId) detailRef.current?.scrollIntoView?.({ block: 'start' })
   }, [openId])
+  // Si lo que se acaba de hacer saca el elemento de las listas cargadas (se rechazó o se publicó), se piden esas listas para seguir enseñando su estado real en el detalle.
+  const ensure = reg.ensure
+  const known = openId !== null && reg.data !== null && reg.byId.has(openId)
+  useEffect(() => {
+    if (openId && reg.data && !known) {
+      ensure('rejected')
+      ensure('published')
+    }
+  }, [openId, reg.data, known, ensure])
 
   // «Revisar» del programa semanal y las tarjetas del Resumen abren ESE elemento en su gestor.
   const review = (item: EditorialItemRow) => {
@@ -174,10 +205,13 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
             type="button"
             className={`cadm-chip-button${section === s.id ? ' active' : ''}`}
             aria-current={section === s.id ? 'page' : undefined}
-            onClick={() => {
-              setOpenId(null)
-              go(s.id)
-            }}
+            onClick={() =>
+              guarded(() => {
+                dirty.current = false
+                setOpenId(null)
+                go(s.id)
+              })
+            }
           >
             <span aria-hidden="true">{s.icon} </span>
             {s.label}
@@ -199,14 +233,28 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
       {reg.loading && !reg.data && <AdminLoading label="Cargando el Centro Editorial…" />}
       {!reg.loading && !reg.data && reg.error && <AdminError message={reg.error} onRetry={() => void reg.refresh()} />}
 
+      {leaving && (
+        <ConfirmDiscardDialog
+          title="Tienes cambios sin guardar"
+          message="Si sales ahora se perderán los cambios del menú que no hayas guardado. Esto no se puede deshacer."
+          confirmLabel="Salir sin guardar"
+          cancelLabel="Seguir editando"
+          onCancel={() => setLeaving(null)}
+          onConfirm={() => {
+            const run = leaving
+            setLeaving(null)
+            run()
+          }}
+        />
+      )}
       {reg.data && (
         <>
           {openId && (
             <div ref={detailRef} className="cadm-detail" data-help-id="comunidad.centro-detalle">
-              <button type="button" className="cadm-btn cadm-btn-ghost cadm-back" onClick={close} data-help-id="comunidad.centro-volver">
+              <button type="button" className="cadm-btn cadm-btn-ghost cadm-back" onClick={() => guarded(close)} data-help-id="comunidad.centro-volver">
                 ← Volver a la lista
               </button>
-              {openItem ? <Detail item={openItem} onAction={(text) => afterAction(text)} /> : <p className="muted">Este elemento ya no está en el registro (puede haberse eliminado o cambiado de lista).</p>}
+              {openItem ? <Detail item={openItem} onAction={(text) => afterAction(text)} onDirtyChange={onDirtyChange} /> : <p className="muted">Este elemento ya no está en el registro (puede haberse eliminado o cambiado de lista).</p>}
             </div>
           )}
           {CENTER_SECTIONS.filter((s) => s.id === section || visited.includes(s.id)).map((s) => (
@@ -220,12 +268,12 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
   )
 }
 
-function Detail({ item, onAction }: { item: CenterItem; onAction: (text: string | null) => Promise<void> }) {
+function Detail({ item, onAction, onDirtyChange }: { item: CenterItem; onAction: (text: string | null) => Promise<void>; onDirtyChange: (dirty: boolean) => void }) {
   const reg = useEditorialRegistry()
   const proposal = item.kind === 'menu' ? null : reg.proposalById(item.id)
   const menu = item.kind === 'menu' ? reg.menuById(item.id) : null
   if (proposal) return <ProposalCard proposal={proposal} topics={reg.topics} onDone={(text) => void onAction(text)} />
-  if (menu) return <MenuCard menu={menu} topics={reg.topics} onDone={(text) => void onAction(text)} />
+  if (menu) return <MenuCard menu={menu} topics={reg.topics} onDone={(text) => void onAction(text)} onDirtyChange={onDirtyChange} />
   return null
 }
 

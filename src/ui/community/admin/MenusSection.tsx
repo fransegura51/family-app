@@ -25,6 +25,7 @@ import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { paths } from '@/ui/community/communityNav'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox, NoteForm, TwoTapButton } from '@/ui/community/admin/AdminShared'
 import { ProposalEditForm } from '@/ui/community/admin/ProposalCard'
+import { MenuEditor } from '@/ui/community/admin/MenuEditor'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
 // Menú semanal de Pepa: borradores, programados, publicados y con error. La publicación AUTOMÁTICA depende de un ajuste técnico de solo lectura
@@ -72,8 +73,8 @@ function proposalOf(d: MenuDetail): Proposal {
   return toProposals([{ id: d.id, kind: 'menu', section: d.section, topicId: d.topicId, title: d.title, body: d.body, status: 'proposed', version: d.version, payload: {} }])[0]
 }
 
-export function MenuCard({ menu: m, topics, onDone, focus = null }: { menu: MenuRow; topics: CommunityTopic[]; onDone: (message: string) => void; focus?: number | null }) {
-  const [mode, setMode] = useState<'view' | 'review' | 'edit' | 'reject' | 'reschedule' | 'revise'>('view')
+export function MenuCard({ menu: m, topics, onDone, focus = null, onDirtyChange }: { menu: MenuRow; topics: CommunityTopic[]; onDone: (message: string) => void; focus?: number | null; onDirtyChange?: (dirty: boolean) => void }) {
+  const [mode, setMode] = useState<'view' | 'review' | 'edit' | 'editor' | 'reject' | 'reschedule' | 'revise'>('view')
   const cardRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
     if (focus == null) return
@@ -164,7 +165,7 @@ export function MenuCard({ menu: m, topics, onDone, focus = null }: { menu: Menu
         />
       )}
 
-      {(m.state === 'draft' || m.state === 'scheduled' || m.state === 'error') && mode !== 'edit' && mode !== 'reject' && mode !== 'reschedule' && mode !== 'revise' && (
+      {(m.state === 'draft' || m.state === 'scheduled' || m.state === 'error') && mode !== 'edit' && mode !== 'editor' && mode !== 'reject' && mode !== 'reschedule' && mode !== 'revise' && (
         <div className="cadm-actions" role="group" aria-label="Qué hacer con este menú">
           {mode === 'review' ? (
             <button type="button" className="cadm-btn cadm-btn-ghost" onClick={() => setMode('view')}>
@@ -180,6 +181,9 @@ export function MenuCard({ menu: m, topics, onDone, focus = null }: { menu: Menu
               Rectificar con Pepa
             </button>
           )}
+          <button type="button" className="cadm-btn cadm-btn-secondary" disabled={action.busy} onClick={() => setMode('editor')} data-help-id="comunidad.menu-editor-abrir">
+            Editar el menú
+          </button>
           {m.state === 'draft' && (
             <>
               <button type="button" className="cadm-btn cadm-btn-secondary" disabled={action.busy} onClick={() => void loadDetail('edit')}>
@@ -247,6 +251,22 @@ export function MenuCard({ menu: m, topics, onDone, focus = null }: { menu: Menu
             ? 'Al aprobar, el menú NO se publica al momento: se programa y sale el próximo sábado a las 10:00 (hora peninsular) para la semana siguiente. Aprobarlo el mismo sábado a las 10:00 o más tarde lo deja para el sábado siguiente.'
             : 'Al aprobar, este menú se publica al momento (no es semanal).'}
         </p>
+      )}
+
+      {mode === 'editor' && (
+        <MenuEditor
+          menuId={m.id}
+          onDirtyChange={onDirtyChange}
+          onClose={() => {
+            setMode('view')
+            setDetail(null)
+          }}
+          onSaved={(message) => {
+            setMode('view')
+            setDetail(null)
+            onDone(message)
+          }}
+        />
       )}
 
       {mode === 'edit' && detail && (

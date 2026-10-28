@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { ARTICLE_CRITERIA, checkArticleCriteria } from '@/domain/communityArticleCriteria'
 import { Link } from 'react-router-dom'
-import { adminApproveProposal, adminEditProposal, adminRejectProposal } from '@/data/community'
+import { adminApproveProposal, adminEditProposal, adminRejectProposal, adminReschedulePoll } from '@/data/community'
 import { scheduleItem } from '@/data/communityEditorial'
 import {
   canRevise,
@@ -16,6 +16,8 @@ import {
   PROPOSAL_STATUS_TEXT,
   approvalLine,
   approveResultText,
+  nextMenuSaturdays,
+  pollRescheduleText,
   batchWeekText,
   buildProposalPayload,
   formatMadrid,
@@ -54,7 +56,7 @@ export function ProposalCard({
   /** Cambia cuando «Revisar» (programa de la semana) pide abrir esta tarjeta: se desplaza hasta ella y se resalta. */
   focus?: number | null
 }) {
-  const [mode, setMode] = useState<'view' | 'edit' | 'reject' | 'revise' | 'schedule'>('view')
+  const [mode, setMode] = useState<'view' | 'edit' | 'reject' | 'revise' | 'schedule' | 'poll-schedule'>('view')
   const action = useAdminAction()
   const cardRef = useRef<HTMLElement | null>(null)
   useEffect(() => {
@@ -135,6 +137,11 @@ export function ProposalCard({
               Reprogramar
             </button>
           )}
+          {p.status === 'approved' && p.kind === 'poll' && p.publishAt && (
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('poll-schedule')} data-help-id="comunidad.centro-reprogramar-encuesta">
+              Reprogramar
+            </button>
+          )}
           {p.status === 'proposed' && (
             <TwoTapButton
               label="Aprobar"
@@ -182,6 +189,26 @@ export function ProposalCard({
               if (r.ok) {
                 setMode('view')
                 onDone(scheduledApprovalText(iso), false)
+              }
+            })()
+          }}
+        />
+      )}
+
+      {mode === 'poll-schedule' && (
+        <PollRescheduleForm
+          busy={action.busy}
+          error={action.error}
+          onCancel={() => {
+            setMode('view')
+            action.clear()
+          }}
+          onSave={(iso) => {
+            void (async () => {
+              const r = await action.run(() => adminReschedulePoll(p.id, iso))
+              if (r.ok) {
+                setMode('view')
+                onDone(pollRescheduleText(r.result), false)
               }
             })()
           }}
@@ -441,6 +468,48 @@ export function ProposalEditForm({
       <div className="cadm-actions">
         <button type="submit" className="cadm-btn cadm-btn-primary" disabled={busy}>
           {busy ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+        <button type="button" className="cadm-btn cadm-btn-ghost" onClick={onCancel} disabled={busy}>
+          Cancelar
+        </button>
+      </div>
+    </form>
+  )
+}
+
+// Trasladar una encuesta aprobada a otro fin de semana: solo se pueden elegir sábados a las 10:00 (hora de Madrid); cierra el domingo siguiente a las 17:00. Solo cambia las
+// fechas: el texto, las opciones y la aprobación se quedan como están. No publica nada.
+function PollRescheduleForm({ busy, error, onSave, onCancel }: { busy: boolean; error: string | null; onSave: (iso: string) => void; onCancel: () => void }) {
+  const id = useId()
+  const [when, setWhen] = useState('')
+  const saturdays = nextMenuSaturdays(new Date(), 8)
+  return (
+    <form
+      className="cadm-noteform"
+      onSubmit={(e) => {
+        e.preventDefault()
+        if (when) onSave(when)
+      }}
+    >
+      <p className="cadm-noteform-title">Reprogramar la encuesta</p>
+      <p className="muted cadm-small">Abre el sábado elegido a las 10:00 y cierra el domingo siguiente a las 17:00 (hora peninsular). No cambia el contenido ni las opciones. Si ese fin de semana ya tiene otra encuesta, no se podrá.</p>
+      <label htmlFor={`${id}-when`}>Sábado de apertura</label>
+      <select id={`${id}-when`} value={when} onChange={(e) => setWhen(e.target.value)}>
+        <option value="">Elige un sábado…</option>
+        {saturdays.map((s) => (
+          <option key={s.value} value={s.value}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      {error && (
+        <p className="error cadm-small" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="cadm-actions">
+        <button type="submit" className="cadm-btn cadm-btn-primary" disabled={busy || !when}>
+          {busy ? 'Guardando…' : 'Reprogramar'}
         </button>
         <button type="button" className="cadm-btn cadm-btn-ghost" onClick={onCancel} disabled={busy}>
           Cancelar

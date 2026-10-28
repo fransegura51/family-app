@@ -134,9 +134,9 @@ export function EditorialRegistryProvider({ children }: { children: ReactNode })
     [refresh],
   )
 
-  // Otro dispositivo (o una función de servidor) cambia un elemento oficial: se recarga en silencio. Necesita que la tabla esté en la publicación de Realtime (migración pendiente
-  // 0344); mientras no lo esté sigue funcionando al volver a la pestaña, recuperar el foco o la conexión.
-  useRealtimeRefresh(['community_official_items'], refresh, { paused })
+  // Otro dispositivo (o una función de servidor) cambia un elemento oficial: se recarga en silencio. Necesita que la tabla esté en la publicación de Realtime (tabla de señal community_editorial_signal) (migración pendiente
+  // 0345); mientras no lo esté sigue funcionando al volver a la pestaña, recuperar el foco o la conexión.
+  useRealtimeRefresh(['community_editorial_signal'], refresh, { paused })
 
   const topicLabel = useCallback((id: string) => topics.find((t) => t.id === id)?.label ?? null, [topics])
 

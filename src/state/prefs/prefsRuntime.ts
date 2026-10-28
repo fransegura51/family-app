@@ -52,6 +52,7 @@ export function prefLabel(key: string): string {
   if (key === 'familyapp:home-carousel') return 'el carrusel de Inicio'
   if (key === 'familyapp:color-theme' || key === 'familyapp:chart-color-theme') return 'el estilo de color'
   if (key.endsWith('-menu-layout') || key.endsWith('-pinned-tabs') || key === 'familyapp:community-menu-order') return 'el menú de una sección'
+  if (key === 'familyapp:compras-compare-mode' || key === 'familyapp:compras-compare-sort') return 'el modo y el orden del Comparador'
   if (key === 'pepa:auto-confirm') return '«Hacerlo directamente, sin tarjeta»'
   if (key === 'pepa:show-classic-buttons') return 'los botones clásicos de Pepa'
   if (key === 'familyapp:voice-response-mode') return 'el modo de respuesta de Pepa'

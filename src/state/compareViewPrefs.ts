@@ -1,5 +1,5 @@
-// Preferencias del Comparador de precios: modo (productos idénticos / alternativas comparables) y ordenación. Viajan con la cuenta entre dispositivos mediante las
-// preferencias sincronizadas de siempre (prefsRegistry + migración 0337); sin conexión se recuerdan en el aparato.
+// Preferencias del Comparador de precios: modo (productos idénticos / alternativas comparables) y ordenación. Son de la FAMILIA: las comparten todos los miembros y sus
+// dispositivos mediante el sistema de preferencias de siempre (prefsRegistry + tabla `family_prefs`, migración 0343); sin conexión se recuerdan en el aparato.
 import { useEffect, useState } from 'react'
 import { COMPARE_MODES, COMPARE_SORTS, type CompareMode, type CompareSort } from '@/domain/comparisonModes'
 import { prefSet } from '@/state/prefs/prefsWrite'

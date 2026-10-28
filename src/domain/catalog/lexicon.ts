@@ -82,6 +82,8 @@ export const PHRASE_EXPANSIONS: [RegExp, string][] = [
   [/\baove\b/g, 'oliva virgen extra'],
   [/\bove\b/g, 'oliva virgen extra'],
   [/\bvirg(en)? ex(tr)?\b/g, 'virgen extra'],
+  // «BOLSA SUPERMERCADO» es la bolsa que se paga en caja; «bolsa» sola es ruido de ticket (STOPWORDS), por eso se junta en una sola palabra.
+  [/\bbolsas? (de |para )?(la )?(compra|supermercado|reutilizable|rafia|carrito|tienda)\b/g, 'bolsacompra'],
   [/\bsin lac\b/g, 'sin lactosa'],
   [/\bs lactosa\b/g, 'sin lactosa'],
   [/\bs lact\b/g, 'sin lactosa'],

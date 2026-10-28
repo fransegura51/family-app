@@ -71,6 +71,7 @@ pan.base.pizza | Base de pizza | pan | masa pizza | u
 pan.hojaldre | Masa de hojaldre | pan | hojaldre | u
 pan.precocido | Pan precocido | pan | pan horno; barra precocida | u
 # Bollería y repostería
+~pan.rollos | Rollos | pan | rollo; rollito | u | | cocina papel higienico aluminio film primavera
 pan.croissant | Croissant | pan | cruasan | u
 pan.magdalena | Magdalenas | pan | magdalena | u
 pan.bizcocho | Bizcocho | pan | plum cake; plumcake | u

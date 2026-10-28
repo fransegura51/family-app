@@ -17,6 +17,11 @@ export interface FamilyFoodType {
   catalogKey: string | null
 }
 
+/** La clase de la familia que corresponde a una clase del catálogo (por su clave estable); undefined si la familia no la tiene. */
+export function familyClassForCatalogClass<T extends Pick<FamilyFoodType, 'catalogKey'>>(classes: readonly T[], catalogClassKey: string): T | undefined {
+  return classes.find((c) => c.catalogKey === catalogClassKey)
+}
+
 export async function listFamilyFoodTypes(kind: FoodTypeKind): Promise<FamilyFoodType[]> {
   const { data, error } = await supabase
     .from('family_food_types')

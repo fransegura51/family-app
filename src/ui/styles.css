@@ -8551,6 +8551,7 @@ input[type='search'] {
 .movement-row-imputed {
   font-size: 13px;
   font-weight: 600;
+}
 
 /* «Qué ha entendido PEPA» bajo cada línea de «Productos leídos» (catálogo maestro): compacto, sin desbordar en móvil. */
 .receipt-line-reading {
@@ -8605,4 +8606,541 @@ input[type='search'] {
   border-radius: 8px;
   background: #fff;
   color: inherit;
+}
+
+/* ───── NORM-3 · Selector de catálogo reutilizable (CatalogPicker) ─────
+   Hoja pegada ARRIBA: con el teclado abierto el campo y los resultados siguen a la vista (en iPhone el teclado no encoge el área visible del documento). */
+.catalog-picker-overlay {
+  align-items: flex-start;
+  padding-top: env(safe-area-inset-top, 0px);
+  overscroll-behavior: contain;
+}
+.catalog-picker-sheet {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 560px;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - 8px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 8px);
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  border-radius: 0 0 16px 16px;
+  overflow: hidden;
+}
+.catalog-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.catalog-picker-raw {
+  margin: 0 0 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.catalog-picker-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  font-size: 16px; /* 16 px: iOS no hace zoom al enfocar */
+}
+.catalog-picker-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+.catalog-picker-hit {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: 6px;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 500;
+  border: 1px solid #d5dbea;
+  border-radius: 10px;
+  background: #f4f6fb;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+}
+.catalog-picker-hit .muted {
+  font-size: 12px;
+  color: #4b5563;
+  -webkit-text-fill-color: #4b5563;
+}
+.catalog-picker-hit-compact {
+  min-height: 40px;
+  justify-content: center;
+}
+.catalog-picker-cats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.catalog-picker-cat {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid #d5dbea;
+  border-radius: 10px;
+  background: #f4f6fb;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  overflow-wrap: anywhere;
+}
+.catalog-picker-sub {
+  margin: 8px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.catalog-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.catalog-picker-chip {
+  min-height: 44px;
+  white-space: normal;
+  text-align: left;
+}
+.catalog-picker-back,
+.catalog-picker-more,
+.catalog-picker-plain {
+  min-height: 44px;
+  padding: 6px 4px;
+  background: none;
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+.catalog-picker-plain {
+  display: block;
+  margin-top: 8px;
+}
+.catalog-picker-empty {
+  margin: 6px 0;
+}
+.catalog-picker-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+}
+.catalog-picker-foot .link-button {
+  min-height: 44px;
+  padding: 0;
+}
+
+/* NORM-3 · Revisión de tickets compacta: dos renglones por línea, aviso visual en las que piden revisión y controles de 44 px. */
+.receipt-lines-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 4px 0 6px;
+  font-size: 13px;
+}
+.receipt-lines-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.receipt-lines-toolbar-btn {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 1px solid #d5dbea;
+  border-radius: 999px;
+  background: #f4f6fb;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.receipt-line-compact {
+  padding: 4px 8px;
+}
+.receipt-line-attention {
+  border-color: #e8a33d;
+  box-shadow: inset 3px 0 0 #e8a33d;
+}
+.receipt-line-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  text-align: left;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  font-weight: 500;
+}
+.receipt-line-summary-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+}
+.receipt-line-summary-amount {
+  font-size: 12px;
+  font-weight: 400;
+  color: #4b5563;
+  -webkit-text-fill-color: #4b5563;
+}
+.receipt-line-fold {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+.receipt-line-brief {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 4px 4px 40px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  overflow-wrap: anywhere;
+}
+.receipt-line-brief-text {
+  min-width: 0;
+}
+.receipt-line-brief .muted {
+  color: #4b5563;
+  -webkit-text-fill-color: #4b5563;
+}
+.receipt-line-brief-warn {
+  color: #c77700;
+  -webkit-text-fill-color: #c77700;
+}
+.receipt-line-brief-flag {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff3df;
+  color: #8a5300;
+  -webkit-text-fill-color: #8a5300;
+  font-size: 11px;
+  font-weight: 700;
+}
+/* «Es correcto» / «Elegir variante» / «Cambiar producto»: botones de verdad, separados y de 44 px (antes eran enlaces pegados). */
+.receipt-line-reading-actions {
+  gap: 10px 12px;
+  margin-top: 6px;
+}
+.receipt-line-reading-btn {
+  min-height: 44px;
+  padding: 6px 14px;
+  border: 1px solid #c3cbe0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.receipt-line-reading-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
+
+/* ───── NORM-3 · Comparar precios: dos modos, filas con la comparación a la vista, Emparejar compacto ───── */
+.cmp-modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 0 6px;
+}
+.cmp-mode {
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 2px solid #c3cbe0;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+  -webkit-text-fill-color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.cmp-mode-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
+.cmp-mode-hint {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+}
+.cmp-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cmp-toolbar input[type='search'] {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  font-size: 16px;
+}
+.cmp-toolbar-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.cmp-select {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 0;
+}
+.cmp-select select {
+  width: 100%;
+  min-height: 44px;
+  font-size: 16px;
+  min-width: 0;
+}
+.cmp-toolbar .chip {
+  align-self: flex-start;
+  min-height: 40px;
+}
+.cmp-count {
+  margin: 2px 0 6px;
+  font-size: 12px;
+}
+.cmp-category {
+  margin: 12px 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.cmp-group-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.cmp-group-name {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.cmp-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff3df;
+  color: #8a5300;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cmp-badge-quiet {
+  background: #eef1f8;
+  color: #4b5563;
+}
+.cmp-group-sub {
+  margin: 2px 0 6px;
+  font-size: 12px;
+}
+.cmp-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+.cmp-row > * {
+  grid-column: 1;
+}
+.cmp-row > .cmp-row-edit {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.cmp-row > .cmp-row-edit-panel {
+  grid-column: 1 / -1;
+}
+.cmp-group > .cmp-row:first-child {
+  border-top: none;
+}
+.cmp-row-best .cmp-row-unit {
+  color: #1f7a3a;
+}
+.cmp-row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cmp-row-label {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cmp-row-unit {
+  flex: none;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.cmp-row-sub {
+  margin: 1px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.cmp-row-edit {
+  min-width: 56px;
+  min-height: 36px;
+  padding: 2px 10px;
+  border: 1px solid #c3cbe0;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.cmp-row-edit-panel {
+  margin-top: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: #f4f6fb;
+}
+.cmp-edit-btn {
+  min-height: 40px;
+  padding: 4px 12px;
+  border: 1px solid #c3cbe0;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.cmp-edit-btn.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
+.cmp-more {
+  min-height: 40px;
+  padding: 4px 0;
+  background: none;
+  color: var(--primary);
+  -webkit-text-fill-color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+/* Emparejar: tarjetas bajas (nombre y datos en un bloque, sugerencias en una fila, tres botones en una sola línea). */
+.cmp-pair {
+  margin-bottom: 8px;
+  padding: 8px;
+}
+.cmp-pair-head {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cmp-pair-name {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.cmp-pair-meta {
+  font-size: 12px;
+}
+.cmp-pair-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.cmp-pair-suggestions .chip {
+  min-height: 36px;
+  padding: 4px 10px;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+.cmp-pair-reason {
+  flex-basis: 100%;
+  font-size: 11.5px;
+}
+.cmp-pair-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 6px;
+}
+.cmp-pair-actions .cmp-edit-btn {
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+/* Casillas a la izquierda y nombres a la derecha, en filas compactas (crear un producto común con varios artículos). */
+.cmp-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 2px 0;
+  font-size: 14px;
+  font-weight: 400;
+}
+.cmp-check-row input[type='checkbox'] {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+}
+.cmp-check-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.cmp-note {
+  margin: 4px 0;
+  font-size: 12px;
+  line-height: 1.4;
 }

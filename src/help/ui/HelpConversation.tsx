@@ -138,7 +138,7 @@ export function HelpConversation({ focusModule, variant = 'page' }: { focusModul
       {help.area === 'section' && <HelpSectionArea focusModule={focusModule ?? null} />}
       {help.area === 'learn' && <HelpLearnArea focusModule={focusModule ?? null} />}
       {help.area === 'how' && <HelpHowArea focusModule={focusModule ?? null} />}
-      {help.area === 'support' && <HelpSupportArea focusModule={focusModule ?? null} />}
+      {help.area === 'support' && <HelpSupportArea focusModule={focusModule ?? null} openTicketId={new URLSearchParams(window.location.search).get('soporte') || null} />}
       {help.area === 'chat' && (
         <>
       <div className="help-log" role="log" aria-live="polite" aria-label="Conversación con la Ayuda">

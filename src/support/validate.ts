@@ -7,7 +7,7 @@ export const BODY_MAX = 4000
 export const ATTACH_MAX_BYTES = 5 * 1024 * 1024
 export const ATTACH_MAX_PER_MESSAGE = 3
 export const ATTACH_MIME = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'text/plain'] as const
-export const KINDS: SupportKind[] = ['tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'otra']
+export const KINDS: SupportKind[] = ['tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'solicitud_producto', 'otra']
 
 export function validateTicketDraft(d: { subject: string; body: string }): string | null {
   const subject = d.subject.trim()

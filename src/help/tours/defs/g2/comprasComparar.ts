@@ -3,30 +3,38 @@ import type { TourDef } from '@/help/tours/types'
 // Compras → Comparar precios: serie «Comparar precios entre tiendas» (ser-compras-comparar). Sigue ComparePricesTab (CompareScreen.tsx). Ningún capítulo agrupa, crea ni borra nada por
 // la persona: los pasos señalan, explican y esperan. Los precios son los que pagó la propia familia (nunca ofertas actuales); el formato del envase se recoge al registrar una compra.
 
-// Resultados: productos comunes con todas sus presentaciones.
+// Resultados: dos modos (productos idénticos / alternativas comparables) con la comparación a la vista.
 export const tutComprasCompararResultados: TourDef = {
   id: 'tut-compras-comparar-resultados',
   module: 'compras',
   group: 'Comparar precios',
   title: 'Ver dónde sale más barato',
-  summary: 'Leer los resultados por producto común: precio por litro, kilo o unidad de cada presentación.',
-  version: 2,
+  summary: 'Elegir cómo comparar y leer, en cada fila, la tienda, el formato y el precio por litro, kilo o unidad.',
+  version: 3,
   cardId: 'com-comparar-precios',
-  durationSec: 80,
+  durationSec: 100,
   startPath: '/compras',
   startDest: 'compras.comparar',
   readyOn: ['compare.tabs'],
   steps: [
     {
       id: 'partes',
-      text: 'Comparar precios tiene dos partes: «Resultados», donde se comparan los productos ya agrupados, y «Emparejar», donde agrupas los artículos que se pueden comparar entre sí.',
+      text: 'Comparar precios tiene tres partes: «Resultados», donde comparas, «Emparejar», donde agrupas a mano lo que PEPA no sabe identificar, y «Revisar PEPA» cuando ella propone grupos.',
       target: 'compare.tabs',
       completeOn: [],
       manualNext: true,
     },
     {
+      id: 'modos',
+      text: 'Arriba eliges cómo comparar. «Productos idénticos» enseña el mismo producto en distintas tiendas, fechas y formatos. «Alternativas comparables» junta productos distintos que sirven para lo mismo (cervezas, refrescos, leches…) sin mezclar sus historiales. PEPA recuerda tu elección.',
+      target: 'compare.modes',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
       id: 'vacio',
-      text: 'Si todavía no has agrupado nada, aquí verás cómo empezar. Un producto común es, por ejemplo, «Leche semidesnatada», que junta la de cada tienda aunque cambien la marca y el envase.',
+      text: 'Si todavía no hay nada que comparar, aquí lo explica. PEPA reconoce sola, al guardar tickets, los productos que identifica con seguridad: no hace falta emparejarlos.',
       target: 'compare.empty',
       completeOn: [],
       manualNext: true,
@@ -34,7 +42,7 @@ export const tutComprasCompararResultados: TourDef = {
     },
     {
       id: 'lista',
-      text: 'Cada producto común sale plegado, con cuántas presentaciones y tiendas tiene y cuál sale más barata. Al tocarlo se despliegan todas, de menor a mayor precio por litro, kilo o unidad.',
+      text: 'Cada grupo enseña de entrada sus presentaciones, de menor a mayor precio por litro, kilo o unidad, sin abrir ninguna ficha. Si hay más de tres, «Ver las N presentaciones» las despliega.',
       target: 'compare.results',
       completeOn: [],
       manualNext: true,
@@ -42,7 +50,23 @@ export const tutComprasCompararResultados: TourDef = {
     },
     {
       id: 'detalle',
-      text: 'En cada presentación ves la tienda, el formato (por ejemplo 6 × 1 l), el precio del paquete, la fecha y la diferencia con la más económica. El precio del paquete se enseña aparte: lo barato por litro puede exigir pagar más de golpe.',
+      text: 'En cada fila ves el producto, la tienda, el formato (por ejemplo 6 × 1 l), lo que pagasteis por el paquete, la fecha y el precio por unidad: así se ve, por ejemplo, que la botella de 1,5 l sale a 1,10 €/l y la lata a 2,27 €/l. El paquete va aparte.',
+      target: 'compare.offer',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'orden',
+      text: 'Con el buscador, «Orden» (por categoría, de la A a la Z, por precio por unidad o por lo que más compras) y «Categoría» encuentras justo lo que buscas. «Solo con varias opciones» oculta lo que no tiene con qué compararse.',
+      target: 'compare.toolbar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'editar',
+      text: 'Con «Editar» en una fila corriges su formato, su producto o su variante, o lo cambias de grupo. No se toca nunca el importe ni el nombre que salió en el ticket.',
       target: 'compare.offer',
       completeOn: [],
       manualNext: true,
@@ -50,7 +74,7 @@ export const tutComprasCompararResultados: TourDef = {
     },
     {
       id: 'provisional',
-      text: 'Si PEPA agrupó artículos por su cuenta, el grupo sale como «pendiente de revisar» y la comparación es provisional hasta que lo confirmes. Los grupos que ya confirmasteis tú no los cambia.',
+      text: 'Si PEPA agrupó artículos por su cuenta, el grupo sale como «agrupado por PEPA» y la comparación es provisional hasta que lo confirmes en «Opciones del grupo». Los grupos que ya confirmasteis tú no los cambia.',
       target: 'compare.pending-banner',
       completeOn: [],
       manualNext: true,
@@ -58,7 +82,7 @@ export const tutComprasCompararResultados: TourDef = {
     },
     {
       id: 'formatos',
-      text: 'Dentro de cada grupo ves cuántos artículos tienen formato conocido. Los que faltan se completan ahora (confirmar lo que PEPA lee en el nombre, escribirlo o fotografiar el envase) o más adelante: PEPA te lo ofrece al volver a comprarlo, sin bloquear el ticket.',
+      text: 'Los formatos que faltan se completan ahora (confirmar lo que PEPA lee en el nombre, escribirlo o fotografiar el envase) o más adelante: PEPA te lo ofrece al volver a comprarlo, sin bloquear el ticket.',
       target: 'compare.formats',
       completeOn: [],
       manualNext: true,
@@ -72,7 +96,7 @@ export const tutComprasCompararResultados: TourDef = {
       manualNext: true,
     },
   ],
-  finishText: 'Eso es todo. No he agrupado ni cambiado nada. Para agrupar artículos, mira el siguiente capítulo: «Agrupar artículos».',
+  finishText: 'Eso es todo. No he agrupado ni cambiado nada. Para agrupar a mano lo que PEPA no identifica, mira el siguiente capítulo: «Agrupar artículos».',
   next: ['com-historial-precios', 'com-ticket'],
 }
 
@@ -83,7 +107,7 @@ export const tutComprasCompararEmparejar: TourDef = {
   group: 'Comparar precios',
   title: 'Agrupar artículos',
   summary: 'Agrupar los artículos que se pueden comparar bajo un producto común, sin revisar cientos de fichas.',
-  version: 2,
+  version: 3,
   cardId: 'com-comparar-precios',
   durationSec: 90,
   startPath: '/compras',
@@ -99,7 +123,7 @@ export const tutComprasCompararEmparejar: TourDef = {
     },
     {
       id: 'cola',
-      text: 'En «Emparejar» salen los artículos que todavía no están en ningún producto común, los más útiles primero (los que más compras, los que más gastas y los que podrían compararse entre tiendas). No hace falta terminar: puedes dejarlo y seguir otro día.',
+      text: 'En «Emparejar» salen los artículos que todavía no están en ningún producto común y que PEPA no ha podido identificar con seguridad (los que reconoce bien se comparan solos, en «Resultados»), los más útiles primero. No hace falta terminar: puedes dejarlo y seguir otro día.',
       target: 'compare.pairing',
       completeOn: [],
       manualNext: true,

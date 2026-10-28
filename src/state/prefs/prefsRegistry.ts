@@ -28,7 +28,14 @@ export const HELP_PREF_PATTERN_SOURCES: readonly string[] = [
   '^pepa:help-tour:[a-z0-9-]+$',
 ]
 
-const SYNCED_KEY_PATTERNS: RegExp[] = [...SYNCED_KEY_PATTERN_SOURCES, ...(HELP_PREFS_SYNC_ENABLED ? HELP_PREF_PATTERN_SOURCES : [])].map((s) => new RegExp(s))
+// Modo y ordenación del Comparador de precios (NORM-3). Igual que las de Ayuda: el servidor NO las acepta hasta aplicar la migración 0337 (supabase/pending-migrations/0337_compare_view_prefs.sql).
+// Por eso viajan entre dispositivos SOLO cuando se enciende este interruptor (después de aplicar la migración y desplegar); apagado, se recuerdan en el dispositivo. Una prueba exige que,
+// encendido, la migración exista en supabase/migrations.
+export const COMPARE_PREFS_SYNC_ENABLED = false
+
+export const COMPARE_PREF_PATTERN_SOURCES: readonly string[] = ['^familyapp:compras-compare-(mode|sort)$']
+
+const SYNCED_KEY_PATTERNS: RegExp[] = [...SYNCED_KEY_PATTERN_SOURCES, ...(HELP_PREFS_SYNC_ENABLED ? HELP_PREF_PATTERN_SOURCES : []), ...(COMPARE_PREFS_SYNC_ENABLED ? COMPARE_PREF_PATTERN_SOURCES : [])].map((s) => new RegExp(s))
 
 // Tamaño máximo de un valor (igual que el límite de la tabla): más grande se rechaza antes de intentar subirlo.
 export const MAX_PREF_VALUE_CHARS = 8000

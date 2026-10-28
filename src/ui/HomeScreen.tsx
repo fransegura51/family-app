@@ -10,6 +10,7 @@ import { useHomeCarouselPrefs } from '@/state/homeCarouselPrefs'
 import { InviteFriendsButton } from '@/ui/InviteFriendsButton'
 import { NotificationsOnboarding } from '@/ui/NotificationsOnboarding'
 import { ReviewInviteCard } from '@/ui/ReviewInviteCard'
+import { SupportReplyCard } from '@/support/ui/SupportReplyCard'
 import { getGalleryPhotoUrls, listGalleryPhotos } from '@/data/gallery'
 import { loadCommunityHomeLines, peekCommunityHomeLines } from '@/data/communityHomeSlide'
 import { listFamilyMembers } from '@/data/family'
@@ -181,6 +182,8 @@ export function HomeScreen({ profile }: { profile: Profile }) {
       <InviteFriendsButton />
 
       <NotificationsOnboarding />
+
+      <SupportReplyCard />
 
       <ReviewInviteCard />
 

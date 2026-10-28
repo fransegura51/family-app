@@ -28,6 +28,7 @@ export const KIND_LABEL: Record<SupportKind, string> = {
   resultado_incorrecto: 'PEPA ha dado un resultado incorrecto',
   clasificacion: 'Una categoría o clasificación es incorrecta',
   sincronizacion: 'No se sincroniza (banco, calendario…)',
+  solicitud_producto: 'Solicitud de producto',
   otra: 'Otra cosa',
 }
 

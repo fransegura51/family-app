@@ -61,3 +61,17 @@ export const ATTRS: Readonly<Record<string, AttrDef>> = {
     values: [spec('cachorro', 'cachorro', 'cachorro', 'puppy', 'junior', 'gatito', 'kitten'), spec('senior', 'senior', 'senior', 'mayor'), spec('adulto', 'adulto', 'adulto', 'adult')],
   },
 }
+
+/** Nombre normalizado de un producto con los valores de sus atributos («Leche» + semidesnatada → «Leche semidesnatada»). Los valores por defecto no se escriben. */
+export function entryDisplayName(entry: { name: string; attrs: readonly { id: string }[] }, attrs: Readonly<Record<string, string | null>>): string {
+  const parts: string[] = [entry.name]
+  for (const { id } of entry.attrs) {
+    const def = ATTRS[id]
+    const v = attrs[id]
+    if (v == null || v === def.defaultValue) continue
+    const spec = def.values.find((x) => x.value === v)
+    const label = spec?.label || def.numeric?.label(v) || ''
+    if (label && !entry.name.toLowerCase().includes(label.toLowerCase())) parts.push(label)
+  }
+  return parts.join(' ')
+}

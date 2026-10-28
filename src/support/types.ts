@@ -2,7 +2,7 @@
 // futuro escriba en el MISMO hilo que una persona de soporte, sin cambiar el modelo (ver src/support/responder.ts). Hoy nada crea mensajes 'ai'.
 export type SupportStatus = 'recibida' | 'en_revision' | 'esperando_usuario' | 'resuelta' | 'cerrada'
 export type SupportPriority = 'baja' | 'normal' | 'alta'
-export type SupportKind = 'tecnico' | 'error' | 'resultado_incorrecto' | 'clasificacion' | 'sincronizacion' | 'otra'
+export type SupportKind = 'tecnico' | 'error' | 'resultado_incorrecto' | 'clasificacion' | 'sincronizacion' | 'solicitud_producto' | 'otra'
 export type SupportAuthorKind = 'user' | 'admin' | 'ai' | 'system'
 export type SupportVisibility = 'public' | 'internal'
 

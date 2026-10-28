@@ -1,10 +1,8 @@
 // «Qué ha entendido PEPA» de cada línea del ticket, para la pantalla de revisión (y para cualquier otro sitio que quiera enseñarlo).
 // Puro: usa el MISMO normalizador del catálogo maestro (identify.ts); no clasifica por su cuenta ni guarda nada.
 import { catalogClass } from './classes'
-import { CATALOG_ENTRIES } from './catalogData'
+import { searchCatalog } from './catalogSearch'
 import { identifyProduct, type MatchConfidence, type ProductIdentity } from './identify'
-import type { CatalogEntry } from './parse'
-import { tokensOf } from './tokens'
 import { describePackInput, type PackInput } from '../productSize'
 
 export type ReadingState =
@@ -122,30 +120,7 @@ export interface CatalogSearchHit {
   className: string
 }
 
-/** Busca un producto del catálogo por lo que escribe la persona («merluza», «pañales», «leche semi»). Solo productos concretos (no los de «clase»). */
+/** Busca un producto del catálogo por lo que escribe la persona («merluza», «pañales», «leche semi»). Solo productos concretos y sus variantes (no los de «clase»). */
 export function searchCatalogEntries(query: string, limit = 6): CatalogSearchHit[] {
-  const q = tokensOf(query)
-  if (q.length === 0) return []
-  const scored: { entry: CatalogEntry; score: number }[] = []
-  for (const entry of CATALOG_ENTRIES) {
-    if (entry.broad) continue
-    const nameWords = tokensOf(entry.name)
-    const aliasWords = new Set(entry.aliases.flat())
-    let score = 0
-    let hits = 0
-    for (const w of q) {
-      const inName = nameWords.some((n) => n === w || (w.length >= 3 && n.startsWith(w)))
-      const inAlias = aliasWords.has(w) || [...aliasWords].some((a) => w.length >= 3 && a.startsWith(w))
-      if (inName) {
-        score += 3
-        hits++
-      } else if (inAlias) {
-        score += 1
-        hits++
-      }
-    }
-    if (hits === q.length) scored.push({ entry, score: score - nameWords.length * 0.1 })
-  }
-  scored.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name, 'es'))
-  return scored.slice(0, limit).map(({ entry }) => ({ key: entry.key, name: entry.name, className: catalogClass(entry.classKey)?.name ?? '' }))
+  return searchCatalog(query, limit).map((h) => ({ key: h.key, name: h.name, className: h.className }))
 }

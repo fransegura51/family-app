@@ -78,7 +78,7 @@ export const tutComprasSubirTicket: TourDef = {
   group: 'Compras registradas',
   title: 'Subir y leer un ticket',
   summary: 'Añadir la foto o el PDF de un ticket y, si quieres, dejar que PEPA lo lea.',
-  version: 2,
+  version: 3,
   cardId: 'com-ticket',
   durationSec: 100,
   startPath: '/compras',
@@ -197,7 +197,7 @@ export const tutComprasRevisarTicket: TourDef = {
     },
     {
       id: 'entendido',
-      text: 'Debajo de cada nombre, PEPA enseña lo que ha entendido: el producto, su categoría y el formato, y si está listo para compararse. Con «Es correcto» confirmas una propuesta dudosa y con «Cambiar producto» eliges otro; se guarda con la compra. Si falta el formato, sale como pendiente: nunca se inventa.',
+      text: 'Debajo de cada nombre, PEPA enseña lo que ha entendido: producto, categoría y formato. «Es correcto» confirma una propuesta dudosa, «Elegir variante» precisa el tipo (leche semidesnatada…) y «Cambiar producto» busca otro; se guarda con la compra. Sin formato, sale pendiente: nunca se inventa.',
       target: 'shopping.receipt-reading',
       completeOn: [],
       manualNext: true,

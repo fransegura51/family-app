@@ -21,7 +21,7 @@ create table public.support_tickets (
   id uuid primary key default gen_random_uuid(),
   requester_id uuid not null references public.profiles(id) on delete cascade,
   family_id uuid not null references public.families(id) on delete cascade,
-  kind text not null check (kind in ('tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'otra')),
+  kind text not null check (kind in ('tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'solicitud_producto', 'otra')),
   section text not null default 'otra' check (section ~ '^[a-z0-9-]{1,40}$'),
   subject text not null check (char_length(subject) between 3 and 120),
   status text not null default 'recibida' check (status in ('recibida', 'en_revision', 'esperando_usuario', 'resuelta', 'cerrada')),
@@ -215,7 +215,7 @@ begin
   if v_uid is null then raise exception 'NOT_AUTHORIZED' using errcode = '42501'; end if;
   select p.family_id, p.display_name into v_family, v_name from public.profiles p where p.id = v_uid;
   if v_family is null then raise exception 'NOT_AUTHORIZED' using errcode = '42501'; end if;
-  if p_kind is null or p_kind not in ('tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'otra') then raise exception 'INVALID_KIND' using errcode = 'P0001'; end if;
+  if p_kind is null or p_kind not in ('tecnico', 'error', 'resultado_incorrecto', 'clasificacion', 'sincronizacion', 'solicitud_producto', 'otra') then raise exception 'INVALID_KIND' using errcode = 'P0001'; end if;
   if p_section is null or p_section !~ '^[a-z0-9-]{1,40}$' then raise exception 'INVALID_SECTION' using errcode = 'P0001'; end if;
   if char_length(v_subject) not between 3 and 120 then raise exception 'INVALID_SUBJECT' using errcode = 'P0001'; end if;
   if char_length(v_body) not between 1 and 4000 then raise exception 'INVALID_BODY' using errcode = 'P0001'; end if;

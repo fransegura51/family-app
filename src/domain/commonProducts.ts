@@ -5,6 +5,7 @@
 //   · «es exactamente el mismo producto» / «distinto» sigue siendo la decisión de la familia entre dos artículos (product_equivalences) y la inferencia por nombre
 //     (productIdentity). Aquí se reutilizan para PROPONER el producto común y para marcar en los resultados qué artículos son idénticos y cuáles solo comparables.
 //   · Nada se asigna solo salvo cuando el artículo es IDÉNTICO a uno ya agrupado; todo lo demás es una sugerencia que la persona acepta, busca o descarta.
+import { compareIdentities, identifyProduct, type ProductIdentity } from './catalog/identify'
 import { productTextKey } from './productText'
 import { productSignature } from './productIdentity'
 import { normalizeMeasurementUnit } from './measurementUnit'
@@ -98,8 +99,16 @@ export function suggestCommons(
   }
   const sig = productSignature(article.displayName, article.brand)
   const mine = critical(sig.variants)
+  const idArticle = identifyProduct(article.displayName, article.brand, article.catalogProductKey)
+  const opinion = (id: ProductIdentity) => !!id.entry && !id.entry.broad && id.confidence !== 'dudoso'
   const out: CommonSuggestion[] = []
   for (const common of commons) {
+    // El catálogo maestro corta las coincidencias genéricas: «QUESADILLA DE POLLO» no es «Pollo» ni «AQUARIUS ZERO» un refresco de cola zero. Solo se descarta cuando el catálogo
+    // opina de TODAS las referencias del grupo (su nombre y sus artículos) y en todas ve otro producto; si no opina (o alguna es el mismo producto), se sigue con las reglas de siempre.
+    if (opinion(idArticle)) {
+      const refs = [identifyProduct(common.name), ...(membersByCommon.get(common.id) ?? []).map((m) => identifyProduct(m.displayName, m.brand, m.catalogProductKey))].filter(opinion)
+      if (refs.length > 0 && refs.every((r) => compareIdentities(idArticle, r, { ignoreSize: true })?.relation === 'different')) continue
+    }
     // El perfil del producto común (variantes críticas de su nombre o, si no las tiene, de sus artículos) tiene que ser el del artículo: «Cerveza» no admite «sin alcohol».
     const nameCritical = critical(productSignature(common.name).variants)
     const memberCritical = (membersByCommon.get(common.id) ?? []).map((m) => critical(productSignature(m.displayName, m.brand).variants))
@@ -182,6 +191,8 @@ export interface PairingQueueOptions {
   query?: string
   /** Solo artículos con compras en alguna de estas tiendas (vacío = todas). */
   stores?: readonly string[]
+  /** Artículos que no hace falta emparejar (PEPA ya los reconoce con seguridad y se comparan solos). */
+  exclude?: ReadonlySet<string>
 }
 
 /**
@@ -210,7 +221,7 @@ export function pairingQueue(
   const items: PairingItem[] = []
   for (const article of products) {
     const st = stats.get(article.id)
-    if (!st || memberIds.has(article.id) || skippedIds.has(article.id)) continue
+    if (!st || memberIds.has(article.id) || skippedIds.has(article.id) || options.exclude?.has(article.id)) continue
     if (storeFilter.size > 0 && !st.stores.some((s) => storeFilter.has(s.toLowerCase()))) continue
     if (q && !productTextKey(article.displayName).includes(q) && !st.stores.some((s) => productTextKey(s).includes(q))) continue
     const suggestions = suggestCommons(article, commons, members, products, ctx)

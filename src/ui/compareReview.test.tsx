@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // «Revisar PEPA»: las agrupaciones que propone PEPA se confirman, corrigen o descartan; mientras no se confirman son provisionales; los grupos de la familia no se tocan.
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommonMember, CommonProduct } from '@/domain/commonProducts'
 import type { Product, ProductPrice } from '@/domain/types'
@@ -45,7 +45,10 @@ function actions(): CompareActions & Spies {
     decide: vi.fn(async () => undefined), setPack: vi.fn(async () => undefined), confirmGroup: vi.fn(async () => undefined), discardGroup: vi.fn(async () => undefined), separatePepa: vi.fn(async () => undefined),
   } as never
 }
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  localStorage.clear()
+})
 const noop = () => undefined
 
 describe('Revisar PEPA', () => {
@@ -93,42 +96,49 @@ describe('Revisar PEPA', () => {
 })
 
 describe('Resultados con grupos de PEPA sin revisar', () => {
+  const view = (data: CompareDataset = base, a: CompareActions = actions()) => render(<ResultsView data={data} actions={a} onNotice={noop} onError={noop} onPickGroup={noop} />)
+  const group = (name: string) => screen.getByText(name, { selector: 'strong' }).closest('.cmp-group') as HTMLElement
   it('se marcan como pendientes y la comparación es provisional', () => {
-    render(<ResultsView data={base} actions={actions()} onNotice={noop} onError={noop} onPickGroup={noop} />)
-    expect(screen.getByText(/agrupado por PEPA, pendiente de revisar/)).toBeTruthy()
-    expect(screen.getByText(/más barata \(provisional\): Mercadona/)).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: /Limón/ }))
-    expect(screen.getByText(/la comparación es provisional/)).toBeTruthy()
-    expect(screen.getByText(/la más económica \(provisional\)/)).toBeTruthy()
+    view()
+    const g = group('Limón')
+    expect(within(g).getByText(/agrupado por PEPA/)).toBeTruthy()
+    expect(within(g).getByText(/más barata \(provisional\): Mercadona/)).toBeTruthy()
+    expect(within(g).getByText(/la más económica \(provisional\)/)).toBeTruthy()
+    fireEvent.click(within(g).getByRole('button', { name: 'Opciones del grupo' }))
+    expect(within(g).getByText(/la comparación es provisional/)).toBeTruthy()
   })
   it('confirmar desde Resultados', async () => {
     const a = actions()
-    render(<ResultsView data={base} actions={a} onNotice={noop} onError={noop} onPickGroup={noop} />)
-    fireEvent.click(screen.getByRole('button', { name: /Limón/ }))
-    fireEvent.click(screen.getByRole('button', { name: '✓ Confirmar grupo' }))
+    view(base, a)
+    const g = group('Limón')
+    fireEvent.click(within(g).getByRole('button', { name: 'Opciones del grupo' }))
+    fireEvent.click(within(g).getByRole('button', { name: '✓ Confirmar grupo' }))
     await waitFor(() => expect(a.confirmGroup).toHaveBeenCalledWith('c-limon'))
   })
-  it('los grupos confirmados salen antes que los pendientes', () => {
-    render(<ResultsView data={base} actions={actions()} onNotice={noop} onError={noop} onPickGroup={noop} />)
-    const names = screen.getAllByRole('button', { expanded: false }).map((b) => b.textContent ?? '')
-    expect(names.findIndex((n) => n.startsWith('Leche semidesnatada'))).toBeLessThan(names.findIndex((n) => n.startsWith('Limón')))
+  it('por defecto se ordena por categoría (ya no por «confirmado primero»), con el nombre de la categoría encima', () => {
+    view()
+    const headings = screen.getAllByTestId('cmp-category').map((h) => h.textContent ?? '')
+    expect(headings.length).toBeGreaterThan(1)
+    expect([...headings].map((h) => h.replace(/^\S+ /, ''))).toEqual([...headings].map((h) => h.replace(/^\S+ /, '')).sort((a, b) => a.localeCompare(b, 'es')))
   })
-  it('grupo con un solo artículo de formato conocido: se conserva, lista qué falta y no declara «más barata»', () => {
-    render(<ResultsView data={{ ...base, members: [...members, { productId: 'x', commonId: 'c-leche', source: 'manual' }] }} actions={actions()} onNotice={noop} onError={noop} onPickGroup={noop} />)
-    const leche = screen.getByRole('button', { name: /Leche semidesnatada/ })
-    expect(leche.textContent).toContain('faltan formatos (1 de 2 conocidos)')
-    expect(leche.textContent).not.toContain('más barata')
-    fireEvent.click(leche)
-    expect(screen.getByText(/Formato de los artículos: 1 de 2 conocidos/)).toBeTruthy()
-    expect(screen.getByText(/Solo indica cuántas unidades trae|El nombre solo dice cuántas unidades trae/)).toBeTruthy()
-    expect(screen.queryByText(/la más económica/)).toBeNull()
+  it('grupo con un solo artículo de formato conocido: se conserva, avisa de lo que falta y no declara «más barata»', () => {
+    view({ ...base, members: [...members, { productId: 'x', commonId: 'c-leche', source: 'manual' }] })
+    const g = group('Leche semidesnatada')
+    expect(g.textContent).toContain('1 sin formato')
+    expect(g.textContent).not.toMatch(/más barata:/)
+    fireEvent.click(within(g).getByRole('button', { name: 'Opciones del grupo' }))
+    expect(within(g).getByText(/Formato de los artículos: 1 de 2 conocidos/)).toBeTruthy()
+    expect(within(g).getByText(/Solo indica cuántas unidades trae|El nombre solo dice cuántas unidades trae/)).toBeTruthy()
+    expect(within(g).queryByText(/la más económica/)).toBeNull()
   })
-  it('PEPA propone el formato que lee en el nombre y la persona lo confirma', async () => {
+  it('PEPA propone el formato que lee en el nombre y la persona lo confirma (desde la propia fila)', async () => {
     const a = actions()
     const data = { ...base, members: [...members, { productId: 'x', commonId: 'c-leche', source: 'manual' as const }], prices: prices.map((p) => (p.id === 'px' ? { ...p, pack: null } : p)) }
-    render(<ResultsView data={data} actions={a} onNotice={noop} onError={noop} onPickGroup={noop} />)
-    fireEvent.click(screen.getByRole('button', { name: /Leche semidesnatada/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Confirmar 1 l/ }))
+    view(data, a)
+    const g = group('Leche semidesnatada')
+    const row = within(g).getAllByText(/Consum · 1 l \(del nombre\)/)[0].closest('.cmp-row') as HTMLElement
+    fireEvent.click(within(row).getByRole('button', { name: /Editar/ }))
+    fireEvent.click(within(row).getByRole('button', { name: /Confirmar 1 l/ }))
     await waitFor(() => expect(a.setPack).toHaveBeenCalledWith('px', { count: 1, amount: 1, unit: 'l', source: 'nombre' }))
   })
 })

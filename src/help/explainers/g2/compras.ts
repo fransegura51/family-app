@@ -42,7 +42,7 @@ export const expComprasLeerTicket: HelpExplainer = {
     {
       heading: 'Qué revisas tú y qué se guarda',
       paragraphs: [
-        'En «Productos leídos — revisa y corrige antes de guardar» puedes cambiar nombre, cantidad, unidad y precio de cada línea, quitar las que sobren con ✕ y tocar el símbolo de la izquierda para cambiar la clase. «Nuevo» marca los productos que PEPA no conocía. Debajo de cada nombre, PEPA enseña lo que ha entendido (producto, categoría y formato, y qué falta para compararlo): con «Es correcto» confirmas una propuesta dudosa y con «Cambiar producto» eliges otro. Lo que confirmas o cambias se guarda con la compra y se usa igual en Compras, Economía y el comparador; si falta el formato queda pendiente, nunca se inventa. También revisas Establecimiento, Fecha, Importe total y Categoría.',
+        'En «Productos leídos — revisa y corrige antes de guardar» puedes cambiar nombre, cantidad, unidad y precio de cada línea, quitar las que sobren con ✕ y tocar el símbolo de la izquierda para cambiar la clase. «Nuevo» marca los productos que PEPA no conocía. Debajo de cada nombre, PEPA enseña lo que ha entendido (producto, categoría y formato, y qué falta para compararlo): con «Es correcto» confirmas una propuesta dudosa, con «Elegir variante» precisas el tipo (por ejemplo, leche semidesnatada) y con «Cambiar producto» buscas otro en el catálogo, por nombre, sinónimo o categoría. En un ticket largo cada línea se ve en dos renglones y se despliega para editar; las que piden revisión salen marcadas. Lo que confirmas o cambias se guarda con la compra y se usa igual en Compras, Economía y el comparador; si falta el formato queda pendiente, nunca se inventa. También revisas Establecimiento, Fecha, Importe total y Categoría.',
         'Nada se guarda hasta que pulsas «Guardar ticket». Entonces se guardan la foto (en un almacén privado de tu familia), el ticket, el precio de cada línea en el historial y, si hay importe, el gasto en Economía (o se une al gasto del banco que ya estuviera). Cómo se une, en otra explicación.',
       ],
       example:
@@ -80,7 +80,7 @@ export const expComprasLeerTicket: HelpExplainer = {
   ],
   tour: 'tut-compras-subir-ticket',
   go: { path: '/compras', dest: 'compras.tickets', label: 'Llévame a Compras registradas' },
-  labels: ['📷 Leer ticket', 'Guardar ticket', 'Guardar compra', '✍️ Sin ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea', 'Es correcto', 'Cambiar producto'],
+  labels: ['📷 Leer ticket', 'Guardar ticket', 'Guardar compra', '✍️ Sin ticket', 'Productos leídos — revisa y corrige antes de guardar', '+ Añadir línea', 'Es correcto', 'Elegir variante', 'Cambiar producto'],
   cardIds: ['com-ticket'],
   synonyms: ['leer ticket', 'ocr', 'foto del ticket', 'ia ticket', 'como lee el ticket', 'productos leidos', 'por que se equivoca el ticket', 'que envia a la ia', 'privacidad ticket', 'sin ticket', 'sin ia', 'compra sin ticket'],
 }

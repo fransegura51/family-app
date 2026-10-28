@@ -188,7 +188,10 @@ import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
 import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
 import { LineFormatControl, PackFormatsPanel } from '@/ui/PackFormatsPanel'
-import { ReceiptLineReading } from '@/ui/ReceiptLineReading'
+import { ReceiptLineBrief, ReceiptLinesToolbar, ReceiptLineReading } from '@/ui/ReceiptLineReading'
+import { SUPPORT_ENABLED } from '@/support/flags'
+import { ProductRequestSheet, type ProductRequestContext } from '@/support/ui/ProductRequestSheet'
+import { catalogHitByKey } from '@/domain/catalog/catalogSearch'
 import { readLine } from '@/domain/catalog/lineReading'
 import { isPendingCategory, isPendingSpendingRow, PENDING_LABEL, pendingSignal, pendingSpending, type PendingSpending } from '@/domain/pending'
 // FASE 6D.3 — misma identidad de "ingreso real"/"devolución" que Economía por voz (PEPA): nunca se reimplementa aquí.
@@ -224,7 +227,7 @@ import { isCreditLine, partitionCreditLines } from '@/domain/ticketCreditLines'
 import { withReceiptStoreBases } from '@/domain/storeNames'
 import { sharedHintFor, useSharedClasses } from '@/ui/useSharedClasses'
 import { onManagersChanged, openManager } from '@/state/managers'
-import { listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
+import { familyClassForCatalogClass, listFamilyFoodTypes, setProductFoodType, type FamilyFoodType, type FoodTypeKind } from '@/data/foodTypes'
 import { balanceTrend, earliestTransactionDate } from '@/domain/balanceTrend'
 import {
   deleteProductPricesByReceipt,
@@ -6437,6 +6440,9 @@ function ReceiptRow({
   )
 }
 
+/** Desde cuántas líneas el ticket se muestra plegado (dos renglones por línea). */
+const COMPACT_LINES_FROM = 3
+
 interface DraftLine {
   name: string
   // Nº de unidades, o el peso EXACTO en kg (con decimales) cuando unit === 'kg'.
@@ -6657,6 +6663,21 @@ function ReceiptForm({
   const [category, setCategory] = useState(attachToProp ? (attachToProp.category ?? '') : receipt ? (receipt.category ?? '') : defaultReceiptCategory(categories))
   const [purchasedByMemberId, setPurchasedByMemberId] = useState(attachToProp?.purchasedByMemberId ?? receipt?.purchasedByMemberId ?? '')
   const [lines, setLines] = useState<DraftLine[]>([])
+  // Tickets largos: líneas plegadas (dos renglones) salvo las que se abren a mano; hasta 3 líneas se ven completas como siempre.
+  const [openLines, setOpenLines] = useState<ReadonlySet<number>>(() => new Set())
+  const [expandAllLines, setExpandAllLines] = useState(false)
+  const compactLines = lines.length > COMPACT_LINES_FROM
+  // «Solicitar nuevo producto»: solo cuando el Soporte técnico está encendido (SUPPORT_ENABLED); crea una incidencia de tipo «Solicitud de producto».
+  const [requestFor, setRequestFor] = useState<ProductRequestContext | null>(null)
+  const requestProduct = SUPPORT_ENABLED ? setRequestFor : undefined
+  function toggleLine(index: number, open: boolean) {
+    setOpenLines((prev) => {
+      const next = new Set(prev)
+      if (open) next.add(index)
+      else next.delete(index)
+      return next
+    })
+  }
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
   const [discountTotal, setDiscountTotal] = useState(0)
@@ -6851,6 +6872,8 @@ function ReceiptForm({
 
   function removeLine(index: number) {
     setLines((prev) => prev.filter((_, i) => i !== index))
+    // Los números de línea siguientes bajan un puesto: lo abierto sigue siendo la misma línea.
+    setOpenLines((prev) => new Set([...prev].filter((n) => n !== index).map((n) => (n > index ? n - 1 : n))))
   }
 
   function addBlankLine() {
@@ -7247,6 +7270,23 @@ function ReceiptForm({
               ⚙️
             </button>
           </div>
+          {compactLines && (
+            <ReceiptLinesToolbar
+              total={lines.length}
+              toCheck={lines
+                .map((l, i) => ({ l, i }))
+                .filter(({ l }) => {
+                  if (!l.name.trim()) return false
+                  const p = productByNormalizedName.get(normalizeProductName(l.name))
+                  const st = readLine({ name: l.name, brand: p?.brand ?? null, catalogProductKey: l.catalogProductKey ?? p?.catalogProductKey ?? null }).state
+                  return st === 'probable' || st === 'dudoso'
+                })
+                .map(({ i }) => i)}
+              expandAll={expandAllLines}
+              onExpandAll={setExpandAllLines}
+              onOpen={(i) => toggleLine(i, true)}
+            />
+          )}
           {lines.map((line, i) => {
             const resolved = resolveDraftLineClass(
               line,
@@ -7254,8 +7294,40 @@ function ReceiptForm({
               foodTypesByKind,
               sharedHintFor(lineShared, store, line.name.trim()),
             )
+            const existingProduct = productByNormalizedName.get(normalizeProductName(line.name))
+            const lineHistory = existingProduct ? allPrices.filter((p) => p.productId === existingProduct.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
+            const linePack = resolveLinePack(line, lineHistory)
+            const reading = readLine({
+              name: line.name,
+              brand: existingProduct?.brand ?? null,
+              catalogProductKey: line.catalogProductKey ?? existingProduct?.catalogProductKey ?? null,
+              effectivePack: linePack.pack,
+              soldByWeight: linePack.status.kind === 'peso',
+            })
+            const lineTotal = Number(line.quantity) * Number(line.unitPrice)
+            const lineAmount = !Number.isNaN(lineTotal) ? lineTotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
+            // Tickets largos: cada línea se ve en dos renglones (nombre e importe; lo que PEPA ha entendido) y se despliega para editar. Los que piden revisión se marcan.
+            const compact = compactLines && !expandAllLines && line.name.trim() !== '' && !openLines.has(i)
+            const needsCheck = reading.state === 'probable' || reading.state === 'dudoso'
+            if (compact) {
+              return (
+                <div key={i} className={'receipt-line-card receipt-line-compact' + (needsCheck ? ' receipt-line-attention' : '')} data-line-index={i} data-line-compact="true">
+                  <div className="receipt-line-row">
+                    <ReceiptLineClassPicker resolved={resolved} foodTypesByKind={foodTypesByKind} onChange={(next) => updateLine(i, { classOverride: next })} />
+                    <button type="button" className="receipt-line-summary" aria-expanded={false} aria-label={`Editar ${line.name}`} onClick={() => toggleLine(i, true)}>
+                      <span className="receipt-line-summary-name">{line.name}</span>
+                      <span className="receipt-line-summary-amount">
+                        {line.quantity} {line.unit === 'kg' ? 'kg' : '×'} {line.unitPrice || '–'} € {lineAmount ? `= ${lineAmount} €` : ''}
+                      </span>
+                    </button>
+                    {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
+                  </div>
+                  <ReceiptLineBrief reading={reading} classLabel={resolved.classification} onOpen={() => toggleLine(i, true)} />
+                </div>
+              )
+            }
             return (
-              <div key={i} className="receipt-line-card">
+              <div key={i} className={'receipt-line-card' + (needsCheck ? ' receipt-line-attention' : '')} data-line-index={i}>
                 <div className="receipt-line-row">
                   <ReceiptLineClassPicker
                     resolved={resolved}
@@ -7270,6 +7342,11 @@ function ReceiptForm({
                     data-help-id="shopping.receipt-line-name"
                   />
                   {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
+                  {compactLines && line.name.trim() !== '' && (
+                    <button type="button" className="link-button receipt-line-fold" aria-label={`Plegar ${line.name}`} title="Plegar la línea" onClick={() => toggleLine(i, false)}>
+                      ▴
+                    </button>
+                  )}
                   <button type="button" className="link-button" onClick={() => removeLine(i)}>
                     ✕
                   </button>
@@ -7316,25 +7393,19 @@ function ReceiptForm({
                     </span>
                   )}
                 </div>
-                {(() => {
-                  const existingProduct = productByNormalizedName.get(normalizeProductName(line.name))
-                  const lineHistory = existingProduct ? allPrices.filter((p) => p.productId === existingProduct.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate })) : []
-                  const linePack = resolveLinePack(line, lineHistory)
-                  const reading = readLine({
-                    name: line.name,
-                    brand: existingProduct?.brand ?? null,
-                    catalogProductKey: line.catalogProductKey ?? existingProduct?.catalogProductKey ?? null,
-                    effectivePack: linePack.pack,
-                    soldByWeight: linePack.status.kind === 'peso',
-                  })
-                  return (
-                    <ReceiptLineReading
-                      reading={reading}
-                      classLabel={resolved.classification}
-                      onChoose={(key) => updateLine(i, key === reading.entryKey ? { catalogProductKey: key } : { catalogProductKey: key, classOverride: undefined })}
-                    />
-                  )
-                })()}
+                <ReceiptLineReading
+                  reading={reading}
+                  classLabel={resolved.classification}
+                  onChoose={(key) => {
+                    // «Es correcto» confirma lo que ya se enseña. Cambiar de producto o de variante cambia lo que es: su categoría sigue a la nueva identidad (la de la familia que corresponde a la
+                    // clase del catálogo), se ve al instante en el símbolo y se guarda con el producto, de modo que Compras, Economía y el Comparador leen la misma.
+                    if (key === reading.entryKey) return updateLine(i, { catalogProductKey: key })
+                    const classKey = catalogHitByKey(key)?.classKey
+                    const own = classKey ? familyClassForCatalogClass([...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos], classKey) : undefined
+                    updateLine(i, { catalogProductKey: key, classOverride: own ? { kind: own.kind, classification: own.name } : undefined })
+                  }}
+                  onRequestProduct={requestProduct ? (searched) => requestProduct({ raw: line.name, searched, classLabel: resolved.classification }) : undefined}
+                />
                 <LineFormatControl
                   line={line}
                   history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
@@ -7416,6 +7487,7 @@ function ReceiptForm({
           </button>
         </div>
       )}
+      {requestFor && SUPPORT_ENABLED && <ProductRequestSheet context={requestFor} onClose={() => setRequestFor(null)} />}
       {shortfall && createPortal(<ShortfallDialog notice={shortfall.notice} walletName={shortfall.walletName} onChoose={(c) => shortfall.resolve(c)} onAddCash={(add) => shortfall.resolve({ add })} />, document.body)}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">

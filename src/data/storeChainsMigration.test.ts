@@ -114,7 +114,7 @@ describe('Fase 3: aislamiento y rollback', () => {
     // COM-02 — storeIcons.ts reutiliza normalizeStoreName (el mismo normalizador ya probado para
     // interpretar texto de banco) para reconocer una cadena como palabra completa dentro de un nombre
     // más largo, en vez de duplicar esa lógica de normalización una segunda vez.
-    const ALLOWED_IMPORTERS = ['/src/domain/sharedLearning.ts', '/src/ui/ShoppingScreen.tsx', '/src/domain/storeIcons.ts', '/src/domain/productIdentity.ts', '/src/domain/priceComparison.ts', '/src/data/productEquivalences.ts', '/src/domain/storeBadge.ts', '/src/domain/commonProducts.ts', '/src/domain/autoGrouping.ts', '/src/ui/CompareScreen.tsx', '/src/domain/catalog/lexicon.ts', '/src/domain/catalog/tokens.ts']
+    const ALLOWED_IMPORTERS = ['/src/domain/sharedLearning.ts', '/src/ui/ShoppingScreen.tsx', '/src/domain/storeIcons.ts', '/src/domain/productIdentity.ts', '/src/domain/priceComparison.ts', '/src/data/productEquivalences.ts', '/src/domain/storeBadge.ts', '/src/domain/commonProducts.ts', '/src/domain/autoGrouping.ts', '/src/ui/CompareScreen.tsx', '/src/domain/catalog/lexicon.ts', '/src/domain/catalog/tokens.ts', '/src/domain/catalog/catalogSearch.ts', '/src/domain/comparisonModes.ts']
     const importers = Object.entries(APP)
       .filter(([file, text]) => !file.endsWith('/storeChains.ts') && !file.endsWith('/productText.ts') && !ALLOWED_IMPORTERS.includes(file) && /from ['"](?:@\/domain|\.\.?)\/(?:storeChains|productText)['"]/.test(text))
       .map(([file]) => file)

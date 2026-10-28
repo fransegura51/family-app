@@ -41,6 +41,8 @@ uten.vaso.desechable | Vasos y platos desechables | uten | vaso desechable; plat
 uten.sarten | Sartenes y cazuelas | uten | sarten; cazuela; olla; olla express; cacerola; wok; cazo; paellera; cazuelas | u
 uten.cubiertos | Cubiertos | uten | cubierto; tenedor; cuchara; cuchillo; cubertería; cuberteria | u
 uten.vajilla | Vasos, platos y tazas | uten | vaso; plato; taza; vajilla; bol; bowl cocina; copa; copas; jarra; vasos; platos; tazas | u
+uten.bolsa.compra | Bolsa de compra | uten | bolsa compra; bolsa supermercado; bolsa reutilizable; bolsa rafia; bolsa carrito; bolsa tienda | u | | basura residuos congelar
+uten.filtro.cafe | Filtros de café | uten | filtro cafe; filtros cafetera; filtro papel cafe | u
 uten.termo | Termos y botellas | uten | termo; botella termo; botella reutilizable; cantimplora;  | u
 ~uten.otros | Menaje de cocina | uten | menaje; utensilio; utensilios; espatula; cucharon; colador; rallador; pelador; abrelatas; sacacorchos; tabla cortar; molde; molde horno; bandeja horno; bandeja | u
 # Ropa y calzado

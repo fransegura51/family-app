@@ -12,13 +12,14 @@
 // Quién manda cuando hay varias entradas posibles: el NOMBRE PRINCIPAL del producto, que es el primero del ticket («QUESADILLA POLLO» es una quesadilla
 // y no pollo; «ATUN ACEITE GIRASOL» es atún y no aceite). Entre candidatos que empiezan en el mismo sitio gana el que explica más palabras.
 import { parseProductPack, parseProductSize, stripSize, type PackInput, type ParsedSize } from '../productSize'
-import { ATTRS } from './attrs'
+import { ATTRS, entryDisplayName } from './attrs'
 import { catalogClass } from './classes'
 import type { ClassKind } from './classes'
 import { CATALOG_ENTRIES } from './catalogData'
 import { extractBrand } from './lexicon'
 import type { CatalogEntry, PriceBasis } from './parse'
 import { expandPhrases, tokenize } from './tokens'
+import { resolveVariantKey } from './variants'
 
 export type MatchConfidence = 'seguro' | 'probable' | 'dudoso'
 
@@ -56,7 +57,11 @@ interface BrandHint {
 }
 
 // Marca → producto que suele ser, para cuando el nombre solo trae la marca («FANTA 2L») o para fijar la clase («FANTA NARANJA» es un refresco, no fruta).
-// Es una pista: con ella la confianza es «probable».
+// Es una pista: con ella la confianza es «probable», salvo en las marcas de SURE_BRANDS (ver abajo).
+// Marcas de bebida que SOLO hacen ese tipo de producto (Coca-Cola es una cola, Estrella Galicia una cerveza, Font Vella un agua): con solo la marca el producto es seguro, y lo que
+// sobra (zero, naranja, limón) sigue distinguiendo la variante. Las que hacen varios productos (Pascual, Campofrío…) NO están aquí: siguen siendo una propuesta.
+const SURE_BRANDS = new Set(['coca cola', 'pepsi', 'fanta', 'sprite', 'schweppes', 'aquarius', 'nestea', 'red bull', 'monster', 'mahou', 'cruzcampo', 'san miguel', 'heineken', 'estrella damm', 'estrella galicia', 'amstel', 'damm', 'alhambra', 'budweiser', 'font vella', 'bezoya', 'lanjaron', 'evian'])
+
 const BRAND_HINTS: Record<string, BrandHint> = {
   'coca cola': { entry: 'bna.refresco.cola' },
   pepsi: { entry: 'bna.refresco.cola' },
@@ -237,7 +242,8 @@ function removeOnce(tokens: string[], words: readonly string[]): void {
   }
 }
 
-const NOISE_LEFT = new Set(['mini', 'extra', 'nuevo', 'nueva', 'lata'])
+// «original» es la variante por defecto de casi todo (Coca-Cola original = Coca-Cola): no distingue productos.
+const NOISE_LEFT = new Set(['mini', 'extra', 'nuevo', 'nueva', 'lata', 'original'])
 
 const none = (raw: string, brand: string | null, size: ParsedSize | null, pack: PackInput | null, leftover: string[], reasons: string[]): ProductIdentity => ({
   raw,
@@ -276,7 +282,9 @@ export function identifyProduct(raw: string, declaredBrand?: string | null, conf
 function compute(raw: string, declaredBrand?: string | null, confirmedKey?: string | null): ProductIdentity {
   build()
   // Producto CONFIRMADO o corregido por la familia (products.catalog_product_key): manda sobre lo que adivine el catálogo.
-  const forced = confirmedKey ? BY_KEY?.get(confirmedKey) : undefined
+  const variantOf = confirmedKey && !BY_KEY?.has(confirmedKey) ? resolveVariantKey(confirmedKey) : undefined
+  const forced = confirmedKey ? (BY_KEY?.get(confirmedKey) ?? variantOf?.entry) : undefined
+  const forcedAttrs = variantOf?.attrs
   const original = raw ?? ''
   const size = parseProductSize(original)
   const pack = parseProductPack(original)
@@ -325,7 +333,9 @@ function compute(raw: string, declaredBrand?: string | null, confirmedKey?: stri
     // Las palabras del nombre que ya dice la marca-producto («PATATAS» en «PATATAS LAYS») no son diferencia.
     aliasTokens = [...hinted.aliases.flatMap((a) => a.filter((w) => tokens.includes(w))), ...(chosen?.matched ?? [])]
     // Con un tipo genérico de la misma clase («REFRESCO COCA COLA») marca y nombre coinciden; con solo la marca es una propuesta.
-    if (!chosen) {
+    if (!chosen && brand && SURE_BRANDS.has(brand)) {
+      reasons.push(`la marca (${brand}) identifica el producto`)
+    } else if (!chosen) {
       confidence = 'probable'
       reasons.push(`solo trae la marca (${brand})`)
     }
@@ -389,6 +399,7 @@ function compute(raw: string, declaredBrand?: string | null, confirmedKey?: stri
         reasons.push('la etapa es un número suelto del nombre')
       }
     }
+    if (forcedAttrs?.[id] != null) value = forcedAttrs[id] // la variante elegida por la familia manda sobre lo que diga el nombre
     if (value == null && hint?.attrs?.[id]) value = hint.attrs[id]
     if (value == null && def.defaultValue !== undefined) value = def.defaultValue
     attrs[id] = value
@@ -404,7 +415,7 @@ function compute(raw: string, declaredBrand?: string | null, confirmedKey?: stri
   return {
     raw: original,
     entry,
-    name: displayName(entry, attrs),
+    name: entryDisplayName(entry, attrs),
     classKey: entry.classKey,
     kind: cls?.kind ?? entry.kind,
     brand,
@@ -419,19 +430,6 @@ function compute(raw: string, declaredBrand?: string | null, confirmedKey?: stri
     identityKey,
     reasons,
   }
-}
-
-function displayName(entry: CatalogEntry, attrs: Record<string, string | null>): string {
-  const parts: string[] = [entry.name]
-  for (const { id } of entry.attrs) {
-    const def = ATTRS[id]
-    const v = attrs[id]
-    if (v == null || v === def.defaultValue) continue
-    const spec = def.values.find((x) => x.value === v)
-    const label = spec?.label || def.numeric?.label(v) || ''
-    if (label && !entry.name.toLowerCase().includes(label.toLowerCase())) parts.push(label)
-  }
-  return parts.join(' ')
 }
 
 // ─── Comparación de dos identidades ───

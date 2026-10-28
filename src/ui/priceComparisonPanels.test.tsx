@@ -45,8 +45,14 @@ describe('ficha del producto', () => {
   const products = [prod('a', 'Arroz redondo 1 kg'), prod('b', 'Arroz redondo 500 g'), prod('c', 'Arroz integral 1 kg')]
   const prices = [price('a', 1.6, 'Mercadona', today), price('b', 0.9, 'Lidl', today), price('c', 1.9, 'Lidl', today)]
 
+  // COR-04D: la ficha arranca con SU historial («Solo el mismo»); los equivalentes se comparan al elegir «+ Equivalentes».
+  const withEquivalents = async () => {
+    fireEvent.click(await screen.findByRole('button', { name: '+ Equivalentes' }))
+  }
+
   it('enseña el precio por kg de cada tienda, el más barato, y no mezcla el arroz integral', async () => {
     render(<ProductPriceComparison productId="a" products={products} prices={prices} />)
+    await withEquivalents()
     expect(await screen.findByText('Mercadona')).toBeTruthy()
     expect(screen.getByText(/🏷️ más barato/)).toBeTruthy()
     expect(screen.getByText('Lidl')).toBeTruthy()
@@ -55,16 +61,20 @@ describe('ficha del producto', () => {
     expect(screen.getByText(/no ofertas de hoy/)).toBeTruthy()
   })
 
-  it('«Solo el mismo» deja fuera el producto equivalente', async () => {
+  it('«Solo el mismo» (el alcance con el que arranca la ficha) deja fuera el producto equivalente; «+ Equivalentes» lo suma', async () => {
     render(<ProductPriceComparison productId="a" products={products} prices={prices} />)
-    await screen.findByText('Lidl')
+    await screen.findByText('Mercadona')
+    expect(screen.queryByText('Lidl')).toBeNull()
+    expect(screen.getByText(/solo hay precios de una tienda/i)).toBeTruthy()
+    await withEquivalents()
+    expect(await screen.findByText('Lidl')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Solo el mismo' }))
     await waitFor(() => expect(screen.queryByText('Lidl')).toBeNull())
-    expect(screen.getByText(/solo hay precios de una tienda/i)).toBeTruthy()
   })
 
   it('la familia corrige una equivalencia: «No es equivalente» la guarda como decisión de la familia', async () => {
     render(<ProductPriceComparison productId="a" products={products} prices={prices} />)
+    await withEquivalents()
     fireEvent.click(await screen.findByRole('button', { name: 'No es equivalente' }))
     await waitFor(() => expect(setFamilyDecision).toHaveBeenCalledWith('a', 'b', 'different'))
     await waitFor(() => expect(screen.queryByText('Lidl')).toBeNull()) // ya no entra en la comparación
@@ -85,6 +95,7 @@ describe('ficha del producto', () => {
 
   it('al consultar lo compartido solo viajan NOMBRES de producto (nunca precios, tiendas ni fechas)', async () => {
     render(<ProductPriceComparison productId="a" products={products} prices={prices} />)
+    await withEquivalents()
     await screen.findByText('Lidl')
     const sent = JSON.stringify(loadSharedSpy.mock.calls)
     expect(sent).toContain('Arroz redondo 1 kg')

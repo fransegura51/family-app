@@ -93,6 +93,27 @@ describe('rectificar un artículo', () => {
     expect(out.json.notes).toMatch(/ningún cambio/)
     expect(out.json.result).toEqual(out.json.before)
   })
+
+  it('un artículo que NO admite fichas (otra sección, sin fichas): se descartan las que mande la IA y las notas lo dicen; la regla editorial no cambia', async () => {
+    const item = articleItem({ section: 'hogar', payload: { editorial: true } })
+    const h = setup(item, () => JSON.stringify({ title: item.title, body: articleBody(900), recipes: [recipe('Estofado casero de pollo con verduras', { key: 'estofado' })], notes: 'He añadido la ficha de la receta del estofado.' }))
+    const { json } = await revise(h, { instruction: 'Añade la receta del estofado de pollo con verduras' })
+    expect(json.ok).toBe(true)
+    expect(json.result.payload.recipes).toBeUndefined()
+    expect(json.notes).toContain('no admite fichas de recetas según las reglas actuales')
+    expect(json.notes).toContain('NO se ha añadido ninguna ficha')
+    expect(json.notes.length).toBeLessThanOrEqual(500)
+    // Al modelo se le dice que este artículo no admite fichas (no se le pide «recipes»).
+    expect(JSON.stringify(h.provider.requests[0])).toContain('NO admite fichas de recetas')
+    noMutation(h)
+  })
+
+  it('un artículo que sí las admite sigue aceptando la ficha nueva (regla intacta)', async () => {
+    const h = setup(articleItem(), () => JSON.stringify({ title: 'Tortillas de mil maneras', body: articleBody(900), recipes: [recipe('Tortilla de patata', { key: 'tortilla' }), recipe('Estofado', { key: 'estofado' })], notes: 'Añadí el estofado.' }))
+    const { json } = await revise(h, { instruction: 'Añade la receta del estofado' })
+    expect(json.result.payload.recipes).toHaveLength(2)
+    expect(json.notes).toBe('Añadí el estofado.')
+  })
 })
 
 describe('rectificar una encuesta', () => {

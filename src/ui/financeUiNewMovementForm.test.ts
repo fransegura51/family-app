@@ -73,7 +73,8 @@ describe('Clasificación, etiquetas, concepto y Necesito', () => {
     expect(FIELDS).toContain('[classificationKind, classesVersion]')
   })
   it('se conserva el texto explicativo de Clasificación', () => {
-    expect(FS).toContain('Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.')
+    // ECO-UI-01/02: texto más corto (formulario compacto); el selector solo se pide si NO hay ticket con productos reales detrás.
+    expect(FS).toContain('Para que cuente en «Reparto por clasificación» de Estadística compras.')
   })
   it('R/S. Gestionar etiquetas sigue accesible y la lista de etiquetas del alta se recarga cuando cambian (sin cerrar el formulario)', () => {
     expect(FS).toContain('⚙️ Gestionar etiquetas')
@@ -85,7 +86,7 @@ describe('Clasificación, etiquetas, concepto y Necesito', () => {
   it('K. el texto de Necesito y «Según categoría» salen de la categoría (dinámico) y se conserva la nota informativa', () => {
     expect(FIELDS).toContain('resolveCategoryClassification(draft.isIncome ? null : draft.expenseCategory, categories)')
     expect(FIELDS).toContain("Según categoría{classification.isFixed != null ? ` (${classification.isFixed ? 'Fijo' : 'Variable'})` : ''}")
-    expect(FIELDS).toContain('según la categoría, editable en el botón flotante "🗂️ Categorías".')
+    expect(FIELDS).toContain('según la categoría (editable en 🗂️ Categorías).')
     expect(FIELDS).not.toMatch(/Según categoría \(Variable\)/)
   })
   it('«Según categoría» (null) es la opción por defecto', () => {

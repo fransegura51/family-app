@@ -1,5 +1,5 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
-import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, tagAmount, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { addSplitTag, changeSplitMode, hasTag, NO_TAG, removeSplitTag, replaceSplitTag, resolveTagSplit, sharesOf, splitFromShares, startSplit, tagAmount, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
 import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -148,6 +148,7 @@ import { centsToEurosString, checkCentsDistribution, eurosStringToCents, type Ce
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { DateField } from '@/ui/DateField'
+import { applyTotalBasisToLines, applyTotalStatusToLines, linesDifferFromProposal, statusIsStructural } from '@/domain/forecastPlanMetadata'
 import { getAccountsMode, getDateFilterPreferences, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode, type DateFilterPreferences } from '@/data/family'
 import {
   ECONOMIA_MENU_ITEM_META,
@@ -170,10 +171,11 @@ import { getChartColorTheme } from '@/state/colorTheme'
 import { useDateFilterPreset } from '@/state/dateFilterPreset'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
+import { takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -221,7 +223,7 @@ import {
   type ClassificationKind,
   type MovementDraft,
 } from '@/domain/movementForm'
-import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseNature } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseLinkState, purchaseNature, type PurchaseLinkState } from '@/domain/products'
 import { saveStatsReturnContext, takeStatsReturnContext } from '@/state/statsReturnContext'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
@@ -423,6 +425,8 @@ export interface MovementsFilter {
   // única forma de reproducir EXACTAMENTE el mismo conjunto que
   // produjo la cifra es la lista de ids que ya se calculó para ella.
   expenseIds?: string[]
+  /** COR-04G: abre directamente la ficha de edición/consulta de ESTE movimiento al llegar (desde una fila de estadística que es un movimiento bancario sin producto). */
+  openExpenseId?: string
   /** Lo que cada movimiento aporta a la estadística desde la que se llegó (p. ej. una clasificación repartida): la lista enseña esa parte además del importe completo. */
   imputed?: { label: string; byExpense: Record<string, number> }
   // Solo gastos reales SIN categoría (category NULL, «Pendiente de clasificar»). Filtro lógico: no es una categoría ni se busca en
@@ -3556,6 +3560,15 @@ export function ExpensesTab({
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // COR-04G: llegar desde una fila de estadística que es un movimiento: su ficha se abre sola (una vez por movimiento pedido).
+  const openedExpenseRef = useRef<string | null>(null)
+  useEffect(() => {
+    const id = filter?.openExpenseId
+    if (id && openedExpenseRef.current !== id) {
+      openedExpenseRef.current = id
+      setEditingId(id)
+    }
+  }, [filter?.openExpenseId])
   // Petición real: "para Piso compartido/cuentas separadas primero hay
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
@@ -4415,12 +4428,15 @@ function ShareSplitEditor({
   preferredSingle,
   onSplit,
   onSingle,
+  chooser = true,
 }: {
   items: { id: string; label: string }[]
   noun: SplitNoun
   split: TagSplitDraft
   total: number
   helpId: string
+  /** false = quién entra en el reparto se elige fuera (selectores de etiqueta, ECO-UI-02): aquí solo se ven el modo, las partes y la comprobación de la suma. */
+  chooser?: boolean
   /** Lo que queda si se vuelve a uno solo (si sigue entre los elegidos). */
   preferredSingle: string
   onSplit: (next: TagSplitDraft) => void
@@ -4432,6 +4448,7 @@ function ShareSplitEditor({
   const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
   return (
     <div className="card" data-help-id={helpId} style={{ padding: 8 }}>
+      {chooser && (
       <div className="chip-row" role="group" aria-label={`${capitalizeWord(noun.plural)} del movimiento`}>
         {items.map((t) => {
           const on = split.ids.includes(t.id)
@@ -4452,7 +4469,8 @@ function ShareSplitEditor({
           )
         })}
       </div>
-      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
+      )}
+      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: chooser ? 6 : 0 }}>
         {(['equal', 'amount', 'percent'] as const).map((m) => (
           <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onSplit(changeSplitMode(split, m, total))}>
             {SPLIT_MODE_LABELS[m]}
@@ -4487,9 +4505,11 @@ function ShareSplitEditor({
       <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
         {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada ${noun.singular} recibe su parte.` : resolved.error}
       </p>
-      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
-        Volver a una sola {noun.singular}
-      </button>
+      {chooser && (
+        <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
+          Volver a una sola {noun.singular}
+        </button>
+      )}
     </div>
   )
 }
@@ -4507,39 +4527,113 @@ export function TagSharesField({
   total: number
   onChange: (next: { tagId: string; split: TagSplitDraft | null }) => void
 }) {
-  if (!split) {
-    return (
-      <div>
-        <TagSelect value={tagId} onChange={(v) => onChange({ tagId: v, split: null })} tags={tags} />
-        {tags.length >= 2 && (
-          <button
-            type="button"
-            className="link-button"
-            data-help-id="finance.tag-split"
-            style={{ fontSize: 12, padding: '4px 0' }}
-            onClick={() => {
-              const first = tagId || tags[0].id
-              const second = (tags.find((t) => t.id !== first) ?? tags[1]).id
-              onChange({ tagId: first, split: startSplit([first, second], total) })
-            }}
-          >
-            ＋ Repartir entre varias etiquetas
+  // ECO-UI-02/03: solo se ven las etiquetas YA asignadas, cada una en su desplegable compacto (con su color), y debajo «+ Añadir etiqueta». El buscador/selector de etiquetas
+  // disponibles NO está siempre a la vista: aparece solo al pulsar «+ Añadir etiqueta», y se cierra al elegir. Los repartos (partes iguales, euros, %) son los de siempre.
+  const [picking, setPicking] = useState(false)
+  const [query, setQuery] = useState('')
+  const chosen = split ? split.ids : tagId ? [tagId] : []
+  const tagOf = (id: string) => tags.find((t) => t.id === id)
+  const available = tags.filter((t) => !chosen.includes(t.id))
+  const needle = query.trim().toLowerCase()
+  const pickable = available.filter((t) => !needle || t.name.toLowerCase().includes(needle))
+  const mainTag = (ids: string[]) => (ids.includes(tagId) ? tagId : (ids[0] ?? ''))
+
+  function changeTag(old: string, value: string) {
+    if (!value || value === old) return
+    if (split) onChange({ tagId: tagId === old ? value : tagId, split: replaceSplitTag(split, old, value) })
+    else onChange({ tagId: value, split: null })
+  }
+  function removeTag(old: string) {
+    if (split) {
+      const next = removeSplitTag(split, old, total)
+      if (next) onChange({ tagId: mainTag(next.ids), split: next })
+      else onChange({ tagId: split.ids.filter((x) => x !== old)[0] ?? '', split: null })
+    } else onChange({ tagId: '', split: null })
+  }
+  function addTag(value: string) {
+    setPicking(false)
+    setQuery('')
+    if (chosen.length === 0) onChange({ tagId: value, split: null })
+    else if (split) onChange({ tagId: mainTag(split.ids), split: addSplitTag(split, value, total) })
+    else onChange({ tagId, split: startSplit([tagId, value], total) })
+  }
+
+  return (
+    <div data-help-id="finance.tag-select">
+      {chosen.length === 0 && (
+        <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+          Sin etiqueta
+        </p>
+      )}
+      {chosen.map((id, i) => {
+        const tag = tagOf(id)
+        return (
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: tag ? tag.color : 'transparent' }} />
+            <select style={{ flex: 1, minWidth: 0 }} aria-label={`Etiqueta ${i + 1}`} value={id} onChange={(e) => changeTag(id, e.target.value)}>
+              {tags
+                .filter((t) => t.id === id || !chosen.includes(t.id))
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </select>
+            <button type="button" className="link-button" style={{ flex: 'none', minWidth: 32, minHeight: 32 }} aria-label={`Quitar la etiqueta ${tag?.name ?? ''}`.trim()} onClick={() => removeTag(id)}>
+              ✕
+            </button>
+          </div>
+        )
+      })}
+      {picking && (
+        <div className="card" data-testid="tag-picker" style={{ padding: 8, marginBottom: 4 }}>
+          <input type="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta" style={{ marginBottom: 4 }} />
+          <div role="listbox" aria-label="Etiquetas disponibles" style={{ maxHeight: 180, overflowY: 'auto' }}>
+            {pickable.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="link-button"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, textAlign: 'left', color: 'var(--text)', fontSize: 14 }}
+                onClick={() => addTag(t.id)}
+              >
+                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: t.color }} />
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+              </button>
+            ))}
+            {pickable.length === 0 && <p className="muted" style={{ margin: '6px 0', fontSize: 13 }}>{available.length === 0 ? 'Ya están todas las etiquetas.' : 'Ninguna etiqueta coincide.'}</p>}
+          </div>
+          <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => { setPicking(false); setQuery('') }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {!picking && available.length > 0 && (
+          <button type="button" className="link-button" data-help-id="finance.tag-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPicking(true)}>
+            + Añadir etiqueta
           </button>
         )}
+        <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => openManager('etiquetas')}>
+          ⚙️ Gestionar etiquetas
+        </button>
       </div>
-    )
-  }
-  return (
-    <ShareSplitEditor
-      items={tags.map((t) => ({ id: t.id, label: t.name }))}
-      noun={TAG_NOUN}
-      split={split}
-      total={total}
-      helpId="finance.tag-split-editor"
-      preferredSingle={tagId}
-      onSplit={(next) => onChange({ tagId, split: next })}
-      onSingle={(id) => onChange({ tagId: id, split: null })}
-    />
+      {split && (
+        <ShareSplitEditor
+          items={tags.map((t) => ({ id: t.id, label: t.name }))}
+          noun={TAG_NOUN}
+          split={split}
+          total={total}
+          helpId="finance.tag-split-editor"
+          preferredSingle={tagId}
+          chooser={false}
+          onSplit={(next) => onChange({ tagId: mainTag(next.ids), split: next })}
+          onSingle={(id) => onChange({ tagId: id, split: null })}
+        />
+      )}
+    </div>
   )
 }
 
@@ -4571,9 +4665,9 @@ export function ClassSharesField({
               </option>
             ))}
           </select>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.
-          </p>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Para que cuente en «Reparto por clasificación» de Estadística compras.
+          </span>
         </label>
         {options.length >= 2 && (
           <button
@@ -4626,6 +4720,7 @@ function MovementFormFields({
   tags,
   pendingCategoryLabel,
   suggestedCategory,
+  purchaseLink = 'none',
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4636,6 +4731,9 @@ function MovementFormFields({
   pendingCategoryLabel?: string
   /** ECO-CLASIF: la categoría que PEPA propone para este gasto pendiente (sale arriba en el selector). */
   suggestedCategory?: string | null
+  // ECO-UI-04: 'linked' = hay una compra realmente vinculada al movimiento (con o sin foto del ticket) pero sin productos reales: se indica y se puede clasificar a mano;
+  // 'linked-products' = la compra trae productos reales y su desglose manda: no se pide clasificación aquí (lo ya guardado se conserva).
+  purchaseLink?: PurchaseLinkState
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4722,7 +4820,12 @@ function MovementFormFields({
           <input type="text" data-help-id="finance.movement-store" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
         </label>
       )}
-      {classificationKind && (
+      {purchaseLink !== 'none' && (
+        <p className="muted" data-testid="movement-purchase-linked" style={{ margin: 0, fontSize: 13 }}>
+          ✓ Compra vinculada
+        </p>
+      )}
+      {classificationKind && purchaseLink !== 'linked-products' && (
         <ClassSharesField
           options={classificationOptions}
           value={draft.productClassification}
@@ -4743,7 +4846,7 @@ function MovementFormFields({
         <>
           <p className="muted" style={{ margin: 0, fontSize: 12 }}>
             {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
-            {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
+            {' — según la categoría (editable en 🗂️ Categorías).'}
           </p>
           {/* Petición real: «quiero que yo pueda seleccionar cada gasto, si es fijo o es variable» — a diferencia
               de Debo/Necesito/Quiero (solo por categoría), esto se puede pisar para este movimiento en concreto.
@@ -4812,6 +4915,22 @@ function EditExpenseInline({
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ECO-UI-01/04: se mira el vínculo REAL (receipts.expense_id) del gasto, sea cual sea su origen (un apunte bancario puede estar vinculado a una compra con ticket o a una compra
+  // anotada a mano sin foto) y sus líneas. Es la MISMA regla que usa Estadística compras para decidir si manda el desglose de productos. Un ingreso no tiene compra. Mientras se comprueba
+  // (o si falla) se enseña el selector de siempre: nunca se oculta algo que se necesita por no saber todavía.
+  const [purchaseLink, setPurchaseLink] = useState<PurchaseLinkState>('none')
+  useEffect(() => {
+    if (expense.isIncome) return
+    let cancelled = false
+    listLinkedTicketProducts(expense.id)
+      .then((lines) => {
+        if (!cancelled) setPurchaseLink(purchaseLinkState(lines))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [expense.id, expense.isIncome])
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
@@ -4865,13 +4984,14 @@ function EditExpenseInline({
   }
 
   return (
-    <div className="card member-form" onClick={(e) => e.stopPropagation()}>
+    <div className="card member-form movement-form" onClick={(e) => e.stopPropagation()}>
       <MovementFormFields
         mode="edit"
         draft={draft}
         onChange={setDraft}
         categories={categories}
         tags={tags}
+        purchaseLink={purchaseLink}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
         suggestedCategory={expense.category == null ? expense.categorySuggestion : null}
       />
@@ -5304,7 +5424,7 @@ function AddExpenseToAnyCategoryInline({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="member-form" data-help-id="finance.new-movement-form">
+    <form onSubmit={handleSubmit} className="member-form movement-form" data-help-id="finance.new-movement-form">
       <MovementFormFields mode="create" draft={draft} onChange={setDraft} categories={categories} tags={tags} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving} data-help-id="finance.new-save">
@@ -5447,10 +5567,10 @@ interface ClassifiableEntry {
 }
 
 function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
-  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number; isProduct: boolean }>; byExpense: Map<string, number> }>()
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number; isProduct: boolean; expenseId?: string }>; byExpense: Map<string, number> }>()
   for (const entry of entries) {
-    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number; isProduct: boolean }>(), byExpense: new Map<string, number>() }
-    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0, isProduct: entry.isProduct === true }
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number; isProduct: boolean; expenseId?: string }>(), byExpense: new Map<string, number>() }
+    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0, isProduct: entry.isProduct === true, expenseId: entry.isProduct === true ? undefined : entry.expenseId }
     p.total += entry.amount
     group.products.set(entry.itemId, p)
     // Importe imputado a esta clasificación por cada gasto (en céntimos enteros para que la suma no arrastre decimales).
@@ -5463,7 +5583,7 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
   return [...totals.entries()]
     .map(([name, group]) => {
       const productList = [...group.products.entries()]
-        .map(([productId, p]) => ({ productId, name: p.name, total: p.total, isProduct: p.isProduct }))
+        .map(([productId, p]) => ({ productId, name: p.name, total: p.total, isProduct: p.isProduct, expenseId: p.expenseId }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
       // Solo cuentan los gastos que APORTAN importe a esta clasificación: un gasto con una línea de 0 € (o un reparto a cero) de esta clase no es «de esta clase».
@@ -5519,7 +5639,11 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab() {
+export function ReceiptsTab({ onBackToHistory }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void } = {}) {
+  // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
+  const [openTarget] = useState(() => takePendingReceiptOpen())
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [targetMissing, setTargetMissing] = useState(false)
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0312 estas listas quedan vacías).
@@ -5546,7 +5670,7 @@ export function ReceiptsTab() {
   // defecto, solo el nombre/total a la vista; tocar la carpeta la
   // abre. Empieza vacío (todas plegadas) hasta que se toque alguna.
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
-  const [rangePreset, setRangePreset] = useDateFilterPreset()
+  const [rangePreset, setRangePreset] = useDateFilterPreset(openTarget ? 'rango' : null)
   const [rangeCustomFrom, setRangeCustomFrom] = useState(toDateStr(new Date()))
   const [rangeCustomTo, setRangeCustomTo] = useState(toDateStr(new Date()))
 
@@ -5592,6 +5716,23 @@ export function ReceiptsTab() {
     if (members.length === 0) return
     currentProfileId().then((id) => setTabMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
   }, [members])
+  // COR-04C: cuando hay datos, se enseña SOLO esa fecha, se abre la carpeta de su tienda y la compra sale desplegada y resaltada. Si ya no existe, se avisa (no hay enlace roto).
+  const openTargetHandledRef = useRef(false)
+  useEffect(() => {
+    if (!openTarget || loading || openTargetHandledRef.current) return
+    openTargetHandledRef.current = true
+    const target = receipts.find((r) => r.id === openTarget.receiptId)
+    if (!target) {
+      setTargetMissing(true)
+      return
+    }
+    setRangePreset('rango')
+    setRangeCustomFrom(target.receiptDate)
+    setRangeCustomTo(target.receiptDate)
+    const folder = groupReceiptsByStore(receipts.map((r) => ({ ...r, hasTicket: true })), knownStores).find((g) => g.receipts.some((r) => r.id === target.id))
+    if (folder) setExpandedStore(folder.store)
+    setFocusId(target.id)
+  }, [openTarget, loading, receipts, knownStores, setRangePreset])
 
   // Borrado SEGURO (ECO-1j): si la compra mueve efectivo de carteras, tiene devoluciones o está enlazada al banco, antes se enseña qué pasará.
   // El servidor deja las carteras coherentes, conserva siempre los movimientos bancarios originales y anota una foto para poder deshacerlo.
@@ -5680,6 +5821,16 @@ export function ReceiptsTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      {openTarget && onBackToHistory && (
+        // COR-04F: barra que se queda PEGADA arriba mientras se hace scroll (la compra se centra en pantalla al llegar y el botón, al principio de la página, quedaba fuera de vista).
+        <div className="receipt-back-bar" data-testid="receipt-back-bar">
+          <button type="button" onClick={() => onBackToHistory(openTarget.back)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
+            ← Volver a Historial de precios
+          </button>
+          <span className="muted" style={{ fontSize: 12 }}>{openTarget.back.productName}</span>
+        </div>
+      )}
+      {targetMissing && <p className="muted">No se ha encontrado esa compra (puede haberse borrado). El Historial de precios la sigue mostrando como registro.</p>}
       <datalist id="receipt-known-stores">
         {knownStores.map((s) => (
           <option key={s} value={s} />
@@ -5821,6 +5972,7 @@ export function ReceiptsTab() {
                         key={r.id}
                         receipt={r}
                         hasTicket={r.hasTicket}
+                        highlight={focusId === r.id}
                         members={members}
                         onEdit={() => setEditingId(r.id)}
                         onAttach={() => setAttachingId(r.id)}
@@ -6194,6 +6346,7 @@ function DropdownFilter({
 function ReceiptRow({
   receipt,
   hasTicket,
+  highlight = false,
   members,
   onEdit,
   onAttach,
@@ -6207,6 +6360,8 @@ function ReceiptRow({
 }: {
   receipt: Receipt
   hasTicket: boolean
+  /** COR-04C: la compra que se pidió desde el Historial de precios: sale desplegada, resaltada y a la vista. */
+  highlight?: boolean
   members: FamilyMember[]
   onEdit: () => void
   onAttach?: () => void
@@ -6224,6 +6379,15 @@ function ReceiptRow({
   const [viewing, setViewing] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const highlightedRef = useRef(false)
+  useEffect(() => {
+    if (!highlight || highlightedRef.current) return
+    highlightedRef.current = true
+    if (hasTicket) void handleToggleExpand()
+    cardRef.current?.scrollIntoView?.({ block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlight])
 
   const refundInfo = receipt.totalAmount != null ? refundSummary(receipt.totalAmount, refunds) : null
   const refundText = refundInfo ? refundLine(refundInfo) : null
@@ -6278,7 +6442,7 @@ function ReceiptRow({
   }
 
   return (
-    <div className="card receipt-row">
+    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : undefined}>
       <div className="receipt-row-main">
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{formatDate(receipt.receiptDate)}</span>
@@ -7553,7 +7717,7 @@ interface FoodTypeBreakdownEntry {
   total: number
   count: number
   /** `productId` es la clave de la fila; `isProduct` = es un producto REAL (id de la tabla products), no una compra sin desglose (tienda/gasto). */
-  products: { productId: string; name: string; total: number; isProduct: boolean }[]
+  products: { productId: string; name: string; total: number; isProduct: boolean; expenseId?: string }[]
   /** Gastos que de verdad aportan importe a esta clasificación (importe imputado > 0), en la MISMA lista que se enseña en «Ver movimientos». */
   expenseIds: string[]
   /** Lo que cada uno de esos gastos aporta a esta clasificación (no su importe completo): una compra repartida o con varios productos aporta solo su parte. */
@@ -7572,11 +7736,14 @@ function FoodTypeBreakdownList({
   expandedKey,
   onToggle,
   onOpenProduct,
+  onOpenExpense,
 }: {
   types: FoodTypeBreakdownEntry[]
   expandedKey: string | null
   onToggle: (key: string) => void
   onOpenProduct?: (product: { productId: string; name: string }) => void
+  /** COR-04G: una fila que es un movimiento bancario sin producto individual abre ESE movimiento (por identificador) en Economía. */
+  onOpenExpense?: (expense: { expenseId: string; name: string }) => void
 }) {
   if (types.length === 0) return null
   const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
@@ -7618,17 +7785,19 @@ function FoodTypeBreakdownList({
                     depender solo del texto. */}
                 {t.products.map((p, i) => {
                   const rowStyle = { background: i % 2 === 1 ? t.color : undefined }
+                  // COR-04G: destino de la fila — la ficha del producto (línea real de ticket) o el movimiento (apunte bancario sin producto individual). Solo cambia que el NOMBRE va
+                  // subrayado cuando hay destino: misma fila, misma altura, mismos colores y mismo tamaño de letra de siempre.
+                  const open = p.isProduct && onOpenProduct ? () => onOpenProduct({ productId: p.productId, name: p.name }) : !p.isProduct && p.expenseId && onOpenExpense ? () => onOpenExpense({ expenseId: p.expenseId as string, name: p.name }) : null
                   const content = (
                     <>
-                      <span className="price-row-name">{p.name}</span>
+                      <span className="price-row-name" style={open ? { textDecoration: 'underline' } : undefined}>{p.name}</span>
                       <span className="price-row-price">
                         {p.total.toFixed(2)} €{' '}
                         <span className="muted">({t.total > 0 ? ((p.total / t.total) * 100).toFixed(0) : 0}%)</span>
                       </span>
                     </>
                   )
-                  // COR-04: solo las filas que SON un producto real (identificador de producto) se pueden tocar; una compra sin desglose de ticket (tienda / gasto) no lo es.
-                  if (!onOpenProduct || !p.isProduct) {
+                  if (!open) {
                     return (
                       <div key={p.productId} className="price-row" style={rowStyle}>
                         {content}
@@ -7636,16 +7805,23 @@ function FoodTypeBreakdownList({
                     )
                   }
                   return (
-                    <button
+                    <div
                       key={p.productId}
-                      type="button"
-                      className="price-row price-row-tappable"
-                      style={{ ...rowStyle, width: '100%', border: 'none', textAlign: 'left', color: 'var(--text)', font: 'inherit', cursor: 'pointer', minHeight: 44 }}
-                      aria-label={`Abrir la ficha de ${p.name} en Historial de precios`}
-                      onClick={() => onOpenProduct({ productId: p.productId, name: p.name })}
+                      className="price-row"
+                      style={{ ...rowStyle, cursor: 'pointer' }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={p.isProduct ? `Abrir la ficha de ${p.name} en Historial de precios` : `Abrir el movimiento ${p.name}`}
+                      onClick={open}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          open()
+                        }
+                      }}
                     >
                       {content}
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -7828,6 +8004,11 @@ export function BudgetsTab({
 
   const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const periodTitle = periodLabelForTitle(preset, periodFrom, periodTo)
+  // COR-04G: al salir hacia Economía (Ver movimientos / abrir un movimiento) se guarda lo que se tenía (periodo, Alimentos/Otros, clasificación desplegada, scroll) para volver igual.
+  const viewMovementsKeepingContext = (f: MovementsFilter) => {
+    saveStatsReturnContext({ preset, customFrom, customTo, scope: storeDonutScope, expandedClassType, scrollY: window.scrollY })
+    onViewMovements?.(f)
+  }
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
   // Piso compartido: Individual = lo tuyo (owner_member_id no nulo, RLS
   // ya solo entrega el tuyo); Común = owner_member_id null. Sin modo
@@ -7884,11 +8065,19 @@ export function BudgetsTab({
   const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
   const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
   const periodPrices = prices.filter((pr) => pr.recordedDate >= periodFrom && pr.recordedDate <= periodTo)
-  const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
   const pricesByReceiptId = new Map<string, ProductPrice[]>()
   for (const pr of periodPrices) {
     if (!pr.receiptId) continue
     pricesByReceiptId.set(pr.receiptId, [...(pricesByReceiptId.get(pr.receiptId) ?? []), pr])
+  }
+  // Un gasto puede tener más de un ticket vinculado (duplicados): se usa el que tiene desglose REAL (productos que no son el marcador «Pendiente»); a igualdad, el último. Así un
+  // ticket duplicado que solo trae el marcador no tapa al que sí trae productos (COR-01). Nunca se suman dos tickets (se contaría el gasto dos veces).
+  const hasRealLines = (receiptId: string) => (pricesByReceiptId.get(receiptId) ?? []).some((pr) => !isPlaceholderProduct(productById.get(pr.productId)))
+  const receiptByExpenseId = new Map<string, Receipt>()
+  for (const r of receipts) {
+    if (!r.expenseId) continue
+    const current = receiptByExpenseId.get(r.expenseId)
+    if (!current || hasRealLines(r.id) || !hasRealLines(current.id)) receiptByExpenseId.set(r.expenseId, r)
   }
   // Excepción manual por producto (ver Historial de precios, ⚙️
   // Clasificaciones de productos): si `category` ya tiene una clase
@@ -8420,14 +8609,14 @@ export function BudgetsTab({
             title="Reparto del gasto por tienda"
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
-            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
+            onViewRecords={(expenseIds, label, imputed) => viewMovementsKeepingContext({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           </div>
           <LinkedDonutCard
             title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? foodTypePieGroups : noAlimentosTypePieGroups}
-            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
+            onViewRecords={(expenseIds, label, imputed) => viewMovementsKeepingContext({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           <FoodTypeBreakdownList
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
@@ -8439,6 +8628,11 @@ export function BudgetsTab({
                     saveStatsReturnContext({ preset, customFrom, customTo, scope: storeDonutScope, expandedClassType, scrollY: window.scrollY })
                     onOpenProduct({ ...p, kind: storeDonutScope })
                   }
+                : undefined
+            }
+            onOpenExpense={
+              onViewMovements
+                ? (x) => viewMovementsKeepingContext({ label: x.name, from: periodFrom, to: periodTo, isIncome: false, expenseIds: [x.expenseId], openExpenseId: x.expenseId })
                 : undefined
             }
           />
@@ -10834,7 +11028,10 @@ function ForecastDocumentImportModal({
         )}
         {status === 'empty' && (
           <div>
-            <p>No se ha podido leer nada útil de este documento.</p>
+            <p>No he conseguido interpretar este documento{file && file.type !== 'application/pdf' ? ' (lo he probado con dos procesamientos distintos de la foto)' : ''}.</p>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Prueba con una foto más recta, sin sombras y con buena luz (que se vea entera la tabla), o súbela como PDF. También puedes continuar a mano.
+            </p>
             <div className="form-actions">
               <button type="button" onClick={onContinueManually}>
                 Continuar a mano
@@ -10998,6 +11195,9 @@ function ManageReconciledExpense({
 // TOTAL. Cambiar cualquiera de estos ejes regenera la propuesta de reparto entera (PEPA vuelve a
 // proponer N líneas desde cero); editar una línea suelta NO cambia esta firma, así que esa edición
 // sobrevive a re-renders posteriores del formulario sin ser pisada.
+// Qué hace que el plan de pagos se vuelva a proponer: SOLO la estructura — nº de pagos, frecuencia, primer vencimiento, importe TOTAL, modo de importe y pasar a/desde «Pendiente».
+// El ESTADO del importe (Estimado/Conocido) y «en qué se basa» son metadatos y NO entran aquí (28/10/2026): cambiarlos nunca rehace importes ni fechas
+// (ver domain/forecastPlanMetadata.ts y el efecto de metadatos del formulario).
 function computeFinitePlanSignature(
   installmentCount: string,
   freqOption: ForecastRecurrenceOption,
@@ -11006,7 +11206,7 @@ function computeFinitePlanSignature(
   dueDate: string,
   amountStatus: ForecastAmountStatus,
   amount: string,
-  amountBasis: string,
+  _amountBasis: string,
   amountEntryMode: FinitePlanAmountMode = 'total',
 ): string {
   const validated = validateInstallmentCount(installmentCount)
@@ -11016,44 +11216,18 @@ function computeFinitePlanSignature(
     customFreq,
     customInterval,
     dueDate,
-    amountStatus,
+    amountStatus === 'unknown' ? 'unknown' : 'amount',
     amountStatus === 'unknown' ? null : amount,
-    amountStatus === 'estimated' ? amountBasis : null,
     amountEntryMode,
   ])
-}
-
-// BUG REAL (documento BBVA real, 85 cuotas, 2026-09-29) — tras precargar el plan con los importes/fechas
-// reales del documento, cambiar SOLO el "Estado del importe TOTAL" (p. ej. de Estimado a Conocido, sin
-// tocar el número de cuotas/frecuencia/vencimiento) disparaba computeFinitePlanSignature igual que un
-// cambio real, y el useEffect de más abajo sobreescribía las 85 líneas reales por un reparto uniforme
-// (20.790€/85 = 244,58€ cada una) — perdiendo de golpe los importes reales (319,63€/319,45€) que ya
-// estaban bien. Subconjunto SOLO de los ejes que de verdad invalidan la correspondencia "cuota N = fila N
-// del documento" (nº de cuotas, frecuencia, vencimiento) — nunca el estado/importe/basis del TOTAL, que
-// no cambia cuántas cuotas hay ni qué fecha les corresponde a cada una.
-function computeFinitePlanStructureSignature(
-  installmentCount: string,
-  freqOption: ForecastRecurrenceOption,
-  customFreq: ForecastCustomRecurrence['freq'],
-  customInterval: string,
-  dueDate: string,
-): string {
-  const validated = validateInstallmentCount(installmentCount)
-  return JSON.stringify([validated.ok ? validated.count : null, freqOption, customFreq, customInterval, dueDate])
 }
 
 // Misma idea que computeFinitePlanSignature, para el Caso B (cobro fraccionado por ciclo): cuántos
 // cobros y el TOTAL del ciclo. No incluye frecuencia/dueDate como ancla de la SERIE (eso lo sigue
 // llevando "¿Cuándo se repite?" de arriba) — dueDate aquí solo es el ancla del PRIMER cobro propuesto.
-function computeSplitChargesSignature(splitCount: string, dueDate: string, amountStatus: ForecastAmountStatus, amount: string, amountBasis: string): string {
+function computeSplitChargesSignature(splitCount: string, dueDate: string, amountStatus: ForecastAmountStatus, amount: string, _amountBasis: string): string {
   const validated = validateSplitChargeCount(splitCount)
-  return JSON.stringify([
-    validated.ok ? validated.count : null,
-    dueDate,
-    amountStatus,
-    amountStatus === 'unknown' ? null : amount,
-    amountStatus === 'estimated' ? amountBasis : null,
-  ])
+  return JSON.stringify([validated.ok ? validated.count : null, dueDate, amountStatus === 'unknown' ? 'unknown' : 'amount', amountStatus === 'unknown' ? null : amount])
 }
 
 // Fase 1D-g — lo único que precarga una propuesta de posible recurrencia detectada: SOLO campos
@@ -11084,6 +11258,9 @@ export interface ForecastPaymentPrefill {
   // documento no dejó leer con seguridad todos los importes y/o fechas: el plan mostrado es un cálculo
   // (reparto uniforme + recurrencia pura), no datos leídos del documento.
   planReviewNote?: string | null
+  // 28/10/2026 — estado del importe que propone el documento: «Conocido» solo cuando el documento fija importes exactos (ver classifyDocumentAmountStatus); sin indicar, «Estimado».
+  amountStatusSuggestion?: 'known' | 'estimated'
+  amountStatusNote?: string | null
   categoryName: string | null
   dueDate?: string
   // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
@@ -11108,7 +11285,7 @@ export interface ForecastPaymentPrefill {
   contentFingerprint?: string | null
 }
 
-function ForecastPaymentForm({
+export function ForecastPaymentForm({
   categories,
   members,
   accounts,
@@ -11133,7 +11310,7 @@ function ForecastPaymentForm({
   // "Importar desde foto o documento" — un prefill sin importe real detectado (prefill.amount === null)
   // abre en "Pendiente" en vez de "Estimado": la restricción de la base de datos exige un importe no nulo
   // para 'estimated', y forzar un 0 sería inventar un dato que el documento no daba.
-  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))
+  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? (prefill.amountStatusSuggestion === 'known' ? 'known' : 'estimated') : 'unknown') : 'known'))
   // BUG REAL (reportado 2026-09-29, pago finito creado a mano) — payment.amount guarda el importe BASE de
   // UNA cuota (ver buildFinitePlanSubmission: parentAmount = baseAmount, nunca el total), no el total del
   // plan. Usarlo tal cual como "Importe TOTAL" al editar mostraba, p. ej., 150€ en vez de 1800€ para un
@@ -11270,9 +11447,9 @@ function ForecastPaymentForm({
         const realDates = hasRealDates && prefill.installmentDueDates!.length === validated.count ? prefill.installmentDueDates! : null
         return base.map((line, i) => ({
           date: realDates ? realDates[i] : line.date,
-          amountStatus: realAmounts ? ('estimated' as ForecastAmountStatus) : line.amountStatus,
+          amountStatus: realAmounts ? (amountStatus === 'unknown' ? ('estimated' as ForecastAmountStatus) : amountStatus) : line.amountStatus,
           amount: realAmounts ? String(realAmounts[i]) : line.amount,
-          amountEstimatedBasis: realAmounts ? prefill.amountEstimatedBasis : line.amountEstimatedBasis,
+          amountEstimatedBasis: realAmounts ? (amountStatus === 'known' ? '' : prefill.amountEstimatedBasis) : line.amountEstimatedBasis,
         }))
       }
     }
@@ -11304,18 +11481,6 @@ function ForecastPaymentForm({
       : hasRealAmounts || hasRealDates
         ? computeFinitePlanSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate, amountStatus, amount, amountBasis)
         : '',
-  )
-  // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga representando lo importado del
-  // documento (nadie ha tocado nº de cuotas/frecuencia/vencimiento todavía), el useEffect de más abajo
-  // NUNCA debe regenerarlo por un cambio en el estado/importe/basis del TOTAL — ver
-  // computeFinitePlanStructureSignature. En cuanto SÍ cambie algo estructural, la correspondencia "cuota N
-  // = fila N del documento" deja de tener sentido de todas formas, y a partir de ahí el plan se comporta
-  // como uno manual (se propone de nuevo, como siempre).
-  const importedRealPlanRef = useRef(hasRealAmounts || hasRealDates)
-  const planStructureSignatureRef = useRef(
-    hasRealAmounts || hasRealDates
-      ? computeFinitePlanStructureSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate)
-      : '',
   )
   const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
     payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],
@@ -11361,30 +11526,48 @@ function ForecastPaymentForm({
     setSplitCharges((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)))
   }
 
-  // Ajuste UX tras certificación móvil — PEPA propone el reparto del importe TOTAL en cuanto cambia
-  // "cuántos pagos/cobros hacen falta" o el propio TOTAL (importe/estado/basis) — nunca al editar una
-  // línea suelta (eso solo cambia planLines/splitCharges, no esta firma, así que no se regenera nada).
+  // ── Plan de pagos: METADATOS vs ESTRUCTURA (28/10/2026, ver domain/forecastPlanMetadata.ts) ──
+  // Bug real: cambiar «Estado del importe TOTAL» de Estimado a Conocido en una previsión importada (seis cuotas de importes distintos) las dejaba iguales: el estado entraba en
+  // la firma que decide «rehacer el plan». Ahora:
+  //  · ESTADO y BASE del importe (metadatos): solo cambian el estado/base de las líneas que seguían al total. Importes y fechas, intactos.
+  //  · ESTRUCTURA (nº de pagos, frecuencia, primer vencimiento, importe total, modo, pasar a/desde «Pendiente»): si las líneas son las que PEPA propondría, se rehacen solas; si
+  //    tienen importes o fechas propios (de un documento o escritos a mano), NO se sobrescriben: se avisa y la persona elige «Recalcular» o «Mantener».
+  const currentPlanParams = { count: paymentCount, freqOption, customFreq, customInterval, dueDate, amount, amountStatus, amountEntryMode }
+  const planParamsRef = useRef(currentPlanParams)
+  const [planStale, setPlanStale] = useState(false)
+  const splitParamsRef = useRef({ count: paymentCount, dueDate, amount, amountStatus })
+  const [splitStale, setSplitStale] = useState(false)
+  const metaRef = useRef({ status: amountStatus, basis: amountBasis })
+
+  function proposePlanFor(p: typeof currentPlanParams, basis: string): ForecastPlanLineFormRow[] | null {
+    const validated = validateInstallmentCount(p.count)
+    if (!validated.ok || !p.dueDate) return null
+    const { freq, interval } = resolvedFreqInterval(p.freqOption, p.customFreq, p.customInterval)
+    return proposeFinitePlanLines(p.dueDate, freq, interval, validated.count, p.amountStatus, p.amountStatus === 'unknown' ? null : Number(p.amount) || 0, basis, p.amountEntryMode)
+  }
+  function proposeSplitFor(p: { count: string; dueDate: string; amount: string; amountStatus: ForecastAmountStatus }, basis: string): ForecastSplitChargeFormRow[] | null {
+    const validated = validateSplitChargeCount(p.count)
+    if (!validated.ok || !p.dueDate) return null
+    return proposeSplitCharges(p.dueDate, validated.count, p.amountStatus, p.amountStatus === 'unknown' ? null : Number(p.amount) || 0, basis)
+  }
+
   useEffect(() => {
     if (!isFinitePlanMode) return
-    // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga siendo el importado del documento,
-    // un cambio SOLO en el estado/importe/basis del TOTAL (p. ej. Estimado → Conocido, sin tocar nº de
-    // cuotas/frecuencia/vencimiento) no debe regenerar nada: las 85 líneas reales no dejan de ser reales
-    // porque el usuario haya corregido la confianza del total. Solo un cambio ESTRUCTURAL (que sí invalida
-    // la correspondencia "cuota N = fila N del documento") hace que el plan pase a comportarse como uno
-    // manual a partir de aquí.
-    if (importedRealPlanRef.current) {
-      const structureSignature = computeFinitePlanStructureSignature(paymentCount, freqOption, customFreq, customInterval, dueDate)
-      if (structureSignature === planStructureSignatureRef.current) return
-      importedRealPlanRef.current = false
-    }
     const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode)
     if (signature === planSignatureRef.current) return
     planSignatureRef.current = signature
-    const validated = validateInstallmentCount(paymentCount)
-    if (!validated.ok || !dueDate) return
-    const { freq, interval } = resolvedFreqInterval(freqOption, customFreq, customInterval)
-    const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
-    setPlanLines(proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, totalAmountNum, amountBasis, amountEntryMode))
+    const next = proposePlanFor(currentPlanParams, amountBasis)
+    if (!next) return
+    const previous = proposePlanFor(planParamsRef.current, '')
+    const customized = planLines.length > 0 && (previous == null || linesDifferFromProposal(planLines, previous))
+    if (customized) {
+      setPlanStale(true)
+      return
+    }
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+    setPlanLines(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- planLines/currentPlanParams se leen "en este instante"; la firma ya recoge todo lo que debe disparar el efecto
   }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])
 
   useEffect(() => {
@@ -11392,11 +11575,68 @@ function ForecastPaymentForm({
     const signature = computeSplitChargesSignature(paymentCount, dueDate, amountStatus, amount, amountBasis)
     if (signature === splitSignatureRef.current) return
     splitSignatureRef.current = signature
-    const validated = validateSplitChargeCount(paymentCount)
-    if (!validated.ok || !dueDate) return
-    const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
-    setSplitCharges(proposeSplitCharges(dueDate, validated.count, amountStatus, totalAmountNum, amountBasis))
+    const nextParams = { count: paymentCount, dueDate, amount, amountStatus }
+    const next = proposeSplitFor(nextParams, amountBasis)
+    if (!next) return
+    const previous = proposeSplitFor(splitParamsRef.current, '')
+    const customized = splitCharges.length > 0 && (previous == null || linesDifferFromProposal(splitCharges, previous))
+    if (customized) {
+      setSplitStale(true)
+      return
+    }
+    splitParamsRef.current = nextParams
+    setSplitStale(false)
+    setSplitCharges(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- igual que el efecto del plan finito
   }, [isSplitCycleMode, paymentCount, dueDate, amountStatus, amount, amountBasis])
+
+  // Metadatos: estado y base del importe TOTAL. Solo cambian el estado/base de las líneas que seguían al total; importes y fechas, exactamente como estaban.
+  useEffect(() => {
+    const prev = metaRef.current
+    if (prev.status === amountStatus && prev.basis === amountBasis) return
+    metaRef.current = { status: amountStatus, basis: amountBasis }
+    if (statusIsStructural(prev.status, amountStatus)) return // pasar a/desde «Pendiente» lo gestiona el efecto de estructura
+    const apply = <T extends { date: string; amountStatus: ForecastAmountStatus; amount: string; amountEstimatedBasis: string }>(lines: T[]): T[] =>
+      prev.status !== amountStatus ? applyTotalStatusToLines(lines, prev, { status: amountStatus, basis: amountBasis }) : applyTotalBasisToLines(lines, prev.basis, amountBasis)
+    if (isFinitePlanMode) setPlanLines(apply)
+    if (isSplitCycleMode) setSplitCharges(apply)
+  }, [amountStatus, amountBasis, isFinitePlanMode, isSplitCycleMode])
+
+  function recalculatePlan() {
+    const next = proposePlanFor(currentPlanParams, amountBasis)
+    if (!next) return
+    setPlanLines(next)
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+  }
+  function keepPlan() {
+    const validated = validateInstallmentCount(paymentCount)
+    if (!validated.ok || validated.count !== planLines.length) {
+      setError(`Los ${planLines.length} pagos de abajo no coinciden con el nuevo número de pagos: recalcula el plan o vuelve al número anterior.`)
+      return
+    }
+    setError(null)
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+  }
+  function recalculateSplit() {
+    const nextParams = { count: paymentCount, dueDate, amount, amountStatus }
+    const next = proposeSplitFor(nextParams, amountBasis)
+    if (!next) return
+    setSplitCharges(next)
+    splitParamsRef.current = nextParams
+    setSplitStale(false)
+  }
+  function keepSplit() {
+    const validated = validateSplitChargeCount(paymentCount)
+    if (!validated.ok || validated.count !== splitCharges.length) {
+      setError(`Los ${splitCharges.length} cobros de abajo no coinciden con el nuevo número de pagos: recalcula o vuelve al número anterior.`)
+      return
+    }
+    setError(null)
+    splitParamsRef.current = { count: paymentCount, dueDate, amount, amountStatus }
+    setSplitStale(false)
+  }
 
   // Regla acordada: TOTAL Conocido debe cuadrar EXACTO al céntimo para poder guardar; TOTAL Estimado
   // permite guardar con un aviso (una estimación nunca es exacta por definición); TOTAL Pendiente no
@@ -11452,6 +11692,10 @@ function ForecastPaymentForm({
     // nombre del banco. La familia tiene que decidir explícitamente antes de poder crear la previsión.
     if (recurs && recursDurationChoice === 'unknown') {
       setError('Indica hasta cuándo se repite: "Para siempre" o "Hasta una fecha concreta".')
+      return
+    }
+    if ((isFinitePlanMode && planStale) || (isSplitCycleMode && splitStale)) {
+      setError('Has cambiado el número de pagos, la frecuencia, el vencimiento o el importe total y los pagos de abajo tienen datos propios: elige «Recalcular pagos» o «Mantener los pagos actuales» antes de guardar.')
       return
     }
     if (amountStatus === 'estimated' && !amountBasis.trim()) {
@@ -11670,6 +11914,11 @@ function ForecastPaymentForm({
           ))}
         </select>
       </label>
+      {!payment && prefill?.amountStatusNote && amountStatus === 'known' && (
+        <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }} data-help-id="finance.forecast-amount-known-note">
+          {prefill.amountStatusNote}
+        </p>
+      )}
       {amountStatus !== 'unknown' && (
         <div style={{ display: 'flex', gap: 8 }}>
           <label style={{ flex: 1 }} data-help-id="finance.forecast-amount">
@@ -11817,6 +12066,21 @@ function ForecastPaymentForm({
                   ⚠️ {prefill.planReviewNote}
                 </p>
               )}
+              {planStale && (
+                <div className="error" style={{ margin: '0 0 8px', fontSize: 13 }} role="alert" data-help-id="finance.forecast-plan-stale">
+                  <p style={{ margin: '0 0 6px' }}>
+                    Has cambiado el número de pagos, la frecuencia, el vencimiento o el importe total, y los pagos de abajo tienen importes o fechas propios. No los he tocado: elige qué hacer.
+                  </p>
+                  <div className="form-actions">
+                    <button type="button" onClick={recalculatePlan}>
+                      Recalcular pagos (sustituye los importes y fechas de abajo)
+                    </button>
+                    <button type="button" className="link-button" onClick={keepPlan}>
+                      Mantener los pagos actuales
+                    </button>
+                  </div>
+                </div>
+              )}
               {renderDistributionBanner(planCheck)}
               {/* "Ponlo en marcha", pieza (B) — resumen agrupado (summarizeFinitePlanLines) en vez de una
                   tarjeta por cada una de las N cuotas: para el caso normal (importe uniforme, o "84 de x + 1
@@ -11891,6 +12155,19 @@ function ForecastPaymentForm({
           {isSplitCycleMode && splitCharges.length > 0 && (
             <div className="card" style={{ padding: 12 }}>
               <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Cobros de cada renovación</p>
+              {splitStale && (
+                <div className="error" style={{ margin: '0 0 8px', fontSize: 13 }} role="alert" data-help-id="finance.forecast-split-stale">
+                  <p style={{ margin: '0 0 6px' }}>Has cambiado el número de pagos o el importe total, y los cobros de abajo tienen importes o fechas propios. No los he tocado: elige qué hacer.</p>
+                  <div className="form-actions">
+                    <button type="button" onClick={recalculateSplit}>
+                      Recalcular cobros (sustituye los de abajo)
+                    </button>
+                    <button type="button" className="link-button" onClick={keepSplit}>
+                      Mantener los cobros actuales
+                    </button>
+                  </div>
+                </div>
+              )}
               {renderDistributionBanner(splitCheck)}
               {splitCharges.map((charge, i) => (
                 <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>

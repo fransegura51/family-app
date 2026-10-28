@@ -118,17 +118,21 @@ export function equivalentGroup(
   all: readonly CmpProduct[],
   ctx: RelationContext = {},
   scope: GroupScope = 'equivalent',
-): { members: GroupMember[]; suggestions: GroupMember[] } {
+): { members: GroupMember[]; suggestions: GroupMember[]; confirmed: GroupMember[] } {
   const members: GroupMember[] = []
   const suggestions: GroupMember[] = []
+  const confirmed: GroupMember[] = []
   for (const p of all) {
     const link = relationBetween(target, p, ctx)
     if (link.relation === 'different') continue
+    // COR-04E: una equivalencia CONFIRMADA por la familia (decisión suya o mismo producto común) nunca se vuelve a preguntar: va a «confirmadas», en cualquier alcance.
+    const isConfirmed = p.id !== target.id && link.relation === 'equivalent' && (link.source === 'family' || link.source === 'common')
+    if (isConfirmed) confirmed.push({ product: p, link })
     if (link.automatic && (link.relation === 'identical' || (scope === 'equivalent' && link.relation === 'equivalent'))) members.push({ product: p, link })
-    else if (link.relation === 'possible' || (link.automatic && link.relation === 'equivalent')) suggestions.push({ product: p, link })
+    else if (!isConfirmed && (link.relation === 'possible' || (link.automatic && link.relation === 'equivalent'))) suggestions.push({ product: p, link })
   }
   members.sort((x, y) => (x.product.id === target.id ? -1 : y.product.id === target.id ? 1 : 0))
-  return { members, suggestions }
+  return { members, suggestions, confirmed }
 }
 
 // ─── Ficha del producto: precios por establecimiento ───
@@ -137,6 +141,8 @@ export const NO_STORE = 'Sin tienda concreta'
 
 export interface StorePricePoint {
   date: string
+  /** Línea de product_prices de donde sale este precio (para abrir la compra original; COR-04C). */
+  priceId?: string
   productId: string
   productName: string
   price: NormalizedPrice
@@ -169,7 +175,7 @@ export function productPriceView(members: readonly CmpProduct[], prices: readonl
   for (const r of prices) {
     const name = nameOf.get(r.productId)
     if (name == null || !(r.price >= 0)) continue
-    points.push({ store: r.store?.trim() || NO_STORE, date: r.recordedDate, productId: r.productId, productName: name, price: normalizePrice(r, name) })
+    points.push({ store: r.store?.trim() || NO_STORE, date: r.recordedDate, priceId: r.id, productId: r.productId, productName: name, price: normalizePrice(r, name) })
   }
   if (points.length === 0) return { basis: null, rows: [], cheapestStore: null, notComparable: 0, note: 'Todavía no hay compras registradas de este producto.' }
 

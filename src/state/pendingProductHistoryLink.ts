@@ -10,7 +10,15 @@ export interface PendingProductHistoryLink {
    * COR-04 — desde una fila de producto de Estadística compras: abre directamente la FICHA de ese producto (por identificador, nunca por nombre), en el conjunto
    * (Alimentos / Otros) desde el que se tocó, y al cerrarla vuelve a Estadística compras. Sin esto (el «+info →» de siempre) solo se filtra la lista por nombre.
    */
-  openSheet?: { kind: 'alimentacion' | 'no_alimentos' }
+  openSheet?: {
+    kind: 'alimentacion' | 'no_alimentos'
+    /** true (por defecto) = viene de Estadística compras y al cerrar la ficha se vuelve allí. false = no (p. ej. al regresar de ver la compra original, COR-04C). */
+    fromStats?: boolean
+    /** Posición de la página que se recupera al reabrir la ficha. */
+    scrollY?: number
+    /** Alcance con el que estaba la ficha («Solo el mismo» / «+ Equivalentes»). */
+    scope?: 'identical' | 'equivalent'
+  }
 }
 
 let pending: PendingProductHistoryLink | null = null

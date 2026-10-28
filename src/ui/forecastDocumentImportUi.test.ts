@@ -89,7 +89,9 @@ describe('ForecastPaymentPrefill — amount ahora admite null (documento sin imp
   })
 
   it('handleImportDocument nunca inventa un 0: sin importe, amountStatus cae a \'unknown\' (Pendiente), no a \'estimated\'', () => {
-    expect(SRC).toContain("useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))")
+    expect(SRC).toContain(
+      "useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? (prefill.amountStatusSuggestion === 'known' ? 'known' : 'estimated') : 'unknown') : 'known'))",
+    )
   })
 })
 
@@ -167,45 +169,38 @@ describe('planReviewNote — aviso junto al Plan de pagos cuando el plan propues
   })
 })
 
-// BUG REAL — documento BBVA real (85 cuotas): con las 85 líneas reales ya cargadas, cambiar SOLO el
-// "Estado del importe TOTAL" (p. ej. Estimado → Conocido, sin tocar nº de cuotas/frecuencia/vencimiento)
-// pisaba las 85 líneas reales con un reparto uniforme (20.790€/85 = 244,58€ cada una) — el mismo
-// mecanismo de "regenerar el plan al cambiar el total" que hace falta para la entrada manual, aplicado sin
-// querer también a un plan ya importado con datos reales.
-describe('planLines — un plan importado con datos reales sobrevive a cambios en el TOTAL (estado/importe/basis), solo se regenera ante un cambio estructural real', () => {
-  const fn = slice(SRC, 'const importedRealPlanRef = useRef(', '\n  const [reminders, setReminders] = useState<')
-
-  it('importedRealPlanRef se siembra igual que hasRealAmounts/hasRealDates — solo protege un plan realmente importado', () => {
-    expect(fn).toContain('const importedRealPlanRef = useRef(hasRealAmounts || hasRealDates)')
+// BUG REAL — documento BBVA real (85 cuotas), y de nuevo el 28/10/2026 al EDITAR una previsión guardada (cuadro de 6 pagos): cambiar SOLO el «Estado del importe TOTAL»
+// (Estimado ↔ Conocido) rehacía el plan y dejaba cuotas iguales. Solución general (domain/forecastPlanMetadata.ts): el estado y su base son METADATOS y no entran en la firma
+// que decide rehacer el plan; solo la ESTRUCTURA la dispara, y con pagos personalizados no se sobrescribe sin que la persona elija. Se prueba con el formulario REAL en
+// forecastStatusKeepsPlan.test.tsx; aquí, el cableado.
+describe('planLines — el estado/base del importe son metadatos; solo la estructura rehace el plan', () => {
+  it('la firma del plan NO incluye el estado ni la base del importe (solo «con cifra / Pendiente»)', () => {
+    const fn = slice(SRC, 'function computeFinitePlanSignature(', '\n}\n')
+    expect(fn).toContain("amountStatus === 'unknown' ? 'unknown' : 'amount'")
+    expect(fn).not.toContain('amountBasis :')
+    expect(fn).not.toMatch(/\n\s+amountStatus,\n/)
   })
 
-  it('la firma estructural (planStructureSignatureRef) se siembra con los mismos valores iniciales que ya construyeron el plan real', () => {
-    expect(fn).toContain(
-      'computeFinitePlanStructureSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate)',
+  it('el efecto de estructura no sobrescribe un plan con importes o fechas propios: marca planStale y deja elegir', () => {
+    const fn = slice(
+      SRC,
+      'useEffect(() => {\n    if (!isFinitePlanMode) return\n    const signature = computeFinitePlanSignature(',
+      '\n  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])',
     )
-  })
-})
-
-describe('useEffect de regeneración del plan — comprueba primero si hay que proteger un plan real antes de mirar el total', () => {
-  const fn = slice(
-    SRC,
-    "useEffect(() => {\n    if (!isFinitePlanMode) return\n    // BUG REAL",
-    '\n  }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])',
-  )
-
-  it('mientras importedRealPlanRef siga activo, un cambio SOLO en el TOTAL (que no altera la firma estructural) sale sin regenerar nada', () => {
-    expect(fn).toContain('if (importedRealPlanRef.current) {')
-    expect(fn).toContain('const structureSignature = computeFinitePlanStructureSignature(paymentCount, freqOption, customFreq, customInterval, dueDate)')
-    expect(fn).toContain('if (structureSignature === planStructureSignatureRef.current) return')
+    expect(fn).toContain('linesDifferFromProposal(planLines, previous)')
+    expect(fn).toContain('setPlanStale(true)')
+    expect(fn.indexOf('setPlanStale(true)')).toBeLessThan(fn.indexOf('setPlanLines(next)'))
   })
 
-  it('un cambio estructural real (nº de cuotas/frecuencia/vencimiento) desactiva la protección — a partir de ahí el plan vuelve a comportarse como uno manual', () => {
-    const block = slice(fn, 'if (importedRealPlanRef.current) {', 'const signature = computeFinitePlanSignature(')
-    expect(block).toContain('importedRealPlanRef.current = false')
+  it('el efecto de metadatos solo cambia el estado/base de las líneas (applyTotalStatusToLines / applyTotalBasisToLines), nunca importes ni fechas', () => {
+    expect(SRC).toContain('applyTotalStatusToLines(lines, prev, { status: amountStatus, basis: amountBasis })')
+    expect(SRC).toContain('applyTotalBasisToLines(lines, prev.basis, amountBasis)')
   })
 
-  it('la comprobación estructural ocurre ANTES de la firma completa (que sí incluye el total) — nunca al revés', () => {
-    expect(fn.indexOf('computeFinitePlanStructureSignature(paymentCount')).toBeLessThan(fn.indexOf('computeFinitePlanSignature(paymentCount'))
+  it('no se puede guardar con la estructura cambiada y los pagos sin decidir (Recalcular / Mantener)', () => {
+    expect(SRC).toContain('if ((isFinitePlanMode && planStale) || (isSplitCycleMode && splitStale)) {')
+    expect(SRC).toContain('Recalcular pagos (sustituye los importes y fechas de abajo)')
+    expect(SRC).toContain('Mantener los pagos actuales')
   })
 })
 
@@ -231,7 +226,7 @@ describe('amount inicial al editar un plan finito ya guardado — se reconstruye
   })
 
   it('planSignatureRef se siembra con el MISMO total reconstruido — si no coincidiera con `amount`, el useEffect regeneraría el plan entero nada más montar el formulario', () => {
-    const fn = slice(SRC, 'const planSignatureRef = useRef(', '\n  // BUG REAL (documento BBVA real, 85 cuotas)')
+    const fn = slice(SRC, 'const planSignatureRef = useRef(', '\n  const [reminders, setReminders] = useState<')
     expect(fn).toContain("initialFinitePlanTotal != null ? String(initialFinitePlanTotal) : payment.amount != null ? String(payment.amount) : ''")
   })
 })

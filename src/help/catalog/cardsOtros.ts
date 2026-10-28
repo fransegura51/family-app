@@ -104,7 +104,7 @@ export const CARDS_OTROS: HelpCard[] = [
     module: 'economia',
     title: 'Anotar pagos futuros (seguros, impuestos…)',
     synonyms: ['previsión de pagos', 'pagos futuros', 'recibos', 'ibi', 'seguro anual', 'cuotas'],
-    quick: 'En Economía → «Previsión de pagos» anotas pagos que sabes que llegarán, sin contarlos como gasto hasta que se cobren. Importe conocido, estimado (hay que decir en qué te basas) o pendiente (nunca se enseña como 0 €). Ves la Visión de 12 meses y los próximos pagos.',
+    quick: 'En Economía → «Previsión de pagos» anotas pagos que sabes que llegarán, sin contarlos como gasto hasta que se cobren. Importe conocido, estimado (hay que decir en qué te basas) o pendiente (nunca se enseña como 0 €). Cambiar entre conocido y estimado no toca ningún importe ni fecha de los pagos. Al importar un documento, PEPA propone «conocido» solo si el documento fija importes exactos. Ves la Visión de 12 meses y los próximos pagos.',
     state: 'parcial',
     limits: 'Los préstamos e hipotecas solo se pueden ver, no crear ni editar (se anotan como pago «En varios pagos»). Importar un documento depende de la IA. PEPA solo propone unir un cargo con un pago previsto: nunca lo concilia sola.',
     go: { path: '/dinero', dest: 'economia.prevision' },

@@ -280,7 +280,7 @@ describe('Fase 1D-b — planes de cuotas finitos en la UI', () => {
     // después del título de esta sección, y de nuevo tras "Ponlo en marcha" pieza (B): el resumen
     // agrupado (summarizeFinitePlanLines) plegado por defecto se interpone antes de llegar a las líneas
     // editables una a una.
-    const block = FS.slice(idx, idx + 4200)
+    const block = FS.slice(idx, idx + 6600)
     expect(block).toContain('updatePlanLine(i, { date })')
     expect(block).toContain('updatePlanLine(i, { amountStatus:')
     expect(block).toContain('updatePlanLine(i, { amount: e.target.value })')
@@ -374,7 +374,7 @@ describe('Fase 1D-d — cobro fraccionado por ciclo en la UI', () => {
     expect(FS).toContain('proposeSplitCharges(')
     const idx = FS.indexOf('Cobros de cada renovación')
     expect(idx).toBeGreaterThan(-1)
-    const block = FS.slice(idx, idx + 2200)
+    const block = FS.slice(idx, idx + 3600)
     expect(block).toContain('updateSplitCharge(i, { date })')
     expect(block).toContain('updateSplitCharge(i, { amountStatus:')
     expect(block).toContain('updateSplitCharge(i, { amount: e.target.value })')
@@ -666,12 +666,14 @@ describe('Fase 1D-g — "Revisar" reutiliza EXACTAMENTE el formulario existente,
     expect(body).not.toMatch(/ownerMemberId|reminders|notes/)
   })
 
-  it('el importe SIEMPRE precarga como "Estimado" — un histórico idéntico nunca se vuelve "Conocido" automáticamente', () => {
+  it('el importe de una propuesta BANCARIA siempre precarga como "Estimado" — un histórico idéntico nunca se vuelve "Conocido" solo; un DOCUMENTO sí puede sugerir "Conocido" (amountStatusSuggestion) cuando fija importes exactos', () => {
     // "Importar desde foto o documento" amplía esto a un tercer caso: un prefill CON importe real → sigue
     // siendo 'estimated' (esta prueba); un prefill SIN importe (documento sin dato numérico legible) →
     // 'unknown' ("Pendiente"), nunca 'known' ni un 0 inventado — nunca este caso concreto, que sigue
     // siendo idéntico a como era antes de ese bloque.
-    expect(FS).toContain("useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))")
+    expect(FS).toContain(
+      "useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? (prefill.amountStatusSuggestion === 'known' ? 'known' : 'estimated') : 'unknown') : 'known'))",
+    )
   })
 
   it('la recurrencia se reconstruye con parseRecurrenceRuleToFormState (el mismo motor de siempre) — nunca fija recurs/freqOption a mano por separado', () => {

@@ -1,4 +1,4 @@
--- Deshace 0345: quita el disparador, la tabla de señal y su canal en vivo. No toca ningún elemento oficial.
+-- Deshace 0346: quita el disparador, la tabla de señal y su canal en vivo. No toca ningún elemento oficial.
 drop trigger if exists community_official_items_signal on public.community_official_items;
 drop function if exists private.community_editorial_signal_touch();
 do $$

@@ -28,21 +28,29 @@ export const HELP_PREF_PATTERN_SOURCES: readonly string[] = [
   '^pepa:help-tour:[a-z0-9-]+$',
 ]
 
-// Modo y ordenación del Comparador de precios (NORM-3). Migración 0337 APLICADA y comprobada en producción el 28/10/2026 (el servidor acepta las dos claves y rechaza cualquier otra): viajan entre dispositivos de la misma persona.
-// Por eso viajan entre dispositivos SOLO cuando se enciende este interruptor (después de aplicar la migración y desplegar); apagado, se recuerdan en el dispositivo. Una prueba exige que,
-// encendido, la migración exista en supabase/migrations.
+// Modo y ordenación del Comparador de precios (NORM-3): preferencias de la FAMILIA, no de la persona. Se guardan en `family_prefs` (migración 0343, aplicada el 28/10/2026) con el
+// mismo motor, las mismas revisiones y el mismo Realtime que las personales; cualquier miembro con acceso a Compras las cambia y llegan a los demás. El servidor las acepta
+// SOLO por `set_family_pref` (private.family_pref_key_allowed) y ya no por `set_user_pref`. Una prueba exige que, encendido el interruptor, la migración exista.
 export const COMPARE_PREFS_SYNC_ENABLED = true
 
-export const COMPARE_PREF_PATTERN_SOURCES: readonly string[] = ['^familyapp:compras-compare-(mode|sort)$']
+export const FAMILY_PREF_PATTERN_SOURCES: readonly string[] = ['^familyapp:compras-compare-(mode|sort)$']
+/** @deprecated nombre anterior (0337, por cuenta); son las mismas claves, ahora familiares. */
+export const COMPARE_PREF_PATTERN_SOURCES = FAMILY_PREF_PATTERN_SOURCES
 
-const SYNCED_KEY_PATTERNS: RegExp[] = [...SYNCED_KEY_PATTERN_SOURCES, ...(HELP_PREFS_SYNC_ENABLED ? HELP_PREF_PATTERN_SOURCES : []), ...(COMPARE_PREFS_SYNC_ENABLED ? COMPARE_PREF_PATTERN_SOURCES : [])].map((s) => new RegExp(s))
+const FAMILY_KEY_PATTERNS: RegExp[] = COMPARE_PREFS_SYNC_ENABLED ? FAMILY_PREF_PATTERN_SOURCES.map((s) => new RegExp(s)) : []
+const SYNCED_KEY_PATTERNS: RegExp[] = [...SYNCED_KEY_PATTERN_SOURCES, ...(HELP_PREFS_SYNC_ENABLED ? HELP_PREF_PATTERN_SOURCES : [])].map((s) => new RegExp(s))
+
+/** La preferencia pertenece a la familia (tabla `family_prefs`), no a la persona (`user_prefs`). */
+export function isFamilyPrefKey(key: string): boolean {
+  return key.length > 0 && key.length <= MAX_PREF_KEY_CHARS && FAMILY_KEY_PATTERNS.some((re) => re.test(key))
+}
 
 // Tamaño máximo de un valor (igual que el límite de la tabla): más grande se rechaza antes de intentar subirlo.
 export const MAX_PREF_VALUE_CHARS = 8000
 export const MAX_PREF_KEY_CHARS = 120
 
 export function isSyncedPrefKey(key: string): boolean {
-  return key.length > 0 && key.length <= MAX_PREF_KEY_CHARS && SYNCED_KEY_PATTERNS.some((re) => re.test(key))
+  return key.length > 0 && key.length <= MAX_PREF_KEY_CHARS && (SYNCED_KEY_PATTERNS.some((re) => re.test(key)) || isFamilyPrefKey(key))
 }
 
 // Preferencias cuyo cambio remoto NO se aplica solo porque exigen recargar la app para repintarse todo: se avisa y se deja decidir (tema de color).

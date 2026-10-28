@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isFamilyPrefKey } from '@/state/prefs/prefsRegistry'
 import { dismissPrefsNotice, recoverRejectedPref, retryPrefsNow, subscribePrefsNotices, type PrefsNotice } from '@/state/prefs/prefsRuntime'
 
 // Avisos discretos de la sincronización de preferencias (CONFIG-01): un cambio sustituido por otro más reciente (con opción de recuperar el propio),
@@ -14,7 +15,9 @@ export function PrefsNotices() {
           {n.kind === 'conflict' && (
             <>
               <p>
-                Se aplicó un cambio más reciente hecho en otro dispositivo en {n.label}. Tu cambio en este móvil se ha sustituido.
+                {isFamilyPrefKey(n.key)
+                  ? `Alguien de tu familia cambió ${n.label} un instante antes que tú. Tu cambio se ha sustituido.`
+                  : `Se aplicó un cambio más reciente hecho en otro dispositivo en ${n.label}. Tu cambio en este móvil se ha sustituido.`}
               </p>
               <div className="prefs-notice-actions">
                 <button

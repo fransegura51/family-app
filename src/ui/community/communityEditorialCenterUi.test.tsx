@@ -244,6 +244,27 @@ describe('Centro Editorial: actualización inmediata (regresión: estados desact
   })
 })
 
+describe('Centro Editorial: programación y configuración (plegable: abierto y cerrado)', () => {
+  it('el programa semanal va primero y los interruptores quedan plegados; abiertos siguen siendo los de siempre', async () => {
+    mount('/?ed=programacion')
+    const fold = (await screen.findByText('Interruptores y generación semanal')).closest('details') as HTMLDetailsElement
+    // Cerrado (por defecto): el programa se ve y los interruptores no están desplegados.
+    expect(fold.open).toBe(false)
+    const program = await screen.findByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })
+    expect(fold.contains(program)).toBe(false)
+    expect(program.compareDocumentPosition(fold) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Abierto: aparecen los tres interruptores independientes y la publicación del menú.
+    fold.open = true
+    await waitFor(() => expect(within(fold).getAllByRole('switch').length).toBeGreaterThanOrEqual(3))
+    expect(within(fold).getByRole('switch', { name: 'Generación semanal de artículos' })).toBeTruthy()
+    expect(within(fold).getByRole('switch', { name: 'Generación semanal de encuesta' })).toBeTruthy()
+    expect(within(fold).getByRole('switch', { name: 'Generación semanal de menú semanal' })).toBeTruthy()
+    // Cerrarlo no cambia nada de lo que ya se ve en el programa.
+    fold.open = false
+    expect(screen.getByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })).toBeTruthy()
+  })
+})
+
 describe('Centro Editorial: reprogramar encuestas', () => {
   it('una encuesta aprobada y programada se puede trasladar a otro sábado (solo cambia las fechas)', async () => {
     db.proposals.proposed = []

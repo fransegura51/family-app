@@ -13,7 +13,7 @@ export function MenuPreview({ menu, title }: { menu: unknown; title?: string }) 
     <section className="cadm-menupreview" aria-label="Vista previa del menú" data-help-id="comunidad.menu-editor-preview">
       <h4>Vista previa del menú</h4>
       {title && <p className="cadm-menupreview-title">{title}</p>}
-      <p className="muted cadm-small">Así lo verá la familia en Comunidad. Despliega cada receta para ver sus ingredientes, la elaboración, los tiempos, el consejo y la congelación. Aquí no se importa nada a ninguna Cocina.</p>
+      <p className="muted cadm-small">Así lo verá la familia en Comunidad. Despliega cada receta para ver sus ingredientes, la elaboración, los tiempos, el consejo y la congelación. Aquí no se importa nada a ninguna Cocina. Las fechas de cada día se asignan al programar el menú (semana siguiente a su sábado de publicación), por eso aquí puede aparecer como «menú de ejemplo».</p>
       {parsed ? (
         <MenuPlanView postId="preview" menu={parsed} canUseKitchen={false} />
       ) : (

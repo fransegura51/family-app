@@ -37,12 +37,14 @@
 
 .cadm-menued-day {
   min-height: 44px;
-  padding: 0 2px;
+  padding: 0;
+  white-space: nowrap;
   border: 1px solid #c9d0dc;
   border-radius: 10px;
   background: #fff;
+  color: #1f2330;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
 }
 

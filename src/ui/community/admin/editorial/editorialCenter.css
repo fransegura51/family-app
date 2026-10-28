@@ -31,3 +31,10 @@
   .cadm-program tr { padding: 6px 0; border-bottom: 1px solid var(--border, #e3e6ee); }
   .cadm-program th[scope="row"] { text-align: left; }
 }
+
+@media (max-width: 480px) {
+  .cadm-subnav { display: grid; grid-template-columns: 1fr 1fr; }
+  .cadm-subnav .cadm-chip-button { justify-content: center; text-align: center; }
+}
+.cadm-center-datefilter summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }
+.cadm-config-fold > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; }

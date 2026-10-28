@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { setMenuAutopublish, generateNow, getEditorialStatus, listEditorialItems, listEditorialRuns, setEditorialToggle, EditorialCallError } from '@/data/communityEditorial'
 import { communityErrorText } from '@/domain/communityErrors'
 import {
@@ -71,6 +71,9 @@ export function EditorialPanel({ onReview, onGenerated, show = 'all', program, r
 
   return (
     <section className="cadm-stack" aria-labelledby="cadm-editorial-title" data-help-id="comunidad.editorial-panel">
+      {/* En el Centro Editorial el programa semanal (compacto) va primero y los interruptores quedan plegados debajo. */}
+      {show === 'config' && <ProgramWeek items={items.data} loading={items.loading} error={items.error} onReload={items.reload} onReview={onReview} currentMonday={status.data?.cycle.monday ?? null} />}
+      <ConfigWrap fold={show === 'config'}>
       {config && <h3 id="cadm-editorial-title">Generación semanal</h3>}
       {config && (
       <InfoBox>
@@ -119,6 +122,7 @@ export function EditorialPanel({ onReview, onGenerated, show = 'all', program, r
           </li>
         </ul>
       )}
+      </ConfigWrap>
 
       {history && status.data && status.data.errors.length > 0 && (
         <div className="cadm-card" aria-label="Errores recientes">
@@ -142,7 +146,7 @@ export function EditorialPanel({ onReview, onGenerated, show = 'all', program, r
       )}
       {history && showRuns && <RunsHistory />}
 
-      {config && <ProgramWeek items={items.data} loading={items.loading} error={items.error} onReload={items.reload} onReview={onReview} currentMonday={status.data?.cycle.monday ?? null} />}
+      {show === 'all' && <ProgramWeek items={items.data} loading={items.loading} error={items.error} onReload={items.reload} onReview={onReview} currentMonday={status.data?.cycle.monday ?? null} />}
     </section>
   )
 }
@@ -496,5 +500,16 @@ export function MenuAutopublishCard({ enabled, onNotice, onChanged }: { enabled:
         </p>
       )}
     </section>
+  )
+}
+
+// En «Programación y configuración» los interruptores y «Generar ahora» van plegados (la planificación es lo primero que se mira); en cualquier otro uso se enseñan siempre.
+function ConfigWrap({ fold, children }: { fold: boolean; children: ReactNode }) {
+  if (!fold) return <>{children}</>
+  return (
+    <details className="cadm-config-fold" data-help-id="comunidad.editorial-config-fold">
+      <summary>Interruptores y generación semanal</summary>
+      <div className="cadm-stack">{children}</div>
+    </details>
   )
 }

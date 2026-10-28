@@ -250,6 +250,17 @@ describe('rectificar un menú', () => {
     expect(text(h.provider.requests[2])).toContain('no pueden ser el mismo plato principal')
   })
 
+  it('un PLATO: si la IA pone como nombre la etiqueta del hueco («Martes, cena») se rechaza y se reintenta con el motivo', async () => {
+    let calls = 0
+    const h = setup(menuItem(), () => JSON.stringify({ ...dish(++calls === 1 ? 'Martes, cena' : 'Sopa de letras'), notes: 'ok' }))
+    const { json } = await revise(h, { scope: 'dish', target: { day: 1, meal: 'cena' }, instruction: 'Pon sopa de letras' })
+    expect(json.ok).toBe(true)
+    expect(json.result.payload.menu.days[1].meals.cena.title).toBe('Sopa de letras')
+    const bad = setup(menuItem(), () => JSON.stringify({ ...dish('cena del martes'), notes: 'ok' }))
+    expect((await revise(bad, { scope: 'dish', target: { day: 1, meal: 'cena' } })).json).toEqual({ ok: false, error: 'invalid_output' })
+    expect(bad.client.count('community_service_editorial_save_revision')).toBe(0)
+  })
+
   it('scope dish en algo que no es un menú → bad_request', async () => {
     const h = setup(articleItem(), () => 'x')
     const { res, json } = await revise(h, { scope: 'dish', target: { day: 0, meal: 'comida' } })

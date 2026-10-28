@@ -235,6 +235,14 @@ interface DishRef {
 
 const mealOf = (days: unknown[], d: DishRef): Record<string, unknown> | null => asRecord(asRecord(asRecord(days[d.day])?.meals)?.[d.meal])
 
+// El nombre de un plato nunca es la etiqueta de su hueco («Martes, cena», «cena»): así quedó el martes cuando la IA copió la etiqueta en lugar del nombre del plato.
+const normLabel = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+export function isSlotLabelTitle(title: string): boolean {
+  const words = normLabel(title).split(' ').filter(Boolean)
+  const days = DAY_NAMES.map(normLabel)
+  return words.length > 0 && words.length <= 3 && words.every((w) => w === 'comida' || w === 'cena' || w === 'de' || w === 'del' || days.includes(w))
+}
+
 // Revisa UN plato: devuelve el plato nuevo ya limpio (cleanMeal) y las notas de la IA.
 function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruction: string, hint: string | null, attempts: number): Promise<AttemptResult<{ meal: Meal; notes: string }>> {
   const meal = mealOf(days, dish)
@@ -260,6 +268,7 @@ function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruct
       const rec = asRecord(parseJsonLoose(raw))
       if (!rec) return { ok: false, reason: 'no era un JSON válido' }
       const m = cleanMeal(rec, `${DAY_NAMES[dish.day]} (${dish.meal})`)
+      if (m.ok && isSlotLabelTitle(m.value.title)) return { ok: false, reason: 'el título del plato debe ser el nombre del plato (por ejemplo el de su receta principal), no «día, comida»' }
       return m.ok ? { ok: true, value: { meal: m.value, notes: cleanNotes(rec.notes) } } : m
     },
     { maxAttempts: attempts, initialHint: hint },

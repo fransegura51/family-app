@@ -15,7 +15,7 @@ import {
 } from './menu.ts'
 import { validatePollFields } from './poll.ts'
 import { DATA_NOTICE, FORBIDDEN_RULES, VOICE, splitThanks, untrusted } from './prompts.ts'
-import { RECIPE_SCHEMA, cleanPostRecipes } from './recipes.ts'
+import { RECIPE_SCHEMA, cleanPostRecipes, cleanRecipe } from './recipes.ts'
 import { type GenContext, asArray, asRecord, pool } from './util.ts'
 
 // RECTIFICAR un borrador con IA a petición de un administrador. NUNCA modifica el elemento: devuelve una PROPUESTA ({title, body, payload}) que el
@@ -40,11 +40,15 @@ export interface Content {
   payload: Record<string, unknown>
 }
 
+// Alcance de la rectificación de un MENÚ: 'item' = el menú completo, 'dish' = una comida (comida o cena de un día), 'day' = un día (sus dos comidas) y
+// 'recipe' = UNA receta de una comida. La IA solo toca esos huecos; el servidor comprueba después que todo lo demás queda idéntico byte a byte.
+export type ReviseScopeName = 'item' | 'dish' | 'day' | 'recipe'
+export const MAX_MEAL_RECIPES = 6
 export interface ReviseRequest {
   itemId: string
   instruction: string
-  scope: 'item' | 'dish'
-  target: { day: number; meal: MealName } | null
+  scope: ReviseScopeName
+  target: { day: number; meal?: MealName; recipe?: number } | null
 }
 
 export type ReviseFailure = 'ai_not_allowed' | 'ai_failed' | 'invalid_output' | 'bad_request'
@@ -78,12 +82,21 @@ export function parseReviseRequest(body: Record<string, unknown>): ReviseRequest
   const instruction = typeof body.instruction === 'string' ? body.instruction.trim() : ''
   if (instruction.length < 3 || instruction.length > 1000) return null
   const scope = body.scope
-  if (scope !== 'item' && scope !== 'dish') return null
+  if (scope !== 'item' && scope !== 'dish' && scope !== 'day' && scope !== 'recipe') return null
   let target: ReviseRequest['target'] = null
-  if (scope === 'dish') {
+  if (scope !== 'item') {
     const t = asRecord(body.target)
-    if (!t || typeof t.day !== 'number' || !Number.isInteger(t.day) || t.day < 0 || t.day > 6 || (t.meal !== 'comida' && t.meal !== 'cena')) return null
-    target = { day: t.day, meal: t.meal }
+    if (!t || typeof t.day !== 'number' || !Number.isInteger(t.day) || t.day < 0 || t.day > 6) return null
+    if (scope === 'day') {
+      target = { day: t.day }
+    } else {
+      if (t.meal !== 'comida' && t.meal !== 'cena') return null
+      if (scope === 'dish') target = { day: t.day, meal: t.meal }
+      else {
+        if (typeof t.recipe !== 'number' || !Number.isInteger(t.recipe) || t.recipe < 0 || t.recipe >= MAX_MEAL_RECIPES) return null
+        target = { day: t.day, meal: t.meal, recipe: t.recipe }
+      }
+    }
   }
   return { itemId, instruction, scope, target }
 }
@@ -244,7 +257,7 @@ export function isSlotLabelTitle(title: string): boolean {
 }
 
 // Revisa UN plato: devuelve el plato nuevo ya limpio (cleanMeal) y las notas de la IA.
-function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruction: string, hint: string | null, attempts: number): Promise<AttemptResult<{ meal: Meal; notes: string }>> {
+function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruction: string, hint: string | null, attempts: number, scopeNote = ''): Promise<AttemptResult<{ meal: Meal; notes: string }>> {
   const meal = mealOf(days, dish)
   const others = days
     .map((d, i) => {
@@ -255,7 +268,7 @@ function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruct
   const current = [`Plato a rectificar: ${DAY_NAMES[dish.day]}, ${dish.meal}.`, JSON.stringify(meal), '', 'Resto de la semana (solo para no repetir platos más de 2 veces):', others].join('\n')
   const schema = { type: 'OBJECT', properties: { ...MEAL_SCHEMA.properties, notes: NOTES_SCHEMA }, required: ['title', 'side', 'recipes', 'notes'] }
   const extra =
-    '\nDevuelve SOLO ese plato como JSON {title, side, recipes, notes}: "recipes" con TODAS sus recetas completas (la primera es el plato principal; servings 4; ingredientes con cantidad numérica y sin comas en los nombres; 1-30 pasos). Mantén lo que la instrucción no toque.'
+    '\nDevuelve SOLO ese plato como JSON {title, side, recipes, notes}: "recipes" con TODAS sus recetas completas (la primera es el plato principal; servings 4; ingredientes con cantidad numérica y sin comas en los nombres; 1-30 pasos). Mantén lo que la instrucción no toque.' + scopeNote
   return generateWithRetry(
     ai,
     'editorial_revise',
@@ -275,8 +288,62 @@ function reviseOneDish(ai: CommunityAi, days: unknown[], dish: DishRef, instruct
   )
 }
 
+// Revisa UNA receta de un plato: devuelve la receta nueva ya limpia (cleanRecipe). El resto del plato (título, acompañamiento y demás recetas) NO viaja como cambio.
+function reviseOneRecipe(ai: CommunityAi, days: unknown[], dish: DishRef, index: number, instruction: string, hint: string | null): Promise<AttemptResult<{ recipe: Record<string, unknown>; notes: string }>> {
+  const meal = mealOf(days, dish)
+  const recipes = asArray(meal?.recipes)
+  const titles = recipes.map((r, i) => `${i + 1}. ${asRecord(r)?.title ?? ''}`).join('; ')
+  const current = [
+    `Receta a rectificar: ${DAY_NAMES[dish.day]}, ${dish.meal}, receta ${index + 1} de ${recipes.length}.`,
+    JSON.stringify(recipes[index]),
+    '',
+    `Plato al que pertenece (solo como contexto; NO se cambia): «${meal?.title ?? ''}» (+ ${meal?.side ?? ''}). Recetas del plato: ${titles}.`,
+  ].join('\n')
+  const schema = { type: 'OBJECT', properties: { recipe: RECIPE_SCHEMA, notes: NOTES_SCHEMA }, required: ['recipe', 'notes'] }
+  const extra =
+    '\nDevuelve SOLO esa receta como JSON {recipe, notes}: "recipe" completa (servings 4; ingredientes con cantidad numérica y sin comas en los nombres; 1-30 pasos salvo un elemento sencillo). No toques nada más del plato. Mantén lo que la instrucción no toque.'
+  return generateWithRetry(
+    ai,
+    'editorial_revise',
+    (h) => ({
+      parts: [{ text: header(`una receta de un plato de un menú semanal: ${DAY_NAMES[dish.day]}, ${dish.meal}`, instruction) + extra + hintLine(h) }, { text: untrusted('CONTENIDO_ACTUAL', current, 30000) }],
+      responseSchema: schema,
+      maxOutputTokens: 8000,
+    }),
+    (raw) => {
+      const rec = asRecord(parseJsonLoose(raw))
+      if (!rec) return { ok: false, reason: 'no era un JSON válido' }
+      const c = cleanRecipe(rec.recipe, 'menu')
+      if (!c.ok) return c
+      if (index === 0 && c.value.simple === true) return { ok: false, reason: 'la primera receta (plato principal) no puede ser un elemento sencillo' }
+      return { ok: true, value: { recipe: c.value, notes: cleanNotes(rec.notes) } }
+    },
+    { maxAttempts: 1, initialHint: hint },
+  )
+}
+
+// ¿Todo lo que NO está en los huecos permitidos es idéntico (byte a byte)? Es la garantía de «solo cambia lo que se pidió».
+export function outsideUnchanged(before: Record<string, unknown>, after: Record<string, unknown>, allowed: DishRef[]): boolean {
+  const mask = (p: Record<string, unknown>): string => {
+    const copy = JSON.parse(JSON.stringify(p)) as Record<string, unknown>
+    for (const a of allowed) {
+      const meals = asRecord(asRecord(asArray(asRecord(copy.menu)?.days)[a.day])?.meals)
+      if (meals) meals[a.meal] = null
+    }
+    return JSON.stringify(copy)
+  }
+  return mask(before) === mask(after)
+}
+
+// Cambiar UNA receta: el título, el acompañamiento y las demás recetas del plato quedan idénticos.
+export function onlyRecipeChanged(before: Record<string, unknown> | null, after: Record<string, unknown> | null, index: number): boolean {
+  if (!before || !after) return false
+  const strip = (m: Record<string, unknown>): string => JSON.stringify({ ...m, recipes: asArray(m.recipes).map((r, i) => (i === index ? null : r)) })
+  return strip(before) === strip(after) && asArray(before.recipes).length === asArray(after.recipes).length
+}
+
 // Copia del payload con los platos sustituidos: todo lo demás se conserva tal cual (byte a byte).
-function applyDishes(payload: Record<string, unknown>, changes: { dish: DishRef; meal: Meal }[]): Record<string, unknown> | null {
+function applyDishes(payload: Record<string, unknown>, changes: { dish: DishRef; meal: object }[]): Record<string, unknown> | null {
   const copy = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
   for (const c of changes) {
     const meals = asRecord(asRecord(asArray(asRecord(copy.menu)?.days)[c.dish.day])?.meals)
@@ -341,8 +408,6 @@ async function reviseMenu(ctx: GenContext, item: ItemContent, req: ReviseRequest
   const menu = asRecord(item.payload.menu)
   const days = asArray(menu?.days)
   if (!menu || days.length !== 7) return { ok: false, error: 'invalid_output' }
-  const dish = req.scope === 'dish' ? req.target : null
-  if (req.scope === 'dish' && !dish) return { ok: false, error: 'bad_request' }
   const original = { title: item.title, body: item.body, payload: item.payload }
   const finish = (result: Content, notes: string, quality?: unknown[]): ReviseOutcome => ({
     ok: true,
@@ -351,23 +416,63 @@ async function reviseMenu(ctx: GenContext, item: ItemContent, req: ReviseRequest
     ...(quality ? { quality } : {}),
   })
 
-  // ---- un plato -------------------------------------------------------------------------------------------------------------------
-  if (dish) {
-    if (!mealOf(days, dish)) return { ok: false, error: 'invalid_output' }
+  // ---- un plato, una receta o un día --------------------------------------------------------------------------------------------------
+  if (req.scope !== 'item') {
+    const t = req.target
+    if (!t) return { ok: false, error: 'bad_request' }
+    const refs: DishRef[] = req.scope === 'day' ? MEALS.map((m) => ({ day: t.day, meal: m })).filter((r) => mealOf(days, r)) : t.meal ? [{ day: t.day, meal: t.meal }] : []
+    if (refs.length === 0 || refs.some((r) => !mealOf(days, r))) return { ok: false, error: 'invalid_output' }
+    const recipeIndex = req.scope === 'recipe' ? (t.recipe ?? -1) : -1
+    if (req.scope === 'recipe' && (recipeIndex < 0 || recipeIndex >= asArray(mealOf(days, refs[0])?.recipes).length)) return { ok: false, error: 'bad_request' }
+    const dayNote =
+      req.scope === 'day' ? '\nLa instrucción afecta a un día entero (comida y cena): cambia SOLO el plato que la instrucción mencione o implique; si no afecta a este plato, devuélvelo exactamente igual.' : ''
+
+    // Lo que la IA propone para ese alcance: los huecos nuevos y la nota (la IA nunca recibe ni devuelve nada fuera del alcance).
+    type Produced = AttemptResult<{ changes: { dish: DishRef; meal: object }[]; notes: string }>
+    const produce = async (hint: string | null): Promise<Produced> => {
+      if (req.scope === 'recipe') {
+        const r = await reviseOneRecipe(ai, days, refs[0], recipeIndex, req.instruction, hint)
+        if (!r.ok) return r
+        const orig = mealOf(days, refs[0]) as Record<string, unknown>
+        const meal = { ...orig, recipes: asArray(orig.recipes).map((x, i) => (i === recipeIndex ? r.value.recipe : x)) }
+        if (!onlyRecipeChanged(orig, meal, recipeIndex)) return { ok: false, code: 'INVALID_OUTPUT', calls: r.calls, reason: 'solo debía cambiar esa receta' }
+        return { ok: true, value: { changes: [{ dish: refs[0], meal }], notes: r.value.notes }, calls: r.calls }
+      }
+      const rs = await pool(refs, DISH_CONCURRENCY, (ref) => reviseOneDish(ai, days, ref, req.instruction, hint, 1, dayNote))
+      const changes: { dish: DishRef; meal: object }[] = []
+      const notes: string[] = []
+      for (let i = 0; i < rs.length; i++) {
+        const r = rs[i]
+        if (!r.ok) return r
+        // Un plato que la IA devuelve igual (ya limpio) conserva el original TAL CUAL (byte a byte): no hay cambios colaterales por reescribir lo que no se pidió.
+        const orig = mealOf(days, refs[i])
+        const cleaned = orig ? cleanMeal(orig, DAY_NAMES[refs[i].day]) : null
+        const same = cleaned?.ok === true && JSON.stringify(cleaned.value) === JSON.stringify(r.value.meal)
+        changes.push({ dish: refs[i], meal: same && orig ? orig : r.value.meal })
+        if (!same || refs.length === 1) notes.push(r.value.notes)
+      }
+      return { ok: true, value: { changes, notes: [...new Set(notes)].join(' ').slice(0, 500) || NO_CHANGE_NOTE }, calls: rs.reduce((n, x) => n + x.calls, 0) }
+    }
+
     // Dos intentos como máximo: el segundo recibe el motivo (de nuestro validador o del servidor) como pista.
     let hint: string | null = null
     let lastError: ReviseFailure = 'invalid_output'
     for (let attempt = 0; attempt < REVISE_MAX_ATTEMPTS; attempt++) {
-      const r = await reviseOneDish(ai, days, dish, req.instruction, hint, 1)
+      const r = await produce(hint)
       if (!r.ok) {
         if (r.code === 'AI_NOT_ALLOWED') return { ok: false, error: 'ai_not_allowed' }
         lastError = r.code === 'AI_FAILED' ? 'ai_failed' : 'invalid_output'
         hint = r.reason || null
         continue
       }
-      const payload = applyDishes(item.payload, [{ dish, meal: r.value.meal }])
-      const check = payload ? await validateMenuPayload(ctx, payload) : null
-      if (!payload || !check) {
+      const payload = applyDishes(item.payload, r.value.changes)
+      // Garantía del alcance: fuera de esos huecos, el menú es idéntico.
+      if (!payload || !outsideUnchanged(item.payload, payload, refs)) {
+        lastError = 'invalid_output'
+        continue
+      }
+      const check = await validateMenuPayload(ctx, payload)
+      if (!check) {
         lastError = 'ai_failed'
         continue
       }
@@ -450,7 +555,7 @@ async function reviseMenu(ctx: GenContext, item: ItemContent, req: ReviseRequest
 }
 
 export async function reviseItem(ctx: GenContext, item: ItemContent, req: ReviseRequest): Promise<ReviseOutcome> {
-  if (req.scope === 'dish' && item.kind !== 'menu') return { ok: false, error: 'bad_request' }
+  if (req.scope !== 'item' && item.kind !== 'menu') return { ok: false, error: 'bad_request' }
   if (item.kind === 'article') return reviseArticle(ctx, item, req)
   if (item.kind === 'poll') return revisePoll(ctx, item, req)
   if (item.kind === 'menu') return reviseMenu(ctx, item, req)

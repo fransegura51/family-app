@@ -27,7 +27,8 @@ describe('Las 7 pantallas con filtro de fecha arrancan desde el favorito real (p
   })
 
   it('las 7 usan el mismo hook compartido (useDateFilterPreset), nunca una copia propia por pantalla', () => {
-    const matches = SRC.match(/= useDateFilterPreset\(\)/g) ?? []
+    // BudgetsTab lo llama con el filtro restaurado al volver de la ficha de un producto (COR-04): useDateFilterPreset(returnCtx?.preset).
+    const matches = SRC.match(/= useDateFilterPreset\(/g) ?? []
     // 6x [preset, setPreset] + 1x [rangePreset, setRangePreset] (BudgetsTab).
     expect(matches.length).toBe(7)
     expect(SRC).toContain('const [rangePreset, setRangePreset] = useDateFilterPreset()')

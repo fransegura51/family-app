@@ -87,6 +87,19 @@ export function resolvePurchaseNature(
   return { nature: 'desconocido', basis: 'none' }
 }
 
+// Producto MARCADOR (COR-01): algunas compras llegan de fuera (atajo del móvil, importación) con una única línea cuyo «producto» no es un producto, sino la palabra
+// «Pendiente» (= «aún no sé qué es»). Esa línea comparte UN solo producto entre todas las compras de la familia: si alguien le pone una clase (p. ej. «Ropa y calzado»),
+// TODAS las compras con marcador caían en esa clase aunque el gasto estuviera clasificado de otra forma (Cable Ethernet → «Ropa y calzado»). Una línea marcador NO es
+// desglose real: no aporta clasificación; la compra se clasifica por su propio reparto / clasificación / categoría. Coincidencia EXACTA con el nombre normalizado
+// (sin parciales: «Pendiente de pago de ...» no lo es). No se toca ningún dato histórico: solo se deja de usar como fuente de clasificación.
+const PLACEHOLDER_PRODUCT_NAMES: ReadonlySet<string> = new Set(['pendiente', 'pendiente de clasificar'])
+
+export function isPlaceholderProduct(product: { normalizedName?: string | null; displayName?: string | null } | null | undefined): boolean {
+  if (!product) return false
+  const name = (product.normalizedName || product.displayName || '').trim().toLowerCase()
+  return PLACEHOLDER_PRODUCT_NAMES.has(name)
+}
+
 export function purchaseNature(
   price: { productId: string; receiptId: string | null },
   foodReceiptIds: Set<string>,

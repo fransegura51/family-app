@@ -247,6 +247,13 @@ export function ShoppingScreen() {
     navigate('/dinero')
   }
 
+  // COR-04: una fila de producto de Estadística compras abre SU ficha en Historial de precios (por identificador de producto); al cerrarla se vuelve aquí.
+  function handleOpenProduct(p: { productId: string; name: string; kind: 'alimentacion' | 'no_alimentos' }) {
+    setPendingProductHistoryLink({ productId: p.productId, productName: p.name, openSheet: { kind: p.kind } })
+    setTab('Historial')
+    window.scrollTo({ top: 0 })
+  }
+
   const flatMenuEntries = menuLayout.flatMap((g) => g.items)
 
   return (
@@ -318,11 +325,11 @@ export function ShoppingScreen() {
       {tab === 'Estadística compras' && <HelpDestMark id="compras.estadistica" />}
       {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} />}
       {tab === 'Lista' && <ShoppingListTab />}
-      {tab === 'Historial' && <HistoryTab />}
+      {tab === 'Historial' && <HistoryTab onBackToStats={() => setTab('Estadística compras')} />}
       {tab === 'Tickets' && <ReceiptsTab />}
       {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
-        <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} />
+        <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />
       )}
     </div>
   )
@@ -2340,7 +2347,7 @@ interface ProductDetail {
 // No Alimentos al mismo estilo que las cuentas separadas" — un solo
 // tab con dos vistas (chip Alimentos / chip Otros) en vez de dos
 // pestañas separadas que cargaban los mismos datos por duplicado.
-function HistoryTab() {
+function HistoryTab({ onBackToStats }: { onBackToStats?: () => void }) {
   const [mode, setMode] = useState<FoodTypeKind>('alimentacion')
   const [prices, setPrices] = useState<ProductPrice[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -2461,11 +2468,20 @@ function HistoryTab() {
   // classKind) usando los mismos datos que ya calcula el resto de
   // Historial, para no adivinar un chip que podría no coincidir.
   const pendingLinkAppliedRef = useRef(false)
+  const [pendingSheet, setPendingSheet] = useState<{ productId: string; name: string } | null>(null)
+  // 'armed' = hay que volver a Estadística compras cuando se cierre la ficha que se acaba de abrir desde allí.
+  const [returnToStats, setReturnToStats] = useState<'idle' | 'armed' | 'open'>('idle')
   useEffect(() => {
     if (loading || pendingLinkAppliedRef.current) return
     const link = takePendingProductHistoryLink()
     if (!link) return
     pendingLinkAppliedRef.current = true
+    if (link.openSheet) {
+      // COR-04: ficha del producto por IDENTIFICADOR, en el conjunto desde el que se tocó; la lista no se filtra. La ficha se abre en el efecto de más abajo, ya con ese conjunto aplicado.
+      setMode(link.openSheet.kind)
+      setPendingSheet({ productId: link.productId, name: link.productName })
+      return
+    }
     const productPrice = prices.find((p) => p.productId === link.productId)
     if (productPrice) {
       const nature = purchaseNature(productPrice, foodReceiptIds, nonFoodProductIds, foodProductIds)
@@ -2661,6 +2677,23 @@ function HistoryTab() {
     const product = productsById.get(productId)
     setDetail({ productId, name, lines, nonFood: product?.nonFood ?? false, classKnown: product?.classKind != null, foodType: product?.category ?? '' })
   }
+
+  // COR-04: abre la ficha pedida desde Estadística compras en cuanto los datos y el conjunto (Alimentos/Otros) están aplicados.
+  useEffect(() => {
+    if (!pendingSheet || loading) return
+    openDetail(pendingSheet.productId, pendingSheet.name)
+    setPendingSheet(null)
+    setReturnToStats('armed')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSheet, loading, mode, scopedPrices])
+  // Al cerrarse esa ficha (por cualquier camino: ✕, fuera, o porque el producto cambió de conjunto) se vuelve a Estadística compras, que se lee de nuevo y ya refleja el cambio.
+  useEffect(() => {
+    if (returnToStats === 'armed' && detail) setReturnToStats('open')
+    else if (returnToStats === 'open' && !detail) {
+      setReturnToStats('idle')
+      onBackToStats?.()
+    }
+  }, [detail, returnToStats, onBackToStats])
 
   // Excepción manual a la regla de tienda (ver isFoodPurchase) —
   // petición real: "Bombona y Plantas aparecen como Alimentación". Al
@@ -2942,6 +2975,11 @@ function HistoryTab() {
                 ✕
               </button>
             </div>
+            {returnToStats === 'open' && (
+              <button type="button" className="link-button" style={{ minHeight: 44, textAlign: 'left' }} onClick={() => setDetail(null)}>
+                ← Volver a Estadística compras
+              </button>
+            )}
             {detail.lines.map((line, i) => (
               <p key={i} className="muted">
                 {line}

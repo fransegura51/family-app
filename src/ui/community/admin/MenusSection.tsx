@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { MEAL_TEXT, type MealKind } from '@/domain/communityEditorial'
-import { RevisePanel, type DishTarget } from '@/ui/community/admin/RevisePanel'
+import { MenuRevisePanel } from '@/ui/community/admin/MenuRevisePanel'
+import { MenuCheckSummary, MenuPreview } from '@/ui/community/admin/MenuPreview'
+import type { ReviseTarget } from '@/domain/communityEditorial'
 import { Link } from 'react-router-dom'
 import { adminApproveProposal, adminEditProposal, adminGetMenu, adminListMenus, adminRejectProposal, adminRescheduleMenu, adminRetryPublish } from '@/data/community'
 import {
@@ -378,7 +380,8 @@ export function MenuReview({
   /** Si se pasa, cada plato lleva «Cambiar este plato con Pepa» y hay «Pedir cambios generales del menú» (los demás platos no cambian). */
   revise?: { itemId: string; onClose: () => void; onChanged: (message: string) => void }
 }) {
-  const [target, setTarget] = useState<DishTarget | 'general' | null>(null)
+  const [target, setTarget] = useState<ReviseTarget | null>(null)
+  const [preview, setPreview] = useState(false)
   const errors = detail.check.filter((c) => c.severity === 'error')
   const warnings = detail.check.filter((c) => c.severity === 'warning')
   return (
@@ -424,7 +427,7 @@ export function MenuReview({
                             className="cadm-btn cadm-btn-secondary cadm-btn-small"
                             aria-label={`Cambiar este plato con Pepa: ${d.day}, ${meal}, ${d[meal]?.title}`}
                             data-help-id="comunidad.revise-dish"
-                            onClick={() => setTarget({ day: dayIndex, meal, label: `${d.day} · ${MEAL_TEXT[meal]}` })}
+                            onClick={() => setTarget({ scope: 'meal', day: dayIndex, meal })}
                           >
                             Cambiar este plato con Pepa ({MEAL_TEXT[meal].toLowerCase()})
                           </button>
@@ -437,7 +440,7 @@ export function MenuReview({
           </ul>
           {revise && (
             <div className="cadm-actions">
-              <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setTarget('general')} data-help-id="comunidad.revise-menu-general">
+              <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setTarget({ scope: 'week' })} data-help-id="comunidad.revise-menu-general">
                 Pedir cambios generales del menú
               </button>
               <button type="button" className="cadm-btn cadm-btn-ghost" onClick={revise.onClose}>
@@ -446,14 +449,25 @@ export function MenuReview({
             </div>
           )}
           {revise && target && (
-            <RevisePanel
-              key={target === 'general' ? 'general' : `${target.day}-${target.meal}`}
+            <MenuRevisePanel
+              key={JSON.stringify(target)}
               itemId={revise.itemId}
-              kind="menu"
-              target={target === 'general' ? null : target}
+              menu={detail.menu}
+              initial={target}
               onClose={() => setTarget(null)}
               onChanged={revise.onChanged}
             />
+          )}
+          {Boolean(detail.menuRaw) && (
+            <>
+              <MenuCheckSummary menu={detail.menuRaw} />
+              <div className="cadm-actions">
+                <button type="button" className="cadm-btn cadm-btn-secondary" aria-expanded={preview} onClick={() => setPreview((v) => !v)} data-help-id="comunidad.menu-editor-preview">
+                  {preview ? 'Ocultar la vista previa del menú' : 'Vista previa del menú'}
+                </button>
+              </div>
+              {preview && <MenuPreview menu={detail.menuRaw} title={detail.title} />}
+            </>
           )}
         </>
       )}

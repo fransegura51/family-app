@@ -551,7 +551,7 @@ describe('Menús: cambiar un plato con Pepa', () => {
     fireEvent.change(screen.getByLabelText('¿Qué quieres cambiar?'), { target: { value: 'Cámbialo por pescado' } })
     fireEvent.click(screen.getByRole('button', { name: 'Pedir una nueva versión' }))
     await screen.findByText(/Platos que cambian/)
-    expect(ed.requestRevision).toHaveBeenCalledWith('m1', 'Cámbialo por pescado', { day: 1, meal: 'cena' })
+    expect(ed.requestRevision).toHaveBeenCalledWith('m1', 'Cámbialo por pescado', { scope: 'meal', day: 1, meal: 'cena' })
     expect(screen.getByText('Tortilla').tagName).toBe('DEL')
     expect(screen.getByText('Merluza').tagName).toBe('INS')
     expect(screen.getByText(/Pescado y pollo seguidos/)).toBeTruthy()
@@ -566,7 +566,7 @@ describe('Menús: cambiar un plato con Pepa', () => {
     fireEvent.change(screen.getByLabelText('¿Qué quieres cambiar?'), { target: { value: 'Hazlo más barato' } })
     fireEvent.click(screen.getByRole('button', { name: 'Pedir una nueva versión' }))
     await screen.findByRole('alert')
-    expect(ed.requestRevision).toHaveBeenCalledWith('m1', 'Hazlo más barato', undefined)
+    expect(ed.requestRevision).toHaveBeenCalledWith('m1', 'Hazlo más barato', { scope: 'week' })
   })
 
   it('sin la opción de rectificar (menú publicado) no hay botones de cambio', () => {

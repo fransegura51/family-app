@@ -1164,6 +1164,8 @@ export function toMenuData(raw: unknown): MenuData | null {
 
 // Un menú completo para revisarlo antes de aprobar: fila + texto + resumen de los datos + avisos de calidad.
 export interface MenuDetail extends MenuRow {
+  // El menú completo tal como lo devuelve el servidor (para la vista previa real y la comprobación editorial); `menu` es solo su resumen.
+  menuRaw: unknown
   body: string
   section: string
   topicId: string
@@ -1175,7 +1177,7 @@ export interface MenuDetail extends MenuRow {
 export function toMenuDetail(raw: unknown): MenuDetail | null {
   const r = asRec(raw)
   if (str(r.id) === '') return null
-  return { ...toMenuRow(r), body: str(r.body), section: str(r.section), topicId: str(r.topicId), menu: toMenuData(r.menu), check: toMenuCheck(r.check), itemError: strOrNull(r.itemError) }
+  return { ...toMenuRow(r), menuRaw: r.menu ?? null, body: str(r.body), section: str(r.section), topicId: str(r.topicId), menu: toMenuData(r.menu), check: toMenuCheck(r.check), itemError: strOrNull(r.itemError) }
 }
 
 // Semana de lunes a domingo: «Semana del 26 de octubre al 1 de noviembre de 2026».

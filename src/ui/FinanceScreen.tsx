@@ -1,5 +1,5 @@
 import { KitchenHeaderWithMenu } from '@/ui/KitchenHeaderWithMenu'
-import { changeSplitMode, hasTag, NO_TAG, resolveTagSplit, sharesOf, splitFromShares, startSplit, tagAmount, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
+import { addSplitTag, changeSplitMode, hasTag, NO_TAG, removeSplitTag, replaceSplitTag, resolveTagSplit, sharesOf, splitFromShares, startSplit, tagAmount, toggleSplitTag, totalsByTag, TAG_NOUN, type SharesByExpense, type SplitMode, type SplitNoun, type TagShare, type TagSplitDraft } from '@/domain/tagShares'
 import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -167,10 +167,11 @@ import { getChartColorTheme } from '@/state/colorTheme'
 import { useDateFilterPreset } from '@/state/dateFilterPreset'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
+import { takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -218,7 +219,7 @@ import {
   type ClassificationKind,
   type MovementDraft,
 } from '@/domain/movementForm'
-import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseNature } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, hasRealTicketBreakdown, isPlaceholderProduct, purchaseNature } from '@/domain/products'
 import { saveStatsReturnContext, takeStatsReturnContext } from '@/state/statsReturnContext'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
@@ -4378,12 +4379,15 @@ function ShareSplitEditor({
   preferredSingle,
   onSplit,
   onSingle,
+  chooser = true,
 }: {
   items: { id: string; label: string }[]
   noun: SplitNoun
   split: TagSplitDraft
   total: number
   helpId: string
+  /** false = quién entra en el reparto se elige fuera (selectores de etiqueta, ECO-UI-02): aquí solo se ven el modo, las partes y la comprobación de la suma. */
+  chooser?: boolean
   /** Lo que queda si se vuelve a uno solo (si sigue entre los elegidos). */
   preferredSingle: string
   onSplit: (next: TagSplitDraft) => void
@@ -4395,6 +4399,7 @@ function ShareSplitEditor({
   const totalText = Number.isFinite(total) && total > 0 ? total.toFixed(2).replace('.', ',') + ' €' : 'el importe'
   return (
     <div className="card" data-help-id={helpId} style={{ padding: 8 }}>
+      {chooser && (
       <div className="chip-row" role="group" aria-label={`${capitalizeWord(noun.plural)} del movimiento`}>
         {items.map((t) => {
           const on = split.ids.includes(t.id)
@@ -4415,7 +4420,8 @@ function ShareSplitEditor({
           )
         })}
       </div>
-      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: 6 }}>
+      )}
+      <div className="chip-row" role="group" aria-label="Cómo repartir" style={{ marginTop: chooser ? 6 : 0 }}>
         {(['equal', 'amount', 'percent'] as const).map((m) => (
           <button key={m} type="button" className={split.mode === m ? 'chip chip-active' : 'chip'} onClick={() => onSplit(changeSplitMode(split, m, total))}>
             {SPLIT_MODE_LABELS[m]}
@@ -4450,9 +4456,11 @@ function ShareSplitEditor({
       <p className={resolved.ok ? 'muted' : 'error'} role="status" style={{ margin: '6px 0 0', fontSize: 12 }}>
         {resolved.ok ? `Suma ${totalText} ✓ — el movimiento cuenta una sola vez; cada ${noun.singular} recibe su parte.` : resolved.error}
       </p>
-      <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
-        Volver a una sola {noun.singular}
-      </button>
+      {chooser && (
+        <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => onSingle(preferredSingle && split.ids.includes(preferredSingle) ? preferredSingle : split.ids[0])}>
+          Volver a una sola {noun.singular}
+        </button>
+      )}
     </div>
   )
 }
@@ -4470,39 +4478,105 @@ export function TagSharesField({
   total: number
   onChange: (next: { tagId: string; split: TagSplitDraft | null }) => void
 }) {
-  if (!split) {
-    return (
-      <div>
-        <TagSelect value={tagId} onChange={(v) => onChange({ tagId: v, split: null })} tags={tags} />
-        {tags.length >= 2 && (
-          <button
-            type="button"
-            className="link-button"
-            data-help-id="finance.tag-split"
-            style={{ fontSize: 12, padding: '4px 0' }}
-            onClick={() => {
-              const first = tagId || tags[0].id
-              const second = (tags.find((t) => t.id !== first) ?? tags[1]).id
-              onChange({ tagId: first, split: startSplit([first, second], total) })
-            }}
-          >
-            ＋ Repartir entre varias etiquetas
+  // ECO-UI-02: en vez de una fila de botones con TODAS las etiquetas de la familia, un selector por etiqueta asignada y «+ Añadir etiqueta» para sumar otro. Los repartos
+  // (partes iguales, euros, %) son los de siempre; una etiqueta no se puede elegir dos veces. `pendingEmpty` = selectores recién añadidos que todavía no tienen etiqueta.
+  const [pendingEmpty, setPendingEmpty] = useState(0)
+  const [query, setQuery] = useState('')
+  const chosen = split ? split.ids : tagId ? [tagId] : []
+  const tagOf = (id: string) => tags.find((t) => t.id === id)
+  const needle = query.trim().toLowerCase()
+  const optionsFor = (current: string) =>
+    tags.filter((t) => t.id === current || (!chosen.includes(t.id) && (!needle || t.name.toLowerCase().includes(needle))))
+  const mainTag = (ids: string[]) => (ids.includes(tagId) ? tagId : (ids[0] ?? ''))
+
+  function pickInExisting(old: string, value: string) {
+    if (value === old) return
+    if (!value) return removeTag(old)
+    if (split) onChange({ tagId: tagId === old ? value : tagId, split: replaceSplitTag(split, old, value) })
+    else onChange({ tagId: value, split: null })
+  }
+  function removeTag(old: string) {
+    if (split) {
+      const next = removeSplitTag(split, old, total)
+      if (next) onChange({ tagId: mainTag(next.ids), split: next })
+      else onChange({ tagId: split.ids.filter((x) => x !== old)[0] ?? '', split: null })
+    } else onChange({ tagId: '', split: null })
+  }
+  function pickInEmpty(value: string) {
+    if (!value) return
+    if (pendingEmpty > 0) setPendingEmpty(pendingEmpty - 1)
+    if (chosen.length === 0) onChange({ tagId: value, split: null })
+    else if (split) onChange({ tagId: mainTag(split.ids), split: addSplitTag(split, value, total) })
+    else onChange({ tagId, split: startSplit([tagId, value], total) })
+  }
+
+  const rows: { key: string; value: string; removable: boolean }[] = [
+    ...(chosen.length > 0 ? chosen.map((id, i) => ({ key: id, value: id, removable: i > 0 })) : [{ key: 'empty-base', value: '', removable: false }]),
+    ...Array.from({ length: chosen.length > 0 ? pendingEmpty : 0 }, (_, i) => ({ key: `empty-${i}`, value: '', removable: true })),
+  ]
+  const canAdd = chosen.length >= 1 && pendingEmpty === 0 && tags.length > chosen.length
+
+  return (
+    <div data-help-id="finance.tag-select">
+      {tags.length > 8 && (
+        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta" style={{ marginBottom: 4 }} />
+      )}
+      {rows.map((r, i) => {
+        const tag = tagOf(r.value)
+        return (
+          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: tag ? tag.color : 'transparent', border: tag ? undefined : '1px dashed #bbb' }} />
+            <select
+              style={{ flex: 1, minWidth: 0 }}
+              aria-label={`Etiqueta ${i + 1}`}
+              value={r.value}
+              onChange={(e) => (r.value ? pickInExisting(r.value, e.target.value) : pickInEmpty(e.target.value))}
+            >
+              <option value="">{r.removable ? 'Elige una etiqueta' : 'Sin etiqueta'}</option>
+              {optionsFor(r.value).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            {r.removable && (
+              <button
+                type="button"
+                className="link-button"
+                style={{ flex: 'none', minWidth: 32, minHeight: 32 }}
+                aria-label={r.value ? `Quitar la etiqueta ${tag?.name ?? ''}`.trim() : 'Quitar este selector'}
+                onClick={() => (r.value ? removeTag(r.value) : setPendingEmpty(Math.max(0, pendingEmpty - 1)))}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        )
+      })}
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        {canAdd && (
+          <button type="button" className="link-button" data-help-id="finance.tag-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPendingEmpty(1)}>
+            + Añadir etiqueta
           </button>
         )}
+        <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => openManager('etiquetas')}>
+          ⚙️ Gestionar etiquetas
+        </button>
       </div>
-    )
-  }
-  return (
-    <ShareSplitEditor
-      items={tags.map((t) => ({ id: t.id, label: t.name }))}
-      noun={TAG_NOUN}
-      split={split}
-      total={total}
-      helpId="finance.tag-split-editor"
-      preferredSingle={tagId}
-      onSplit={(next) => onChange({ tagId, split: next })}
-      onSingle={(id) => onChange({ tagId: id, split: null })}
-    />
+      {split && (
+        <ShareSplitEditor
+          items={tags.map((t) => ({ id: t.id, label: t.name }))}
+          noun={TAG_NOUN}
+          split={split}
+          total={total}
+          helpId="finance.tag-split-editor"
+          preferredSingle={tagId}
+          chooser={false}
+          onSplit={(next) => onChange({ tagId: mainTag(next.ids), split: next })}
+          onSingle={(id) => onChange({ tagId: id, split: null })}
+        />
+      )}
+    </div>
   )
 }
 
@@ -4534,9 +4608,9 @@ export function ClassSharesField({
               </option>
             ))}
           </select>
-          <p className="muted" style={{ margin: '2px 0 0', fontSize: 12 }}>
-            Solo hace falta si este movimiento no tiene ticket con productos detrás — para que cuente en "Reparto por clasificación" de Estadística compras.
-          </p>
+          <span className="muted" style={{ fontSize: 12 }}>
+            Para que cuente en «Reparto por clasificación» de Estadística compras.
+          </span>
         </label>
         {options.length >= 2 && (
           <button
@@ -4588,6 +4662,7 @@ function MovementFormFields({
   categories,
   tags,
   pendingCategoryLabel,
+  ticketLinked = false,
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4596,6 +4671,8 @@ function MovementFormFields({
   tags: Tag[]
   // Solo al editar un gasto con category NULL (pendiente de clasificar): se conserva tal cual mientras no se elija una.
   pendingCategoryLabel?: string
+  // ECO-UI-01: el movimiento tiene un ticket vinculado con productos reales: sus clasificaciones se gestionan desde el ticket, así que aquí no se pide ninguna (lo ya guardado se conserva).
+  ticketLinked?: boolean
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4681,7 +4758,12 @@ function MovementFormFields({
           <input type="text" data-help-id="finance.movement-store" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
         </label>
       )}
-      {classificationKind && (
+      {classificationKind && ticketLinked === true && (
+        <p className="muted" data-testid="movement-ticket-linked" style={{ margin: 0, fontSize: 13 }}>
+          ✓ Ticket vinculado
+        </p>
+      )}
+      {classificationKind && ticketLinked === false && (
         <ClassSharesField
           options={classificationOptions}
           value={draft.productClassification}
@@ -4702,7 +4784,7 @@ function MovementFormFields({
         <>
           <p className="muted" style={{ margin: 0, fontSize: 12 }}>
             {classification.necessity ? NECESSITY_LABELS[classification.necessity] : 'Sin clasificar'}
-            {' — según la categoría, editable en el botón flotante "🗂️ Categorías".'}
+            {' — según la categoría (editable en 🗂️ Categorías).'}
           </p>
           {/* Petición real: «quiero que yo pueda seleccionar cada gasto, si es fijo o es variable» — a diferencia
               de Debo/Necesito/Quiero (solo por categoría), esto se puede pisar para este movimiento en concreto.
@@ -4771,6 +4853,22 @@ function EditExpenseInline({
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // ECO-UI-01: solo un gasto de origen ticket / ticket+banco puede tener un ticket vinculado; para el resto no se consulta nada. Mientras se comprueba (o si falla) se enseña el selector de
+  // siempre: nunca se oculta algo que se necesita por no saber todavía.
+  const mayHaveTicket = !expense.isIncome && (expense.source === 'ticket' || expense.source === 'ticket_banco')
+  const [ticketLinked, setTicketLinked] = useState<boolean>(false)
+  useEffect(() => {
+    if (!mayHaveTicket) return
+    let cancelled = false
+    listLinkedTicketProducts(expense.id)
+      .then((lines) => {
+        if (!cancelled) setTicketLinked(lines != null && hasRealTicketBreakdown(lines))
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [expense.id, mayHaveTicket])
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
@@ -4824,13 +4922,14 @@ function EditExpenseInline({
   }
 
   return (
-    <div className="card member-form" onClick={(e) => e.stopPropagation()}>
+    <div className="card member-form movement-form" onClick={(e) => e.stopPropagation()}>
       <MovementFormFields
         mode="edit"
         draft={draft}
         onChange={setDraft}
         categories={categories}
         tags={tags}
+        ticketLinked={ticketLinked}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
       />
       {onAddToForecast && (
@@ -5232,7 +5331,7 @@ function AddExpenseToAnyCategoryInline({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="member-form" data-help-id="finance.new-movement-form">
+    <form onSubmit={handleSubmit} className="member-form movement-form" data-help-id="finance.new-movement-form">
       <MovementFormFields mode="create" draft={draft} onChange={setDraft} categories={categories} tags={tags} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving} data-help-id="finance.new-save">
@@ -5447,7 +5546,11 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab() {
+export function ReceiptsTab({ onBackToHistory }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void } = {}) {
+  // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
+  const [openTarget] = useState(() => takePendingReceiptOpen())
+  const [focusId, setFocusId] = useState<string | null>(null)
+  const [targetMissing, setTargetMissing] = useState(false)
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0312 estas listas quedan vacías).
@@ -5474,7 +5577,7 @@ export function ReceiptsTab() {
   // defecto, solo el nombre/total a la vista; tocar la carpeta la
   // abre. Empieza vacío (todas plegadas) hasta que se toque alguna.
   const [expandedStore, setExpandedStore] = useState<string | null>(null)
-  const [rangePreset, setRangePreset] = useDateFilterPreset()
+  const [rangePreset, setRangePreset] = useDateFilterPreset(openTarget ? 'rango' : null)
   const [rangeCustomFrom, setRangeCustomFrom] = useState(toDateStr(new Date()))
   const [rangeCustomTo, setRangeCustomTo] = useState(toDateStr(new Date()))
 
@@ -5520,6 +5623,23 @@ export function ReceiptsTab() {
     if (members.length === 0) return
     currentProfileId().then((id) => setTabMyMemberId(defaultPayerId(members, id) || null)).catch(() => {})
   }, [members])
+  // COR-04C: cuando hay datos, se enseña SOLO esa fecha, se abre la carpeta de su tienda y la compra sale desplegada y resaltada. Si ya no existe, se avisa (no hay enlace roto).
+  const openTargetHandledRef = useRef(false)
+  useEffect(() => {
+    if (!openTarget || loading || openTargetHandledRef.current) return
+    openTargetHandledRef.current = true
+    const target = receipts.find((r) => r.id === openTarget.receiptId)
+    if (!target) {
+      setTargetMissing(true)
+      return
+    }
+    setRangePreset('rango')
+    setRangeCustomFrom(target.receiptDate)
+    setRangeCustomTo(target.receiptDate)
+    const folder = groupReceiptsByStore(receipts.map((r) => ({ ...r, hasTicket: true })), knownStores).find((g) => g.receipts.some((r) => r.id === target.id))
+    if (folder) setExpandedStore(folder.store)
+    setFocusId(target.id)
+  }, [openTarget, loading, receipts, knownStores, setRangePreset])
 
   // Borrado SEGURO (ECO-1j): si la compra mueve efectivo de carteras, tiene devoluciones o está enlazada al banco, antes se enseña qué pasará.
   // El servidor deja las carteras coherentes, conserva siempre los movimientos bancarios originales y anota una foto para poder deshacerlo.
@@ -5608,6 +5728,12 @@ export function ReceiptsTab() {
   return (
     <div>
       {error && <p className="error">{error}</p>}
+      {openTarget && onBackToHistory && (
+        <button type="button" className="link-button" style={{ minHeight: 44, textAlign: 'left' }} onClick={() => onBackToHistory(openTarget.back)}>
+          ← Volver al Historial de precios de {openTarget.back.productName}
+        </button>
+      )}
+      {targetMissing && <p className="muted">No se ha encontrado esa compra (puede haberse borrado). El Historial de precios la sigue mostrando como registro.</p>}
       <datalist id="receipt-known-stores">
         {knownStores.map((s) => (
           <option key={s} value={s} />
@@ -5749,6 +5875,7 @@ export function ReceiptsTab() {
                         key={r.id}
                         receipt={r}
                         hasTicket={r.hasTicket}
+                        highlight={focusId === r.id}
                         members={members}
                         onEdit={() => setEditingId(r.id)}
                         onAttach={() => setAttachingId(r.id)}
@@ -6272,6 +6399,7 @@ function CategorySelect({
 function ReceiptRow({
   receipt,
   hasTicket,
+  highlight = false,
   members,
   onEdit,
   onAttach,
@@ -6285,6 +6413,8 @@ function ReceiptRow({
 }: {
   receipt: Receipt
   hasTicket: boolean
+  /** COR-04C: la compra que se pidió desde el Historial de precios: sale desplegada, resaltada y a la vista. */
+  highlight?: boolean
   members: FamilyMember[]
   onEdit: () => void
   onAttach?: () => void
@@ -6302,6 +6432,15 @@ function ReceiptRow({
   const [viewing, setViewing] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [shareError, setShareError] = useState<string | null>(null)
+  const cardRef = useRef<HTMLDivElement>(null)
+  const highlightedRef = useRef(false)
+  useEffect(() => {
+    if (!highlight || highlightedRef.current) return
+    highlightedRef.current = true
+    if (hasTicket) void handleToggleExpand()
+    cardRef.current?.scrollIntoView?.({ block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlight])
 
   const refundInfo = receipt.totalAmount != null ? refundSummary(receipt.totalAmount, refunds) : null
   const refundText = refundInfo ? refundLine(refundInfo) : null
@@ -6356,7 +6495,7 @@ function ReceiptRow({
   }
 
   return (
-    <div className="card receipt-row">
+    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : undefined}>
       <div className="receipt-row-main">
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{formatDate(receipt.receiptDate)}</span>
@@ -7705,7 +7844,9 @@ function FoodTypeBreakdownList({
                       </span>
                     </>
                   )
-                  // COR-04: solo las filas que SON un producto real (identificador de producto) se pueden tocar; una compra sin desglose de ticket (tienda / gasto) no lo es.
+                  // COR-04: solo las filas que SON un producto real (identificador de producto) abren su ficha; un movimiento bancario clasificado sin producto individual
+                  // (COR-04B) conserva su fila de siempre. COR-04A: la fila pulsable es EXACTAMENTE la de antes (mismo elemento y estilos: ni más alta, ni otra letra, ni fondo
+                  // nuevo); toda la fila es la zona táctil y solo cambia el cursor.
                   if (!onOpenProduct || !p.isProduct) {
                     return (
                       <div key={p.productId} className="price-row" style={rowStyle}>
@@ -7713,17 +7854,25 @@ function FoodTypeBreakdownList({
                       </div>
                     )
                   }
+                  const open = () => onOpenProduct({ productId: p.productId, name: p.name })
                   return (
-                    <button
+                    <div
                       key={p.productId}
-                      type="button"
-                      className="price-row price-row-tappable"
-                      style={{ ...rowStyle, width: '100%', border: 'none', textAlign: 'left', color: 'var(--text)', font: 'inherit', cursor: 'pointer', minHeight: 44 }}
+                      className="price-row"
+                      style={{ ...rowStyle, cursor: 'pointer' }}
+                      role="button"
+                      tabIndex={0}
                       aria-label={`Abrir la ficha de ${p.name} en Historial de precios`}
-                      onClick={() => onOpenProduct({ productId: p.productId, name: p.name })}
+                      onClick={open}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          open()
+                        }
+                      }}
                     >
                       {content}
-                    </button>
+                    </div>
                   )
                 })}
               </div>

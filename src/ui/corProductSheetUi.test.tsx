@@ -165,3 +165,77 @@ describe('COR-04 · fila de producto → ficha exacta en Historial de precios', 
     expect(document.body.textContent ?? '').toContain('112.06 €')
   })
 })
+
+describe('COR-04A/B · las filas conservan su diseño de siempre', () => {
+  it('la fila de un producto pulsable es la MISMA (div.price-row): sin botón, sin altura ni fondo nuevos; toda la fila es la zona táctil', async () => {
+    await openStatsExpandedOnCarne()
+    const row = (await screen.findAllByRole('button', { name: /Abrir la ficha de Pollo/ }))[0]
+    expect(row.tagName).toBe('DIV')
+    expect(row.className).toBe('price-row')
+    expect(row.style.minHeight).toBe('')
+    expect(row.style.border).toBe('')
+    expect(row.style.font).toBe('')
+    expect(row.style.width).toBe('')
+    expect(row.querySelectorAll('.price-row-name, .price-row-price')).toHaveLength(2) // nombre e importe, como antes; nada de botones visibles dentro
+    expect(row.querySelector('button')).toBeNull()
+  })
+
+  it('un movimiento bancario clasificado (sin producto individual) sigue en su estadística con la fila de siempre y sin enlace', async () => {
+    await openStatsExpandedOnCarne()
+    await screen.findAllByRole('button', { name: /Abrir la ficha de Pollo/ })
+    const bank = screen.getAllByText('Coviran').map((n) => n.closest('.price-row')).find((r) => r && (r.textContent ?? '').includes('9.00')) as HTMLElement
+    expect(bank).toBeTruthy()
+    expect(bank.getAttribute('role')).toBeNull()
+    expect(bank.tagName).toBe('DIV')
+    expect(bank.className).toBe('price-row')
+    expect(bank.textContent).toContain('9.00')
+  })
+})
+
+describe('COR-04C · «Ver ticket» / «Ver compra» desde un precio del Historial de precios', () => {
+  async function openSheetOfReservaLonchas() {
+    await openStatsExpandedOnCarne()
+    const rows = await screen.findAllByRole('button', { name: /Abrir la ficha de Lonchas/ })
+    fireEvent.click(rows.find((r) => (r.textContent ?? '').includes('50.00'))!)
+    await screen.findByText('← Volver a Estadística compras')
+  }
+
+  it('cada registro de la ficha enlaza con SU compra por identificador: «Ver ticket» si tiene foto, «Ver compra» si no', async () => {
+    data.receipts = [{ ...(data.receipts[0] as object), storagePath: 'f/r1.jpg' }, ...(data.receipts.slice(1) as object[])]
+    await openSheetOfReservaLonchas()
+    // el precio de 50 € (sin formato conocido) sale en «Compras sin formato conocido» con el enlace de SU ticket (r1, con foto)
+    const section = (await screen.findByText(/Compras sin formato conocido/)).parentElement as HTMLElement
+    expect(within(section).getByRole('button', { name: 'Ver ticket' })).toBeTruthy()
+    expect(within(section).queryByRole('button', { name: 'Ver compra' })).toBeNull()
+  })
+
+  it('pulsarlo abre exactamente esa compra en Tickets (fecha, carpeta, resaltada y desplegada) y ofrece volver a la ficha del producto, que se reabre', async () => {
+    data.receipts = [{ ...(data.receipts[0] as object), storagePath: 'f/r1.jpg' }, ...(data.receipts.slice(1) as object[])]
+    await openSheetOfReservaLonchas()
+    const section = (await screen.findByText(/Compras sin formato conocido/)).parentElement as HTMLElement
+    fireEvent.click(within(section).getByRole('button', { name: 'Ver ticket' }))
+    // Tickets: solo esa compra (rango = su fecha), su carpeta abierta y ella resaltada
+    const back = await screen.findByRole('button', { name: '← Volver al Historial de precios de Lonchas' })
+    expect(back).toBeTruthy()
+    await waitFor(() => expect(document.querySelectorAll('[data-highlighted="true"]')).toHaveLength(1))
+    const highlighted = document.querySelector('[data-highlighted="true"]') as HTMLElement
+    expect(highlighted.textContent).toContain('Alimentación')
+    expect(highlighted.textContent).toContain('16/10/2026')
+    // volver: la ficha del MISMO producto (por id), en la misma posición, y sigue devolviendo a Estadística compras
+    fireEvent.click(back)
+    const heading = await screen.findByRole('heading', { name: 'Lonchas' })
+    expect(heading).toBeTruthy()
+    expect(await screen.findByText('← Volver a Estadística compras')).toBeTruthy()
+    expect(scrollTo).toHaveBeenCalledWith(0, 420)
+  })
+
+  it('si la compra ya no existe al llegar a Tickets, lo dice (no hay enlace roto) y el resto de la pantalla funciona', async () => {
+    data.receipts = [{ ...(data.receipts[0] as object), storagePath: 'f/r1.jpg' }, ...(data.receipts.slice(1) as object[])]
+    await openSheetOfReservaLonchas()
+    const section = (await screen.findByText(/Compras sin formato conocido/)).parentElement as HTMLElement
+    const link = within(section).getByRole('button', { name: 'Ver ticket' })
+    data.receipts = (data.receipts as { id: string }[]).filter((r) => r.id !== 'r1') // se borró entre medias
+    fireEvent.click(link)
+    expect(await screen.findByText(/No se ha encontrado esa compra/)).toBeTruthy()
+  })
+})

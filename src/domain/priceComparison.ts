@@ -137,6 +137,8 @@ export const NO_STORE = 'Sin tienda concreta'
 
 export interface StorePricePoint {
   date: string
+  /** Línea de product_prices de donde sale este precio (para abrir la compra original; COR-04C). */
+  priceId?: string
   productId: string
   productName: string
   price: NormalizedPrice
@@ -169,7 +171,7 @@ export function productPriceView(members: readonly CmpProduct[], prices: readonl
   for (const r of prices) {
     const name = nameOf.get(r.productId)
     if (name == null || !(r.price >= 0)) continue
-    points.push({ store: r.store?.trim() || NO_STORE, date: r.recordedDate, productId: r.productId, productName: name, price: normalizePrice(r, name) })
+    points.push({ store: r.store?.trim() || NO_STORE, date: r.recordedDate, priceId: r.id, productId: r.productId, productName: name, price: normalizePrice(r, name) })
   }
   if (points.length === 0) return { basis: null, rows: [], cheapestStore: null, notComparable: 0, note: 'Todavía no hay compras registradas de este producto.' }
 

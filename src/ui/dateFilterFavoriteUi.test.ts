@@ -31,7 +31,8 @@ describe('Las 7 pantallas con filtro de fecha arrancan desde el favorito real (p
     const matches = SRC.match(/= useDateFilterPreset\(/g) ?? []
     // 6x [preset, setPreset] + 1x [rangePreset, setRangePreset] (BudgetsTab).
     expect(matches.length).toBe(7)
-    expect(SRC).toContain('const [rangePreset, setRangePreset] = useDateFilterPreset()')
+    // ReceiptsTab (Tickets) arranca en «rango» solo cuando se le pide abrir una compra concreta desde el Historial de precios (COR-04C); si no, el favorito de siempre.
+    expect(SRC).toContain("const [rangePreset, setRangePreset] = useDateFilterPreset(openTarget ? 'rango' : null)")
   })
 
   it('reutiliza el módulo compartido (state/dateFilterPreset.ts), no reinventa la carga aquí', () => {

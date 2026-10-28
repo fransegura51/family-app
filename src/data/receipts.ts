@@ -35,6 +35,19 @@ export async function listManualPurchasesWithoutTicket(): Promise<Receipt[]> {
   return (await listReceipts()).filter((r) => r.isManual && !r.storagePath)
 }
 
+// ECO-UI-01: ¿este gasto tiene un ticket REAL vinculado con productos? Se mira el vínculo de verdad (receipts.expense_id = gasto) y sus líneas, no el comercio ni la fecha. Devuelve los
+// nombres de los productos de sus tickets ([] = hay ticket vinculado sin líneas; null = ningún ticket). Una sola consulta pequeña, solo al abrir un movimiento de origen ticket.
+export async function listLinkedTicketProducts(expenseId: string): Promise<{ normalizedName: string | null; displayName: string | null }[] | null> {
+  const { data, error } = await supabase.from('receipts').select('id, product_prices(products(normalized_name, display_name))').eq('expense_id', expenseId)
+  if (error) throw error
+  if (!data || data.length === 0) return null
+  const lines: { normalizedName: string | null; displayName: string | null }[] = []
+  for (const r of data as unknown as { product_prices: { products: { normalized_name: string | null; display_name: string | null } | null }[] | null }[]) {
+    for (const line of r.product_prices ?? []) lines.push({ normalizedName: line.products?.normalized_name ?? null, displayName: line.products?.display_name ?? null })
+  }
+  return lines
+}
+
 export async function listReceipts(): Promise<Receipt[]> {
   const data = await fetchAllRows((from, to) =>
     supabase

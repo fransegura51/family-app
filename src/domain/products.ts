@@ -100,6 +100,11 @@ export function isPlaceholderProduct(product: { normalizedName?: string | null; 
   return PLACEHOLDER_PRODUCT_NAMES.has(name)
 }
 
+/** ECO-UI-01: ¿hay al menos una línea de producto REAL? Las del marcador «Pendiente» no cuentan como desglose. */
+export function hasRealTicketBreakdown(lines: readonly { normalizedName?: string | null; displayName?: string | null }[]): boolean {
+  return lines.some((l) => !isPlaceholderProduct(l))
+}
+
 export function purchaseNature(
   price: { productId: string; receiptId: string | null },
   foodReceiptIds: Set<string>,

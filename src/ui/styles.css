@@ -9144,3 +9144,21 @@ input[type='search'] {
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* ECO-UI-02 — formulario de movimiento más compacto en el móvil: menos aire entre campos y etiquetas en selectores en vez de una lista larga de botones. No cambia ningún campo. */
+.movement-form {
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.movement-form.card {
+  padding: 10px 12px;
+}
+
+.movement-form label {
+  gap: 2px;
+}
+
+.movement-form .inline-fields {
+  gap: 8px;
+}

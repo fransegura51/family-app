@@ -24,3 +24,8 @@ export function takeStatsReturnContext(): StatsReturnContext | null {
   saved = null
   return value
 }
+
+/** Se descarta cuando la persona se va de Estadística / Historial / Tickets (o sale de Compras): ya no hay "volver" que ofrecer. */
+export function clearStatsReturnContext(): void {
+  saved = null
+}

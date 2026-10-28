@@ -145,6 +145,41 @@ export function toggleSplitTag(split: TagSplitDraft, tagId: string, total: numbe
   return { ...next, mode: split.mode === 'equal' ? 'equal' : 'amount' }
 }
 
+/**
+ * ECO-UI-02 — selectores de etiqueta: añadir una etiqueta a un reparto. «A partes iguales» se recalcula; en euros o en % se CONSERVA lo ya escrito en las demás y la nueva
+ * recibe lo que falta hasta el total (o queda vacía si no falta nada): nunca se pisan importes personalizados.
+ */
+export function addSplitTag(split: TagSplitDraft, tagId: string, total: number): TagSplitDraft {
+  if (split.ids.includes(tagId)) return split
+  const ids = [...split.ids, tagId]
+  if (split.mode === 'equal') return startSplit(ids, total)
+  const inputs = { ...split.inputs }
+  const sum = split.ids.reduce((s, id) => s + (parseNumber(split.inputs[id] ?? '') ?? 0), 0)
+  const full = split.mode === 'percent' ? 100 : total
+  const missing = Number.isFinite(full) ? Math.round((full - sum) * 100) / 100 : 0
+  inputs[tagId] = missing > 0 ? missing.toFixed(2) : ''
+  return { ...split, ids, inputs }
+}
+
+/** Quita una etiqueta del reparto (null si queda una sola: deja de ser reparto). En euros o en % se conserva lo escrito en las demás; el aviso de suma lo da el editor. */
+export function removeSplitTag(split: TagSplitDraft, tagId: string, total: number): TagSplitDraft | null {
+  const ids = split.ids.filter((x) => x !== tagId)
+  if (ids.length < 2) return null
+  if (split.mode === 'equal') return startSplit(ids, total)
+  const inputs = { ...split.inputs }
+  delete inputs[tagId]
+  return { ...split, ids, inputs }
+}
+
+/** Cambia una etiqueta del reparto por otra (la nueva hereda la parte de la anterior y conserva su posición). */
+export function replaceSplitTag(split: TagSplitDraft, oldId: string, newId: string): TagSplitDraft {
+  if (oldId === newId || split.ids.includes(newId)) return split
+  const inputs = { ...split.inputs }
+  inputs[newId] = inputs[oldId] ?? ''
+  delete inputs[oldId]
+  return { ...split, ids: split.ids.map((x) => (x === oldId ? newId : x)), inputs }
+}
+
 interface ExpenseForShares {
   id: string
   amount: number

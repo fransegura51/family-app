@@ -24,7 +24,7 @@ import {
   type SharedEquivalence,
 } from '@/domain/priceComparison'
 import { basisLabel, normalizePrice } from '@/domain/productSize'
-import type { Product, ProductPrice, ShoppingItem } from '@/domain/types'
+import type { Product, ProductPrice, Receipt, ShoppingItem } from '@/domain/types'
 
 // Comparador inteligente de precios (Compras): ficha del producto y lista de la compra.
 // Todo sale de las compras de ESTA familia; las equivalencias compartidas solo aportan nombres, nunca precios.
@@ -74,12 +74,28 @@ function useEquivalenceContext(products: readonly CmpProduct[], focusName?: stri
 
 // ─── Ficha del producto ───
 
-export function ProductPriceComparison({ productId, products, prices, onPackSaved }: { productId: string; products: readonly Product[]; prices: readonly ProductPrice[]; onPackSaved?: () => void }) {
+export function ProductPriceComparison({
+  productId,
+  products,
+  prices,
+  onPackSaved,
+  receipts,
+  onViewPurchase,
+}: {
+  productId: string
+  products: readonly Product[]
+  prices: readonly ProductPrice[]
+  onPackSaved?: () => void
+  /** COR-04C: tickets/compras de la familia, para saber de cuál sale cada precio. Sin ellos (o sin `onViewPurchase`) no se ofrece el enlace. */
+  receipts?: readonly Pick<Receipt, 'id' | 'storagePath'>[]
+  onViewPurchase?: (receiptId: string) => void
+}) {
   const cmpProducts = useMemo(() => products.map(toCmpProduct), [products])
   const target = cmpProducts.find((p) => p.id === productId)
   const { ctx, reload, commonsData } = useEquivalenceContext(cmpProducts, target?.displayName)
   const [pickingCommon, setPickingCommon] = useState(false)
-  const [scope, setScope] = useState<GroupScope>('equivalent')
+  // COR-04D: la ficha de un producto enseña SU historial. Los equivalentes se comparan a petición («+ Equivalentes»), cada uno identificado por su nombre.
+  const [scope, setScope] = useState<GroupScope>('identical')
   const [openStore, setOpenStore] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fixingPrice, setFixingPrice] = useState<string | null>(null)
@@ -116,12 +132,27 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
 
   const others = group.members.filter((m) => m.product.id !== productId)
   const nameOfMember = new Map(group.members.map((m) => [m.product.id, m.product.displayName]))
-  const memberPrices = prices.filter((p) => memberIds.has(p.productId))
-  const unformatted = memberPrices
-    .filter((p) => normalizePrice(toCmpPrice(p), nameOfMember.get(p.productId) ?? '').exact === false)
+  // COR-04D: las solicitudes de formato y el formato guardado son SOLO de este producto (cada una, de su registro de compra exacto), aunque se comparen equivalentes.
+  const ownPrices = prices.filter((p) => p.productId === productId)
+  const unformatted = ownPrices
+    .filter((p) => normalizePrice(toCmpPrice(p), nameOfMember.get(p.productId) ?? target.displayName).exact === false)
     .sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
     .slice(0, 5)
-  const formatted = memberPrices.filter((p) => p.pack != null)
+  const formatted = ownPrices.filter((p) => p.pack != null)
+  // COR-04C: enlace a la compra original de cada registro, por identificador. «Ver ticket» si tiene foto/ticket, «Ver compra» si es una compra sin ticket; sin referencia válida, nada.
+  const receiptOfPrice = new Map(prices.map((p) => [p.id, p.receiptId] as const))
+  const receiptById = new Map((receipts ?? []).map((r) => [r.id, r] as const))
+  const purchaseLink = (priceId: string | undefined) => {
+    if (!onViewPurchase || !priceId) return null
+    const rid = receiptOfPrice.get(priceId)
+    const r = rid ? receiptById.get(rid) : undefined
+    if (!r) return null
+    return (
+      <button type="button" className="link-button" style={{ fontSize: 13, padding: '0 0 0 6px' }} onClick={() => onViewPurchase(r.id)}>
+        {r.storagePath ? 'Ver ticket' : 'Ver compra'}
+      </button>
+    )
+  }
   const myCommonId = commonsData.members.find((m) => m.productId === productId)?.commonId
   const commonName = commonsData.commons.find((c) => c.id === myCommonId)?.name ?? null
   const hasAnyPrices = prices.some((p) => memberIds.has(p.productId))
@@ -155,6 +186,7 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
           <button type="button" className="receipt-row-summary" style={{ width: '100%', textAlign: 'left' }} onClick={() => setOpenStore(openStore === row.store ? null : row.store)}>
             <strong>{row.store}</strong>
             {view.cheapestStore === row.store && <span> · 🏷️ más barato</span>}
+            {scope === 'equivalent' && <span className="muted"> · {row.last.productName}</span>}
             <br />
             <span>
               {eur(row.last.price.value)} {basisLabel(row.last.price.basis).replace('€', '')}
@@ -176,6 +208,7 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
             [...row.history].reverse().map((h, i) => (
               <p key={i} className="muted receipt-row-detail-line">
                 {shortDate(h.date)} · {h.productName} · {eur(h.price.value)} {basisLabel(h.price.basis).replace('€', '')}
+                {purchaseLink(h.priceId)}
               </p>
             ))}
         </div>
@@ -191,7 +224,8 @@ export function ProductPriceComparison({ productId, products, prices, onPackSave
             <div key={p.id} className="receipt-line-card">
               <span>
                 {shortDate(p.recordedDate)} · {p.store ?? NO_STORE} · {eur(p.price)}
-              </span>{' '}
+              </span>
+              {purchaseLink(p.id)}{' '}
               {fixingPrice === p.id ? (
                 <PackEditor price={p.price} onSave={(pack) => void savePack(p.id, pack)} onCancel={() => setFixingPrice(null)} />
               ) : (

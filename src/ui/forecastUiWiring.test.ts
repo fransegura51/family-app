@@ -48,8 +48,10 @@ describe('reutiliza el motor y la capa de datos ya certificados (Fase 1B/1B.1), 
     const forecastFormStart = FS.indexOf('function ForecastPaymentForm')
     const forecastFormBody = FS.slice(forecastFormStart, FS.indexOf('\n}', forecastFormStart + 4000))
     expect(forecastFormBody).toContain('<CategorySelect')
-    // Solo existe UNA declaración de CategorySelect en todo el archivo (la ya existente de Presupuestos).
-    expect(FS.match(/function CategorySelect\(/g)?.length).toBe(1)
+    // CategorySelect ya no se declara en este archivo: vive UNA sola vez en su propio módulo y aquí solo se importa (CAT-2).
+    expect(FS.match(/function CategorySelect\(/g)).toBeNull()
+    expect(FS).toContain("import { CategorySelect } from '@/ui/CategorySelect'")
+    expect(APP['/src/ui/CategorySelect.tsx'].match(/function CategorySelect\(/g)?.length).toBe(1)
   })
 })
 
@@ -515,8 +517,9 @@ describe('Fase 1D-f — "Gestionar movimiento" reutiliza EXACTAMENTE el mecanism
     const body = FS.slice(idx, FS.indexOf('\nfunction ', idx + 10))
     expect(body).toContain('<CategorySelect')
     expect(body).toContain('<TagSelect')
-    // Solo existe UNA declaración de cada uno en todo el archivo — no se duplica el componente.
-    expect(FS.match(/function CategorySelect\(/g)?.length).toBe(1)
+    // Solo existe UNA declaración de cada uno — no se duplica el componente (CategorySelect vive en su propio módulo, CAT-2).
+    expect(FS.match(/function CategorySelect\(/g)).toBeNull()
+    expect(APP['/src/ui/CategorySelect.tsx'].match(/function CategorySelect\(/g)?.length).toBe(1)
     expect(FS.match(/function TagSelect\(/g)?.length).toBe(1)
   })
 

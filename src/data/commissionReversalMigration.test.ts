@@ -87,7 +87,7 @@ describe('G/H/K/O/P/Q/R/S. el cambio: SOLO category, en las dos filas, nada más
 describe('no automatiza nada: solo dos filas puntuales, sin tocar el sync bancario', () => {
   it('la migración no toca guessCategory, MERCHANT_CATEGORY_RULES ni la regla /^anul/ del sync', () => {
     const bank = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']
-    expect(bank).toContain('return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"')
+    expect(bank).toContain('classifyMovement({') // ECO-CLASIF: guessCategory pasó al clasificador compartido (el fallback «Otros» vive allí)
     expect(bank).toContain('/^anul\\b/i')
   })
 

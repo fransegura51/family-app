@@ -119,7 +119,7 @@ describe('todas las estadísticas coinciden y cuentan la compra del mercado', ()
   })
 
   it('Presupuestos (generales): «Gastado» 107,50 €', async () => {
-    render(<MemoryRouter><BudgetsTab group="generales" seedCategories={[]} accountsMode="compartido" myMemberId="jenni" /></MemoryRouter>)
+    render(<MemoryRouter><BudgetsTab group="generales" accountsMode="compartido" myMemberId="jenni" /></MemoryRouter>)
     await waitFor(() => expect(document.body.textContent).toContain('Gastado:'))
     expect(document.body.textContent).toContain('Gastado: -107.50 €')
   })

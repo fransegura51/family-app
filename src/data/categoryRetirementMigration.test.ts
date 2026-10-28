@@ -171,14 +171,17 @@ describe('Fase 6B: NO hay asociaciones automáticas por comercio (Repsol != Comb
     for (const brand of ['cepsa', 'galp', 'shell', 'petroprix', 'ballenoil']) expect(SQL.toLowerCase()).not.toContain(brand)
   })
 
-  it('la ÚNICA regla comercio → Combustible del proyecto es la importación bancaria PREVIA a esta fase, sin cambios; no hay otra en la app', () => {
+  it('la ÚNICA regla comercio → Combustible del proyecto es la importación bancaria, ahora en el clasificador compartido (ECO-CLASIF) y por clave del catálogo; no hay otra en la app', () => {
+    // ECO-CLASIF (28/10/2026): la lista corta de palabras de la función del banco pasó al clasificador compartido, que apunta a la CLAVE del catálogo
+    // (no al nombre visible). Ya no queda ninguna lista «palabras → "Combustible"» por nombre en ninguna función.
     const mapping = /keywords:\s*\[[^\]]*\]\s*,\s*category:\s*["']Combustible["']/
     const inFunctions = Object.entries(FUNCTIONS)
       .filter(([, text]) => mapping.test(text))
       .map(([file]) => file)
-    expect(inFunctions).toEqual(['/supabase/functions/enable-banking-sync-transactions/index.ts'])
-    const rule = FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts'].match(/\{ keywords: \[[^\]]*\], category: "Combustible" \}/g)
-    expect(rule).toEqual(['{ keywords: ["repsol", "cepsa", "galp", "shell", "gasolinera", "estacion de servicio", "petroprix", "ballenoil"], category: "Combustible" }'])
+    expect(inFunctions).toEqual([])
+    const shared = FUNCTIONS['/supabase/functions/_shared/bank/classifyMovement.ts']
+    expect(shared.match(/'g\.transporte_vehiculo\.combustible'/g)?.length).toBeGreaterThan(0)
+    expect(FUNCTIONS['/supabase/functions/enable-banking-sync-transactions/index.ts']).toContain('classifyMovement({')
     const inApp = Object.entries(APP)
       .filter(([, text]) => mapping.test(text) || /(repsol|gasolinera)[^\n]{0,60}(=>|:)\s*['"]Combustible['"]/i.test(text))
       .map(([file]) => file)

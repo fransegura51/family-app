@@ -50,18 +50,6 @@ export async function createFamilyFoodType(name: string, icon: string, kind: Foo
   if (error) throw error
 }
 
-// Siembra las clases de fábrica (domain/foodTypes.ts, FOOD_TYPES o
-// NO_FOOD_TYPES según el `kind`) la primera vez que la familia abre
-// cada conjunto — mismo patrón que seedCategoryTree en Presupuesto
-// Generales, para no tener que darlas de alta a mano.
-export async function seedFamilyFoodTypes(seed: { name: string; icon: string }[], kind: FoodTypeKind): Promise<void> {
-  const familyId = await currentFamilyId()
-  const { error } = await supabase
-    .from('family_food_types')
-    .insert(seed.map((s) => ({ family_id: familyId, name: s.name, icon: s.icon, kind })))
-  if (error) throw error
-}
-
 // Petición real: "las clases... editables (lápiz) y los emojis
 // también editables" — nombre e icono en la misma llamada, ya que la
 // ficha de edición los enseña juntos.

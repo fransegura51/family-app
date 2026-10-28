@@ -4,6 +4,7 @@
 import { transformSync } from 'esbuild'
 import { beforeEach, describe, expect, it } from 'vitest'
 import source from '../../supabase/functions/enable-banking-sync-transactions/index.ts?raw'
+import classifierSource from '../../supabase/functions/_shared/bank/classifyMovement.ts?raw'
 
 type Row = Record<string, unknown>
 const db: Record<string, Row[]> = {}
@@ -63,6 +64,8 @@ function builder(table: string) {
   add('in', ((c: string, v: unknown[]) => filters.push((r) => v.includes(r[c]))) as never)
   add('is', ((c: string, v: unknown) => filters.push((r) => (r[c] ?? null) === v)) as never)
   add('not', ((c: string, o: string, v: unknown) => filters.push((r) => (o === 'is' ? (r[c] ?? null) !== v : true))) as never)
+  add('order', (() => undefined) as never)
+  add('limit', (() => undefined) as never)
   add('gte', ((c: string, v: string) => filters.push((r) => String(r[c]) >= v)) as never)
   add('lte', ((c: string, v: string) => filters.push((r) => String(r[c]) <= v)) as never)
   add('or', ((expr: string) => {
@@ -83,7 +86,9 @@ const code = transformSync(
     .replace(/^import .*$/gm, ''),
   { loader: 'ts' },
 ).code
-const { linkTransactionsToExpenses } = new Function('Deno', 'createClient', `${code}\nreturn { linkTransactionsToExpenses }`)({ env: { get: () => 'x' } }, () => admin) as {
+// El clasificador compartido (ECO-CLASIF) es un módulo aparte: se carga igual, sin sus «export».
+const classifierCode = transformSync(classifierSource.replace(/^export /gm, ''), { loader: 'ts' }).code
+const { linkTransactionsToExpenses } = new Function('Deno', 'createClient', `${classifierCode}\n${code}\nreturn { linkTransactionsToExpenses }`)({ env: { get: () => 'x' } }, () => admin) as {
   linkTransactionsToExpenses: (a: unknown, acc: unknown) => Promise<void>
 }
 
@@ -98,6 +103,7 @@ beforeEach(() => {
   db.bank_transactions = []
   db.purchase_payments = []
   db.receipts = []
+  db.family_members = []
   db.budget_categories = [{ family_id: 'famA', name: 'Otros', catalog_key: null }, { family_id: 'famA', name: 'Devoluciones', catalog_key: 'i.ingreso.devoluciones' }]
   nextId = 1
 })
@@ -240,5 +246,70 @@ describe('devoluciones registradas a mano y su abono bancario', () => {
     db.bank_transactions.push(credit({ id: 'BX', matched_expense_id: 'D1' }), credit({ id: 'BY' }))
     await sync()
     expect(db.bank_transactions.find((t) => t.id === 'BY')?.matched_expense_id).not.toBe('D1')
+  })
+})
+
+// ECO-CLASIF: la categoría de un movimiento NUEVO la decide el clasificador compartido (catálogo + aprendizaje de la familia), con su marca de origen.
+describe('clasificación automática de los movimientos nuevos (ECO-CLASIF)', () => {
+  const cat = (name: string, catalog_key: string | null, budget_group = 'generales') => ({ family_id: 'famA', name, catalog_key, budget_group })
+  beforeEach(() => {
+    db.budget_categories = [
+      cat('Otros', 'g.otros'),
+      cat('Electricidad', 'g.vivienda_hogar.electricidad'),
+      cat('Suministros', 'g.vivienda_hogar.suministros'),
+      cat('Supermercado, carnicería y tiendas de alimentación', 'g.alimentacion.supermercado'),
+      cat('Ingreso', 'i.ingreso', 'ingresos'),
+      cat('Sueldo', 'i.sueldo', 'ingresos'),
+      cat('Devoluciones', 'i.ingreso.devoluciones', 'ingresos'),
+    ]
+  })
+  const created = () => db.expenses.filter((e) => e.source === 'banco')
+
+  it('un recibo de la luz se clasifica solo (confianza alta), con su marca y sin sugerencia', async () => {
+    db.bank_transactions.push(tx({ id: 'B1', amount: 81.2, description: 'ENDESA ENERGIA S.A.' }))
+    await sync()
+    expect(created()[0]).toMatchObject({ category: 'Electricidad', category_source: 'auto', category_suggestion: null, amount: 81.2 })
+  })
+
+  it('lo que la familia decidió a mano para ese comercio manda sobre la regla', async () => {
+    db.expenses.push(expense({ id: 'H1', source: 'banco', store: 'ENDESA ENERGIA S.A.', category: 'Suministros', category_source: 'manual', amount: 70, expense_date: '2026-09-20' }))
+    db.bank_transactions.push(tx({ id: 'B1', amount: 81.2, description: 'ENDESA ENERGIA S.A.' }))
+    await sync()
+    expect(created().find((e) => e.id !== 'H1')).toMatchObject({ category: 'Suministros', category_source: 'auto' })
+  })
+
+  it('un comercio que no se puede deducir (Amazon) queda PENDIENTE: sin categoría inventada y sin «Otros»', async () => {
+    db.bank_transactions.push(tx({ id: 'B1', amount: 23.5, description: 'WWW.AMAZON* 7V62L4X05-LUXEMBOURG' }))
+    await sync()
+    expect(created()[0].category).toBeNull()
+    expect(created()[0].category_source).toBeNull()
+  })
+
+  it('sin ninguna pista, «Otros» como último recurso y sin marca', async () => {
+    db.bank_transactions.push(tx({ id: 'B1', amount: 12, description: 'TALLERES XYZ' }))
+    db.bank_transactions.push(tx({ id: 'B2', amount: 13, description: 'SIN PISTA ALGUNA SL' }))
+    await sync()
+    expect(created().find((e) => e.amount === 13)).toMatchObject({ category: 'Otros', category_source: null })
+  })
+
+  it('el sincronizador solo CREA gastos nuevos: nunca cambia la categoría de uno existente', async () => {
+    db.expenses.push(expense({ id: 'X1', source: 'banco', store: 'MERCADONA', category: 'Otros', category_source: null, amount: 20 }))
+    db.bank_transactions.push(tx({ id: 'B1', amount: 31, description: 'MERCADONA' }))
+    await sync()
+    expect(db.expenses.find((e) => e.id === 'X1')?.category).toBe('Otros')
+  })
+
+  it('un abono de nómina entra como «Sueldo»; una transferencia recibida cualquiera sigue siendo «Ingreso»', async () => {
+    db.bank_transactions.push(tx({ id: 'B1', amount: 1500, credit_debit: 'CRDT', description: 'NOMINA EMPRESA SL' }))
+    db.bank_transactions.push(tx({ id: 'B2', amount: 40, credit_debit: 'CRDT', description: 'TRANSFERENCIA DE JUAN PEREZ' }))
+    await sync()
+    expect(created().find((e) => e.amount === 1500)).toMatchObject({ category: 'Sueldo', is_income: true, category_source: 'auto' })
+    expect(created().find((e) => e.amount === 40)).toMatchObject({ category: 'Ingreso', is_income: true, category_source: null })
+  })
+
+  it('una devolución explícita sigue entrando como «Devoluciones», sin marca de origen', async () => {
+    db.bank_transactions.push(tx({ id: 'B1', amount: 25, credit_debit: 'CRDT', description: 'DEVOLUCION COMPRA ZARA' }))
+    await sync()
+    expect(created()[0]).toMatchObject({ category: 'Devoluciones', category_source: null })
   })
 })

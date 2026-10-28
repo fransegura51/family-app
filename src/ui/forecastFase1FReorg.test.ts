@@ -233,7 +233,7 @@ describe('Fase 1F.E — Inicio de Compras: nuevo bloque de análisis bajo los 4 
   })
 
   it('"Estadística compras" (BudgetsTab) sigue siendo la pantalla detallada aparte, sin tocar', () => {
-    expect(SS).toContain("<BudgetsTab group=\"alimentacion\" seedCategories={[]} onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />")
+    expect(SS).toContain("<BudgetsTab group=\"alimentacion\" onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />")
   })
 
   // RESUELTO en el Inciso Compras — Parte A (carrusel "PEPA analiza tus compras",

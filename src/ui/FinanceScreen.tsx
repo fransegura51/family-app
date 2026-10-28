@@ -4,6 +4,10 @@ import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type 
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
+import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
+import { CategorySelect } from '@/ui/CategorySelect'
+import { CategoryEditInline } from '@/ui/CategoryEditInline'
+import { OtrosReviewCard, useQuickCategoryChange } from '@/ui/QuickCategoryChange'
 import {
   addExpense,
   listClassSharesSafe,
@@ -13,7 +17,6 @@ import {
   addTaxFundExpense,
   addWalletTransaction,
   createBudget,
-  createBudgetCategoriesBulk,
   createBudgetCategory,
   createGoal,
   createTag,
@@ -774,7 +777,6 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
         <BudgetsTab
           key={refreshKey}
           group="generales"
-          seedCategories={MASTER_CATEGORY_SEED}
           accountsMode={accountsMode}
           myMemberId={myMemberId}
         />
@@ -1705,6 +1707,8 @@ export function BankTab({
 
   // Tickets, movimientos y presupuestos cambiados en otro dispositivo (recarga silenciosa tras la primera carga).
   useRealtimeRefresh(['expenses', 'bank_transactions', 'bank_accounts', 'budget_categories', 'expense_tag_shares'], reload)
+  // ECO-CLASIF: cambio rápido de categoría tocándola en la propia fila (buscador, sugerida y más usadas) y, si procede, oferta de cambiar los anteriores.
+  const quickCategory = useQuickCategoryChange({ expenses: linkedExpenses, categories, onChanged: reload })
 
   async function handleSync() {
     setSyncing(true)
@@ -1867,6 +1871,8 @@ export function BankTab({
               </button>
             </div>
           )}
+          <OtrosReviewCard expenses={linkedExpenses} categories={categories} memberNames={members.map((m) => m.name)} onChanged={reload} />
+          {quickCategory.dialogs}
           <DateFilterTab
             preset={preset}
             onPresetChange={setPreset}
@@ -1929,6 +1935,7 @@ export function BankTab({
                   category={categories.find((c) => c.name === e.category)}
                   tag={tags.find((t) => t.id === e.tagId)}
                   onClick={() => setEditingId(e.id)}
+                  onCategoryClick={() => quickCategory.start(e)}
                   ownerMember={activeAccountId ? undefined : ownerMemberForExpense(e.id)}
                   rowColor={movementRowColor(movementColorMode, categories.find((c) => c.name === e.category), tags.find((t) => t.id === e.tagId), catColors)}
                 />
@@ -3572,7 +3579,6 @@ export function ExpensesTab({
   // de alta solas la primera vez, sin pedirlo — petición real: "los
   // ingresos también se deberían poder categorizar, como sueldo,
   // regalo, ingreso".
-  const seededIncomeRef = useRef(false)
 
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
@@ -3596,11 +3602,8 @@ export function ExpensesTab({
       .then(async ([e, c, t, monthStart, acc, bankTx, m, wal, cashMov, shares, clsShares]) => {
         setTagShares(shares)
         setClassShares(clsShares)
-        if (!seededIncomeRef.current && !c.some((cat) => cat.budgetGroup === 'ingresos')) {
-          seededIncomeRef.current = true
-          await createBudgetCategoriesBulk(INCOME_CATEGORY_SEED.map((s) => ({ ...s, budgetGroup: 'ingresos' })))
-          c = await listBudgetCategories()
-        }
+        // CAT-2: las categorías de ingreso y de gasto vienen del catálogo general y se mantienen al día solas (sincronización en la base, 0338).
+        if ((await ensureCatalogSynced()).changed) c = await listBudgetCategories()
         setExpenses(e)
         setCategories(c)
         setTags(t)
@@ -3856,6 +3859,9 @@ export function ExpensesTab({
     return `${owner ? owner.name : 'Común'} (${last4})`
   }
 
+  // ECO-CLASIF: cambio rápido de categoría tocándola en la propia fila (buscador, sugerida y más usadas) y, si procede, oferta de cambiar los anteriores.
+  const quickCategory = useQuickCategoryChange({ expenses, categories, onChanged: reload })
+
   if (loading) return <p className="muted">Cargando gastos…</p>
 
   return (
@@ -3884,6 +3890,8 @@ export function ExpensesTab({
       )}
       {cashError && <p className="error">{cashError}</p>}
       {cashNotice && <p className="points-badge">{cashNotice}</p>}
+      {!filter && <OtrosReviewCard expenses={expenses} categories={categories} memberNames={members.map((m) => m.name)} onChanged={reload} />}
+      {quickCategory.dialogs}
       {hasWithdrawalCategory && (
         <WithdrawalsToAssign withdrawals={withdrawalsPending} movements={cashMovements} wallets={wallets} myMemberId={myMemberId} onChanged={reload} onNotice={setCashNotice} />
       )}
@@ -3983,12 +3991,12 @@ export function ExpensesTab({
           clasificación de productos y movimientos bancarios son
           sugerencias" — un movimiento importado del banco lleva
           categoría puesta automáticamente por el nombre del comercio
-          (ver MERCHANT_CATEGORY_RULES en enable-banking-sync-
-          transactions); es un acierto frecuente, no una certeza. */}
+          (ver supabase/functions/_shared/bank/classifyMovement.ts); es un
+          acierto frecuente, no una certeza. */}
       {accounts.length > 0 && (
         <p className="muted" style={{ fontSize: 12, marginTop: 4 }} data-help-id="finance.movements-note">
           ℹ️ La categoría de los movimientos importados del banco se asigna por sugerencia, según el comercio —
-          revísala y corrígela si no encaja (toca el movimiento para editarlo).
+          revísala y corrígela si no encaja (toca su categoría para cambiarla).
         </p>
       )}
 
@@ -4059,6 +4067,7 @@ export function ExpensesTab({
               tag={tags.find((t) => t.id === e.tagId)}
               ownerMember={ownerMemberForExpense(e.id)}
               onClick={() => setEditingId(e.id)}
+              onCategoryClick={() => quickCategory.start(e)}
               rowColor={movementRowColor(movementColorMode, categories.find((c) => c.name === e.category), tags.find((t) => t.id === e.tagId), catColors)}
               extraAction={
                 <>
@@ -4257,9 +4266,12 @@ function MovementRow({
   extraAction,
   ownerMember,
   rowColor,
+  onCategoryClick,
 }: {
   expense: Expense
   category: BudgetCategory | undefined
+  /** Cambio rápido de categoría: si se pasa, la categoría de la fila es tocable. */
+  onCategoryClick?: () => void
   tag: Tag | undefined
   /** Reparto entre varias etiquetas (2 o más): se enseña cada una con su parte. */
   tagShares?: { tag: Tag | undefined; amount: number }[]
@@ -4307,9 +4319,34 @@ function MovementRow({
               mirar la categoría real (que sí se guardaba bien). Ahora se
               muestra igual que un gasto: icono + nombre de la categoría
               elegida (Sueldo, Regalo, Ingreso genérico...). */}
+          {/* ECO-CLASIF: con la categoría tocable, un toque abre el selector (buscador, sugerida y más usadas) sin entrar al formulario completo.
+              «sugerida» = PEPA la eligió con confianza media; en un gasto pendiente se enseña, si la hay, la categoría que PEPA propone. */}
           <span className="movement-row-category">
-            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />} {category?.icon}{' '}
-            {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
+            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />}{' '}
+            {onCategoryClick ? (
+              <button
+                type="button"
+                className="movement-row-category-btn"
+                data-help-id="finance.movement-category-chip"
+                aria-label={`Categoría: ${e.category ?? PENDING_LABEL}. Tocar para cambiarla`}
+                onClick={(ev) => {
+                  ev.stopPropagation()
+                  onCategoryClick()
+                }}
+              >
+                {category?.icon} {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
+              </button>
+            ) : (
+              <>
+                {category?.icon} {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
+              </>
+            )}
+            {e.categorySource === 'sugerida' && (
+              <span className="suggested-tag" title="PEPA la ha elegido por el comercio. Toca la categoría para cambiarla o darla por buena.">
+                sugerida
+              </span>
+            )}
+            {e.categorySuggestion && (isPendingCategory(e.category) || e.isIncome) && <span className="suggested-tag">¿{e.categorySuggestion}?</span>}
           </span>
           <span className="price-row-price" style={{ color: e.isIncome ? '#1e8449' : undefined }}>
             {e.isIncome ? '+' : ''}
@@ -4588,6 +4625,7 @@ function MovementFormFields({
   categories,
   tags,
   pendingCategoryLabel,
+  suggestedCategory,
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4596,6 +4634,8 @@ function MovementFormFields({
   tags: Tag[]
   // Solo al editar un gasto con category NULL (pendiente de clasificar): se conserva tal cual mientras no se elija una.
   pendingCategoryLabel?: string
+  /** ECO-CLASIF: la categoría que PEPA propone para este gasto pendiente (sale arriba en el selector). */
+  suggestedCategory?: string | null
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4662,6 +4702,7 @@ function MovementFormFields({
             onChange={(v) => onChange(changeExpenseCategory(draft, v, categories))}
             categories={categories}
             emptyLabel={pendingCategoryLabel}
+            suggestion={suggestedCategory}
           />
         </label>
       )}
@@ -4832,6 +4873,7 @@ function EditExpenseInline({
         categories={categories}
         tags={tags}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
+        suggestedCategory={expense.category == null ? expense.categorySuggestion : null}
       />
       {onAddToForecast && (
         <button type="button" className="link-button" style={{ margin: '4px 0 0' }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
@@ -4879,6 +4921,8 @@ export function CategoriesModal({
   const [newCategoryGroup, setNewCategoryGroup] = useState<'generales' | 'ingresos'>('generales')
   const [addingCategory, setAddingCategory] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [restoreNote, setRestoreNote] = useState<string | null>(null)
 
   const generales = categories.filter((c) => c.budgetGroup === 'generales')
   const ingresos = categories.filter((c) => c.budgetGroup === 'ingresos')
@@ -4943,6 +4987,7 @@ export function CategoriesModal({
                 </button>
                 {expanded && (
                   <div style={{ padding: '4px 12px 12px 28px', borderBottom: '1px solid #f1f1f1' }}>
+                    <CategoryEditInline category={c} onSaved={onChanged} />
                     {showClassification && renderClassification(c)}
                     <ConfirmIconButton
                       icon="✕ Eliminar esta categoría"
@@ -4966,6 +5011,7 @@ export function CategoriesModal({
                             onConfirm={() => deleteBudgetCategory(child.id).then(onChanged)}
                           />
                         </div>
+                        <CategoryEditInline category={child} onSaved={onChanged} />
                         {showClassification && renderClassification(child)}
                       </div>
                     ))}
@@ -5032,6 +5078,32 @@ export function CategoriesModal({
 
         {renderGroup('Generales', generales, true)}
         {renderGroup('Ingresos', ingresos, false)}
+
+        {/* CAT-2: lo que la familia quitó del catálogo general no se le vuelve a poner; aquí se puede recuperar. */}
+        <button
+          type="button"
+          className="link-button"
+          data-help-id="finance.categories-restore"
+          disabled={restoring}
+          onClick={() => {
+            setRestoring(true)
+            setRestoreNote(null)
+            restoreMyFamilyCatalog()
+              .then((r) => {
+                setRestoreNote(
+                  r.addedCategories + r.addedClasses === 0
+                    ? 'Ya tienes todas las categorías generales.'
+                    : `Recuperadas ${r.addedCategories} categorías y ${r.addedClasses} clases de producto.`,
+                )
+                onChanged()
+              })
+              .catch((err) => setRestoreNote(errorMessage(err, 'No se pudieron recuperar')))
+              .finally(() => setRestoring(false))
+          }}
+        >
+          ↺ Recuperar las categorías generales que quité
+        </button>
+        {restoreNote && <p className="muted" style={{ fontSize: 13 }}>{restoreNote}</p>}
       </div>
     </div>
   )
@@ -6111,156 +6183,6 @@ function DropdownFilter({
                   {o.label}
                 </button>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// Selector de categoría compartido entre el formulario de tickets y
-// Movimientos — petición real: "ahora mismo es una lista eterna,
-// quiero que se abra una lista de las categorías principales y
-// tocándolas se desplieguen las subcategorías, así no se satura tanto
-// el usuario". Dos pasos en vez de una lista plana con todo: primero
-// las 11 categorías principales de la taxonomía del documento maestro,
-// tocar una con subcategorías las despliega; las que no tienen
-// subcategorías (u "Otros") se eligen directamente.
-function CategorySelect({
-  value,
-  onChange,
-  categories,
-  allowGeneral,
-  compact,
-  emptyLabel,
-}: {
-  value: string
-  onChange: (v: string) => void
-  categories: BudgetCategory[]
-  // Texto cuando no hay categoría elegida (p. ej. «Pendiente de clasificar» para un gasto o ticket con category NULL).
-  emptyLabel?: string
-  // Petición real: "el desplegable de presupuesto, el mismo que el de
-  // categorías del banco pero con la diferencia de que también se
-  // pueda elegir General" — solo lo pide Nuevo presupuesto (donde
-  // value === '' significa "sin categoría concreta, cuenta todo").
-  allowGeneral?: boolean
-  // Petición real: "disminuye la letra de la categoría para que se
-  // ajuste todo a una línea" — al ir ahora a media anchura (Tickets, en
-  // fila con "¿Quién?"), el nombre más largo (p. ej. "Alimentación")
-  // partía en dos líneas y empujaba la flecha ▼ a una tercera. Solo
-  // afecta a quien pase esta prop, el resto de usos (a ancho completo)
-  // se quedan con el tamaño de siempre.
-  compact?: boolean
-}) {
-  const [open, setOpen] = useState(false)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
-  // Petición real: "elijo una subcategoría y me devuelve a la lista de
-  // categorías y no puedo cerrar la ventana" (iPhone) — sospecha de un
-  // "click fantasma" de Safari/iOS que llega justo después de cerrarse
-  // el modal y cae sobre el botón que queda al descubierto en esa misma
-  // posición, reabriéndolo. Se ignora cualquier toque que reabra el
-  // desplegable en los 400ms siguientes a haberlo cerrado.
-  const closedAtRef = useRef(0)
-
-  const generales = categories.filter((c) => c.budgetGroup === 'generales')
-  const topLevel = generales.filter((c) => !c.parentId)
-  const selected = generales.find((c) => c.name === value)
-  const expandedParent = expandedId ? topLevel.find((c) => c.id === expandedId) : null
-  const subcats = expandedParent ? generales.filter((c) => c.parentId === expandedParent.id) : []
-
-  function pick(name: string) {
-    onChange(name)
-    closedAtRef.current = Date.now()
-    setOpen(false)
-    setExpandedId(null)
-  }
-
-  function close() {
-    closedAtRef.current = Date.now()
-    setOpen(false)
-    setExpandedId(null)
-  }
-
-  function openPicker() {
-    if (Date.now() - closedAtRef.current < 400) return
-    setOpen(true)
-  }
-
-  return (
-    <div>
-      <button type="button" className="category-picker-toggle" style={compact ? { fontSize: 14, padding: '10px 12px' } : undefined} onClick={openPicker}>
-        <span>
-          {selected ? `${selected.icon} ${selected.name}` : allowGeneral && !value ? '🗂️ General' : value || emptyLabel || 'Elige una categoría'}
-        </span>
-        <span className="muted">▼</span>
-      </button>
-      {open && (
-        // Petición real: "en el iPhone, al darle a una categoría padre se
-        // cierra el desplegable y al reabrirlo se ven las subcategorías" —
-        // el panel inline reflowaba la página bajo el dedo al expandir, y
-        // Safari en iOS disparaba un click fantasma sobre el botón que
-        // había quedado en esa posición, cerrando el desplegable justo
-        // después de abrirlo. Al ser ahora una ventana emergente fija, el
-        // resto de la página ya no se mueve al expandir una categoría.
-        <div className="modal-overlay" onClick={close}>
-          <div className="modal-sheet" data-help-id="finance.category-picker" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2 className="section-title" style={{ margin: 0 }}>
-                {expandedParent ? `${expandedParent.icon} ${expandedParent.name}` : 'Elige una categoría'}
-              </h2>
-              <button type="button" className="modal-close" onClick={close}>
-                ✕
-              </button>
-            </div>
-            <div className="category-picker-panel" style={{ maxHeight: 'none', border: 'none' }}>
-              {expandedParent ? (
-                <>
-                  <button type="button" className="link-button" style={{ padding: '6px 4px' }} onClick={() => setExpandedId(null)}>
-                    ‹ Volver a categorías
-                  </button>
-                  <button type="button" className="category-picker-row" onClick={() => pick(expandedParent.name)}>
-                    {expandedParent.icon} {expandedParent.name} <span className="muted">(sin subcategoría)</span>
-                  </button>
-                  {subcats.map((c) => (
-                    <button key={c.id} type="button" className="category-picker-row" onClick={() => pick(c.name)}>
-                      {c.icon} {c.name}
-                    </button>
-                  ))}
-                </>
-              ) : (
-                <>
-                  {allowGeneral && (
-                    <button type="button" className="category-picker-row" onClick={() => pick('')}>
-                      🗂️ General <span className="muted">(todos los gastos)</span>
-                    </button>
-                  )}
-                  {topLevel.map((c) => {
-                    const hasChildren = generales.some((x) => x.parentId === c.id)
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="category-picker-row"
-                        onClick={() => (hasChildren ? setExpandedId(c.id) : pick(c.name))}
-                      >
-                        {c.icon} {c.name} {hasChildren && <span className="muted">›</span>}
-                      </button>
-                    )
-                  })}
-                </>
-              )}
-              <button
-                type="button"
-                className="link-button"
-                style={{ padding: '10px 4px', fontSize: 13 }}
-                onClick={() => {
-                  close()
-                  openManager('categorias')
-                }}
-              >
-                ⚙️ Gestionar categorías
-              </button>
             </div>
           </div>
         </div>
@@ -7743,184 +7665,6 @@ function FoodTypeBreakdownList({
 // historial YA EXISTE, solo hacía falta poder pasar de mes en mes
 // para verlo, en vez de una lista larga con todos los meses
 // mezclados. Mismo patrón de navegación que Gastos.
-// Categorías con las que se siembra Presupuesto Generales la primera
-// vez que se abre esa pestaña (petición real: "luz, agua, impuestos,
-// taller, imprevistos, hipoteca, préstamos, gastos escolares... con
-// emojis y nombres").
-// Categorías de INGRESO sugeridas (petición real: "sueldo, regalo,
-// ingreso") — mismo mecanismo que las de gasto, solo que agrupadas
-// bajo 'ingresos' en vez de 'alimentacion'/'generales', así nunca
-// entran por error en ningún cálculo de presupuesto (esos solo miran
-// gastos, nunca ingresos, y solo esos dos grupos).
-const INCOME_CATEGORY_SEED: { name: string; icon: string }[] = [
-  { name: 'Sueldo', icon: '💼' },
-  { name: 'Regalo', icon: '🎁' },
-  { name: 'Ingreso', icon: '💰' },
-]
-
-interface CategorySeed {
-  name: string
-  icon: string
-  necessity: 'debo' | 'necesito' | 'quiero' | null
-  isFixed: boolean | null
-  children?: CategorySeed[]
-}
-
-// Skill de Pepa, punto 9: taxonomía maestra del documento — 11
-// categorías de gasto con sus subcategorías, clasificadas de fábrica
-// en fijo/variable y debo/necesito/quiero según estándares contables
-// habituales (debo: obligación contractual o legal; necesito: consumo
-// básico; quiero: discrecional. fijo: importe recurrente pactado;
-// variable: fluctúa con el consumo) — petición real: "la adjudicación
-// no debería ser manual sino automática... clasificar cada categoría
-// desde un principio, editable si se quiere después". Reemplaza la
-// lista suelta anterior (Luz, Agua, Impuestos...); las familias que ya
-// tenían esas categorías las conservan (0076_category_necessity_taxonomy.sql
-// las integró en este mismo árbol).
-const MASTER_CATEGORY_SEED: CategorySeed[] = [
-  {
-    name: 'Alimentación',
-    icon: '🛒',
-    necessity: 'necesito',
-    isFixed: false,
-    children: [
-      { name: 'Supermercado, carnicería y tiendas de alimentación', icon: '🛒', necessity: 'necesito', isFixed: false },
-      { name: 'Restaurantes, bares y cafeterías', icon: '🍽️', necessity: 'quiero', isFixed: false },
-    ],
-  },
-  {
-    name: 'Vivienda y hogar',
-    icon: '🏠',
-    necessity: 'necesito',
-    isFixed: true,
-    children: [
-      { name: 'Alquiler / hipoteca', icon: '🏦', necessity: 'debo', isFixed: true },
-      { name: 'Suministros', icon: '💡', necessity: 'necesito', isFixed: true },
-      { name: 'Mantenimiento y hogar', icon: '🔨', necessity: 'necesito', isFixed: false },
-      { name: 'Seguro de hogar', icon: '🛡️', necessity: 'debo', isFixed: true },
-    ],
-  },
-  {
-    name: 'Transporte y vehículo',
-    icon: '🚗',
-    necessity: 'necesito',
-    isFixed: false,
-    children: [
-      { name: 'Combustible', icon: '⛽', necessity: 'necesito', isFixed: false },
-      { name: 'Aparcamiento y peajes', icon: '🅿️', necessity: 'necesito', isFixed: false },
-      { name: 'Transporte público / taxi', icon: '🚕', necessity: 'necesito', isFixed: false },
-      { name: 'Mantenimiento y reparaciones', icon: '🔧', necessity: 'necesito', isFixed: false },
-      { name: 'Seguro / financiación del vehículo', icon: '🚙', necessity: 'debo', isFixed: true },
-    ],
-  },
-  {
-    name: 'Compras y familia',
-    icon: '🛍️',
-    necessity: 'quiero',
-    isFixed: false,
-    children: [
-      { name: 'Ropa y accesorios', icon: '👕', necessity: 'necesito', isFixed: false },
-      { name: 'Niños', icon: '🧸', necessity: 'necesito', isFixed: false },
-      { name: 'Casa y jardín', icon: '🏡', necessity: 'quiero', isFixed: false },
-      { name: 'Tecnología y electrónica', icon: '📺', necessity: 'quiero', isFixed: false },
-      { name: 'Mascotas', icon: '🐾', necessity: 'necesito', isFixed: false },
-      { name: 'Regalos y compras varias', icon: '🎁', necessity: 'quiero', isFixed: false },
-    ],
-  },
-  {
-    name: 'Salud y bienestar',
-    icon: '⚕️',
-    necessity: 'necesito',
-    isFixed: false,
-    children: [
-      { name: 'Salud y farmacia', icon: '💊', necessity: 'necesito', isFixed: false },
-      { name: 'Belleza y cuidado personal', icon: '💅', necessity: 'quiero', isFixed: false },
-      { name: 'Deporte y fitness', icon: '🏋️', necessity: 'quiero', isFixed: false },
-    ],
-  },
-  {
-    name: 'Ocio y viajes',
-    icon: '🌴',
-    necessity: 'quiero',
-    isFixed: false,
-    children: [
-      { name: 'Ocio y cultura', icon: '🎭', necessity: 'quiero', isFixed: false },
-      { name: 'Aficiones', icon: '🎨', necessity: 'quiero', isFixed: false },
-      { name: 'Suscripciones y entretenimiento', icon: '🎬', necessity: 'quiero', isFixed: true },
-      { name: 'Viajes y vacaciones', icon: '✈️', necessity: 'quiero', isFixed: false },
-      { name: 'Eventos y celebraciones', icon: '🎉', necessity: 'quiero', isFixed: false },
-    ],
-  },
-  {
-    name: 'Comunicaciones y servicios',
-    icon: '📱',
-    necessity: 'necesito',
-    isFixed: true,
-    children: [
-      { name: 'Teléfono e Internet', icon: '📶', necessity: 'necesito', isFixed: true },
-      { name: 'Software y aplicaciones', icon: '💻', necessity: 'quiero', isFixed: true },
-      { name: 'Otros servicios', icon: '🔌', necessity: 'necesito', isFixed: false },
-    ],
-  },
-  {
-    name: 'Finanzas y obligaciones',
-    icon: '📑',
-    necessity: 'debo',
-    isFixed: true,
-    children: [
-      { name: 'Impuestos', icon: '🧾', necessity: 'debo', isFixed: true },
-      { name: 'Préstamos e intereses', icon: '💳', necessity: 'debo', isFixed: true },
-      { name: 'Seguros', icon: '🔒', necessity: 'debo', isFixed: true },
-      { name: 'Comisiones y cargos', icon: '💸', necessity: 'debo', isFixed: false },
-      { name: 'Multas / obligaciones', icon: '🚨', necessity: 'debo', isFixed: false },
-      { name: 'Asesoría', icon: '🧑‍💼', necessity: 'debo', isFixed: false },
-    ],
-  },
-  {
-    name: 'Ahorro e inversión',
-    icon: '💰',
-    necessity: null,
-    isFixed: null,
-    children: [
-      { name: 'Ahorro', icon: '🐷', necessity: null, isFixed: true },
-      { name: 'Inversiones', icon: '📈', necessity: null, isFixed: false },
-    ],
-  },
-  {
-    name: 'Movimientos internos',
-    icon: '🔄',
-    necessity: null,
-    isFixed: null,
-    children: [
-      { name: 'Transferencias entre cuentas propias', icon: '🔁', necessity: null, isFixed: null },
-      { name: 'Cobro anulado', icon: '↩️', necessity: null, isFixed: null },
-    ],
-  },
-  { name: 'Otros', icon: '📦', necessity: null, isFixed: null },
-]
-
-// Crea un árbol de dos niveles de golpe: primero las principales, y
-// con sus ids ya reales las subcategorías apuntando a ellas (mismo
-// mecanismo que ya usaba el sembrado plano, ahora con clasificación
-// incluida).
-async function seedCategoryTree(seed: CategorySeed[], budgetGroup: string): Promise<void> {
-  const topInserted = await createBudgetCategoriesBulk(
-    seed.map((s) => ({ name: s.name, icon: s.icon, budgetGroup, necessity: s.necessity, isFixed: s.isFixed })),
-  )
-  const idByName = new Map(topInserted.map((r) => [r.name, r.id]))
-  const childInputs = seed.flatMap((s) =>
-    (s.children ?? []).map((child) => ({
-      name: child.name,
-      icon: child.icon,
-      budgetGroup,
-      parentId: idByName.get(s.name) ?? null,
-      necessity: child.necessity,
-      isFixed: child.isFixed,
-    })),
-  )
-  if (childInputs.length > 0) await createBudgetCategoriesBulk(childInputs)
-}
-
 // Presupuesto Alimentación y Presupuesto Generales son la MISMA
 // pantalla, solo cambia el "grupo" de categorías/presupuestos que
 // muestra cada una — petición real: "que todos los presupuestos estén
@@ -7929,14 +7673,12 @@ async function seedCategoryTree(seed: CategorySeed[], budgetGroup: string): Prom
 // entre desde una pestaña o desde la otra.
 export function BudgetsTab({
   group,
-  seedCategories,
   accountsMode = 'compartido',
   myMemberId = null,
   onViewMovements,
   onOpenProduct,
 }: {
   group: string
-  seedCategories: CategorySeed[]
   accountsMode?: AccountsMode
   myMemberId?: string | null
   // Petición real: "ponle a las estadísticas de compras los enlaces
@@ -8003,10 +7745,6 @@ export function BudgetsTab({
   // Piso compartido: para poner nombre/avatar a cada dueño en el saldo
   // entre personas de la pestaña Común.
   const [members, setMembers] = useState<FamilyMember[]>([])
-  // Evita sembrar las categorías sugeridas más de una vez por sesión
-  // mientras se espera la respuesta del primer alta.
-  const seededRef = useRef(false)
-
   // Petición real: "cada vez que edito un movimiento me devuelve al
   // inicio de la página" — ver mismo arreglo en la pestaña Banco.
   const hasLoadedOnceRef = useRef(false)
@@ -8029,14 +7767,9 @@ export function BudgetsTab({
       group === 'alimentacion' ? listClassSharesSafe() : Promise.resolve(new Map<string, ClassShare[]>()),
     ])
       .then(async ([b, e, r, stores, cats, monthStart, accounts, m, p, prod, foodKindTypes, noFoodKindTypes, clsShares]) => {
-        // Primera vez que se abre esta pestaña y no tiene categorías
-        // propias todavía — se dan de alta las sugeridas solas, sin
-        // pedirlo (petición real: "me pones todas esas categorías").
-        if (!seededRef.current && seedCategories.length > 0 && !cats.some((c) => c.budgetGroup === group)) {
-          seededRef.current = true
-          await seedCategoryTree(seedCategories, group)
-          cats = await listBudgetCategories()
-        }
+        // CAT-2: las categorías vienen del catálogo general de PEPA y se mantienen al día solas (sincronización en la base, 0338). Ya no se
+        // siembra aquí una lista fija: el cliente no puede enlazar con el catálogo y esas categorías nacían sin enlace.
+        if ((await ensureCatalogSynced()).changed) cats = await listBudgetCategories()
         setBudgets(b)
         setExpenses(e)
         setReceipts(r)

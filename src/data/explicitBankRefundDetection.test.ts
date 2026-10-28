@@ -25,14 +25,14 @@ describe('1. precedencia: ANUL → CA-1 → DEV-1 → resto (Ingreso), en ese or
   it('DEV-1 vive DESPUÉS de los bloques ANUL y CA-1 (Cobro anulado tiene prioridad si aplica)', () => {
     const anulIdx = SYNC.indexOf('if (isIncome && /^anul\\b/i.test(')
     const ca1Idx = SYNC.indexOf('if (isIncome && isCommissionReversalDescription(')
-    const dev1Idx = SYNC.indexOf('const incomeCategory = isIncome && refundCategoryName')
+    const dev1Idx = SYNC.indexOf('const explicitRefund = isIncome && Boolean(refundCategoryName)')
     expect(anulIdx).toBeGreaterThanOrEqual(0)
     expect(ca1Idx).toBeGreaterThan(anulIdx)
     expect(dev1Idx).toBeGreaterThan(ca1Idx)
   })
 
   it('DEV-1 vive ANTES del emparejamiento de tickets (!isIncome) y antes del insert final', () => {
-    const dev1Idx = SYNC.indexOf('const incomeCategory = isIncome && refundCategoryName')
+    const dev1Idx = SYNC.indexOf('const explicitRefund = isIncome && Boolean(refundCategoryName)')
     const ticketMatchIdx = SYNC.indexOf('if (!isIncome) {')
     const insertIdx = SYNC.indexOf('category: isIncome ? incomeCategory : category,')
     expect(dev1Idx).toBeGreaterThan(0)
@@ -79,10 +79,12 @@ describe('3. identidad estable: catalog_key, no el nombre visible — reutiliza 
     expect(SYNC).not.toMatch(/incomeCategory\s*=[^;]*['"]Devoluciones['"]/i)
   })
   it('si la familia no tiene esa categoría, la regla no se aplica (cae a "Ingreso"), nunca se inventa una categoría', () => {
-    expect(SYNC).toContain('const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"')
+    // ECO-CLASIF: sin devolución explícita el abono lo decide el clasificador compartido, que a su vez cae a «Ingreso» (nunca inventa una categoría).
+    expect(SYNC).toContain('const explicitRefund = isIncome && Boolean(refundCategoryName) && isExplicitBankRefundDescription((bt.description as string | null) ?? null)')
+    expect(SYNC).toContain('const incomeCategory = explicitRefund ? (refundCategoryName as string) : (classification.category ?? "Ingreso")')
   })
   it('no crea categoría nueva ni cambia catalog_key/parent de ninguna categoría', () => {
-    const start = SYNC.indexOf('const incomeCategory = isIncome && refundCategoryName')
+    const start = SYNC.indexOf('const explicitRefund = isIncome && Boolean(refundCategoryName)')
     const end = SYNC.indexOf('if (!isIncome) {', start)
     const block = SYNC.slice(start, end)
     expect(block).not.toMatch(/\.from\("budget_categories"\)|insert|update/i)
@@ -201,7 +203,7 @@ describe('Caso 10 — "BONIFIC. COMISION MANT. CUENTA" +60€ → sigue la regla
     expect(isExplicitBankRefundDescription('BONIFIC. COMISION MANT. CUENTA')).toBe(false)
   })
   it('el orden real del sync (comprobado en el describe "1") prueba que CA-1 se intenta primero de todas formas', () => {
-    expect(SYNC.indexOf('isCommissionReversalDescription(')).toBeLessThan(SYNC.indexOf('const incomeCategory = isIncome && refundCategoryName'))
+    expect(SYNC.indexOf('isCommissionReversalDescription(')).toBeLessThan(SYNC.indexOf('const explicitRefund = isIncome && Boolean(refundCategoryName)'))
   })
 })
 

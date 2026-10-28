@@ -39,7 +39,7 @@ export async function listExpenses(): Promise<Expense[]> {
     supabase
       .from('expenses')
       .select(
-        'id, family_id, expense_date, amount, category, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification, payment_method',
+        'id, family_id, expense_date, amount, category, category_source, category_suggestion, store, kind, notes, is_income, budget_group, tag_id, source, is_fixed_override, owner_member_id, shared, shared_from_expense_id, product_classification, payment_method',
       )
       .order('expense_date', { ascending: false })
       .order('id')
@@ -51,6 +51,8 @@ export async function listExpenses(): Promise<Expense[]> {
     expenseDate: r.expense_date,
     amount: Number(r.amount),
     category: r.category,
+    categorySource: (r.category_source as Expense['categorySource']) ?? null,
+    categorySuggestion: r.category_suggestion ?? null,
     store: r.store,
     kind: r.kind as ExpenseKind,
     notes: r.notes,
@@ -409,6 +411,32 @@ export async function createBudgetCategory(input: {
     is_fixed: input.isFixed ?? null,
   })
   if (error) throw error
+}
+
+// ECO-CLASIF — la persona da por buena la categoría que PEPA propuso (no cambia la categoría: pasa a ser decisión suya y PEPA no la vuelve a tocar).
+export async function confirmExpenseCategory(id: string): Promise<void> {
+  const { error } = await supabase.from('expenses').update({ category_source: 'manual' }).eq('id', id)
+  if (error) throw error
+}
+
+// ECO-CLASIF — aplicar una categoría a varios movimientos antiguos del mismo comercio, SOLO cuando la persona lo pide expresamente. Cada uno queda
+// como decisión suya. Los ids ya vienen filtrados por quien llama (solo movimientos del banco, nunca los que llevan desglose de un ticket).
+export async function setExpensesCategory(ids: readonly string[], category: string): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase.from('expenses').update({ category }).in('id', [...ids])
+  if (error) throw error
+}
+
+// CAT-2 — cambiar el nombre y/o el icono de una categoría (general o propia). Una sola transacción en la base: actualiza también los gastos, tickets y
+// presupuestos que la nombran. Las categorías protegidas del catálogo solo admiten cambiar el icono.
+export type RenameCategoryResult = { status: 'ok' } | { status: 'rejected'; reason: 'protected_name' | 'name_in_use' | 'name_too_long' | 'icon_too_long' } | { status: 'not_found' }
+export async function renameBudgetCategory(id: string, patch: { name?: string; icon?: string }): Promise<RenameCategoryResult> {
+  const { data, error } = await supabase.rpc('rename_budget_category', { p_id: id, p_name: patch.name ?? null, p_icon: patch.icon ?? null })
+  if (error) throw error
+  const rec = (data ?? {}) as { status?: string; reason?: string }
+  if (rec.status === 'ok') return { status: 'ok' }
+  if (rec.status === 'rejected') return { status: 'rejected', reason: (rec.reason ?? 'name_in_use') as 'protected_name' | 'name_in_use' | 'name_too_long' | 'icon_too_long' }
+  return { status: 'not_found' }
 }
 
 // Editar la clasificación de una categoría ya creada — petición real:

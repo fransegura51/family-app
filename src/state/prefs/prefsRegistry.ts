@@ -28,10 +28,10 @@ export const HELP_PREF_PATTERN_SOURCES: readonly string[] = [
   '^pepa:help-tour:[a-z0-9-]+$',
 ]
 
-// Modo y ordenación del Comparador de precios (NORM-3). Igual que las de Ayuda: el servidor NO las acepta hasta aplicar la migración 0337 (supabase/pending-migrations/0337_compare_view_prefs.sql).
+// Modo y ordenación del Comparador de precios (NORM-3). Migración 0337 APLICADA y comprobada en producción el 28/10/2026 (el servidor acepta las dos claves y rechaza cualquier otra): viajan entre dispositivos de la misma persona.
 // Por eso viajan entre dispositivos SOLO cuando se enciende este interruptor (después de aplicar la migración y desplegar); apagado, se recuerdan en el dispositivo. Una prueba exige que,
 // encendido, la migración exista en supabase/migrations.
-export const COMPARE_PREFS_SYNC_ENABLED = false
+export const COMPARE_PREFS_SYNC_ENABLED = true
 
 export const COMPARE_PREF_PATTERN_SOURCES: readonly string[] = ['^familyapp:compras-compare-(mode|sort)$']
 

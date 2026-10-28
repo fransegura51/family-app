@@ -306,6 +306,11 @@ export interface Expense {
   // NULL = categoría financiera todavía desconocida («Pendiente de clasificar»). Sigue siendo un gasto REAL: cuenta en los totales,
   // pero no pertenece a ninguna categoría (ni «Otros»). Fase 6C.2A: la base ya lo admite; aún nada lo produce.
   category: string | null
+  // ECO-CLASIF (migración 0340): quién decidió la categoría. 'auto' = PEPA con confianza alta; 'sugerida' = PEPA con confianza media (se enseña como sugerida);
+  // 'manual' = una persona (PEPA no la vuelve a cambiar); ausente/null = movimiento anterior o categoría puesta sin marca.
+  categorySource?: 'auto' | 'sugerida' | 'manual' | null
+  // Con un gasto pendiente de clasificar, la categoría que PEPA propone (por su nombre) si encontró un fundamento.
+  categorySuggestion?: string | null
   store: string | null
   kind: ExpenseKind
   notes: string | null

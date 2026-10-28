@@ -9144,3 +9144,86 @@ input[type='search'] {
   font-size: 12px;
   line-height: 1.4;
 }
+
+/* ECO-CLASIF / CAT-2 — categoría tocable en cada movimiento, selector con buscador, sugerida y revisión de «Otros». */
+.movement-row-category-btn {
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 4px 0;
+  min-height: 32px;
+  max-width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.movement-row-category-btn:active {
+  opacity: 0.6;
+}
+.suggested-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.14);
+  color: var(--muted);
+  font-size: 0.75em;
+  font-weight: 500;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.category-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 8px 0 4px;
+}
+.category-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 6px;
+  border-bottom: 1px solid #f1f1f1;
+}
+.category-picker-suggestion {
+  background: rgba(250, 204, 21, 0.14);
+}
+.category-picker-confirm {
+  background: rgba(34, 197, 94, 0.12);
+}
+.category-picker-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 6px;
+  border-top: 1px solid #f1f1f1;
+}
+.category-picker-create input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.otros-review-card {
+  margin: 8px 0;
+  padding: 10px 12px;
+}
+.otros-review-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.otros-review-list li label {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f1f1;
+}
+.otros-review-list input[type='checkbox'] {
+  margin-top: 4px;
+  width: 20px;
+  height: 20px;
+  flex: none;
+}

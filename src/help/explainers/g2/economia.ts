@@ -1,15 +1,16 @@
 import type { HelpExplainer } from '@/help/explainers/types'
 
 // «Cómo funciona PEPA» de Economía (grupo g2). Cada afirmación se ha contrastado con el código el 2026-10-25; si cambian los archivos de `basedOn`, hay que revisar el texto.
-// «PEPA no recuerda tu corrección» se dice SOLO en `exp-economia-correccion-no-aprende`; el resto de explicaciones y los tutoriales enlazan a ella.
+// Lo que PEPA recuerda de tus correcciones se explica SOLO en `exp-economia-correccion-aprende`; el resto de explicaciones y los tutoriales enlazan a ella.
 // Efectivo/carteras, pagos con varios medios, devoluciones y duplicados están implementados pero pendientes de validación en iPhone y Android: aquí solo se citan como «en revisión».
 const V = '2026-10-25'
+const V2 = '2026-10-28' // explicaciones revisadas con CAT-2 / ECO-CLASIF
 
 export const expEconomiaCategorizarMovimientos: HelpExplainer = {
   id: 'exp-economia-categorizar-movimientos',
   module: 'economia',
   title: 'Cómo categoriza Economía los movimientos',
-  summary: 'Cada movimiento recibe su categoría de una forma distinta según de dónde venga: la eliges tú, la sugieren unas reglas fijas por comercio, o la lleva el ticket.',
+  summary: 'Cada movimiento recibe su categoría de una forma distinta según de dónde venga: la eliges tú, PEPA la deduce del comercio (y de lo que tu familia ya decidió), o la lleva el ticket.',
   sections: [
     {
       heading: 'Mira el iconito de cada movimiento',
@@ -24,13 +25,14 @@ export const expEconomiaCategorizarMovimientos: HelpExplainer = {
       ],
     },
     {
-      heading: 'Del banco: reglas fijas, sin IA',
+      heading: 'Del banco: PEPA la deduce, sin IA',
       paragraphs: [
-        'Al sincronizar, PEPA limpia el nombre del comercio (quita partes como «COMPRA TARJ.», «ADEUDO» o «RECIBO») y lo compara con una lista corta de 17 reglas de comercios habituales (supermercados, farmacias, combustible, restaurantes, seguros…). Gana la primera regla cuya palabra clave aparezca en el nombre, y solo vale si tu familia tiene una categoría con ese nombre exacto.',
-        'Si ninguna regla vale, el gasto va a «Otros» (si tu familia tiene esa categoría; si no, a la primera de su lista). No mira el importe, la fecha ni la cuenta. Los ingresos entran como «Ingreso», salvo las anulaciones y reversiones de comisión («Cobro anulado») y los abonos que empiezan por «DEVOLUCION» («Devoluciones»).',
+        'Al sincronizar, PEPA limpia el nombre del comercio (quita partes como «COMPRA TARJ.», «ADEUDO» o «RECIBO») y decide por este orden: (1) lo que tu familia ya decidió a mano para ese mismo comercio; (2) una lista de comercios y conceptos conocidos (luz, agua, combustible, seguros, suscripciones, supermercados, farmacias, nóminas, intereses…), que apunta a la categoría del catálogo general aunque tu familia le haya cambiado el nombre; (3) lo que se repitió siempre en los movimientos anteriores de ese comercio. No usa IA y no mira el importe.',
+        'Según lo segura que esté, PEPA lo marca: si está segura, pone la categoría sin más; si es una suposición razonable, la pone con la marca «sugerida» (junto a la categoría; la corriges con un toque o la das por buena); si no puede decidir sin inventar (Amazon, un Bizum, un pago a plazos), el gasto queda «Pendiente de clasificar» y, si tiene un indicio, con una sugerencia; sin ninguna pista va a «Otros».',
+        'Los ingresos entran como «Ingreso», salvo las nóminas («Sueldo»), las pensiones y prestaciones, los intereses, las anulaciones y reversiones de comisión («Cobro anulado») y los abonos que empiezan por «DEVOLUCION» («Devoluciones»). Una transferencia recibida entra como «Ingreso»; si el nombre es de alguien de tu familia, PEPA lo sugiere como traspaso entre vuestras cuentas.',
       ],
       example:
-        'Ejemplo inventado: «COMPRA TARJ. 1234 MERCADONA CENTRO» queda como «MERCADONA CENTRO», contiene «mercadona» y va a Supermercado, carnicería y tiendas de alimentación. «COMPRA TARJ. 1234 EJEMPLO FOTOS S.L.» no encaja con ninguna regla y va a «Otros».',
+        'Ejemplo inventado: «COMPRA TARJ. 1234 MERCADONA CENTRO» queda como «MERCADONA CENTRO» y va a Supermercado, carnicería y tiendas de alimentación. «ENDESA ENERGIA S.A.» va a Electricidad (o a la categoría que tu familia siempre haya usado para Endesa). «COMPRA TARJ. 1234 EJEMPLO FOTOS S.L.» no lo conoce nadie y va a «Otros».',
     },
     {
       heading: 'De un ticket',
@@ -41,29 +43,31 @@ export const expEconomiaCategorizarMovimientos: HelpExplainer = {
     },
   ],
   limits: [
-    'Las reglas del banco son una suposición, no una certeza: por eso la pantalla dice que la categoría de los movimientos importados «se asigna por sugerencia».',
-    'Solo reconocen los comercios de la lista. El resto cae en «Otros».',
-    'Cuando varias reglas podrían valer, gana la primera de la lista: «UBER EATS» contiene «uber», que está en la regla de transporte antes que la de restaurantes, y se queda en transporte.',
-    'En el código del banco no hay ninguna regla que reconozca los traspasos entre tus propias cuentas: si aparece uno como gasto o ingreso, hay que ponerle a mano la categoría de traspasos.',
+    'Lo que PEPA deduce es una suposición, no una certeza: por eso las dudosas llevan «sugerida» y la pantalla dice que la categoría de los movimientos importados «se asigna por sugerencia».',
+    'Solo reconoce los comercios y conceptos que conoce. El resto queda en «Otros» o pendiente.',
+    'Cuando varias reglas podrían valer, gana la más específica: «UBER EATS» va a restaurantes y «UBER» a transporte.',
+    'Los reintegros de cajero y los traspasos que el propio concepto del banco llama así se reconocen (Retirada de efectivo y Transferencias entre cuentas propias); los que no lo dicen en el concepto hay que marcarlos a mano.',
     'Qué pasa cuando corriges una categoría tiene su propia explicación.',
   ],
   ifWrong: [
-    'Toca el movimiento, cambia la Categoría y pulsa «Guardar». Si el gasto viene de un ticket, se cambian a la vez el gasto y el ticket.',
-    'Que una categoría sugerida no encaje es una limitación normal de las reglas. Si el cambio da un error al guardar y se repite, ya es un fallo técnico: cuéntalo en Sugerencias (Ayuda).',
+    'Toca la categoría del movimiento (su nombre con el icono) y elige otra: hay buscador, la sugerida y las más usadas. Si ponía «sugerida» y es correcta, puedes dejarla tal cual. Si el gasto viene de un ticket, se cambian a la vez el gasto y el ticket.',
+    'Que una categoría sugerida no encaje es una limitación normal. Si el cambio da un error al guardar y se repite, ya es un fallo técnico: cuéntalo en Sugerencias (Ayuda).',
   ],
-  verified: V,
+  verified: V2,
   basedOn: [
     'supabase/functions/enable-banking-sync-transactions/index.ts',
+    'supabase/functions/_shared/bank/classifyMovement.ts',
     'supabase/functions/amazon-order-webhook/index.ts',
     'src/domain/movementForm.ts',
     'src/data/receipts.ts',
     'src/ui/FinanceScreen.tsx',
+    'src/ui/QuickCategoryChange.tsx',
   ],
   tour: 'tut-economia-cambiar-categoria',
   go: { path: '/dinero', dest: 'economia.movimientos', label: 'Llévame a Movimientos' },
-  labels: ['+ Nuevo movimiento', 'Apuntado a mano', 'Importado de un ticket', 'Importado del banco', 'La categoría de los movimientos importados del banco se asigna por sugerencia'],
-  cardIds: ['eco-nuevo-movimiento', 'eco-categorias', 'eco-banco'],
-  synonyms: ['categoria automatica', 'por que categoriza asi', 'categoria del banco', 'sugerencia de categoria', 'otros', 'como categoriza', 'movimientos del banco categoria', 'categorizar gastos'],
+  labels: ['+ Nuevo movimiento', 'Apuntado a mano', 'Importado de un ticket', 'Importado del banco', 'La categoría de los movimientos importados del banco se asigna por sugerencia', 'sugerida'],
+  cardIds: ['eco-nuevo-movimiento', 'eco-categorias', 'eco-banco', 'eco-clasificacion-banco'],
+  synonyms: ['categoria automatica', 'por que categoriza asi', 'categoria del banco', 'sugerencia de categoria', 'otros', 'como categoriza', 'movimientos del banco categoria', 'categorizar gastos', 'categoria sugerida', 'clasificar solo'],
 }
 
 export const expEconomiaPendienteClasificar: HelpExplainer = {
@@ -81,8 +85,8 @@ export const expEconomiaPendienteClasificar: HelpExplainer = {
     {
       heading: 'Por qué ocurre',
       paragraphs: [
-        'PEPA prefiere dejar un gasto sin categoría antes que fingir una certeza que no tiene. Hasta donde he podido ver en el código, hoy el caso real son los pedidos de Amazon que llegan por correo: pueden mezclar comida, ropa, electrónica… así que entran sin categoría. También puede ocurrir con un ticket guardado sin categoría.',
-        'Los movimientos del banco no se quedan pendientes: sin pista caen en «Otros». Y los apuntados a mano llevan la categoría que eliges.',
+        'PEPA prefiere dejar un gasto sin categoría antes que fingir una certeza que no tiene. Pasa con los pedidos de Amazon que llegan por correo (pueden mezclar comida, ropa, electrónica…) y con los movimientos del banco que PEPA no puede situar sin inventar: Amazon, un Bizum, un cobro de datáfono genérico o un pago a plazos. También puede ocurrir con un ticket guardado sin categoría.',
+        'Si el movimiento del banco tiene un indicio razonable (un pago a plazos que parece un préstamo, o un nombre de tu familia que parece un traspaso), junto a «Pendiente de clasificar» verás una sugerencia («¿Préstamos e intereses?»). No se aplica sola: tocas la categoría y eliges. Si no hay ninguna pista, el movimiento del banco va a «Otros».',
       ],
       example: 'Llega por correo un pedido de Amazon de 45,00 € (ejemplo inventado) con un libro y una sudadera. PEPA no sabe a qué categoría pertenece y lo deja «Pendiente de clasificar»: suma 45,00 € al gasto del mes, pero no a «Ocio» ni a «Ropa» hasta que lo clasifiques tú.',
     },
@@ -95,12 +99,13 @@ export const expEconomiaPendienteClasificar: HelpExplainer = {
     {
       heading: 'Cómo se resuelve',
       paragraphs: [
-        'Toca el movimiento, elige la categoría y pulsa «Guardar». Si tiene ticket, se cambian a la vez el gasto y el ticket en una sola operación. Si el gasto y su ticket tuvieran categorías distintas, PEPA te avisa y no cambia nada.',
+        'Toca la categoría del movimiento y elige la correcta (arriba salen la sugerida por PEPA y las que más usas, y hay buscador). Si tiene ticket, se cambian a la vez el gasto y el ticket en una sola operación. Si el gasto y su ticket tuvieran categorías distintas, PEPA te avisa y no cambia nada.',
       ],
     },
   ],
   limits: [
     'Mientras esté pendiente, ese gasto no aparece en el reparto por categorías ni consume presupuestos de categoría, aunque sí suma en el total.',
+    'La sugerencia es solo un indicio: PEPA nunca la aplica por su cuenta.',
     'PEPA no te lo recuerda con avisos ni te bloquea nada: solo está la señal discreta.',
     'No es lo mismo que un «producto sin clasificar» de Compras: aquello es la clase de un producto; esto es la categoría de un gasto.',
   ],
@@ -108,13 +113,14 @@ export const expEconomiaPendienteClasificar: HelpExplainer = {
     'Ponle la categoría desde el movimiento. Si no ves la señal pero crees que hay pendientes, usa el filtro «Pendientes» de Movimientos.',
     'Si al guardar sale «No se ha podido clasificar ahora mismo» es un fallo temporal y no se ha cambiado nada: inténtalo de nuevo. Si se repite siempre, cuéntalo en Sugerencias (Ayuda).',
   ],
-  verified: V,
+  verified: V2,
   basedOn: [
     'src/domain/pending.ts',
     'src/domain/classifyPurchase.ts',
     'src/data/classifyPurchase.ts',
     'supabase/migrations/0149_category_nullable_pending.sql',
     'supabase/functions/amazon-order-webhook/index.ts',
+    'supabase/functions/_shared/bank/classifyMovement.ts',
     'src/ui/FinanceScreen.tsx',
   ],
   tour: 'tut-economia-cambiar-categoria',
@@ -254,28 +260,36 @@ export const expEconomiaConexionBancaria: HelpExplainer = {
   synonyms: ['conectar banco', 'sincronizar banco', 'banco caducado', '90 dias', 'renovar conexion', 'psd2', 'open banking', 'no se sincroniza', 'movimientos del banco', 'desconectar banco', 'iban'],
 }
 
-export const expEconomiaCorreccionNoAprende: HelpExplainer = {
-  id: 'exp-economia-correccion-no-aprende',
+export const expEconomiaCorreccionAprende: HelpExplainer = {
+  id: 'exp-economia-correccion-aprende',
   module: 'economia',
-  title: 'Por qué corregir una categoría no enseña a PEPA para el siguiente movimiento',
-  summary: 'Cuando corriges una categoría en Economía, cambia solo ese movimiento. PEPA no guarda ninguna regla nueva, así que el siguiente del mismo comercio vuelve a clasificarse como siempre.',
+  title: 'Qué recuerda PEPA cuando corriges una categoría (y qué no)',
+  summary: 'Cuando eliges tú la categoría de un movimiento, PEPA la recuerda para ese comercio y la aplica a los próximos que traiga el banco. Los anteriores solo cambian si tú lo aceptas.',
   sections: [
     {
       heading: 'Qué pasa cuando corriges',
       paragraphs: [
-        'Al pulsar «Guardar», se cambia la categoría de ese movimiento y, si tiene ticket, también la del ticket, a la vez. Nada más: no se crea ninguna regla ni se apunta que «este comercio va en esta categoría».',
+        'Al elegir la categoría se cambia ese movimiento y, si tiene ticket, también la del ticket, a la vez. Queda como decisión tuya: PEPA no la vuelve a tocar nunca por su cuenta.',
       ],
     },
     {
-      heading: 'Por qué no aprende',
+      heading: 'Qué recuerda para los próximos',
       paragraphs: [
-        'Las categorías del banco las pone un conjunto de reglas fijas por palabras, que viven en el servidor de PEPA y solo cambia el equipo de PEPA al actualizar la app. No hay ninguna lista de reglas aprendidas de tus correcciones. Por eso el siguiente cargo del mismo comercio pasa otra vez por las mismas reglas.',
+        'Cuando llega un movimiento nuevo del banco, PEPA mira primero lo que tu familia decidió a mano para ese mismo comercio. Si siempre lo habéis puesto en la misma categoría, el nuevo entra ya ahí, sin marcarlo como dudoso. Si lo habéis puesto en categorías distintas (el mismo comercio vende cosas distintas), PEPA no se fía: lo deja como «sugerida» o pendiente.',
+        'También cuenta cómo se repitió en los movimientos anteriores que nadie corrigió: si un comercio siempre fue a la misma categoría, el siguiente va ahí. Lo que PEPA clasificó sola no cuenta como aprendizaje, para que no se refuerce a sí misma.',
       ],
       example:
-        'Ejemplo inventado: llega «EJEMPLO FOTOS S.L.» y las reglas no lo conocen, así que va a «Otros». Tú lo cambias a «Casa y jardín». Al mes siguiente llega otro «EJEMPLO FOTOS S.L.»: vuelve a entrar en «Otros» y habrá que corregirlo otra vez.',
+        'Ejemplo inventado: llega «EJEMPLO FOTOS S.L.», que PEPA no conoce, y va a «Otros». Tú lo cambias a «Casa y jardín». El mes siguiente llega otro «EJEMPLO FOTOS S.L.»: entra ya en «Casa y jardín». Y, al corregir el primero, PEPA te preguntó si querías pasar también los anteriores.',
     },
     {
-      heading: 'Qué sí se recuerda (no lo confundas)',
+      heading: 'Los movimientos anteriores: solo si tú quieres',
+      paragraphs: [
+        'Tras corregir un movimiento, si hay otros anteriores del mismo comercio que importó el banco y están en otra categoría, PEPA te pregunta si quieres cambiarlos también. Si dices que no, no se toca ninguno. Nunca cambia uno que ya hubieras decidido tú ni los que tienen un ticket con su desglose.',
+        'Además, si hay movimientos antiguos en «Otros» que ahora PEPA sabe situar, te lo ofrece con «Revisar», con casillas para quitar los que no quieras cambiar.',
+      ],
+    },
+    {
+      heading: 'Qué sí se recuerda aparte (no lo confundas)',
       paragraphs: [
         'En Compras, la clase de un producto que eliges tú sí se recuerda para ese producto (es otra cosa, con su propia explicación).',
         'En Previsión de pagos, al confirmar un cargo con un pago previsto, el movimiento toma la categoría del pago. Así los recibos fijos (seguro, cuota, alquiler) quedan bien sin corregirlos cada mes.',
@@ -283,25 +297,28 @@ export const expEconomiaCorreccionNoAprende: HelpExplainer = {
     },
   ],
   limits: [
-    'No existe una opción «recordar para los próximos»: es una limitación actual, no un fallo. Lo dice la propia pantalla de Movimientos al hablar de «sugerencia».',
-    'Cada corrección vale solo para el movimiento que editas.',
+    'No hay una lista de reglas que puedas ver o editar: el recuerdo sale de las categorías que ya elegiste.',
+    'Cada familia aprende de sí misma: lo que decide una familia no cambia nada en otra.',
+    'Un movimiento que ya tenía ticket o que apuntaste a mano no se cambia en bloque.',
   ],
   ifWrong: [
-    'Corrige tocando el movimiento y cambiando la Categoría. Para pagos que se repiten, anótalos en Previsión de pagos con su categoría y concílialos.',
-    'Si echas de menos que PEPA aprenda de tus correcciones, cuéntalo en Sugerencias (Ayuda): así el equipo sabe que hace falta.',
+    'Si PEPA recordó una categoría que ya no quieres para un comercio, cámbiala en el siguiente movimiento: a partir de ahí manda la nueva (si hay varias distintas, PEPA solo sugiere).',
+    'Si algo no se aplicó como esperabas, cuéntalo en Sugerencias (Ayuda).',
   ],
-  verified: V,
+  verified: V2,
   basedOn: [
-    'src/ui/FinanceScreen.tsx',
-    'src/data/classifyPurchase.ts',
+    'supabase/functions/_shared/bank/classifyMovement.ts',
     'supabase/functions/enable-banking-sync-transactions/index.ts',
+    'src/domain/similarMovements.ts',
+    'src/ui/QuickCategoryChange.tsx',
+    'supabase/migrations/0340_expense_category_provenance.sql',
     'supabase/migrations/0173_forecast_reconciliation_category_inherit.sql',
   ],
   tour: 'tut-economia-cambiar-categoria',
   go: { path: '/dinero', dest: 'economia.movimientos', label: 'Llévame a Movimientos' },
-  labels: ['Guardar', 'La categoría de los movimientos importados del banco se asigna por sugerencia'],
-  cardIds: ['eco-categorias', 'eco-pendientes'],
-  synonyms: ['no aprende', 'recordar categoria', 'siempre me lo pone mal', 'corregir categoria otra vez', 'por que vuelve a salir mal', 'aprende de mis correcciones', 'regla de categoria', 'categoria del siguiente'],
+  labels: ['¿Cambiar también los anteriores?', 'No, solo este', 'Revisar'],
+  cardIds: ['eco-categorias', 'eco-pendientes', 'eco-clasificacion-banco'],
+  synonyms: ['recordar categoria', 'siempre me lo pone mal', 'corregir categoria otra vez', 'por que vuelve a salir mal', 'aprende de mis correcciones', 'regla de categoria', 'categoria del siguiente', 'cambiar los anteriores', 'aprende pepa'],
 }
 
 export const expEconomiaIngresoGastoAhorro: HelpExplainer = {
@@ -356,13 +373,13 @@ export const expEconomiaTraspasosAnulaciones: HelpExplainer = {
   id: 'exp-economia-traspasos-anulaciones',
   module: 'economia',
   title: 'Traspasos entre tus cuentas, cobros anulados y devoluciones del banco',
-  summary: 'PEPA no detecta los traspasos entre tus cuentas, pero sí reconoce por reglas las anulaciones y las devoluciones del banco. Ninguno cuenta como ingreso o gasto normal.',
+  summary: 'PEPA reconoce por el concepto los traspasos entre tus cuentas y los reintegros de cajero, y por reglas las anulaciones y las devoluciones del banco. Ninguno cuenta como ingreso o gasto normal.',
   sections: [
     {
-      heading: 'Traspasos entre cuentas propias',
+      heading: 'Traspasos entre cuentas propias y cajero',
       paragraphs: [
-        'Mover dinero entre tus cuentas no es ingresar ni gastar. Pero la sincronización del banco no reconoce solos esos traspasos: llegan como un gasto en una cuenta y un ingreso en la otra. Para que no cuenten, ponles tú la categoría «Transferencias entre cuentas propias» (está dentro de «Movimientos internos»).',
-        'Con esa categoría puesta, no suman en Ingresos ni en Gastos de ningún sitio.',
+        'Mover dinero entre tus cuentas no es ingresar ni gastar. Si el concepto del banco lo dice («traspaso», «entre cuentas», «cuentas propias»), PEPA lo pone en «Transferencias entre cuentas propias» (dentro de «Movimientos internos»). Un reintegro de cajero va a «Retirada de efectivo». Con esas categorías, no suman en Ingresos ni en Gastos de ningún sitio.',
+        'Si el concepto no lo dice (solo trae un nombre), llega como un gasto en una cuenta y un ingreso en la otra. Si el nombre es de alguien de tu familia, PEPA lo sugiere como traspaso, sin aplicarlo; si no, ponles tú la categoría «Transferencias entre cuentas propias».',
       ],
     },
     {
@@ -381,21 +398,28 @@ export const expEconomiaTraspasosAnulaciones: HelpExplainer = {
     },
   ],
   limits: [
-    'Los traspasos hay que categorizarlos a mano, uno a uno: no hay regla que los reconozca.',
+    'Un traspaso cuyo concepto es solo un nombre no se puede asegurar: PEPA lo sugiere si el nombre es de tu familia y, si no, hay que categorizarlo a mano.',
     'Las reglas de anulación son estrechas a propósito, para no marcar por error un importe que casualmente coincide.',
     'Registrar devoluciones de compras hechas desde Compras es una función que aún estoy revisando y no se explica aquí.',
   ],
   ifWrong: [
-    'Un traspaso que cuenta como gasto o ingreso: toca el movimiento y cambia la categoría a «Transferencias entre cuentas propias».',
+    'Un traspaso que cuenta como gasto o ingreso: toca la categoría del movimiento y cámbiala a «Transferencias entre cuentas propias».',
     'Un «Cobro anulado» que no debería serlo: cámbiale la categoría a mano desde el propio movimiento.',
   ],
-  verified: V,
-  basedOn: ['supabase/functions/enable-banking-sync-transactions/index.ts', 'src/domain/cancelledCharge.ts', 'src/domain/refunds.ts', 'src/domain/finance.ts', 'src/ui/FinanceScreen.tsx'],
+  verified: V2,
+  basedOn: [
+    'supabase/functions/enable-banking-sync-transactions/index.ts',
+    'supabase/functions/_shared/bank/classifyMovement.ts',
+    'src/domain/cancelledCharge.ts',
+    'src/domain/refunds.ts',
+    'src/domain/finance.ts',
+    'src/ui/FinanceScreen.tsx',
+  ],
   tour: 'tut-economia-cambiar-categoria',
   go: { path: '/dinero', dest: 'economia.movimientos', label: 'Llévame a Movimientos' },
   labels: ['Cobro anulado', 'Devoluciones', 'Transferencias entre cuentas propias'],
   cardIds: ['eco-banco', 'eco-categorias'],
-  synonyms: ['traspaso', 'traspasos entre cuentas', 'cobro anulado', 'devolucion del banco', 'movimientos internos', 'transferencia propia', 'por que cuenta como gasto', 'anulacion'],
+  synonyms: ['traspaso', 'traspasos entre cuentas', 'cobro anulado', 'devolucion del banco', 'movimientos internos', 'transferencia propia', 'por que cuenta como gasto', 'anulacion', 'reintegro de cajero'],
 }
 
 export const expEconomiaPrevision: HelpExplainer = {
@@ -592,7 +616,7 @@ export const EXPLAINERS_ECONOMIA: HelpExplainer[] = [
   expEconomiaPendienteClasificar,
   expEconomiaConciliacion,
   expEconomiaConexionBancaria,
-  expEconomiaCorreccionNoAprende,
+  expEconomiaCorreccionAprende,
   expEconomiaIngresoGastoAhorro,
   expEconomiaTraspasosAnulaciones,
   expEconomiaPrevision,

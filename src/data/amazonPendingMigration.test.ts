@@ -79,9 +79,9 @@ describe('T/U/V/W. no se toca lo que no toca esta fase', () => {
     expect(MERCADONA).not.toMatch(/category:\s*null/)
   })
 
-  it('U. el banco no cambia: mismo fallback "Otros", mismas reglas, Repsol intacto, sin category: null', () => {
-    expect(BANK).toContain('return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"')
-    expect(BANK).toContain('{ keywords: ["repsol", "cepsa", "galp", "shell", "gasolinera", "estacion de servicio", "petroprix", "ballenoil"], category: "Combustible" }')
+  it('U. el banco clasifica con el clasificador compartido (ECO-CLASIF), con «Otros» como último recurso y sin escribir un literal category: null', () => {
+    expect(BANK).toContain('classifyMovement({')
+    expect(BANK).not.toContain('function guessCategory')
     expect(BANK).not.toMatch(/category:\s*null/)
   })
 

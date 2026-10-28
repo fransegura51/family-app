@@ -132,9 +132,9 @@ describe('series B: Compras y Economía', () => {
     expect(getTour('tut-economia-conectar-banco')!.startDest).toBe('economia.banco')
   })
 
-  it('«PEPA no recuerda tu corrección» solo vive en la explicación de nivel C; los capítulos de Economía no lo repiten', () => {
+  it('lo que PEPA recuerda de tus correcciones vive en una sola explicación de nivel C; los capítulos de Economía no repiten la frase antigua «no recuerda tu corrección»', () => {
     for (const c of CHAPTERS.filter((x) => x.module === 'economia')) expect(textOf(c), c.id).not.toMatch(/no recuerda tu correcci/i)
-    expect(EXPLAINER_BY_ID.get('exp-economia-correccion-no-aprende')).toBeTruthy()
+    expect(EXPLAINER_BY_ID.get('exp-economia-correccion-aprende')).toBeTruthy()
   })
 
   it('la explicación de clasificación ya no dice que la lista compartida sea «pequeña y fija» ni que no enseñe a otras familias', () => {

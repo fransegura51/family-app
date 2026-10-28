@@ -33,9 +33,9 @@ import {
 } from '@/data/shopping'
 import { linkedShoppingIds } from '@/data/lists'
 import { getProductPhotoUrl, listAllProductPrices, listProducts, removeProductPhoto, setProductNonFood, uploadProductPhotoForName } from '@/data/products'
+import { ensureCatalogSynced } from '@/data/catalogSync'
 import {
   listFamilyFoodTypes,
-  seedFamilyFoodTypes,
   setProductFoodType,
   type FamilyFoodType,
   type FoodTypeKind,
@@ -329,7 +329,7 @@ export function ShoppingScreen() {
       {tab === 'Tickets' && <ReceiptsTab />}
       {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
-        <BudgetsTab group="alimentacion" seedCategories={[]} onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />
+        <BudgetsTab group="alimentacion" onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />
       )}
     </div>
   )
@@ -2400,7 +2400,6 @@ function HistoryTab({ onBackToStats }: { onBackToStats?: () => void }) {
   // carga/siembra por cada uno.
   const [foodTypes, setFoodTypes] = useState<FamilyFoodType[]>([])
   const [showFoodTypesModal, setShowFoodTypesModal] = useState(false)
-  const seededKindsRef = useRef(new Set<FoodTypeKind>())
 
   useEffect(() => onManagersChanged(() => void reloadFoodTypes()), [])
 
@@ -2410,20 +2409,8 @@ function HistoryTab({ onBackToStats }: { onBackToStats?: () => void }) {
     )
   }
 
-  // Siembra cada conjunto por separado la primera vez que está vacío
-  // — mismo patrón que las categorías de Presupuesto Generales — para
-  // que Alimentos y Otros empiecen con sus propias clases de fábrica
-  // (FOOD_TYPES / NO_FOOD_TYPES) sin tener que darlas de alta a mano.
-  async function ensureFoodTypesSeeded(kind: FoodTypeKind, existing: FamilyFoodType[]): Promise<FamilyFoodType[]> {
-    if (seededKindsRef.current.has(kind) || existing.length > 0) return existing
-    seededKindsRef.current.add(kind)
-    const seed = kind === 'alimentacion' ? FOOD_TYPES : NO_FOOD_TYPES
-    await seedFamilyFoodTypes(
-      seed.map((t) => ({ name: t.label, icon: t.icon })),
-      kind,
-    )
-    return listFamilyFoodTypes(kind)
-  }
+  // CAT-2: las clases de la familia vienen del catálogo general de PEPA y se mantienen al día solas (sincronización en la base, migración 0338).
+  // Ya no se siembra desde aquí una lista fija: el cliente no puede enlazar con el catálogo y esas filas nacían sin enlace.
 
   useEffect(() => {
     setLoading(true)
@@ -2437,8 +2424,10 @@ function HistoryTab({ onBackToStats }: { onBackToStats?: () => void }) {
       listFamilyFoodTypes('no_alimentos'),
     ])
       .then(async ([p, prod, st, receipts, categories, foodKindTypes, noFoodKindTypes]) => {
-        foodKindTypes = await ensureFoodTypesSeeded('alimentacion', foodKindTypes)
-        noFoodKindTypes = await ensureFoodTypesSeeded('no_alimentos', noFoodKindTypes)
+        if ((await ensureCatalogSynced()).changed) {
+          // La sincronización enlazó, consolidó o añadió clases: se vuelven a leer (los productos siguen igual, solo cambia el enlace).
+          ;[foodKindTypes, noFoodKindTypes] = await Promise.all([listFamilyFoodTypes('alimentacion'), listFamilyFoodTypes('no_alimentos')])
+        }
         setPrices(p)
         setProducts(prod)
         setStores(st)

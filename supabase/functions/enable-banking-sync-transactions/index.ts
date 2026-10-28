@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { buildLearningIndex, classifyMovement, type FamilyCategoryRef, type HistoryRow } from "../_shared/bank/classifyMovement.ts"
 
 // Botón "Sincronizar movimientos" en Banco (o pg_cron, ver
 // 0077_schedule_bank_sync.sql, 4 veces al día — el mismo banco de la
@@ -128,40 +129,11 @@ function cleanMerchantName(raw: string | null): string | null {
   return name.trim().slice(0, 120) || null
 }
 
-// Categorización automática por palabras clave del comercio — mejor
-// suposición, nunca inventada como certeza: si no hay pista clara cae
-// en "Otros" (la propia taxonomía del documento maestro la define
-// para "movimientos que Pepa todavía no pueda clasificar con
-// suficiente confianza"). Siempre editable después por la familia.
-const MERCHANT_CATEGORY_RULES: { keywords: string[]; category: string }[] = [
-  { keywords: ["mercadona", "lidl", "aldi", "carrefour", "eroski", "consum", "alcampo", " dia ", "dia s.a", "spar", "hiperber", "caprabo", "super dumbo", "superdumbo"], category: "Supermercado, carnicería y tiendas de alimentación" },
-  { keywords: ["farmacia"], category: "Salud y farmacia" },
-  { keywords: ["repsol", "cepsa", "galp", "shell", "gasolinera", "estacion de servicio", "petroprix", "ballenoil"], category: "Combustible" },
-  { keywords: ["parking", "aparcamiento", "peaje", "autopista"], category: "Aparcamiento y peajes" },
-  { keywords: ["renfe", "emt", "metro ", "taxi", "cabify", "uber", "bus "], category: "Transporte público / taxi" },
-  { keywords: ["restaurante", " bar ", "cafeteria", "cafe ", "burger", "mcdonald", "kfc", "telepizza", "dominos", "glovo", "just eat", "ubereats", "uber eats"], category: "Restaurantes, bares y cafeterías" },
-  { keywords: ["netflix", "spotify", "hbo", "disney", "prime video", "youtube premium", "movistar plus"], category: "Suscripciones y entretenimiento" },
-  { keywords: ["movistar", "vodafone", "orange", "yoigo", "masmovil", "más móvil", "digi mobil", "digi.es", "jazztel", "pepephone"], category: "Teléfono e Internet" },
-  { keywords: ["seguros", "mapfre", "mutua madrileña", " axa ", "allianz", "zurich", "linea directa", "línea directa", "caser", "reale"], category: "Seguros" },
-  { keywords: ["hipoteca", "prestamo hipotecario", "préstamo hipotecario"], category: "Alquiler / hipoteca" },
-  { keywords: ["ayuntamiento", "agencia tributaria", "hacienda", "iban  es dgt", "trafico"], category: "Impuestos" },
-  { keywords: ["decathlon", "gimnasio", "gym ", "basicfit", "basic-fit"], category: "Deporte y fitness" },
-  { keywords: ["primor", "druni", "peluqueria", "peluquería", "estetica", "estética"], category: "Belleza y cuidado personal" },
-  { keywords: ["zara", "h&m", "primark", "footwork", "el corte ingles", "el corte inglés"], category: "Ropa y accesorios" },
-  { keywords: ["leroy merlin", "bricomart", "ikea", "casa y jardin"], category: "Casa y jardín" },
-  { keywords: ["apple.com", "google play", "microsoft", "adobe"], category: "Software y aplicaciones" },
-  { keywords: ["veterinario", "veterinaria", "kiwoko", "tiendanimal"], category: "Mascotas" },
-]
-
-function guessCategory(description: string | null, familyCategoryNames: Set<string>): string {
-  if (description) {
-    const norm = description.toLowerCase()
-    for (const rule of MERCHANT_CATEGORY_RULES) {
-      if (rule.keywords.some((k) => norm.includes(k)) && familyCategoryNames.has(rule.category)) return rule.category
-    }
-  }
-  return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"
-}
+// ECO-CLASIF — la categoría de cada movimiento NUEVO la decide el clasificador compartido (../_shared/bank/classifyMovement.ts, el mismo que usa la
+// app): lo que la familia ya decidió a mano para ese comercio, después reglas por clave del catálogo (Electricidad, Combustible…) con su confianza,
+// y solo si no hay ninguna pista, "Otros". Confianza alta = se aplica sin más; media = se aplica y se marca "sugerida"; baja = pendiente de
+// clasificar (category NULL) con una sugerencia si la hay. Una categoría elegida por una persona (category_source = 'manual') no se toca jamás:
+// este sync solo CREA gastos nuevos, nunca reclasifica los existentes.
 
 // FASE CA-1 — petición real: "INTERESES Y/O COMISIONES CUENTA" (cargo) + "BONIFIC. COMISION MANT.
 // CUENTA" (abono), mismo día, se cancelan entre sí igual que un "ANUL COMPRA TARJ..." — pero el banco no
@@ -466,8 +438,23 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     .is("matched_expense_id", null)
   if (!unmatched || unmatched.length === 0) return
 
-  const { data: categories } = await admin.from("budget_categories").select("name, catalog_key").eq("family_id", familyId)
-  const familyCategoryNames = new Set((categories ?? []).map((c) => c.name as string))
+  const { data: categories } = await admin.from("budget_categories").select("name, catalog_key, budget_group").eq("family_id", familyId)
+  const categoryRefs: FamilyCategoryRef[] = (categories ?? []).map((c) => ({ name: c.name as string, catalogKey: (c.catalog_key as string | null) ?? null, budgetGroup: c.budget_group as string }))
+  // Aprendizaje: lo que esta familia ya clasificó por comercio (sus decisiones manuales mandan; lo que clasificó PEPA sola no cuenta).
+  const { data: historyData } = await admin
+    .from("expenses")
+    .select("store, category, category_source")
+    .eq("family_id", familyId)
+    .eq("is_income", false)
+    .not("store", "is", null)
+    .not("category", "is", null)
+    .order("expense_date", { ascending: false })
+    .limit(5000)
+  const learning = buildLearningIndex(
+    (historyData ?? []).map((r): HistoryRow => ({ store: r.store as string | null, category: r.category as string | null, source: (r.category_source as HistoryRow["source"]) ?? null })),
+  )
+  const { data: memberRows } = await admin.from("family_members").select("name").eq("family_id", familyId)
+  const memberNames = (memberRows ?? []).map((m) => m.name as string).filter(Boolean)
   // FASE DEV-1 — resuelve el nombre REAL de "Devoluciones" para esta familia por catalog_key (nunca un
   // texto fijo "Devoluciones": la categoría podría estar renombrada, igual que ya asume refunds.ts). Si
   // la familia no tiene esa categoría (no debería pasar: la crea el catálogo estándar), la regla DEV-1
@@ -583,7 +570,16 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
     // se intenta cuando ni "ANUL" ni la reversión de comisión de arriba han aplicado. A diferencia de
     // esas dos reglas, esta NO hace ninguna consulta ni busca la compra original — solo decide la
     // categoría del ingreso que se va a insertar más abajo (ver "category: isIncome ? incomeCategory...").
-    const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"
+    const explicitRefund = isIncome && Boolean(refundCategoryName) && isExplicitBankRefundDescription((bt.description as string | null) ?? null)
+    const classification = classifyMovement({
+      store,
+      description: (bt.description as string | null) ?? null,
+      isIncome,
+      categories: categoryRefs,
+      learning,
+      memberNames,
+    })
+    const incomeCategory = explicitRefund ? (refundCategoryName as string) : (classification.category ?? "Ingreso")
 
     if (!isIncome) {
       // PAGOS MIXTOS (0312): ¿es este cargo la parte NO efectivo de una compra con varios medios de pago? Importe exacto del pago, sin enlazar a
@@ -650,7 +646,10 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
       }
     }
 
-    const category = isIncome ? "" : guessCategory(store, familyCategoryNames)
+    // Un gasto de confianza baja queda PENDIENTE (category NULL, como siempre en PEPA) con su sugerencia; un abono dudoso queda como «Ingreso».
+    const category = isIncome ? "" : classification.category
+    // La devolución explícita ya tiene su categoría fija: no lleva marca de origen ni sugerencia.
+    const provenance = explicitRefund ? { category_source: null, category_suggestion: null } : { category_source: classification.source, category_suggestion: classification.suggestion }
     const { data: newExpense, error: insertError } = await admin
       .from("expenses")
       .insert({
@@ -658,6 +657,7 @@ async function linkTransactionsToExpenses(admin: ReturnType<typeof createClient>
         expense_date: bt.transaction_date,
         amount: Number(bt.amount),
         category: isIncome ? incomeCategory : category,
+        ...provenance,
         store: isIncome ? null : store,
         kind: "real",
         notes: bt.description as string | null,

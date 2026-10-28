@@ -63,7 +63,7 @@ afterEach(() => {
 async function open() {
   render(
     <MemoryRouter>
-      <BudgetsTab group="alimentacion" seedCategories={[]} accountsMode="compartido" myMemberId="m1" />
+      <BudgetsTab group="alimentacion" accountsMode="compartido" myMemberId="m1" />
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getAllByText(/Reparto del gasto por tienda/).length).toBeGreaterThan(0))

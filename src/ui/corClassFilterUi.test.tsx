@@ -74,7 +74,7 @@ async function viewMovementsOf(className: string): Promise<MovementsFilter> {
   const onViewMovements = vi.fn()
   render(
     <MemoryRouter>
-      <BudgetsTab group="alimentacion" seedCategories={[]} accountsMode="compartido" myMemberId="m1" onViewMovements={onViewMovements} />
+      <BudgetsTab group="alimentacion" accountsMode="compartido" myMemberId="m1" onViewMovements={onViewMovements} />
     </MemoryRouter>,
   )
   await waitFor(() => expect(screen.getAllByText(/Reparto del gasto por tienda/).length).toBeGreaterThan(0))

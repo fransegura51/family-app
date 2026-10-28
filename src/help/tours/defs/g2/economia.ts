@@ -363,20 +363,21 @@ export const tutEconomiaApuntarMovimiento: TourDef = {
   next: ['eco-categorias', 'eco-pendientes', 'eco-presupuesto'],
 }
 
-// Movimientos → encontrar un movimiento (filtros) → tocarlo → Categoría → «Guardar». Fusiona «cambiar categoría» y «clasificar pendientes». Solo cambia ESE movimiento.
+// Movimientos → encontrar un movimiento (filtros) → tocar SU CATEGORÍA → buscar o elegir → (opcional) cambiar también los anteriores. Fusiona «cambiar categoría» y «clasificar pendientes».
+// Elegir la categoría la guarda de verdad (por eso el paso es `sensitive` y solo avanza con el evento tras confirmar el servidor). Solo cambia ESE movimiento, salvo que la persona acepte la oferta.
 export const tutEconomiaCambiarCategoria: TourDef = {
   id: 'tut-economia-cambiar-categoria',
   module: 'economia',
   group: 'Registrar',
   title: 'Encontrar y corregir un movimiento',
-  summary: 'Filtrar los movimientos, abrir uno y cambiarle la categoría (también los pendientes de clasificar).',
-  version: 2,
+  summary: 'Filtrar los movimientos y cambiarle la categoría tocándola (también los pendientes de clasificar).',
+  version: 3,
   cardId: 'eco-categorias',
   durationSec: 100,
   startPath: '/dinero',
   startDest: 'economia.movimientos',
   readyOn: ['finance.movements-total'],
-  needs: [{ target: 'finance.movement-row', message: 'Para practicar necesitas al menos un movimiento en la lista (con el filtro y el periodo que tengas ahora). Apunta uno o cambia el periodo, o míralo ahora solo leyendo.' }],
+  needs: [{ target: 'finance.movement-category-chip', message: 'Para practicar necesitas al menos un movimiento en la lista (con el filtro y el periodo que tengas ahora). Apunta uno o cambia el periodo, o míralo ahora solo leyendo.' }],
   steps: [
     {
       id: 'filtro',
@@ -386,36 +387,36 @@ export const tutEconomiaCambiarCategoria: TourDef = {
       manualNext: true,
     },
     {
-      id: 'fila',
-      text: 'Toca un movimiento para editarlo. A su derecha hay iconos: ✕ lo borra (dos toques) y, con cuentas separadas, 🤝 lo copia a Común. No los pulses ahora: toca el resto de la fila.',
-      target: 'finance.movement-row',
-      completeOn: [{ type: 'appear', target: 'finance.movement-category' }],
+      id: 'categoria',
+      text: 'Toca la categoría de un movimiento (su nombre con el icono). Si pone «sugerida», PEPA la ha elegido por el comercio y aquí la corriges o la das por buena. Si prefieres editarlo entero (importe, etiqueta…), toca el resto de la fila.',
+      target: 'finance.movement-category-chip',
+      completeOn: [{ type: 'appear', target: 'finance.category-picker' }],
     },
     {
-      id: 'categoria',
-      text: 'Toca Categoría. En los movimientos del banco es una sugerencia que PEPA pone según el comercio: aquí la corriges. Si es un ingreso, es una lista normal: elige y pulsa «Siguiente».',
-      target: 'finance.movement-category',
-      completeOn: [{ type: 'appear', target: 'finance.category-picker' }],
+      id: 'buscar',
+      text: 'Escribe lo que buscas (luz, gasolina, Netflix…) o mira arriba la sugerida por PEPA y las que más usas. Si no existe la categoría, abajo puedes crear una propia. Pulsa «Siguiente».',
+      target: 'finance.category-search',
+      completeOn: [],
       manualNext: true,
     },
     {
       id: 'elegir',
-      text: 'Toca la categoría correcta; las que llevan › se abren en subcategorías. Al elegir, la ventana se cierra sola y paso al siguiente.',
+      text: 'Toca la categoría correcta; las que llevan › se abren en subcategorías. Al elegirla se guarda de verdad: lo eliges tú, yo solo te la señalo. Si solo mirabas, cierra con ✕ o pulsa «Salir».',
       target: 'finance.category-picker',
+      completeOn: [{ type: 'event', name: 'finance.movement-updated' }],
+      sensitive: true,
+    },
+    {
+      id: 'anteriores',
+      text: 'Si hay movimientos anteriores de ese comercio en otra categoría, te pregunto si quieres cambiarlos también. Es voluntario: «No, solo este» deja los demás como están. Pulsa «Siguiente».',
+      target: 'finance.similar-offer',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
-    {
-      id: 'guardar',
-      text: 'Pulsa «Guardar»: se guarda de verdad y lo pulsas tú. Cambia solo ESTE movimiento (y su ticket, si tiene). Si solo mirabas, pulsa «Cancelar» o «Salir».',
-      target: 'finance.edit-save',
-      completeOn: [{ type: 'event', name: 'finance.movement-updated' }],
-      sensitive: true,
-    },
   ],
-  finishText: 'Hecho: ese movimiento ya tiene su nueva categoría. Por qué los siguientes no la heredan, en «Cómo funciona PEPA».',
-  next: ['eco-pendientes', 'eco-categorias', 'eco-nuevo-movimiento'],
+  finishText: 'Hecho: ese movimiento ya tiene su nueva categoría. PEPA recuerda lo que decides para ese comercio y lo aplica a los que traiga el banco a partir de ahora. Cómo lo decide, en «Cómo funciona PEPA».',
+  next: ['eco-pendientes', 'eco-clasificacion-banco', 'eco-categorias', 'eco-nuevo-movimiento'],
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------

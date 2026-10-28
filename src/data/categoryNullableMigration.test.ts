@@ -145,15 +145,14 @@ describe('.neq del sync bancario: null-safe', () => {
 })
 
 describe('NINGÚN productor genera NULL todavía (6C.2A no cambia el comportamiento visible)', () => {
-  it('el sync bancario sigue asignando categoría con las MISMAS reglas: mismo fallback «Otros» y misma regla de Repsol', () => {
-    expect(BANK).toContain('return familyCategoryNames.has("Otros") ? "Otros" : [...familyCategoryNames][0] ?? "Otros"')
-    expect(BANK).toContain('{ keywords: ["repsol", "cepsa", "galp", "shell", "gasolinera", "estacion de servicio", "petroprix", "ballenoil"], category: "Combustible" }')
-    // FASE DEV-1: el lado del GASTO sigue exactamente igual (guessCategory sin tocar, "Otros" de fallback).
-    // El lado del INGRESO ya no es siempre el literal "Ingreso" — puede ser "Devoluciones" (por catalog_key,
-    // ver explicitBankRefundDetection.test.ts) cuando la descripción empieza por "DEVOLUCION"; el resto de
-    // ingresos (sin ese patrón) sigue cayendo en "Ingreso" exactamente igual que antes.
+  it('el sync bancario asigna la categoría con el clasificador compartido (ECO-CLASIF); el gasto dudoso queda pendiente por la vía de siempre, sin literal category: null', () => {
+    expect(BANK).toContain('classifyMovement({')
+    // Un gasto de confianza baja se guarda SIN categoría (pendiente de clasificar, como define domain/pending.ts): sale del clasificador, nunca de un literal.
+    expect(BANK).toContain('const category = isIncome ? "" : classification.category')
+    // El lado del INGRESO: «Devoluciones» (por catalog_key, ver explicitBankRefundDetection.test.ts) cuando la descripción empieza por «DEVOLUCION»;
+    // el resto lo decide el clasificador y, sin pista, sigue cayendo en «Ingreso».
     expect(BANK).toContain('category: isIncome ? incomeCategory : category,')
-    expect(BANK).toContain('const incomeCategory = isIncome && refundCategoryName && isExplicitBankRefundDescription((bt.description as string | null) ?? null) ? refundCategoryName : "Ingreso"')
+    expect(BANK).toContain('const incomeCategory = explicitRefund ? (refundCategoryName as string) : (classification.category ?? "Ingreso")')
     expect(BANK).not.toMatch(/category:\s*null/)
   })
 

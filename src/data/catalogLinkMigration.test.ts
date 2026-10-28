@@ -110,14 +110,18 @@ describe('Fase 2: rollback y aislamiento', () => {
     // capa de datos de budget_categories ahora selecciona y expone esa columna; los fixtures de test la traen a null por defecto) +
     // Fase CA-3 (domain/cancelledCharge.ts: mismo patrón para «Cobro anulado», para poder elegirla a mano en un ingreso).
     expect(users).toEqual([
+      // CAT-2: la sincronización del catálogo, el buscador de categorías por concepto y la oferta de cambiar los anteriores trabajan con catalog_key.
+      '/src/data/catalogSync.ts',
       '/src/data/finance.ts',
       '/src/data/foodTypes.ts',
       '/src/domain/cancelledCharge.ts',
       // Retirada de efectivo (migración 0318, preparada): hasWithdrawalCategory decide por catalog_key, nunca por el nombre visible.
       '/src/domain/cashWithdrawals.ts',
+      '/src/domain/categorySearch.ts',
       '/src/domain/financeTestData.ts',
       '/src/domain/productClass.ts',
       '/src/domain/refunds.ts',
+      '/src/domain/similarMovements.ts',
       '/src/domain/types.ts',
     ])
   })

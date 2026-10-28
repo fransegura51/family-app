@@ -87,6 +87,44 @@ export interface ForecastDocumentPrefillFields {
   recurrenceRule?: string
   installmentAmounts?: number[] | null
   installmentDueDates?: string[] | null
+  // 28/10/2026 — «Conocido» solo cuando el PROPIO DOCUMENTO fija importes exactos y fiables (ver classifyDocumentAmountStatus); en cualquier duda, «Estimado». Es una sugerencia
+  // inicial: la persona puede cambiarla en el formulario y cambiarla NO toca ningún importe ni fecha.
+  amountStatusSuggestion: 'known' | 'estimated'
+  // Por qué se ha propuesto «Conocido» (se enseña junto al estado); null si es «Estimado».
+  amountStatusNote: string | null
+}
+
+const toCents = (n: number): number => Math.round(n * 100)
+
+// Conocido ≠ pagado: un pago puede ser futuro y tener un importe exacto. Se decide SOLO con lo que el documento dice, sin nueva llamada de IA:
+//  A) el documento lista, fila a fila, TODOS los importes y TODAS las fechas (cuadro de amortización, calendario de pagos, fraccionamiento) y la suma de las filas es el total
+//     propuesto al céntimo (así el reparto cuadra exactamente y no hay nada calculado por PEPA);
+//  B) el documento da el importe de cada cuota y, aparte, el total, y los dos coinciden (cuotas × importe = total) — dos datos explícitos que se confirman entre sí.
+// Si el total propuesto es dudoso (amountReviewNote), si faltan importes o fechas (planReviewNote) o nada cuadra, se mantiene «Estimado».
+export function classifyDocumentAmountStatus(input: {
+  scan: ForecastDocumentScanResult
+  amount: number | null
+  installmentAmounts: number[] | null | undefined
+  installmentDueDates: string[] | null | undefined
+  amountReviewNote: string | null
+  planReviewNote: string | null
+}): { status: 'known' | 'estimated'; note: string | null } {
+  const estimated = { status: 'estimated' as const, note: null }
+  const { scan, amount, installmentAmounts, installmentDueDates } = input
+  // (planReviewNote avisa de fechas calculadas por PEPA; la certeza del IMPORTE no depende de las fechas, así que solo frena el caso A, que además exige las fechas del documento.)
+  if (amount == null || input.amountReviewNote) return estimated
+  const count = scan.installmentCount
+  if (!input.planReviewNote && count != null && count >= 2 && installmentAmounts && installmentDueDates && installmentAmounts.length === count && installmentDueDates.length === count) {
+    const sumCents = installmentAmounts.reduce((s, v) => s + toCents(v), 0)
+    if (sumCents === toCents(amount)) {
+      return { status: 'known', note: `El documento lista cada importe y cada fecha (${count} pagos) y suman exactamente el total, así que los importes se marcan como conocidos.` }
+    }
+    return estimated
+  }
+  if (count != null && count >= 2 && scan.installmentAmount != null && scan.totalAmount != null && Math.abs(count * toCents(scan.installmentAmount) - toCents(scan.totalAmount)) <= 1) {
+    return { status: 'known', note: 'El documento indica el importe de cada cuota y el total, y coinciden, así que los importes se marcan como conocidos.' }
+  }
+  return estimated
 }
 
 const COHERENCE_TOLERANCE_ABS = 5
@@ -199,9 +237,13 @@ export function buildForecastDocumentPrefillFields(scan: ForecastDocumentScanRes
     }
   }
 
+  const classification = classifyDocumentAmountStatus({ scan, amount, installmentAmounts, installmentDueDates, amountReviewNote, planReviewNote })
+
   return {
     title,
     amount,
+    amountStatusSuggestion: classification.status,
+    amountStatusNote: classification.note,
     // "estimado, importe de un documento" — mismo criterio que amountEstimatedBasis siempre exige un
     // texto humano cuando el estado es 'estimated' (el formulario decide amountStatus según si amount es
     // null o no, ver ForecastPaymentForm); aquí solo se deja lista la explicación.

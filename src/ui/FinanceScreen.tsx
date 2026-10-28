@@ -145,6 +145,7 @@ import { centsToEurosString, checkCentsDistribution, eurosStringToCents, type Ce
 import { BankAccountsModal } from '@/ui/BankAccountsModal'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { DateField } from '@/ui/DateField'
+import { applyTotalBasisToLines, applyTotalStatusToLines, linesDifferFromProposal, statusIsStructural } from '@/domain/forecastPlanMetadata'
 import { getAccountsMode, getDateFilterPreferences, getFinanceMonthStartDay, listFamilyMembers, type AccountsMode, type DateFilterPreferences } from '@/data/family'
 import {
   ECONOMIA_MENU_ITEM_META,
@@ -11250,7 +11251,10 @@ function ForecastDocumentImportModal({
         )}
         {status === 'empty' && (
           <div>
-            <p>No se ha podido leer nada útil de este documento.</p>
+            <p>No he conseguido interpretar este documento{file && file.type !== 'application/pdf' ? ' (lo he probado con dos procesamientos distintos de la foto)' : ''}.</p>
+            <p className="muted" style={{ fontSize: 13 }}>
+              Prueba con una foto más recta, sin sombras y con buena luz (que se vea entera la tabla), o súbela como PDF. También puedes continuar a mano.
+            </p>
             <div className="form-actions">
               <button type="button" onClick={onContinueManually}>
                 Continuar a mano
@@ -11414,6 +11418,9 @@ function ManageReconciledExpense({
 // TOTAL. Cambiar cualquiera de estos ejes regenera la propuesta de reparto entera (PEPA vuelve a
 // proponer N líneas desde cero); editar una línea suelta NO cambia esta firma, así que esa edición
 // sobrevive a re-renders posteriores del formulario sin ser pisada.
+// Qué hace que el plan de pagos se vuelva a proponer: SOLO la estructura — nº de pagos, frecuencia, primer vencimiento, importe TOTAL, modo de importe y pasar a/desde «Pendiente».
+// El ESTADO del importe (Estimado/Conocido) y «en qué se basa» son metadatos y NO entran aquí (28/10/2026): cambiarlos nunca rehace importes ni fechas
+// (ver domain/forecastPlanMetadata.ts y el efecto de metadatos del formulario).
 function computeFinitePlanSignature(
   installmentCount: string,
   freqOption: ForecastRecurrenceOption,
@@ -11422,7 +11429,7 @@ function computeFinitePlanSignature(
   dueDate: string,
   amountStatus: ForecastAmountStatus,
   amount: string,
-  amountBasis: string,
+  _amountBasis: string,
   amountEntryMode: FinitePlanAmountMode = 'total',
 ): string {
   const validated = validateInstallmentCount(installmentCount)
@@ -11432,44 +11439,18 @@ function computeFinitePlanSignature(
     customFreq,
     customInterval,
     dueDate,
-    amountStatus,
+    amountStatus === 'unknown' ? 'unknown' : 'amount',
     amountStatus === 'unknown' ? null : amount,
-    amountStatus === 'estimated' ? amountBasis : null,
     amountEntryMode,
   ])
-}
-
-// BUG REAL (documento BBVA real, 85 cuotas, 2026-09-29) — tras precargar el plan con los importes/fechas
-// reales del documento, cambiar SOLO el "Estado del importe TOTAL" (p. ej. de Estimado a Conocido, sin
-// tocar el número de cuotas/frecuencia/vencimiento) disparaba computeFinitePlanSignature igual que un
-// cambio real, y el useEffect de más abajo sobreescribía las 85 líneas reales por un reparto uniforme
-// (20.790€/85 = 244,58€ cada una) — perdiendo de golpe los importes reales (319,63€/319,45€) que ya
-// estaban bien. Subconjunto SOLO de los ejes que de verdad invalidan la correspondencia "cuota N = fila N
-// del documento" (nº de cuotas, frecuencia, vencimiento) — nunca el estado/importe/basis del TOTAL, que
-// no cambia cuántas cuotas hay ni qué fecha les corresponde a cada una.
-function computeFinitePlanStructureSignature(
-  installmentCount: string,
-  freqOption: ForecastRecurrenceOption,
-  customFreq: ForecastCustomRecurrence['freq'],
-  customInterval: string,
-  dueDate: string,
-): string {
-  const validated = validateInstallmentCount(installmentCount)
-  return JSON.stringify([validated.ok ? validated.count : null, freqOption, customFreq, customInterval, dueDate])
 }
 
 // Misma idea que computeFinitePlanSignature, para el Caso B (cobro fraccionado por ciclo): cuántos
 // cobros y el TOTAL del ciclo. No incluye frecuencia/dueDate como ancla de la SERIE (eso lo sigue
 // llevando "¿Cuándo se repite?" de arriba) — dueDate aquí solo es el ancla del PRIMER cobro propuesto.
-function computeSplitChargesSignature(splitCount: string, dueDate: string, amountStatus: ForecastAmountStatus, amount: string, amountBasis: string): string {
+function computeSplitChargesSignature(splitCount: string, dueDate: string, amountStatus: ForecastAmountStatus, amount: string, _amountBasis: string): string {
   const validated = validateSplitChargeCount(splitCount)
-  return JSON.stringify([
-    validated.ok ? validated.count : null,
-    dueDate,
-    amountStatus,
-    amountStatus === 'unknown' ? null : amount,
-    amountStatus === 'estimated' ? amountBasis : null,
-  ])
+  return JSON.stringify([validated.ok ? validated.count : null, dueDate, amountStatus === 'unknown' ? 'unknown' : 'amount', amountStatus === 'unknown' ? null : amount])
 }
 
 // Fase 1D-g — lo único que precarga una propuesta de posible recurrencia detectada: SOLO campos
@@ -11500,6 +11481,9 @@ export interface ForecastPaymentPrefill {
   // documento no dejó leer con seguridad todos los importes y/o fechas: el plan mostrado es un cálculo
   // (reparto uniforme + recurrencia pura), no datos leídos del documento.
   planReviewNote?: string | null
+  // 28/10/2026 — estado del importe que propone el documento: «Conocido» solo cuando el documento fija importes exactos (ver classifyDocumentAmountStatus); sin indicar, «Estimado».
+  amountStatusSuggestion?: 'known' | 'estimated'
+  amountStatusNote?: string | null
   categoryName: string | null
   dueDate?: string
   // Ya construida como texto (p. ej. "FREQ=MONTHLY") — reutiliza parseRecurrenceRuleToFormState tal cual
@@ -11524,7 +11508,7 @@ export interface ForecastPaymentPrefill {
   contentFingerprint?: string | null
 }
 
-function ForecastPaymentForm({
+export function ForecastPaymentForm({
   categories,
   members,
   accounts,
@@ -11549,7 +11533,7 @@ function ForecastPaymentForm({
   // "Importar desde foto o documento" — un prefill sin importe real detectado (prefill.amount === null)
   // abre en "Pendiente" en vez de "Estimado": la restricción de la base de datos exige un importe no nulo
   // para 'estimated', y forzar un 0 sería inventar un dato que el documento no daba.
-  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? 'estimated' : 'unknown') : 'known'))
+  const [amountStatus, setAmountStatus] = useState<ForecastAmountStatus>(payment?.amountStatus ?? (prefill ? (prefill.amount != null ? (prefill.amountStatusSuggestion === 'known' ? 'known' : 'estimated') : 'unknown') : 'known'))
   // BUG REAL (reportado 2026-09-29, pago finito creado a mano) — payment.amount guarda el importe BASE de
   // UNA cuota (ver buildFinitePlanSubmission: parentAmount = baseAmount, nunca el total), no el total del
   // plan. Usarlo tal cual como "Importe TOTAL" al editar mostraba, p. ej., 150€ en vez de 1800€ para un
@@ -11686,9 +11670,9 @@ function ForecastPaymentForm({
         const realDates = hasRealDates && prefill.installmentDueDates!.length === validated.count ? prefill.installmentDueDates! : null
         return base.map((line, i) => ({
           date: realDates ? realDates[i] : line.date,
-          amountStatus: realAmounts ? ('estimated' as ForecastAmountStatus) : line.amountStatus,
+          amountStatus: realAmounts ? (amountStatus === 'unknown' ? ('estimated' as ForecastAmountStatus) : amountStatus) : line.amountStatus,
           amount: realAmounts ? String(realAmounts[i]) : line.amount,
-          amountEstimatedBasis: realAmounts ? prefill.amountEstimatedBasis : line.amountEstimatedBasis,
+          amountEstimatedBasis: realAmounts ? (amountStatus === 'known' ? '' : prefill.amountEstimatedBasis) : line.amountEstimatedBasis,
         }))
       }
     }
@@ -11720,18 +11704,6 @@ function ForecastPaymentForm({
       : hasRealAmounts || hasRealDates
         ? computeFinitePlanSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate, amountStatus, amount, amountBasis)
         : '',
-  )
-  // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga representando lo importado del
-  // documento (nadie ha tocado nº de cuotas/frecuencia/vencimiento todavía), el useEffect de más abajo
-  // NUNCA debe regenerarlo por un cambio en el estado/importe/basis del TOTAL — ver
-  // computeFinitePlanStructureSignature. En cuanto SÍ cambie algo estructural, la correspondencia "cuota N
-  // = fila N del documento" deja de tener sentido de todas formas, y a partir de ahí el plan se comporta
-  // como uno manual (se propone de nuevo, como siempre).
-  const importedRealPlanRef = useRef(hasRealAmounts || hasRealDates)
-  const planStructureSignatureRef = useRef(
-    hasRealAmounts || hasRealDates
-      ? computeFinitePlanStructureSignature(initialRecurrence.installmentCount, initialRecurrence.freqOption, initialRecurrence.customFreq, initialRecurrence.customInterval, dueDate)
-      : '',
   )
   const [reminders, setReminders] = useState<{ value: number; unit: ForecastReminderUnit }[]>(
     payment?.reminders.map((r) => ({ value: r.value, unit: r.unit })) ?? [],
@@ -11777,30 +11749,48 @@ function ForecastPaymentForm({
     setSplitCharges((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)))
   }
 
-  // Ajuste UX tras certificación móvil — PEPA propone el reparto del importe TOTAL en cuanto cambia
-  // "cuántos pagos/cobros hacen falta" o el propio TOTAL (importe/estado/basis) — nunca al editar una
-  // línea suelta (eso solo cambia planLines/splitCharges, no esta firma, así que no se regenera nada).
+  // ── Plan de pagos: METADATOS vs ESTRUCTURA (28/10/2026, ver domain/forecastPlanMetadata.ts) ──
+  // Bug real: cambiar «Estado del importe TOTAL» de Estimado a Conocido en una previsión importada (seis cuotas de importes distintos) las dejaba iguales: el estado entraba en
+  // la firma que decide «rehacer el plan». Ahora:
+  //  · ESTADO y BASE del importe (metadatos): solo cambian el estado/base de las líneas que seguían al total. Importes y fechas, intactos.
+  //  · ESTRUCTURA (nº de pagos, frecuencia, primer vencimiento, importe total, modo, pasar a/desde «Pendiente»): si las líneas son las que PEPA propondría, se rehacen solas; si
+  //    tienen importes o fechas propios (de un documento o escritos a mano), NO se sobrescriben: se avisa y la persona elige «Recalcular» o «Mantener».
+  const currentPlanParams = { count: paymentCount, freqOption, customFreq, customInterval, dueDate, amount, amountStatus, amountEntryMode }
+  const planParamsRef = useRef(currentPlanParams)
+  const [planStale, setPlanStale] = useState(false)
+  const splitParamsRef = useRef({ count: paymentCount, dueDate, amount, amountStatus })
+  const [splitStale, setSplitStale] = useState(false)
+  const metaRef = useRef({ status: amountStatus, basis: amountBasis })
+
+  function proposePlanFor(p: typeof currentPlanParams, basis: string): ForecastPlanLineFormRow[] | null {
+    const validated = validateInstallmentCount(p.count)
+    if (!validated.ok || !p.dueDate) return null
+    const { freq, interval } = resolvedFreqInterval(p.freqOption, p.customFreq, p.customInterval)
+    return proposeFinitePlanLines(p.dueDate, freq, interval, validated.count, p.amountStatus, p.amountStatus === 'unknown' ? null : Number(p.amount) || 0, basis, p.amountEntryMode)
+  }
+  function proposeSplitFor(p: { count: string; dueDate: string; amount: string; amountStatus: ForecastAmountStatus }, basis: string): ForecastSplitChargeFormRow[] | null {
+    const validated = validateSplitChargeCount(p.count)
+    if (!validated.ok || !p.dueDate) return null
+    return proposeSplitCharges(p.dueDate, validated.count, p.amountStatus, p.amountStatus === 'unknown' ? null : Number(p.amount) || 0, basis)
+  }
+
   useEffect(() => {
     if (!isFinitePlanMode) return
-    // BUG REAL (documento BBVA real, 85 cuotas) — mientras el plan siga siendo el importado del documento,
-    // un cambio SOLO en el estado/importe/basis del TOTAL (p. ej. Estimado → Conocido, sin tocar nº de
-    // cuotas/frecuencia/vencimiento) no debe regenerar nada: las 85 líneas reales no dejan de ser reales
-    // porque el usuario haya corregido la confianza del total. Solo un cambio ESTRUCTURAL (que sí invalida
-    // la correspondencia "cuota N = fila N del documento") hace que el plan pase a comportarse como uno
-    // manual a partir de aquí.
-    if (importedRealPlanRef.current) {
-      const structureSignature = computeFinitePlanStructureSignature(paymentCount, freqOption, customFreq, customInterval, dueDate)
-      if (structureSignature === planStructureSignatureRef.current) return
-      importedRealPlanRef.current = false
-    }
     const signature = computeFinitePlanSignature(paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode)
     if (signature === planSignatureRef.current) return
     planSignatureRef.current = signature
-    const validated = validateInstallmentCount(paymentCount)
-    if (!validated.ok || !dueDate) return
-    const { freq, interval } = resolvedFreqInterval(freqOption, customFreq, customInterval)
-    const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
-    setPlanLines(proposeFinitePlanLines(dueDate, freq, interval, validated.count, amountStatus, totalAmountNum, amountBasis, amountEntryMode))
+    const next = proposePlanFor(currentPlanParams, amountBasis)
+    if (!next) return
+    const previous = proposePlanFor(planParamsRef.current, '')
+    const customized = planLines.length > 0 && (previous == null || linesDifferFromProposal(planLines, previous))
+    if (customized) {
+      setPlanStale(true)
+      return
+    }
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+    setPlanLines(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- planLines/currentPlanParams se leen "en este instante"; la firma ya recoge todo lo que debe disparar el efecto
   }, [isFinitePlanMode, paymentCount, freqOption, customFreq, customInterval, dueDate, amountStatus, amount, amountBasis, amountEntryMode])
 
   useEffect(() => {
@@ -11808,11 +11798,68 @@ function ForecastPaymentForm({
     const signature = computeSplitChargesSignature(paymentCount, dueDate, amountStatus, amount, amountBasis)
     if (signature === splitSignatureRef.current) return
     splitSignatureRef.current = signature
-    const validated = validateSplitChargeCount(paymentCount)
-    if (!validated.ok || !dueDate) return
-    const totalAmountNum = amountStatus === 'unknown' ? null : Number(amount) || 0
-    setSplitCharges(proposeSplitCharges(dueDate, validated.count, amountStatus, totalAmountNum, amountBasis))
+    const nextParams = { count: paymentCount, dueDate, amount, amountStatus }
+    const next = proposeSplitFor(nextParams, amountBasis)
+    if (!next) return
+    const previous = proposeSplitFor(splitParamsRef.current, '')
+    const customized = splitCharges.length > 0 && (previous == null || linesDifferFromProposal(splitCharges, previous))
+    if (customized) {
+      setSplitStale(true)
+      return
+    }
+    splitParamsRef.current = nextParams
+    setSplitStale(false)
+    setSplitCharges(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- igual que el efecto del plan finito
   }, [isSplitCycleMode, paymentCount, dueDate, amountStatus, amount, amountBasis])
+
+  // Metadatos: estado y base del importe TOTAL. Solo cambian el estado/base de las líneas que seguían al total; importes y fechas, exactamente como estaban.
+  useEffect(() => {
+    const prev = metaRef.current
+    if (prev.status === amountStatus && prev.basis === amountBasis) return
+    metaRef.current = { status: amountStatus, basis: amountBasis }
+    if (statusIsStructural(prev.status, amountStatus)) return // pasar a/desde «Pendiente» lo gestiona el efecto de estructura
+    const apply = <T extends { date: string; amountStatus: ForecastAmountStatus; amount: string; amountEstimatedBasis: string }>(lines: T[]): T[] =>
+      prev.status !== amountStatus ? applyTotalStatusToLines(lines, prev, { status: amountStatus, basis: amountBasis }) : applyTotalBasisToLines(lines, prev.basis, amountBasis)
+    if (isFinitePlanMode) setPlanLines(apply)
+    if (isSplitCycleMode) setSplitCharges(apply)
+  }, [amountStatus, amountBasis, isFinitePlanMode, isSplitCycleMode])
+
+  function recalculatePlan() {
+    const next = proposePlanFor(currentPlanParams, amountBasis)
+    if (!next) return
+    setPlanLines(next)
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+  }
+  function keepPlan() {
+    const validated = validateInstallmentCount(paymentCount)
+    if (!validated.ok || validated.count !== planLines.length) {
+      setError(`Los ${planLines.length} pagos de abajo no coinciden con el nuevo número de pagos: recalcula el plan o vuelve al número anterior.`)
+      return
+    }
+    setError(null)
+    planParamsRef.current = currentPlanParams
+    setPlanStale(false)
+  }
+  function recalculateSplit() {
+    const nextParams = { count: paymentCount, dueDate, amount, amountStatus }
+    const next = proposeSplitFor(nextParams, amountBasis)
+    if (!next) return
+    setSplitCharges(next)
+    splitParamsRef.current = nextParams
+    setSplitStale(false)
+  }
+  function keepSplit() {
+    const validated = validateSplitChargeCount(paymentCount)
+    if (!validated.ok || validated.count !== splitCharges.length) {
+      setError(`Los ${splitCharges.length} cobros de abajo no coinciden con el nuevo número de pagos: recalcula o vuelve al número anterior.`)
+      return
+    }
+    setError(null)
+    splitParamsRef.current = { count: paymentCount, dueDate, amount, amountStatus }
+    setSplitStale(false)
+  }
 
   // Regla acordada: TOTAL Conocido debe cuadrar EXACTO al céntimo para poder guardar; TOTAL Estimado
   // permite guardar con un aviso (una estimación nunca es exacta por definición); TOTAL Pendiente no
@@ -11868,6 +11915,10 @@ function ForecastPaymentForm({
     // nombre del banco. La familia tiene que decidir explícitamente antes de poder crear la previsión.
     if (recurs && recursDurationChoice === 'unknown') {
       setError('Indica hasta cuándo se repite: "Para siempre" o "Hasta una fecha concreta".')
+      return
+    }
+    if ((isFinitePlanMode && planStale) || (isSplitCycleMode && splitStale)) {
+      setError('Has cambiado el número de pagos, la frecuencia, el vencimiento o el importe total y los pagos de abajo tienen datos propios: elige «Recalcular pagos» o «Mantener los pagos actuales» antes de guardar.')
       return
     }
     if (amountStatus === 'estimated' && !amountBasis.trim()) {
@@ -12086,6 +12137,11 @@ function ForecastPaymentForm({
           ))}
         </select>
       </label>
+      {!payment && prefill?.amountStatusNote && amountStatus === 'known' && (
+        <p className="muted" style={{ margin: '0 0 8px', fontSize: 13 }} data-help-id="finance.forecast-amount-known-note">
+          {prefill.amountStatusNote}
+        </p>
+      )}
       {amountStatus !== 'unknown' && (
         <div style={{ display: 'flex', gap: 8 }}>
           <label style={{ flex: 1 }} data-help-id="finance.forecast-amount">
@@ -12233,6 +12289,21 @@ function ForecastPaymentForm({
                   ⚠️ {prefill.planReviewNote}
                 </p>
               )}
+              {planStale && (
+                <div className="error" style={{ margin: '0 0 8px', fontSize: 13 }} role="alert" data-help-id="finance.forecast-plan-stale">
+                  <p style={{ margin: '0 0 6px' }}>
+                    Has cambiado el número de pagos, la frecuencia, el vencimiento o el importe total, y los pagos de abajo tienen importes o fechas propios. No los he tocado: elige qué hacer.
+                  </p>
+                  <div className="form-actions">
+                    <button type="button" onClick={recalculatePlan}>
+                      Recalcular pagos (sustituye los importes y fechas de abajo)
+                    </button>
+                    <button type="button" className="link-button" onClick={keepPlan}>
+                      Mantener los pagos actuales
+                    </button>
+                  </div>
+                </div>
+              )}
               {renderDistributionBanner(planCheck)}
               {/* "Ponlo en marcha", pieza (B) — resumen agrupado (summarizeFinitePlanLines) en vez de una
                   tarjeta por cada una de las N cuotas: para el caso normal (importe uniforme, o "84 de x + 1
@@ -12307,6 +12378,19 @@ function ForecastPaymentForm({
           {isSplitCycleMode && splitCharges.length > 0 && (
             <div className="card" style={{ padding: 12 }}>
               <p style={{ margin: '0 0 4px', fontWeight: 600 }}>Cobros de cada renovación</p>
+              {splitStale && (
+                <div className="error" style={{ margin: '0 0 8px', fontSize: 13 }} role="alert" data-help-id="finance.forecast-split-stale">
+                  <p style={{ margin: '0 0 6px' }}>Has cambiado el número de pagos o el importe total, y los cobros de abajo tienen importes o fechas propios. No los he tocado: elige qué hacer.</p>
+                  <div className="form-actions">
+                    <button type="button" onClick={recalculateSplit}>
+                      Recalcular cobros (sustituye los de abajo)
+                    </button>
+                    <button type="button" className="link-button" onClick={keepSplit}>
+                      Mantener los cobros actuales
+                    </button>
+                  </div>
+                </div>
+              )}
               {renderDistributionBanner(splitCheck)}
               {splitCharges.map((charge, i) => (
                 <div key={i} className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 6, marginTop: i === 0 ? 0 : 8 }}>

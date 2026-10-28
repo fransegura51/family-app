@@ -119,21 +119,8 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
   // cliente lo interpreta como "no se pudo extraer nada" y ofrece volver al formulario manual (mismo
   // criterio que documentExpiry: nunca un 502 por una respuesta rara del modelo).
   parseOutput(rawText) {
-    // INSTRUMENTACIÓN TEMPORAL (documento BBVA de 58 páginas / 84 cuotas — "No se ha podido leer nada
-    // útil de este documento") — para confirmar si maxOutputTokens corta la respuesta antes de que Gemini
-    // termine el JSON (84 fechas + 84 importes es mucho más texto que el documento SUMA de 6 cuotas).
-    // Solo registra longitud/inicio/final del texto crudo (nunca la imagen ni el PDF) en los logs de la
-    // propia función. Se retira en cuanto se demuestre la causa real.
-    console.log(
-      '[DEBUG forecastPaymentDocument] Etapa A — rawText.length:',
-      rawText.length,
-      'inicio:',
-      rawText.slice(0, 150),
-      'final:',
-      rawText.slice(-150),
-      'termina en }:',
-      /\}\s*```?\s*$/.test(rawText.trim()) || rawText.trim().endsWith('}'),
-    )
+    // (28/10/2026) Se retiró la instrumentación temporal que registraba el INICIO y el FINAL del texto devuelto por la IA: contenía datos financieros del documento y no debe
+    // quedar en los registros de producción. Ya no se registra ningún contenido; solo, si hace falta, longitudes (nunca texto).
     const empty: ForecastPaymentDocumentOutput = {
       provider: null,
       concept: null,
@@ -148,13 +135,7 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
       installmentDueDates: null,
     }
     const parsed = asRecord(parseJsonLoose(rawText))
-    // INSTRUMENTACIÓN TEMPORAL — si el JSON ni siquiera es válido (p. ej. cortado a mitad de un array),
-    // parseJsonLoose devuelve null y TODO el resultado se convierte en "vacío" — exactamente el síntoma
-    // "No se ha podido leer nada útil de este documento" con un documento que sí tiene datos de sobra.
-    if (!parsed) {
-      console.log('[DEBUG forecastPaymentDocument] Etapa B — parseJsonLoose devolvió null: el JSON no era válido (probable truncamiento)')
-      return empty
-    }
+    if (!parsed) return empty
 
     const asPositiveNumber = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null)
     const asPositiveInt = (value: unknown): number | null => {
@@ -169,18 +150,6 @@ export const forecastPaymentDocumentSpec: AiPurposeSpec<ForecastPaymentDocumentI
       Array.isArray(parsed.installmentDueDates) && parsed.installmentDueDates.length > 1 && parsed.installmentDueDates.every((v) => asIsoDate(v) != null)
         ? (parsed.installmentDueDates as string[])
         : null
-    // INSTRUMENTACIÓN TEMPORAL — JSON válido: ¿cuántos elementos traían los arrays en crudo, y cuántos
-    // sobrevivieron a la validación (asPositiveNumber/asIsoDate)? Si el JSON es válido pero un array viene
-    // más corto que installmentCount, se descarta entero por prudencia (ver más abajo) — esto lo confirma.
-    console.log(
-      '[DEBUG forecastPaymentDocument] Etapa B — JSON válido. installmentCount:',
-      parsed.installmentCount,
-      'installmentAmounts en crudo:',
-      Array.isArray(parsed.installmentAmounts) ? parsed.installmentAmounts.length : parsed.installmentAmounts,
-      'installmentDueDates en crudo:',
-      Array.isArray(parsed.installmentDueDates) ? parsed.installmentDueDates.length : parsed.installmentDueDates,
-    )
-
     return {
       provider: asCleanString(parsed.provider, 120),
       concept: asCleanString(parsed.concept, 120),

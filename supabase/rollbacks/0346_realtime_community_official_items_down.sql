@@ -8,3 +8,4 @@ begin
   end if;
 end $$;
 drop table if exists public.community_editorial_signal;
+drop function if exists private.community_signal_visible();

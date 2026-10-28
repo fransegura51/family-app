@@ -192,6 +192,7 @@ export function MenuCard({ menu: m, topics, onDone, focus = null, onDirtyChange 
                 Editar el texto
               </button>
               <TwoTapButton
+                helpId="comunidad.centro-aprobar"
                 label="Aprobar"
                 armedLabel={m.weekly ? 'Toca otra vez: aprobar y programar' : 'Toca otra vez: aprobar y publicar ya'}
                 disabled={action.busy || blocked || (m.textStale && !confirmText)}
@@ -219,7 +220,7 @@ export function MenuCard({ menu: m, topics, onDone, focus = null, onDirtyChange 
             />
           )}
           {(m.state === 'scheduled' || m.state === 'error') && m.weekly && (
-            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('reschedule')}>
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('reschedule')} data-help-id="comunidad.centro-reprogramar">
               Reprogramar
             </button>
           )}
@@ -250,7 +251,7 @@ export function MenuCard({ menu: m, topics, onDone, focus = null, onDirtyChange 
       {m.state === 'draft' && mode === 'view' && (
         <p className="muted cadm-small">
           {m.weekly
-            ? 'Al aprobar, el menú NO se publica al momento: se programa y sale el próximo sábado a las 10:00 (hora peninsular) para la semana siguiente. Aprobarlo el mismo sábado a las 10:00 o más tarde lo deja para el sábado siguiente.'
+            ? 'Al aprobar, el menú NO se publica al momento: se programa y sale el próximo sábado a las 10:00 (hora peninsular) para la semana siguiente. Aprobarlo el mismo sábado a las 10:00 o más tarde lo deja para el sábado siguiente. Si el menú ya tiene su semana prevista en el programa y el sábado anterior aún no ha llegado, se programa para esa semana aunque se haya editado antes.'
             : 'Al aprobar, este menú se publica al momento (no es semanal).'}
         </p>
       )}

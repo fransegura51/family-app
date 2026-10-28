@@ -1193,7 +1193,7 @@ export function menuStateLine(m: Pick<MenuRow, 'state' | 'weekStart' | 'weekEnd'
   if (m.state === 'published') return m.weekStart ? `Publicado · ${menuWeekText(m.weekStart, m.weekEnd)}` : 'Publicado'
   if (m.state === 'scheduled' && m.publishAt) return `Sale el ${formatMadrid(m.publishAt, 'full')} (hora peninsular) · ${menuWeekText(m.weekStart, m.weekEnd)}`
   if (m.state === 'error') return m.publishAt ? `Debía salir el ${formatMadrid(m.publishAt, 'full')} (hora peninsular)` : 'No se ha podido publicar'
-  if (m.state === 'draft') return m.weekly ? 'Al aprobarlo se programa para el próximo sábado a las 10:00' : 'Al aprobarlo se publica al momento (no es semanal)'
+  if (m.state === 'draft') return m.weekly ? 'Al aprobarlo se programa para el próximo sábado a las 10:00 (o, si ya tiene semana prevista y su sábado aún no ha pasado, para esa semana)' : 'Al aprobarlo se publica al momento (no es semanal)'
   return ''
 }
 

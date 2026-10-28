@@ -122,6 +122,15 @@ export const comunidadAdminCentro: TourDef = {
       optional: true,
     },
     {
+      id: 'aprobar',
+      text: 'Si el elemento está pendiente, «Aprobar» pide un segundo toque para confirmar. Aprobar lo programa (un artículo o un menú, para su día; una encuesta, para el sábado) o lo publica, según el tipo; yo no lo pulso.',
+      target: 'comunidad.centro-aprobar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      missingText: 'Este elemento no está pendiente, así que no tiene «Aprobar». Puedes verlo solo leyendo.',
+    },
+    {
       id: 'volver',
       text: '«← Volver a la lista» te devuelve a donde estabas, con tus filtros y tu posición. La lista y los contadores ya están al día, sin recargar la página.',
       target: 'comunidad.centro-volver',
@@ -415,7 +424,7 @@ export const comunidadAdminReprogramar: TourDef = {
     {
       id: 'reprogramar',
       text: 'En su detalle, «Reprogramar» deja elegir otra fecha: un artículo, otro día y hora; un menú, otro sábado a las 10:00; una encuesta, otro sábado (abre a las 10:00 y cierra el domingo siguiente a las 17:00, hora peninsular). Yo no lo pulso.',
-      target: 'comunidad.centro-reprogramar-encuesta',
+      target: 'comunidad.centro-reprogramar',
       completeOn: [],
       manualNext: true,
       optional: true,

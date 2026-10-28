@@ -11,7 +11,20 @@ alter table public.community_editorial_signal enable row level security;
 revoke all on public.community_editorial_signal from anon, authenticated;
 grant select on public.community_editorial_signal to authenticated;
 drop policy if exists community_editorial_signal_admin_read on public.community_editorial_signal;
-create policy community_editorial_signal_admin_read on public.community_editorial_signal for select to authenticated using (private.community_is_admin());
+-- La política se evalúa con los permisos de quien lee, y `private.community_is_admin()` no es ejecutable por las cuentas: se usa un envoltorio mínimo que solo devuelve «¿soy administración?».
+-- (Dato que esa cuenta ya conoce: community_status devuelve el mismo valor.)
+create or replace function private.community_signal_visible()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $f$
+  select private.community_is_admin()
+$f$;
+revoke execute on function private.community_signal_visible() from public, anon;
+grant execute on function private.community_signal_visible() to authenticated;
+create policy community_editorial_signal_admin_read on public.community_editorial_signal for select to authenticated using ((select private.community_signal_visible()));
 insert into public.community_editorial_signal (id) values (1) on conflict (id) do nothing;
 
 create or replace function private.community_editorial_signal_touch()

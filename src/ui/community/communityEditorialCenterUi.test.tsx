@@ -138,6 +138,8 @@ describe('Centro Editorial: listas compactas (regresión: nunca artículos compl
     await screen.findByText(/PARRAFO-SOLO-EN-EL-DETALLE/)
     expect(screen.getByText(/Estofado de pollo/)).toBeTruthy()
     for (const b of ['Editar', 'Rectificar con Pepa', 'Rechazar']) expect(screen.getAllByRole('button', { name: b }).length).toBeGreaterThan(0)
+    // Marca de la Ayuda en «Aprobar» (la usa el capítulo «Enséñame» del Centro Editorial).
+    expect(document.querySelector('[data-help-id="comunidad.centro-aprobar"]')?.textContent).toBe('Aprobar')
     fireEvent.click(screen.getByRole('button', { name: /Volver a la lista/ }))
     await waitFor(() => expect(screen.queryByText(/PARRAFO-SOLO-EN-EL-DETALLE/)).toBeNull())
     expect((screen.getByLabelText('Buscar por título') as HTMLInputElement).value).toBe('trucos')
@@ -276,7 +278,9 @@ describe('Centro Editorial: reprogramar encuestas', () => {
       mount('/?ed=encuestas')
       fireEvent.click(await screen.findByRole('button', { name: /^Aprobadas/ }))
       fireEvent.click(await screen.findByRole('button', { name: /Ver o gestionar: ¿Qué cenas el viernes\?/ }))
-      fireEvent.click(await screen.findByRole('button', { name: 'Reprogramar' }))
+      const reprog = await screen.findByRole('button', { name: 'Reprogramar' })
+      expect(reprog.getAttribute('data-help-id')).toBe('comunidad.centro-reprogramar')
+      fireEvent.click(reprog)
       const select = (await screen.findByLabelText('Sábado de apertura')) as HTMLSelectElement
       fireEvent.change(select, { target: { value: select.options[2].value } })
       fireEvent.click(screen.getByRole('button', { name: 'Reprogramar', hidden: false }))
@@ -285,5 +289,16 @@ describe('Centro Editorial: reprogramar encuestas', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('Centro Editorial: marcas de la Ayuda en las acciones del detalle', () => {
+  it('Reprogramar (artículo, encuesta y menú) y Aprobar llevan su data-help-id', async () => {
+    const card = (await import('@/ui/community/admin/ProposalCard.tsx?raw')).default
+    const menus = (await import('@/ui/community/admin/MenusSection.tsx?raw')).default
+    expect(card.match(/data-help-id="comunidad\.centro-reprogramar"/g)?.length).toBe(2)
+    expect(menus).toContain('data-help-id="comunidad.centro-reprogramar"')
+    expect(card).toContain('helpId="comunidad.centro-aprobar"')
+    expect(menus).toContain('helpId="comunidad.centro-aprobar"')
   })
 })

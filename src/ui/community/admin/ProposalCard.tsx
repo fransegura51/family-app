@@ -133,17 +133,18 @@ export function ProposalCard({
             </button>
           )}
           {p.status === 'approved' && p.kind === 'article' && p.publishAt && (
-            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('schedule')}>
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('schedule')} data-help-id="comunidad.centro-reprogramar">
               Reprogramar
             </button>
           )}
           {p.status === 'approved' && p.kind === 'poll' && p.publishAt && (
-            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('poll-schedule')} data-help-id="comunidad.centro-reprogramar-encuesta">
+            <button type="button" className="cadm-btn cadm-btn-secondary" onClick={() => setMode('poll-schedule')} data-help-id="comunidad.centro-reprogramar">
               Reprogramar
             </button>
           )}
           {p.status === 'proposed' && (
             <TwoTapButton
+              helpId="comunidad.centro-aprobar"
               label="Aprobar"
               armedLabel={p.kind === 'poll' ? 'Toca otra vez: aprobar y programar' : programArticle ? 'Toca otra vez: aprobar y programar para su día' : 'Toca otra vez: aprobar y publicar ya'}
               disabled={action.busy}

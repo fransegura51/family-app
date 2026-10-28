@@ -24,7 +24,7 @@ import type { CommunityTopic } from '@/domain/community'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { paths } from '@/ui/community/communityNav'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox, NoteForm, TwoTapButton } from '@/ui/community/admin/AdminShared'
-import { ProposalEditForm } from '@/ui/community/admin/OfficialTab'
+import { ProposalEditForm } from '@/ui/community/admin/ProposalCard'
 import { useAdminAction, useAdminData } from '@/ui/community/admin/useAdminData'
 
 // Menú semanal de Pepa: borradores, programados, publicados y con error. La publicación AUTOMÁTICA depende de un ajuste técnico de solo lectura

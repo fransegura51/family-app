@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { setMenuAutopublish, generateNow, getEditorialStatus, listEditorialItems, listEditorialRuns, setEditorialToggle, EditorialCallError } from '@/data/communityEditorial'
 import { communityErrorText } from '@/domain/communityErrors'
 import {
@@ -31,11 +31,32 @@ import { useAdminData } from '@/ui/community/admin/useAdminData'
 
 // «Generación semanal»: el programa editorial con IA (7 artículos, 1 encuesta y 1 menú por semana). Cada tipo tiene su propio interruptor, su próxima ejecución, su
 // última ejecución, sus borradores y su «Generar ahora». NADA de aquí publica: generar solo crea borradores que una persona revisa y aprueba en las tarjetas de abajo.
-export function EditorialPanel({ onReview, onGenerated }: { onReview: (item: EditorialItemRow) => void; onGenerated: () => void }) {
+// `show`: el Centro Editorial reparte el panel en dos secciones («Programación y configuración» y «Historial y errores»); sin él se enseña todo, como siempre.
+// `program`: el programa semanal del REGISTRO compartido del Centro (así se actualiza a la vez que las listas y los contadores); sin él, el panel pide el suyo.
+export interface SharedProgram {
+  data: EditorialItemRow[] | null
+  loading: boolean
+  error: string | null
+  reload: () => void
+}
+export function EditorialPanel({ onReview, onGenerated, show = 'all', program, refreshKey }: { onReview: (item: EditorialItemRow) => void; onGenerated: () => void; show?: 'all' | 'config' | 'history'; program?: SharedProgram; refreshKey?: number }) {
   const statusLoader = useCallback(() => getEditorialStatus(), [])
   const status = useAdminData<EditorialStatus>(statusLoader)
-  const itemsLoader = useCallback(() => listEditorialItems(null), [])
-  const items = useAdminData<EditorialItemRow[]>(itemsLoader)
+  const shared = program !== undefined
+  const itemsLoader = useCallback(() => (shared ? Promise.resolve([] as EditorialItemRow[]) : listEditorialItems(null)), [shared])
+  const own = useAdminData<EditorialItemRow[]>(itemsLoader)
+  // Con programa compartido no se pide uno propio.
+  const items = program ?? { data: own.data, loading: own.loading, error: own.error, reload: own.reload }
+  const config = show !== 'history'
+  const history = show !== 'config'
+  // Cuando el registro compartido se recarga (se aprobó, rechazó, editó… algo), los contadores de borradores de cada tipo también se vuelven a pedir.
+  const lastKey = useRef(refreshKey)
+  const reloadStatus = status.reload
+  useEffect(() => {
+    if (lastKey.current === refreshKey) return
+    lastKey.current = refreshKey
+    reloadStatus()
+  }, [refreshKey, reloadStatus])
   const [notice, setNotice] = useState<string | null>(null)
   const [showRuns, setShowRuns] = useState(false)
 
@@ -50,26 +71,30 @@ export function EditorialPanel({ onReview, onGenerated }: { onReview: (item: Edi
 
   return (
     <section className="cadm-stack" aria-labelledby="cadm-editorial-title" data-help-id="comunidad.editorial-panel">
-      <h3 id="cadm-editorial-title">Generación semanal</h3>
+      {config && <h3 id="cadm-editorial-title">Generación semanal</h3>}
+      {config && (
       <InfoBox>
         <p>{EDITORIAL_TEXT.intro}</p>
         <p>{EDITORIAL_TEXT.neverPublishes}</p>
       </InfoBox>
-      {status.data && <MenuAutopublishCard enabled={status.data.menuAutopublish} onNotice={setNotice} onChanged={() => status.reload()} />}
-      {status.data && (
+      )}
+      {config && status.data && <MenuAutopublishCard enabled={status.data.menuAutopublish} onNotice={setNotice} onChanged={() => status.reload()} />}
+      {config && status.data && (
         <p className={`cadm-small${status.data.ai.enabled ? ' muted' : ' cadm-warnline'}`} role={status.data.ai.enabled ? undefined : 'note'}>
           {aiLine(status.data.ai)}
         </p>
       )}
+      {config && (
       <div className="cadm-actions">
         <button type="button" className="cadm-btn cadm-btn-secondary" onClick={refreshAll} disabled={status.loading}>
           Actualizar
         </button>
       </div>
+      )}
       <ActionNotice message={notice} />
       {status.loading && !status.data && <AdminLoading label="Cargando la generación semanal…" />}
       {status.error && <AdminError message={status.error} onRetry={status.reload} />}
-      {status.data && (
+      {config && status.data && (
         <ul className="cadm-list">
           <li key="articles">
             <KindCard
@@ -95,7 +120,7 @@ export function EditorialPanel({ onReview, onGenerated }: { onReview: (item: Edi
         </ul>
       )}
 
-      {status.data && status.data.errors.length > 0 && (
+      {history && status.data && status.data.errors.length > 0 && (
         <div className="cadm-card" aria-label="Errores recientes">
           <h4>Errores recientes</h4>
           <ul className="cadm-options">
@@ -108,14 +133,16 @@ export function EditorialPanel({ onReview, onGenerated }: { onReview: (item: Edi
           </ul>
         </div>
       )}
+      {history && (
       <div className="cadm-actions">
         <button type="button" className="cadm-btn cadm-btn-secondary" aria-expanded={showRuns} onClick={() => setShowRuns((v) => !v)} data-help-id="comunidad.editorial-history">
           {showRuns ? 'Ocultar el historial de ejecuciones' : 'Ver el historial de ejecuciones'}
         </button>
       </div>
-      {showRuns && <RunsHistory />}
+      )}
+      {history && showRuns && <RunsHistory />}
 
-      <ProgramWeek items={items.data} loading={items.loading} error={items.error} onReload={items.reload} onReview={onReview} currentMonday={status.data?.cycle.monday ?? null} />
+      {config && <ProgramWeek items={items.data} loading={items.loading} error={items.error} onReload={items.reload} onReview={onReview} currentMonday={status.data?.cycle.monday ?? null} />}
     </section>
   )
 }

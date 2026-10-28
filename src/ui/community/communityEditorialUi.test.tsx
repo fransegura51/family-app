@@ -291,7 +291,7 @@ describe('Programa de la semana', () => {
     expect(onReview).toHaveBeenCalledWith(expect.objectContaining({ id: 'a1', kind: 'article' }))
   })
 
-  it('en la pestaña, «Revisar» abre ESE elemento en la lista de propuestas con su hueco y su prioridad', async () => {
+  it('en la pestaña, «Revisar» del programa abre ESE elemento en su detalle (con su hueco y su prioridad) y «Volver a la lista» regresa', async () => {
     const proposal = {
       id: 'a1', kind: 'article', section: 'hogar', topicId: 'ahorro', title: 'Trucos para ahorrar luz', body: 'Un texto práctico', status: 'proposed', version: 1,
       payload: { editorial: true, sources: [] }, slotDate: '2026-11-02', generated: true, proposedBy: 'Pepa (IA)', tier: 1,
@@ -300,13 +300,15 @@ describe('Programa de la semana', () => {
     api.adminListProposals.mockResolvedValue([proposal, { ...proposal, id: 'other', title: 'Otro artículo', slotDate: '2026-11-03', tier: 2 }])
     api.adminListMenus.mockResolvedValue({ autopublish: false, menus: [] })
     mount(<OfficialTab onChanged={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: /Programación y configuración/ }))
     const open = await screen.findByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })
-    await screen.findAllByRole('article', { name: /Artículo de Equipo PEPA/ })
     fireEvent.click(open)
-    await waitFor(() => expect(document.querySelector('[data-proposal-id="a1"]')?.className).toContain('cadm-card-focus'))
-    expect(document.querySelector('[data-proposal-id="other"]')?.className).not.toContain('cadm-card-focus')
+    await waitFor(() => expect(document.querySelector('[data-proposal-id="a1"]')).toBeTruthy())
+    expect(document.querySelector('[data-proposal-id="other"]')).toBeNull()
     expect(screen.getAllByText(/Para el lunes 2 nov · Tema nuevo/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Borrador preparado por Pepa \(IA\)/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Borrador preparado por Pepa [(]IA[)]/).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: /Volver a la lista/ }))
+    await waitFor(() => expect(document.querySelector('[data-proposal-id="a1"]')).toBeNull())
   })
 })
 

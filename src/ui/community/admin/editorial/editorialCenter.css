@@ -1,0 +1,33 @@
+/* Centro Editorial: navegación interna, resumen y tarjetas compactas. Primero móvil (375 px): nada se desborda en horizontal. */
+.cadm-center { min-width: 0; }
+.cadm-subnav { display: flex; flex-wrap: wrap; gap: 6px; }
+.cadm-subnav .cadm-chip-button { min-height: 44px; }
+.cadm-center-section[hidden] { display: none; }
+
+.cadm-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.cadm-summary-card { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; min-height: 44px; padding: 12px; border: 1px solid var(--border, #d8dce6); border-radius: 12px; background: var(--card, #fff); color: inherit; font: inherit; cursor: pointer; }
+.cadm-summary-card.warn { border-color: #c0392b; }
+.cadm-summary-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+.cadm-summary-label { font-weight: 600; overflow-wrap: anywhere; }
+
+.cadm-center-filters { display: flex; flex-direction: column; gap: 8px; }
+.cadm-center-search input, .cadm-center-dates input { width: 100%; max-width: 100%; min-height: 44px; box-sizing: border-box; }
+.cadm-center-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.cadm-center-dates .cadm-btn { grid-column: 1 / -1; }
+
+.cadm-compact { padding: 12px; }
+.cadm-compact-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px; }
+.cadm-compact-kind { font-weight: 600; font-size: .9rem; }
+.cadm-compact-title { margin: 6px 0 2px; overflow-wrap: anywhere; }
+.cadm-compact-meta { margin: 0 0 6px; overflow-wrap: anywhere; }
+.cadm-compact-list { display: flex; flex-direction: column; gap: 8px; padding: 0; list-style: none; }
+
+.cadm-detail { display: flex; flex-direction: column; gap: 8px; scroll-margin-top: 8px; }
+.cadm-back { align-self: flex-start; min-height: 44px; }
+
+@media (max-width: 480px) {
+  .cadm-program, .cadm-program tbody, .cadm-program tr, .cadm-program th, .cadm-program td { display: block; width: 100%; box-sizing: border-box; }
+  .cadm-program thead { display: none; }
+  .cadm-program tr { padding: 6px 0; border-bottom: 1px solid var(--border, #e3e6ee); }
+  .cadm-program th[scope="row"] { text-align: left; }
+}

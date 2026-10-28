@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
-// ECO-UI-01 y ECO-UI-02 en el formulario REAL de edición de un movimiento (Economía → Movimientos).
-//  · Con un ticket vinculado con productos reales, el bloque de clasificación se sustituye por «✓ Ticket vinculado» (sin desplegable ni reparto) y NO se pierde ninguna clasificación guardada.
-//  · Sin ticket válido (o solo con el marcador «Pendiente»), el selector y «Repartir entre varias clasificaciones» siguen ahí.
-//  · Las etiquetas son selectores (no una lista de botones) y los repartos se conservan al guardar.
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+// ECO-UI-01/03/04 en el formulario REAL de edición de un movimiento (Economía → Movimientos).
+//  · «✓ Compra vinculada» (con o sin foto del ticket) cuando hay una compra realmente vinculada al movimiento.
+//  · Compra con productos reales: se oculta el bloque de clasificación (manda el desglose) sin perder nada de lo guardado.
+//  · Compra vinculada SIN productos reales (sin líneas, o solo el marcador «Pendiente»): se indica y se conserva el selector de clasificación.
+//  · Sin compra vinculada: el selector y «Repartir entre varias clasificaciones» como siempre.
+//  · Etiquetas: selectores + «+ Añadir etiqueta» (buscador a demanda); los repartos se conservan al guardar.
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FamilyFoodType } from '@/data/foodTypes'
@@ -81,13 +83,15 @@ beforeEach(() => {
   data.ticketLines = new Map([
     ['con-ticket', real],
     ['solo-pendiente', placeholder],
-    ['ticket-vacio', []],
+    ['sin-lineas', []], // compra anotada a mano sin ticket ni desglose, vinculada al movimiento
+    ['banco-con-compra', real], // origen «banco» pero con una compra vinculada de verdad
   ])
   data.expenses = [
-    ex({ id: 'con-ticket', store: 'Con ticket', productClassification: 'Lácteos' }), // ticket vinculado con productos reales + clasificación antigua que NO se debe borrar
+    ex({ id: 'con-ticket', store: 'Con ticket', productClassification: 'Lácteos' }), // compra con productos reales + clasificación antigua que NO se debe borrar
     ex({ id: 'solo-pendiente', store: 'Solo pendiente' }), // el único producto es el marcador «Pendiente»
-    ex({ id: 'ticket-vacio', store: 'Ticket vacio' }), // ticket vinculado sin líneas
-    ex({ id: 'sin-ticket', store: 'Sin ticket', source: 'banco', productClassification: 'Carne' }), // apunte bancario sin ticket
+    ex({ id: 'sin-lineas', store: 'Sin lineas', source: 'banco', productClassification: 'Carne' }),
+    ex({ id: 'banco-con-compra', store: 'Banco con compra', source: 'banco', productClassification: 'Carne' }),
+    ex({ id: 'sin-compra', store: 'Sin compra', source: 'banco', productClassification: 'Carne' }), // apunte bancario sin compra vinculada
     ex({ id: 'repartida', store: 'Repartida', source: 'banco', tagId: 'jen' }),
   ]
   data.tagShares = new Map([['repartida', [{ tagId: 'jen', amount: 12 }, { tagId: 'alv', amount: 8 }]]])
@@ -107,22 +111,23 @@ async function openEdit(store: string) {
   fireEvent.click(row.closest('.movement-row') as HTMLElement)
   await screen.findByRole('button', { name: 'Guardar' })
 }
+const linkedBadge = () => screen.getByTestId('movement-purchase-linked')
 
-describe('ECO-UI-01 · movimiento con ticket vinculado', () => {
-  it('con productos reales: «✓ Ticket vinculado» y NADA del bloque de clasificación (ni desplegable, ni reparto, ni explicación)', async () => {
+describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
+  it('compra con productos reales: «✓ Compra vinculada» y NADA del bloque de clasificación (ni desplegable, ni reparto, ni explicación, ni enlaces ni productos)', async () => {
     await openEdit('Con ticket')
-    await waitFor(() => expect(screen.getByTestId('movement-ticket-linked').textContent).toContain('Ticket vinculado'))
+    await waitFor(() => expect(linkedBadge().textContent).toContain('Compra vinculada'))
+    expect(screen.queryByText(/Ticket vinculado/)).toBeNull()
     expect(screen.queryByText(/Clasificación \(opcional\)/)).toBeNull()
     expect(screen.queryByText(/Repartir entre varias clasificaciones/)).toBeNull()
     expect(screen.queryByText(/Reparto por clasificación/)).toBeNull()
     expect(data.ticketQueries).toEqual(['con-ticket']) // se mira el vínculo real de ESTE gasto, nunca por comercio ni fecha
-    // tampoco se añaden «Ver ticket», «Editar productos» ni listas de productos
-    expect(screen.queryByText(/Ver ticket|Editar productos|Yogur/)).toBeNull()
+    expect(screen.queryByText(/Ver ticket|Ver compra|Editar productos|Yogur/)).toBeNull()
   })
 
   it('al guardar NO se borra la clasificación antigua ni se toca el reparto de clasificaciones ni los importes', async () => {
     await openEdit('Con ticket')
-    await screen.findByTestId('movement-ticket-linked')
+    await screen.findByTestId('movement-purchase-linked')
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     await waitFor(() => expect(data.updateExpense).toHaveBeenCalledTimes(1))
     const patch = (data.updateExpense.mock.calls[0] as unknown as [string, Record<string, unknown>])[1]
@@ -131,36 +136,54 @@ describe('ECO-UI-01 · movimiento con ticket vinculado', () => {
     expect(data.setExpenseClasses).not.toHaveBeenCalled()
   })
 
-  it('un ticket cuyo único producto es el marcador «Pendiente» NO es un desglose real: se mantiene el selector', async () => {
-    await openEdit('Solo pendiente')
-    await waitFor(() => expect(data.ticketQueries).toContain('solo-pendiente'))
-    expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
-    expect(screen.queryByTestId('movement-ticket-linked')).toBeNull()
+  it('el vínculo se mira sea cual sea el origen del gasto: un apunte «banco» con compra vinculada también muestra «Compra vinculada» y oculta el selector', async () => {
+    await openEdit('Banco con compra')
+    await waitFor(() => expect(linkedBadge()).toBeTruthy())
+    expect(screen.queryByText(/Clasificación \(opcional\)/)).toBeNull()
+    expect(data.ticketQueries).toEqual(['banco-con-compra'])
   })
 
-  it('ticket vinculado sin líneas: se mantiene el selector (no hay productos que clasificar desde el ticket)', async () => {
-    await openEdit('Ticket vacio')
-    await waitFor(() => expect(data.ticketQueries).toContain('ticket-vacio'))
-    expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
-    expect(screen.queryByTestId('movement-ticket-linked')).toBeNull()
-  })
-
-  it('apunte bancario sin ticket: selector y reparto de clasificaciones, sin consultar nada; la clasificación guardada sigue puesta', async () => {
-    await openEdit('Sin ticket')
+  it('compra vinculada SIN productos (anotada a mano, sin desglose): se indica «Compra vinculada» pero se conserva el selector de clasificación', async () => {
+    await openEdit('Sin lineas')
+    await waitFor(() => expect(linkedBadge()).toBeTruthy())
     expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
     expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
-    expect(data.ticketQueries).toEqual([]) // origen «banco»: no puede tener ticket vinculado, no se hace ninguna consulta extra
     expect((screen.getByDisplayValue(/Carne/) as HTMLSelectElement).value).toBe('Carne')
+  })
+
+  it('compra cuyo único producto es el marcador «Pendiente»: no es un desglose real -> «Compra vinculada» + selector', async () => {
+    await openEdit('Solo pendiente')
+    await waitFor(() => expect(linkedBadge()).toBeTruthy())
+    expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
+  })
+
+  it('sin compra vinculada: ni etiqueta de vínculo ni nada oculto; selector y reparto como siempre, con la clasificación guardada puesta', async () => {
+    await openEdit('Sin compra')
+    await waitFor(() => expect(data.ticketQueries).toContain('sin-compra'))
+    expect(screen.queryByTestId('movement-purchase-linked')).toBeNull()
+    expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
+    expect((screen.getByDisplayValue(/Carne/) as HTMLSelectElement).value).toBe('Carne')
+  })
+
+  it('al desvincular la compra el movimiento recupera el selector de clasificación (con su clasificación manual intacta)', async () => {
+    data.ticketLines.set('con-ticket', null) // la compra se desvincula: ya no hay receipts para ese gasto
+    await openEdit('Con ticket')
+    await waitFor(() => expect(data.ticketQueries).toContain('con-ticket'))
+    expect(screen.queryByTestId('movement-purchase-linked')).toBeNull()
+    expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
+    expect((screen.getByDisplayValue(/Lácteos/) as HTMLSelectElement).value).toBe('Lácteos')
   })
 })
 
-describe('ECO-UI-02 · etiquetas en el formulario de edición', () => {
-  it('no hay una lista de botones con todas las etiquetas: un desplegable por etiqueta asignada', async () => {
-    await openEdit('Sin ticket')
-    expect(screen.getAllByLabelText(/^Etiqueta \d+$/)).toHaveLength(1)
+describe('ECO-UI-02/03 · etiquetas en el formulario de edición', () => {
+  it('no hay lista de botones ni buscador a la vista: un desplegable por etiqueta asignada y el enlace «+ Añadir etiqueta»', async () => {
+    await openEdit('Sin compra')
+    expect(screen.queryAllByLabelText(/^Etiqueta \d+$/)).toHaveLength(0) // este movimiento no tiene etiquetas: no hay desplegables vacíos
     expect(screen.queryByRole('button', { name: 'Vacaciones' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Cumpleaños Álvaro 2026' })).toBeNull()
+    expect(screen.queryByLabelText('Buscar etiqueta')).toBeNull()
+    expect(screen.getByRole('button', { name: '+ Añadir etiqueta' })).toBeTruthy()
     expect(screen.getByRole('button', { name: /Gestionar etiquetas/ })).toBeTruthy()
   })
 
@@ -176,10 +199,10 @@ describe('ECO-UI-02 · etiquetas en el formulario de edición', () => {
     expect(data.setExpenseTags).toHaveBeenCalledWith('repartida', [{ tagId: 'jen', amount: 12 }, { tagId: 'alv', amount: 8 }])
   })
 
-  it('añadir una tercera etiqueta a un reparto en euros conserva los dos importes y exige completar la suma antes de guardar', async () => {
+  it('añadir una tercera etiqueta (desde el selector a demanda) conserva los dos importes y exige completar la suma antes de guardar', async () => {
     await openEdit('Repartida')
     fireEvent.click(screen.getByRole('button', { name: '+ Añadir etiqueta' }))
-    fireEvent.change(screen.getByLabelText('Etiqueta 3'), { target: { value: 'vac' } })
+    fireEvent.click(within(screen.getByTestId('tag-picker')).getByRole('option', { name: /Vacaciones/ }))
     expect((screen.getByLabelText('Importe de Jennifer') as HTMLInputElement).value).toBe('12.00')
     expect((screen.getByLabelText('Importe de Cumpleaños Álvaro 2026') as HTMLInputElement).value).toBe('8.00')
     // 12 + 8 ya suman 20: a la nueva no le queda nada y el formulario lo dice en vez de guardar mal

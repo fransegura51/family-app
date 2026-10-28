@@ -219,7 +219,7 @@ import {
   type ClassificationKind,
   type MovementDraft,
 } from '@/domain/movementForm'
-import { buildFoodReceiptIds, buildProductKindSets, hasRealTicketBreakdown, isPlaceholderProduct, purchaseNature } from '@/domain/products'
+import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseLinkState, purchaseNature, type PurchaseLinkState } from '@/domain/products'
 import { saveStatsReturnContext, takeStatsReturnContext } from '@/state/statsReturnContext'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
 import { classifyFoodType } from '@/domain/foodTypes'
@@ -421,6 +421,8 @@ export interface MovementsFilter {
   // única forma de reproducir EXACTAMENTE el mismo conjunto que
   // produjo la cifra es la lista de ids que ya se calculó para ella.
   expenseIds?: string[]
+  /** COR-04G: abre directamente la ficha de edición/consulta de ESTE movimiento al llegar (desde una fila de estadística que es un movimiento bancario sin producto). */
+  openExpenseId?: string
   /** Lo que cada movimiento aporta a la estadística desde la que se llegó (p. ej. una clasificación repartida): la lista enseña esa parte además del importe completo. */
   imputed?: { label: string; byExpense: Record<string, number> }
   // Solo gastos reales SIN categoría (category NULL, «Pendiente de clasificar»). Filtro lógico: no es una categoría ni se busca en
@@ -3550,6 +3552,15 @@ export function ExpensesTab({
   const [customTo, setCustomTo] = useState(toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // COR-04G: llegar desde una fila de estadística que es un movimiento: su ficha se abre sola (una vez por movimiento pedido).
+  const openedExpenseRef = useRef<string | null>(null)
+  useEffect(() => {
+    const id = filter?.openExpenseId
+    if (id && openedExpenseRef.current !== id) {
+      openedExpenseRef.current = id
+      setEditingId(id)
+    }
+  }, [filter?.openExpenseId])
   // Petición real: "para Piso compartido/cuentas separadas primero hay
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
@@ -4478,20 +4489,19 @@ export function TagSharesField({
   total: number
   onChange: (next: { tagId: string; split: TagSplitDraft | null }) => void
 }) {
-  // ECO-UI-02: en vez de una fila de botones con TODAS las etiquetas de la familia, un selector por etiqueta asignada y «+ Añadir etiqueta» para sumar otro. Los repartos
-  // (partes iguales, euros, %) son los de siempre; una etiqueta no se puede elegir dos veces. `pendingEmpty` = selectores recién añadidos que todavía no tienen etiqueta.
-  const [pendingEmpty, setPendingEmpty] = useState(0)
+  // ECO-UI-02/03: solo se ven las etiquetas YA asignadas, cada una en su desplegable compacto (con su color), y debajo «+ Añadir etiqueta». El buscador/selector de etiquetas
+  // disponibles NO está siempre a la vista: aparece solo al pulsar «+ Añadir etiqueta», y se cierra al elegir. Los repartos (partes iguales, euros, %) son los de siempre.
+  const [picking, setPicking] = useState(false)
   const [query, setQuery] = useState('')
   const chosen = split ? split.ids : tagId ? [tagId] : []
   const tagOf = (id: string) => tags.find((t) => t.id === id)
+  const available = tags.filter((t) => !chosen.includes(t.id))
   const needle = query.trim().toLowerCase()
-  const optionsFor = (current: string) =>
-    tags.filter((t) => t.id === current || (!chosen.includes(t.id) && (!needle || t.name.toLowerCase().includes(needle))))
+  const pickable = available.filter((t) => !needle || t.name.toLowerCase().includes(needle))
   const mainTag = (ids: string[]) => (ids.includes(tagId) ? tagId : (ids[0] ?? ''))
 
-  function pickInExisting(old: string, value: string) {
-    if (value === old) return
-    if (!value) return removeTag(old)
+  function changeTag(old: string, value: string) {
+    if (!value || value === old) return
     if (split) onChange({ tagId: tagId === old ? value : tagId, split: replaceSplitTag(split, old, value) })
     else onChange({ tagId: value, split: null })
   }
@@ -4502,60 +4512,69 @@ export function TagSharesField({
       else onChange({ tagId: split.ids.filter((x) => x !== old)[0] ?? '', split: null })
     } else onChange({ tagId: '', split: null })
   }
-  function pickInEmpty(value: string) {
-    if (!value) return
-    if (pendingEmpty > 0) setPendingEmpty(pendingEmpty - 1)
+  function addTag(value: string) {
+    setPicking(false)
+    setQuery('')
     if (chosen.length === 0) onChange({ tagId: value, split: null })
     else if (split) onChange({ tagId: mainTag(split.ids), split: addSplitTag(split, value, total) })
     else onChange({ tagId, split: startSplit([tagId, value], total) })
   }
 
-  const rows: { key: string; value: string; removable: boolean }[] = [
-    ...(chosen.length > 0 ? chosen.map((id, i) => ({ key: id, value: id, removable: i > 0 })) : [{ key: 'empty-base', value: '', removable: false }]),
-    ...Array.from({ length: chosen.length > 0 ? pendingEmpty : 0 }, (_, i) => ({ key: `empty-${i}`, value: '', removable: true })),
-  ]
-  const canAdd = chosen.length >= 1 && pendingEmpty === 0 && tags.length > chosen.length
-
   return (
     <div data-help-id="finance.tag-select">
-      {tags.length > 8 && (
-        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta" style={{ marginBottom: 4 }} />
+      {chosen.length === 0 && (
+        <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+          Sin etiqueta
+        </p>
       )}
-      {rows.map((r, i) => {
-        const tag = tagOf(r.value)
+      {chosen.map((id, i) => {
+        const tag = tagOf(id)
         return (
-          <div key={r.key} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: tag ? tag.color : 'transparent', border: tag ? undefined : '1px dashed #bbb' }} />
-            <select
-              style={{ flex: 1, minWidth: 0 }}
-              aria-label={`Etiqueta ${i + 1}`}
-              value={r.value}
-              onChange={(e) => (r.value ? pickInExisting(r.value, e.target.value) : pickInEmpty(e.target.value))}
-            >
-              <option value="">{r.removable ? 'Elige una etiqueta' : 'Sin etiqueta'}</option>
-              {optionsFor(r.value).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
+          <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: tag ? tag.color : 'transparent' }} />
+            <select style={{ flex: 1, minWidth: 0 }} aria-label={`Etiqueta ${i + 1}`} value={id} onChange={(e) => changeTag(id, e.target.value)}>
+              {tags
+                .filter((t) => t.id === id || !chosen.includes(t.id))
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
             </select>
-            {r.removable && (
-              <button
-                type="button"
-                className="link-button"
-                style={{ flex: 'none', minWidth: 32, minHeight: 32 }}
-                aria-label={r.value ? `Quitar la etiqueta ${tag?.name ?? ''}`.trim() : 'Quitar este selector'}
-                onClick={() => (r.value ? removeTag(r.value) : setPendingEmpty(Math.max(0, pendingEmpty - 1)))}
-              >
-                ✕
-              </button>
-            )}
+            <button type="button" className="link-button" style={{ flex: 'none', minWidth: 32, minHeight: 32 }} aria-label={`Quitar la etiqueta ${tag?.name ?? ''}`.trim()} onClick={() => removeTag(id)}>
+              ✕
+            </button>
           </div>
         )
       })}
+      {picking && (
+        <div className="card" data-testid="tag-picker" style={{ padding: 8, marginBottom: 4 }}>
+          <input type="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar etiqueta…" aria-label="Buscar etiqueta" style={{ marginBottom: 4 }} />
+          <div role="listbox" aria-label="Etiquetas disponibles" style={{ maxHeight: 180, overflowY: 'auto' }}>
+            {pickable.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="link-button"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, textAlign: 'left', color: 'var(--text)', fontSize: 14 }}
+                onClick={() => addTag(t.id)}
+              >
+                <span aria-hidden="true" style={{ width: 12, height: 12, borderRadius: '50%', flex: 'none', background: t.color }} />
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.name}</span>
+              </button>
+            ))}
+            {pickable.length === 0 && <p className="muted" style={{ margin: '6px 0', fontSize: 13 }}>{available.length === 0 ? 'Ya están todas las etiquetas.' : 'Ninguna etiqueta coincide.'}</p>}
+          </div>
+          <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => { setPicking(false); setQuery('') }}>
+            Cancelar
+          </button>
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-        {canAdd && (
-          <button type="button" className="link-button" data-help-id="finance.tag-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPendingEmpty(1)}>
+        {!picking && available.length > 0 && (
+          <button type="button" className="link-button" data-help-id="finance.tag-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPicking(true)}>
             + Añadir etiqueta
           </button>
         )}
@@ -4662,7 +4681,7 @@ function MovementFormFields({
   categories,
   tags,
   pendingCategoryLabel,
-  ticketLinked = false,
+  purchaseLink = 'none',
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4671,8 +4690,9 @@ function MovementFormFields({
   tags: Tag[]
   // Solo al editar un gasto con category NULL (pendiente de clasificar): se conserva tal cual mientras no se elija una.
   pendingCategoryLabel?: string
-  // ECO-UI-01: el movimiento tiene un ticket vinculado con productos reales: sus clasificaciones se gestionan desde el ticket, así que aquí no se pide ninguna (lo ya guardado se conserva).
-  ticketLinked?: boolean
+  // ECO-UI-04: 'linked' = hay una compra realmente vinculada al movimiento (con o sin foto del ticket) pero sin productos reales: se indica y se puede clasificar a mano;
+  // 'linked-products' = la compra trae productos reales y su desglose manda: no se pide clasificación aquí (lo ya guardado se conserva).
+  purchaseLink?: PurchaseLinkState
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4758,12 +4778,12 @@ function MovementFormFields({
           <input type="text" data-help-id="finance.movement-store" value={draft.store} onChange={(e) => onChange({ ...draft, store: e.target.value })} placeholder="Mercadona" />
         </label>
       )}
-      {classificationKind && ticketLinked === true && (
-        <p className="muted" data-testid="movement-ticket-linked" style={{ margin: 0, fontSize: 13 }}>
-          ✓ Ticket vinculado
+      {purchaseLink !== 'none' && (
+        <p className="muted" data-testid="movement-purchase-linked" style={{ margin: 0, fontSize: 13 }}>
+          ✓ Compra vinculada
         </p>
       )}
-      {classificationKind && ticketLinked === false && (
+      {classificationKind && purchaseLink !== 'linked-products' && (
         <ClassSharesField
           options={classificationOptions}
           value={draft.productClassification}
@@ -4853,22 +4873,22 @@ function EditExpenseInline({
   }))
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // ECO-UI-01: solo un gasto de origen ticket / ticket+banco puede tener un ticket vinculado; para el resto no se consulta nada. Mientras se comprueba (o si falla) se enseña el selector de
-  // siempre: nunca se oculta algo que se necesita por no saber todavía.
-  const mayHaveTicket = !expense.isIncome && (expense.source === 'ticket' || expense.source === 'ticket_banco')
-  const [ticketLinked, setTicketLinked] = useState<boolean>(false)
+  // ECO-UI-01/04: se mira el vínculo REAL (receipts.expense_id) del gasto, sea cual sea su origen (un apunte bancario puede estar vinculado a una compra con ticket o a una compra
+  // anotada a mano sin foto) y sus líneas. Es la MISMA regla que usa Estadística compras para decidir si manda el desglose de productos. Un ingreso no tiene compra. Mientras se comprueba
+  // (o si falla) se enseña el selector de siempre: nunca se oculta algo que se necesita por no saber todavía.
+  const [purchaseLink, setPurchaseLink] = useState<PurchaseLinkState>('none')
   useEffect(() => {
-    if (!mayHaveTicket) return
+    if (expense.isIncome) return
     let cancelled = false
     listLinkedTicketProducts(expense.id)
       .then((lines) => {
-        if (!cancelled) setTicketLinked(lines != null && hasRealTicketBreakdown(lines))
+        if (!cancelled) setPurchaseLink(purchaseLinkState(lines))
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [expense.id, mayHaveTicket])
+  }, [expense.id, expense.isIncome])
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
@@ -4929,7 +4949,7 @@ function EditExpenseInline({
         onChange={setDraft}
         categories={categories}
         tags={tags}
-        ticketLinked={ticketLinked}
+        purchaseLink={purchaseLink}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
       />
       {onAddToForecast && (
@@ -5474,10 +5494,10 @@ interface ClassifiableEntry {
 }
 
 function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakdownEntry[] {
-  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number; isProduct: boolean }>; byExpense: Map<string, number> }>()
+  const totals = new Map<string, { icon: string; products: Map<string, { name: string; total: number; isProduct: boolean; expenseId?: string }>; byExpense: Map<string, number> }>()
   for (const entry of entries) {
-    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number; isProduct: boolean }>(), byExpense: new Map<string, number>() }
-    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0, isProduct: entry.isProduct === true }
+    const group = totals.get(entry.type.name) ?? { icon: entry.type.icon, products: new Map<string, { name: string; total: number; isProduct: boolean; expenseId?: string }>(), byExpense: new Map<string, number>() }
+    const p = group.products.get(entry.itemId) ?? { name: entry.displayName, total: 0, isProduct: entry.isProduct === true, expenseId: entry.isProduct === true ? undefined : entry.expenseId }
     p.total += entry.amount
     group.products.set(entry.itemId, p)
     // Importe imputado a esta clasificación por cada gasto (en céntimos enteros para que la suma no arrastre decimales).
@@ -5490,7 +5510,7 @@ function buildProductTypeBreakdown(entries: ClassifiableEntry[]): FoodTypeBreakd
   return [...totals.entries()]
     .map(([name, group]) => {
       const productList = [...group.products.entries()]
-        .map(([productId, p]) => ({ productId, name: p.name, total: p.total, isProduct: p.isProduct }))
+        .map(([productId, p]) => ({ productId, name: p.name, total: p.total, isProduct: p.isProduct, expenseId: p.expenseId }))
         .sort((a, b) => b.total - a.total)
       const total = productList.reduce((sum, p) => sum + p.total, 0)
       // Solo cuentan los gastos que APORTAN importe a esta clasificación: un gasto con una línea de 0 € (o un reparto a cero) de esta clase no es «de esta clase».
@@ -5729,9 +5749,13 @@ export function ReceiptsTab({ onBackToHistory }: { onBackToHistory?: (back: Pend
     <div>
       {error && <p className="error">{error}</p>}
       {openTarget && onBackToHistory && (
-        <button type="button" className="link-button" style={{ minHeight: 44, textAlign: 'left' }} onClick={() => onBackToHistory(openTarget.back)}>
-          ← Volver al Historial de precios de {openTarget.back.productName}
-        </button>
+        // COR-04F: barra que se queda PEGADA arriba mientras se hace scroll (la compra se centra en pantalla al llegar y el botón, al principio de la página, quedaba fuera de vista).
+        <div className="receipt-back-bar" data-testid="receipt-back-bar">
+          <button type="button" onClick={() => onBackToHistory(openTarget.back)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
+            ← Volver a Historial de precios
+          </button>
+          <span className="muted" style={{ fontSize: 12 }}>{openTarget.back.productName}</span>
+        </div>
       )}
       {targetMissing && <p className="muted">No se ha encontrado esa compra (puede haberse borrado). El Historial de precios la sigue mostrando como registro.</p>}
       <datalist id="receipt-known-stores">
@@ -7770,7 +7794,7 @@ interface FoodTypeBreakdownEntry {
   total: number
   count: number
   /** `productId` es la clave de la fila; `isProduct` = es un producto REAL (id de la tabla products), no una compra sin desglose (tienda/gasto). */
-  products: { productId: string; name: string; total: number; isProduct: boolean }[]
+  products: { productId: string; name: string; total: number; isProduct: boolean; expenseId?: string }[]
   /** Gastos que de verdad aportan importe a esta clasificación (importe imputado > 0), en la MISMA lista que se enseña en «Ver movimientos». */
   expenseIds: string[]
   /** Lo que cada uno de esos gastos aporta a esta clasificación (no su importe completo): una compra repartida o con varios productos aporta solo su parte. */
@@ -7789,11 +7813,14 @@ function FoodTypeBreakdownList({
   expandedKey,
   onToggle,
   onOpenProduct,
+  onOpenExpense,
 }: {
   types: FoodTypeBreakdownEntry[]
   expandedKey: string | null
   onToggle: (key: string) => void
   onOpenProduct?: (product: { productId: string; name: string }) => void
+  /** COR-04G: una fila que es un movimiento bancario sin producto individual abre ESE movimiento (por identificador) en Economía. */
+  onOpenExpense?: (expense: { expenseId: string; name: string }) => void
 }) {
   if (types.length === 0) return null
   const grandTotal = types.reduce((sum, t) => sum + t.total, 0)
@@ -7835,26 +7862,25 @@ function FoodTypeBreakdownList({
                     depender solo del texto. */}
                 {t.products.map((p, i) => {
                   const rowStyle = { background: i % 2 === 1 ? t.color : undefined }
+                  // COR-04G: destino de la fila — la ficha del producto (línea real de ticket) o el movimiento (apunte bancario sin producto individual). Solo cambia que el NOMBRE va
+                  // subrayado cuando hay destino: misma fila, misma altura, mismos colores y mismo tamaño de letra de siempre.
+                  const open = p.isProduct && onOpenProduct ? () => onOpenProduct({ productId: p.productId, name: p.name }) : !p.isProduct && p.expenseId && onOpenExpense ? () => onOpenExpense({ expenseId: p.expenseId as string, name: p.name }) : null
                   const content = (
                     <>
-                      <span className="price-row-name">{p.name}</span>
+                      <span className="price-row-name" style={open ? { textDecoration: 'underline' } : undefined}>{p.name}</span>
                       <span className="price-row-price">
                         {p.total.toFixed(2)} €{' '}
                         <span className="muted">({t.total > 0 ? ((p.total / t.total) * 100).toFixed(0) : 0}%)</span>
                       </span>
                     </>
                   )
-                  // COR-04: solo las filas que SON un producto real (identificador de producto) abren su ficha; un movimiento bancario clasificado sin producto individual
-                  // (COR-04B) conserva su fila de siempre. COR-04A: la fila pulsable es EXACTAMENTE la de antes (mismo elemento y estilos: ni más alta, ni otra letra, ni fondo
-                  // nuevo); toda la fila es la zona táctil y solo cambia el cursor.
-                  if (!onOpenProduct || !p.isProduct) {
+                  if (!open) {
                     return (
                       <div key={p.productId} className="price-row" style={rowStyle}>
                         {content}
                       </div>
                     )
                   }
-                  const open = () => onOpenProduct({ productId: p.productId, name: p.name })
                   return (
                     <div
                       key={p.productId}
@@ -7862,7 +7888,7 @@ function FoodTypeBreakdownList({
                       style={{ ...rowStyle, cursor: 'pointer' }}
                       role="button"
                       tabIndex={0}
-                      aria-label={`Abrir la ficha de ${p.name} en Historial de precios`}
+                      aria-label={p.isProduct ? `Abrir la ficha de ${p.name} en Historial de precios` : `Abrir el movimiento ${p.name}`}
                       onClick={open}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -8244,6 +8270,11 @@ export function BudgetsTab({
 
   const [periodFrom, periodTo] = rangeForPreset(preset, customFrom, customTo, monthStartDay)
   const periodTitle = periodLabelForTitle(preset, periodFrom, periodTo)
+  // COR-04G: al salir hacia Economía (Ver movimientos / abrir un movimiento) se guarda lo que se tenía (periodo, Alimentos/Otros, clasificación desplegada, scroll) para volver igual.
+  const viewMovementsKeepingContext = (f: MovementsFilter) => {
+    saveStatsReturnContext({ preset, customFrom, customTo, scope: storeDonutScope, expandedClassType, scrollY: window.scrollY })
+    onViewMovements?.(f)
+  }
   const groupCategories = categories.filter((c) => c.budgetGroup === group)
   // Piso compartido: Individual = lo tuyo (owner_member_id no nulo, RLS
   // ya solo entrega el tuyo); Común = owner_member_id null. Sin modo
@@ -8300,11 +8331,19 @@ export function BudgetsTab({
   const { nonFoodProductIds, foodProductIds } = buildProductKindSets(products)
   const foodReceiptIdsForPrices = buildFoodReceiptIds(receipts, categories)
   const periodPrices = prices.filter((pr) => pr.recordedDate >= periodFrom && pr.recordedDate <= periodTo)
-  const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))
   const pricesByReceiptId = new Map<string, ProductPrice[]>()
   for (const pr of periodPrices) {
     if (!pr.receiptId) continue
     pricesByReceiptId.set(pr.receiptId, [...(pricesByReceiptId.get(pr.receiptId) ?? []), pr])
+  }
+  // Un gasto puede tener más de un ticket vinculado (duplicados): se usa el que tiene desglose REAL (productos que no son el marcador «Pendiente»); a igualdad, el último. Así un
+  // ticket duplicado que solo trae el marcador no tapa al que sí trae productos (COR-01). Nunca se suman dos tickets (se contaría el gasto dos veces).
+  const hasRealLines = (receiptId: string) => (pricesByReceiptId.get(receiptId) ?? []).some((pr) => !isPlaceholderProduct(productById.get(pr.productId)))
+  const receiptByExpenseId = new Map<string, Receipt>()
+  for (const r of receipts) {
+    if (!r.expenseId) continue
+    const current = receiptByExpenseId.get(r.expenseId)
+    if (!current || hasRealLines(r.id) || !hasRealLines(current.id)) receiptByExpenseId.set(r.expenseId, r)
   }
   // Excepción manual por producto (ver Historial de precios, ⚙️
   // Clasificaciones de productos): si `category` ya tiene una clase
@@ -8836,14 +8875,14 @@ export function BudgetsTab({
             title="Reparto del gasto por tienda"
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? storePieSlicesAlimentacion : storePieSlicesOtros}
-            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
+            onViewRecords={(expenseIds, label, imputed) => viewMovementsKeepingContext({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           </div>
           <LinkedDonutCard
             title={storeDonutScope === 'alimentacion' ? 'Reparto del gasto por tipo de alimento' : 'Reparto del gasto en Otros por clasificación'}
             monthLabel={periodTitle}
             slices={storeDonutScope === 'alimentacion' ? foodTypePieGroups : noAlimentosTypePieGroups}
-            onViewRecords={(expenseIds, label, imputed) => onViewMovements?.({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
+            onViewRecords={(expenseIds, label, imputed) => viewMovementsKeepingContext({ label, from: periodFrom, to: periodTo, isIncome: false, expenseIds, imputed })}
           />
           <FoodTypeBreakdownList
             types={storeDonutScope === 'alimentacion' ? foodTypeBreakdown : noAlimentosTypeBreakdown}
@@ -8855,6 +8894,11 @@ export function BudgetsTab({
                     saveStatsReturnContext({ preset, customFrom, customTo, scope: storeDonutScope, expandedClassType, scrollY: window.scrollY })
                     onOpenProduct({ ...p, kind: storeDonutScope })
                   }
+                : undefined
+            }
+            onOpenExpense={
+              onViewMovements
+                ? (x) => viewMovementsKeepingContext({ label: x.name, from: periodFrom, to: periodTo, isIncome: false, expenseIds: [x.expenseId], openExpenseId: x.expenseId })
                 : undefined
             }
           />

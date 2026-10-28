@@ -16,6 +16,8 @@ export interface PendingProductHistoryLink {
     fromStats?: boolean
     /** Posición de la página que se recupera al reabrir la ficha. */
     scrollY?: number
+    /** Alcance con el que estaba la ficha («Solo el mismo» / «+ Equivalentes»). */
+    scope?: 'identical' | 'equivalent'
   }
 }
 

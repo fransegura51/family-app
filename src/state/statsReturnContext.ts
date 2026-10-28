@@ -14,13 +14,17 @@ export interface StatsReturnContext {
 }
 
 let saved: StatsReturnContext | null = null
+let savedAt = 0
+/** Un «volver» guardado caduca: si pasa mucho tiempo sin volver, ya no es lo que la persona espera encontrar. */
+const MAX_AGE_MS = 30 * 60 * 1000
 
 export function saveStatsReturnContext(ctx: StatsReturnContext): void {
   saved = ctx
+  savedAt = Date.now()
 }
 
 export function takeStatsReturnContext(): StatsReturnContext | null {
-  const value = saved
+  const value = saved && Date.now() - savedAt <= MAX_AGE_MS ? saved : null
   saved = null
   return value
 }

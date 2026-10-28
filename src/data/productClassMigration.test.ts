@@ -217,7 +217,7 @@ describe('Fase 5: privacidad y seguridad de lectura', () => {
   it('el resolutor central es puro: no importa la capa de datos ni la interfaz', () => {
     const imports = [...APP['/src/domain/productClass.ts'].matchAll(/^import .* from '([^']+)'/gm)].map((m) => m[1])
     // El catálogo maestro (catalog/*) es puro como el resto: sin red, sin datos de familias.
-    expect(imports).toEqual(['./catalog/classes', './catalog/identify', './foodTypes'])
+    expect(imports).toEqual(['./catalog/classes', './catalog/identify', './foodTypes', './placeholderProduct'])
     for (const file of ['/src/domain/productClass.ts', '/src/domain/sharedClassLoader.ts']) {
       expect(APP[file], file).not.toMatch(/@\/data|@\/ui|supabase/)
     }

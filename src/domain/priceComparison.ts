@@ -118,17 +118,21 @@ export function equivalentGroup(
   all: readonly CmpProduct[],
   ctx: RelationContext = {},
   scope: GroupScope = 'equivalent',
-): { members: GroupMember[]; suggestions: GroupMember[] } {
+): { members: GroupMember[]; suggestions: GroupMember[]; confirmed: GroupMember[] } {
   const members: GroupMember[] = []
   const suggestions: GroupMember[] = []
+  const confirmed: GroupMember[] = []
   for (const p of all) {
     const link = relationBetween(target, p, ctx)
     if (link.relation === 'different') continue
+    // COR-04E: una equivalencia CONFIRMADA por la familia (decisión suya o mismo producto común) nunca se vuelve a preguntar: va a «confirmadas», en cualquier alcance.
+    const isConfirmed = p.id !== target.id && link.relation === 'equivalent' && (link.source === 'family' || link.source === 'common')
+    if (isConfirmed) confirmed.push({ product: p, link })
     if (link.automatic && (link.relation === 'identical' || (scope === 'equivalent' && link.relation === 'equivalent'))) members.push({ product: p, link })
-    else if (link.relation === 'possible' || (link.automatic && link.relation === 'equivalent')) suggestions.push({ product: p, link })
+    else if (!isConfirmed && (link.relation === 'possible' || (link.automatic && link.relation === 'equivalent'))) suggestions.push({ product: p, link })
   }
   members.sort((x, y) => (x.product.id === target.id ? -1 : y.product.id === target.id ? 1 : 0))
-  return { members, suggestions }
+  return { members, suggestions, confirmed }
 }
 
 // ─── Ficha del producto: precios por establecimiento ───

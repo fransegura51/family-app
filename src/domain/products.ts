@@ -1,5 +1,6 @@
 import type { BudgetCategory, Product, ProductPrice, Receipt } from '@/domain/types'
 import { isFoodCategory } from '@/domain/finance'
+import { isPlaceholderProduct } from '@/domain/placeholderProduct'
 import { groupBySafeMagnitude, type MeasurementUnit } from '@/domain/measurementUnit'
 
 export interface ProductStats {
@@ -87,22 +88,19 @@ export function resolvePurchaseNature(
   return { nature: 'desconocido', basis: 'none' }
 }
 
-// Producto MARCADOR (COR-01): algunas compras llegan de fuera (atajo del móvil, importación) con una única línea cuyo «producto» no es un producto, sino la palabra
-// «Pendiente» (= «aún no sé qué es»). Esa línea comparte UN solo producto entre todas las compras de la familia: si alguien le pone una clase (p. ej. «Ropa y calzado»),
-// TODAS las compras con marcador caían en esa clase aunque el gasto estuviera clasificado de otra forma (Cable Ethernet → «Ropa y calzado»). Una línea marcador NO es
-// desglose real: no aporta clasificación; la compra se clasifica por su propio reparto / clasificación / categoría. Coincidencia EXACTA con el nombre normalizado
-// (sin parciales: «Pendiente de pago de ...» no lo es). No se toca ningún dato histórico: solo se deja de usar como fuente de clasificación.
-const PLACEHOLDER_PRODUCT_NAMES: ReadonlySet<string> = new Set(['pendiente', 'pendiente de clasificar'])
-
-export function isPlaceholderProduct(product: { normalizedName?: string | null; displayName?: string | null } | null | undefined): boolean {
-  if (!product) return false
-  const name = (product.normalizedName || product.displayName || '').trim().toLowerCase()
-  return PLACEHOLDER_PRODUCT_NAMES.has(name)
-}
+// El marcador «Pendiente» (COR-01) vive en placeholderProduct.ts; se reexporta aquí para quien ya lo importaba de products.
+export { isPlaceholderProduct }
 
 /** ECO-UI-01: ¿hay al menos una línea de producto REAL? Las del marcador «Pendiente» no cuentan como desglose. */
 export function hasRealTicketBreakdown(lines: readonly { normalizedName?: string | null; displayName?: string | null }[]): boolean {
   return lines.some((l) => !isPlaceholderProduct(l))
+}
+
+/** ECO-UI-04: estado del vínculo de un movimiento con una compra. 'none' = sin compra; 'linked' = compra vinculada sin productos reales; 'linked-products' = con productos reales. */
+export type PurchaseLinkState = 'none' | 'linked' | 'linked-products'
+export function purchaseLinkState(lines: readonly { normalizedName?: string | null; displayName?: string | null }[] | null): PurchaseLinkState {
+  if (lines == null) return 'none'
+  return hasRealTicketBreakdown(lines) ? 'linked-products' : 'linked'
 }
 
 export function purchaseNature(
@@ -127,13 +125,15 @@ export function isFoodPurchase(
 
 // Conjuntos de productos por su TIPO REAL (Fase 6C): la clase conocida manda (también sobre un non_food antiguo y contradictorio);
 // sin clase conocida, la marca heredada non_food. La tienda no interviene.
-export function buildProductKindSets(products: Pick<Product, 'id' | 'nonFood' | 'classKind'>[]): {
+export function buildProductKindSets(products: (Pick<Product, 'id' | 'nonFood' | 'classKind'> & Partial<Pick<Product, 'normalizedName' | 'displayName'>>)[]): {
   nonFoodProductIds: Set<string>
   foodProductIds: Set<string>
 } {
   const nonFoodProductIds = new Set<string>()
   const foodProductIds = new Set<string>()
   for (const p of products) {
+    // COR-01: el marcador «Pendiente» no es un producto: no aporta naturaleza (ni alimentos ni no alimentos) aunque alguien le diera una clase.
+    if (isPlaceholderProduct(p)) continue
     if (p.classKind === 'alimentacion') foodProductIds.add(p.id)
     else if (p.classKind === 'no_alimentos' || p.nonFood) nonFoodProductIds.add(p.id)
   }

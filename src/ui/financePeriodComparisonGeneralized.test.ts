@@ -77,7 +77,8 @@ describe('Compras (Estadística compras) — "Comparado con el periodo anterior"
   it('usa isComprasExpense con los MISMOS `categories`/`receiptByExpenseId` que ya calcula esta misma pantalla para "Total Registrado en Compras" — nunca una copia propia', () => {
     // No se recalculan aparte: son los identificadores ya existentes de BudgetsTab, compartidos con el
     // bucle de `splits` — así los dos sitios ven literalmente los mismos datos para el mismo periodo.
-    expect(SRC).toContain('const receiptByExpenseId = new Map(receipts.filter((r) => r.expenseId).map((r) => [r.expenseId as string, r]))')
+    // COR-01: de varios tickets de un gasto se usa el que tiene desglose real (receiptByExpenseId sigue siendo el único mapa de la pantalla).
+    expect(SRC).toContain('const receiptByExpenseId = new Map<string, Receipt>()')
     expect(SRC.match(/receiptByExpenseId/g)?.length).toBeGreaterThanOrEqual(2)
   })
 

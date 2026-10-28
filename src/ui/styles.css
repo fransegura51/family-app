@@ -9162,3 +9162,25 @@ input[type='search'] {
 .movement-form .inline-fields {
   gap: 8px;
 }
+
+/* COR-04F — barra «← Volver a Historial de precios» al llegar a una compra desde la ficha de un producto: pegada arriba para que siga a la vista aunque la compra se centre en pantalla. */
+.receipt-back-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  background: var(--card-bg);
+  border-bottom: 1px solid #e3e3e3;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.receipt-back-bar button {
+  min-height: 44px;
+  font-weight: 600;
+}

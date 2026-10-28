@@ -65,12 +65,16 @@ describe('A–E: Amazon + clase conocida → el kind de la clase, sin importar l
   })
 
   it('B/C. Amazon + camisetas La Tostadora (manual «Ropa y calzado») → OTROS (las dos)', () => {
-    for (const id of ['latostadora', 'pendiente']) {
-      const camiseta = product(id, 'Ropa y calzado', { nonFood: true })
-      expect(counts(camiseta, 'Amazon', false)).toBe(false)
-      // aunque el ticket lo cuente como Alimentación por error, la clase manda
-      expect(counts(camiseta, 'Amazon', true)).toBe(false)
-    }
+    const camiseta = product('latostadora', 'Ropa y calzado', { nonFood: true })
+    expect(counts(camiseta, 'Amazon', false)).toBe(false)
+    // aunque el ticket lo cuente como Alimentación por error, la clase manda
+    expect(counts(camiseta, 'Amazon', true)).toBe(false)
+  })
+
+  it('B/C bis. el marcador «Pendiente» NO es un producto (COR-01): aunque alguien le diera «Ropa y calzado» no aporta naturaleza; decide el ticket, como en una compra sin desglose', () => {
+    const marcador = product('pendiente', 'Ropa y calzado', { nonFood: true })
+    expect(counts(marcador, 'Amazon', false)).toBe(false) // ticket sin categoría de comida: ni comida ni Otros asignado por el marcador
+    expect(counts(marcador, 'Amazon', true)).toBe(true) // ticket de Alimentación: lo decide el ticket, no la clase del marcador
   })
 
   it('D. Amazon + clase manual «Cuidado personal» → OTROS, también con la marca antigua non_food=false (la contradicción auditada)', () => {

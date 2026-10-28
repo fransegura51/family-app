@@ -20,6 +20,7 @@
 import { catalogClass } from './catalog/classes'
 import { identifyProduct } from './catalog/identify'
 import { classifyFoodType } from './foodTypes'
+import { isPlaceholderProduct } from './placeholderProduct'
 
 export type ProductClassKind = 'alimentacion' | 'no_alimentos'
 export type ProductClassSource = 'manual' | 'shared' | 'legacy' | 'catalog' | 'rule' | 'fallback'
@@ -125,6 +126,10 @@ function findClassByName(classes: readonly FamilyClassRef[], name: string): Fami
 }
 
 export function resolveProductClass(input: ResolveProductClassInput): ResolvedProductClass {
+  // COR-01: el marcador «Pendiente» no es un producto real: nunca tiene clase (ni la suya guardada, ni la del catálogo, ni la aprendida) y por tanto no la propaga a nada.
+  if (isPlaceholderProduct({ normalizedName: input.name, displayName: input.name })) {
+    return { className: '', foodTypeKey: null, kind: input.kind, source: 'fallback', sharedOutcome: 'not_consulted', classKnown: false }
+  }
   const stored = input.product?.category?.trim() || ''
   const useStored = !input.ignoreStored && stored !== ''
 

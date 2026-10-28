@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FamilyFoodType } from '@/data/foodTypes'
 import type { MovementsFilter } from '@/ui/FinanceScreen'
 import type { BudgetCategory, Expense, Product, ProductPrice, Receipt } from '@/domain/types'
+import { takeStatsReturnContext } from '@/state/statsReturnContext'
 
 const empty = (): unknown => ({ then: (r: (v: unknown) => unknown) => r({ data: [], error: null }), eq: empty, order: empty, select: empty, in: empty, limit: empty, maybeSingle: empty, single: empty, gte: empty, lte: empty, is: empty, not: empty, or: empty, range: empty })
 vi.mock('@/data/supabaseClient', () => ({ supabase: new Proxy({}, { get: (_t, p) => (p === 'auth' ? { getSession: async () => ({ data: { session: null } }), getUser: async () => ({ data: { user: null } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => undefined } } }) } : p === 'channel' ? () => ({ on: () => ({ subscribe: () => ({}) }), subscribe: () => ({}) }) : () => empty()) }) }))
@@ -21,6 +22,7 @@ const types = [
   { id: 't2', familyId: 'f', name: 'Papelería y oficina', icon: '✏️', kind: 'no_alimentos' },
   { id: 't3', familyId: 'f', name: 'Electrónica y hogar', icon: '🔌', kind: 'no_alimentos' },
   { id: 't4', familyId: 'f', name: 'Belleza y cuidado personal', icon: '💄', kind: 'no_alimentos' },
+  { id: 't5', familyId: 'f', name: 'Cuidado personal', icon: '🧴', kind: 'no_alimentos' },
 ] as unknown as FamilyFoodType[]
 
 const data = vi.hoisted(() => ({
@@ -44,6 +46,8 @@ const receipt = (id: string, expenseId: string) => ({ id, familyId: 'f', expense
 const price = (id: string, productId: string, receiptId: string, amount: number) => ({ id, productId, receiptId, price: amount, quantity: '1', unit: null, store: 'Amazon', recordedDate: '2026-10-16' }) as unknown as ProductPrice
 
 beforeEach(() => {
+  takeStatsReturnContext() // «Ver movimientos» guarda el contexto para volver: que no pase de una prueba a otra
+  window.scrollTo = (() => undefined) as typeof window.scrollTo
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-25T10:00:00'))
   data.products = [product('p-cable', 'Cable Ethernet 5m', 'Electrónica y hogar'), product('p-toall', 'Toallitas', 'Belleza y cuidado personal'), product('p-cami', 'Camiseta', 'Ropa y calzado')]
@@ -216,5 +220,88 @@ describe('COR-01 · líneas del producto marcador «Pendiente»', () => {
     expect(sum).toBe(Math.round((22.8 + 40.98 + 49.98 + 10) * 100) / 100) // ropa + reparto + mixta + sin-ticket
     // 6,39 + 23,94 + 22,8 + 47,97 + 49,98 + 10 = 161,08 € de compras, cada una una sola vez
     expect(document.body.textContent ?? '').toContain('161.08 €')
+  })
+})
+
+// COR-01 (3.ª ronda) — el caso de Amazon 04/10/2026, 8,99 €, clasificado «Cuidado personal» y colado en «Ropa y calzado». Jerarquía: desglose real de ticket > (marcador «Pendiente»
+// ignorado) > reparto manual entre clasificaciones > clasificación manual del movimiento > por defecto / «Sin clasificar».
+describe('COR-01 · jerarquía de clasificación y marcador «Pendiente» en todas sus formas', () => {
+  const pendiente = (id: string, name: string): Product => product(id, name, 'Ropa y calzado')
+  const realExpense = (o: Partial<Expense> & Pick<Expense, 'id'>) => ex({ source: 'ticket_banco', category: 'Compras y familia', ...o })
+
+  beforeEach(() => {
+    data.products = [pendiente('p-pend', 'Pendiente'), product('p-cami', 'Camiseta', 'Ropa y calzado')]
+    data.shares = new Map()
+    data.receipts = []
+    data.prices = []
+  })
+
+  it('Amazon 8,99 € «Cuidado personal» con ticket de un solo marcador «Pendiente» (clasificado Ropa y calzado): NO está en Ropa y calzado y SÍ en Cuidado personal con 8,99 €', async () => {
+    data.expenses = [realExpense({ id: 'amazon-899', amount: 8.99, expenseDate: '2026-10-04', productClassification: 'Cuidado personal' })]
+    data.receipts = [receipt('r1', 'amazon-899')]
+    data.prices = [price('1', 'p-pend', 'r1', 8.99)]
+    const ropa = await viewMovementsOf('Ropa y calzado') // no existe esa porción: el helper se queda con la última que tocó, que NO es «Ropa y calzado»
+    expect(ropa.imputed?.label).not.toBe('Ropa y calzado')
+    cleanup()
+    const cuidado = await viewMovementsOf('Cuidado personal')
+    expect(cuidado.expenseIds).toEqual(['amazon-899'])
+    expect(cuidado.imputed?.byExpense['amazon-899']).toBe(8.99)
+  })
+
+  it.each([['PENDIENTE'], ['Pendiente.'], ['  pendiente '], ['Pendiente de clasificar'], ['pendiente por revisar']])('el marcador escrito «%s» tampoco clasifica', async (name) => {
+    data.products = [pendiente('p-pend', name)]
+    data.expenses = [realExpense({ id: 'x', amount: 8.99, productClassification: 'Cuidado personal' })]
+    data.receipts = [receipt('r1', 'x')]
+    data.prices = [price('1', 'p-pend', 'r1', 8.99)]
+    const cuidado = await viewMovementsOf('Cuidado personal')
+    expect(cuidado.expenseIds).toEqual(['x'])
+  })
+
+  it('cambiar DESPUÉS la clasificación manual del movimiento (sin desglose real) se refleja en las estadísticas y en el filtro', async () => {
+    data.expenses = [realExpense({ id: 'm', amount: 8.99, productClassification: 'Cuidado personal' })]
+    data.receipts = [receipt('r1', 'm')]
+    data.prices = [price('1', 'p-pend', 'r1', 8.99)]
+    expect((await viewMovementsOf('Cuidado personal')).expenseIds).toEqual(['m'])
+    cleanup()
+    data.expenses = [realExpense({ id: 'm', amount: 8.99, productClassification: 'Papelería y oficina' })]
+    const papeleria = await viewMovementsOf('Papelería y oficina')
+    expect(papeleria.expenseIds).toEqual(['m'])
+    cleanup()
+    const old = await viewMovementsOf('Cuidado personal') // ya no existe esa porción
+    expect(old.imputed?.label).not.toBe('Cuidado personal')
+  })
+
+  it('un reparto manual entre clasificaciones (40,98 + 6,99) manda cuando el ticket solo trae el marcador; con productos reales manda el ticket', async () => {
+    data.expenses = [realExpense({ id: 'rep', amount: 47.97, productClassification: 'Ropa y calzado' }), realExpense({ id: 'real', amount: 20, productClassification: 'Cuidado personal' })]
+    data.shares = new Map([['rep', [{ className: 'Ropa y calzado', amount: 40.98 }, { className: 'Papelería y oficina', amount: 6.99 }]]])
+    data.receipts = [receipt('r1', 'rep'), receipt('r2', 'real')]
+    data.prices = [price('1', 'p-pend', 'r1', 47.97), price('2', 'p-cami', 'r2', 20)]
+    const ropa = await viewMovementsOf('Ropa y calzado')
+    expect(ropa.imputed?.byExpense.rep).toBe(40.98)
+    expect(ropa.imputed?.byExpense.real).toBe(20) // el producto real del ticket (camiseta) manda sobre la clasificación manual «Cuidado personal»
+    cleanup()
+    const papeleria = await viewMovementsOf('Papelería y oficina')
+    expect(papeleria.imputed?.byExpense.rep).toBe(6.99)
+  })
+
+  it('dos tickets vinculados al mismo gasto (uno solo con el marcador, otro con productos reales): se usa el que tiene desglose real y el gasto cuenta UNA vez', async () => {
+    data.expenses = [realExpense({ id: 'dup', amount: 12, productClassification: 'Cuidado personal' })]
+    data.receipts = [receipt('r-real', 'dup'), receipt('r-marcador', 'dup')] // el marcador es el último: antes tapaba al real
+    data.prices = [price('1', 'p-cami', 'r-real', 12), price('2', 'p-pend', 'r-marcador', 12)]
+    const ropa = await viewMovementsOf('Ropa y calzado')
+    expect(ropa.expenseIds).toEqual(['dup'])
+    expect(ropa.imputed?.byExpense.dup).toBe(12) // no 24: no se suman los dos tickets
+    expect(document.body.textContent ?? '').toContain('12.00 €')
+  })
+
+  it('un ticket con marcador + producto real: el real manda y el resto del gasto va a la clasificación propia del gasto (sin duplicar el gasto)', async () => {
+    data.expenses = [realExpense({ id: 'mix', amount: 30, productClassification: 'Cuidado personal' })]
+    data.receipts = [receipt('r1', 'mix')]
+    data.prices = [price('1', 'p-cami', 'r1', 10), price('2', 'p-pend', 'r1', 20)]
+    const cuidado = await viewMovementsOf('Cuidado personal')
+    expect(cuidado.imputed?.byExpense.mix).toBe(20)
+    cleanup()
+    const ropa = await viewMovementsOf('Ropa y calzado')
+    expect(ropa.imputed?.byExpense.mix).toBe(10)
   })
 })

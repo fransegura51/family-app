@@ -81,6 +81,8 @@ export function ProductPriceComparison({
   onPackSaved,
   receipts,
   onViewPurchase,
+  initialScope = 'identical',
+  onScopeChange,
 }: {
   productId: string
   products: readonly Product[]
@@ -89,18 +91,25 @@ export function ProductPriceComparison({
   /** COR-04C: tickets/compras de la familia, para saber de cuál sale cada precio. Sin ellos (o sin `onViewPurchase`) no se ofrece el enlace. */
   receipts?: readonly Pick<Receipt, 'id' | 'storagePath'>[]
   onViewPurchase?: (receiptId: string) => void
+  /** COR-04F: alcance con el que se abre la ficha («Solo el mismo» / «+ Equivalentes») y aviso al cambiarlo, para poder volver a ella tal cual estaba. */
+  initialScope?: GroupScope
+  onScopeChange?: (scope: GroupScope) => void
 }) {
   const cmpProducts = useMemo(() => products.map(toCmpProduct), [products])
   const target = cmpProducts.find((p) => p.id === productId)
   const { ctx, reload, commonsData } = useEquivalenceContext(cmpProducts, target?.displayName)
   const [pickingCommon, setPickingCommon] = useState(false)
   // COR-04D: la ficha de un producto enseña SU historial. Los equivalentes se comparan a petición («+ Equivalentes»), cada uno identificado por su nombre.
-  const [scope, setScope] = useState<GroupScope>('identical')
+  const [scope, setScopeState] = useState<GroupScope>(initialScope)
+  const setScope = (next: GroupScope) => {
+    setScopeState(next)
+    onScopeChange?.(next)
+  }
   const [openStore, setOpenStore] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [fixingPrice, setFixingPrice] = useState<string | null>(null)
 
-  const group = useMemo(() => (target ? equivalentGroup(target, cmpProducts, ctx, scope) : { members: [], suggestions: [] }), [target, cmpProducts, ctx, scope])
+  const group = useMemo(() => (target ? equivalentGroup(target, cmpProducts, ctx, scope) : { members: [], suggestions: [], confirmed: [] }), [target, cmpProducts, ctx, scope])
   const memberIds = useMemo(() => new Set(group.members.map((m) => m.product.id)), [group])
   const view = useMemo(
     () => productPriceView(group.members.map((m) => m.product), prices.filter((p) => memberIds.has(p.productId)).map(toCmpPrice)),
@@ -247,22 +256,73 @@ export function ProductPriceComparison({
         Son precios que habéis pagado vosotros, no ofertas de hoy.
       </p>
 
-      {others.length > 0 && scope === 'equivalent' && (
-        <div>
+      {/* COR-04E: con «+ Equivalentes» se ven los precios REGISTRADOS de cada equivalente (con su nombre y su precio original), aunque todavía no tengan un formato conocido para calcular
+          un precio normalizado. Son solo de lectura: «Indicar formato» y el resto de su historial se hacen en la ficha de CADA producto, así que nada se mezcla. */}
+      {scope === 'equivalent' && others.length > 0 && (
+        <div data-help-id="shopping.price-equivalent-records">
           <p className="muted" style={{ margin: '8px 0 2px' }}>
-            Se comparan también con:
+            Precios registrados de los equivalentes:
           </p>
-          {others.map((m) => (
+          {others.map((m) => {
+            const recs = prices
+              .filter((p) => p.productId === m.product.id)
+              .sort((a, b) => b.recordedDate.localeCompare(a.recordedDate))
+              .slice(0, 5)
+            if (recs.length === 0) return null
+            return (
+              <div key={m.product.id} className="receipt-line-card" data-product-id={m.product.id}>
+                <strong style={{ fontSize: 13 }}>{m.product.displayName}</strong>
+                {recs.map((p) => (
+                  <p key={p.id} className="muted receipt-row-detail-line" style={{ margin: '2px 0' }}>
+                    {shortDate(p.recordedDate)} · {p.store ?? NO_STORE} · {eur(p.price)}
+                    {p.unit === 'kg' ? '/kg' : '/ud'}
+                    {purchaseLink(p.id)}
+                  </p>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Equivalencias ya CONFIRMADAS (decisión de la familia o mismo producto común): se ven en cualquier alcance, no vuelven a preguntarse y se pueden retirar. */}
+      {group.confirmed.length > 0 && (
+        <div data-help-id="shopping.price-confirmed">
+          <p className="muted" style={{ margin: '8px 0 2px' }}>
+            Equivalencias confirmadas:
+          </p>
+          {group.confirmed.map((m) => (
             <p key={m.product.id} className="muted" style={{ margin: '2px 0' }}>
-              {m.product.displayName} ({m.link.relation === 'identical' ? 'el mismo' : 'equivalente'}){' '}
-              <button type="button" className="link-button" onClick={() => void decide(m.product.id, 'different')}>
-                No es equivalente
-              </button>
+              {m.product.displayName} {m.link.source === 'common' ? '(mismo producto común)' : '(equivalente)'}{' '}
+              {m.link.source === 'family' && (
+                <button type="button" className="link-button" onClick={() => void decide(m.product.id, 'different')}>
+                  Retirar equivalencia
+                </button>
+              )}
             </p>
           ))}
         </div>
       )}
 
+      {others.filter((m) => !group.confirmed.some((c) => c.product.id === m.product.id)).length > 0 && scope === 'equivalent' && (
+        <div>
+          <p className="muted" style={{ margin: '8px 0 2px' }}>
+            Se comparan también con:
+          </p>
+          {others
+            .filter((m) => !group.confirmed.some((c) => c.product.id === m.product.id))
+            .map((m) => (
+              <p key={m.product.id} className="muted" style={{ margin: '2px 0' }}>
+                {m.product.displayName} ({m.link.relation === 'identical' ? 'el mismo' : 'equivalente'}){' '}
+                <button type="button" className="link-button" onClick={() => void decide(m.product.id, 'different')}>
+                  No es equivalente
+                </button>
+              </p>
+            ))}
+        </div>
+      )}
+
+      {/* Posibles equivalencias: SOLO las que siguen pendientes de decidir. */}
       {group.suggestions.length > 0 && (
         <div>
           <p className="muted" style={{ margin: '8px 0 2px' }}>

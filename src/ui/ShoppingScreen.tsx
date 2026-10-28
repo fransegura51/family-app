@@ -249,11 +249,11 @@ export function ShoppingScreen() {
     navigate('/dinero')
   }
 
-  // COR-04: el «volver a Estadística» guardado solo vale mientras se sigue entre Estadística, Historial y Tickets; al irse a otra pestaña o salir de Compras, se descarta.
+  // COR-04: el «volver a Estadística» guardado solo vale mientras se sigue entre Estadística, Historial y Tickets; al irse a otra pestaña de Compras, se descarta. Al salir hacia
+  // Economía (abrir un movimiento desde la estadística) NO se descarta: se necesita al volver; caduca solo (ver statsReturnContext).
   useEffect(() => {
     if (tab !== 'Estadística compras' && tab !== 'Historial' && tab !== 'Tickets') clearStatsReturnContext()
   }, [tab])
-  useEffect(() => () => clearStatsReturnContext(), [])
 
   // COR-04: una fila de producto de Estadística compras abre SU ficha en Historial de precios (por identificador de producto); al cerrarla se vuelve aquí.
   function handleOpenProduct(p: { productId: string; name: string; kind: 'alimentacion' | 'no_alimentos' }) {
@@ -264,7 +264,7 @@ export function ShoppingScreen() {
 
   // COR-04C: de «Ver ticket / Ver compra» de la ficha de un producto, de vuelta a esa ficha (misma posición, mismo origen).
   function handleBackToHistory(back: PendingReceiptOpen['back']) {
-    setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY } })
+    setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY, scope: back.scope } })
     setTab('Historial')
   }
 
@@ -2483,6 +2483,8 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
   // classKind) usando los mismos datos que ya calcula el resto de
   // Historial, para no adivinar un chip que podría no coincidir.
   const pendingLinkAppliedRef = useRef(false)
+  // COR-04F: alcance de la ficha abierta («Solo el mismo» / «+ Equivalentes»); se conserva al ir a ver la compra y volver.
+  const [sheetScope, setSheetScope] = useState<'identical' | 'equivalent'>('identical')
   const [pendingSheet, setPendingSheet] = useState<{ productId: string; name: string; fromStats: boolean; scrollY: number | null } | null>(null)
   // COR-04C: tickets/compras de la familia, para enlazar cada precio con su compra original.
   const [receiptRefs, setReceiptRefs] = useState<{ id: string; storagePath: string | null }[]>([])
@@ -2496,6 +2498,7 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
     if (link.openSheet) {
       // COR-04: ficha del producto por IDENTIFICADOR, en el conjunto desde el que se tocó; la lista no se filtra. La ficha se abre en el efecto de más abajo, ya con ese conjunto aplicado.
       setMode(link.openSheet.kind)
+      setSheetScope(link.openSheet.scope ?? 'identical')
       setPendingSheet({ productId: link.productId, name: link.productName, fromStats: link.openSheet.fromStats !== false, scrollY: link.openSheet.scrollY ?? null })
       return
     }
@@ -2704,6 +2707,10 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
     if (pendingSheet.fromStats) setReturnToStats('armed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSheet, loading, mode, scopedPrices])
+  // Al cerrar la ficha, la próxima arranca otra vez en «Solo el mismo».
+  useEffect(() => {
+    if (!detail) setSheetScope('identical')
+  }, [detail])
   // Al cerrarse esa ficha (por cualquier camino: ✕, fuera, o porque el producto cambió de conjunto) se vuelve a Estadística compras, que se lee de nuevo y ya refleja el cambio.
   useEffect(() => {
     if (returnToStats === 'armed' && detail) setReturnToStats('open')
@@ -3049,10 +3056,12 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
               prices={prices}
               onPackSaved={() => void listAllProductPrices().then(setPrices)}
               receipts={receiptRefs}
+              initialScope={sheetScope}
+              onScopeChange={setSheetScope}
               onViewPurchase={
                 onViewPurchase
                   ? (receiptId) => {
-                      setPendingReceiptOpen({ receiptId, back: { productId: detail.productId, productName: detail.name, kind: mode, scrollY: window.scrollY, fromStats: returnToStats === 'open' } })
+                      setPendingReceiptOpen({ receiptId, back: { productId: detail.productId, productName: detail.name, kind: mode, scrollY: window.scrollY, fromStats: returnToStats === 'open', scope: sheetScope } })
                       onViewPurchase()
                     }
                   : undefined

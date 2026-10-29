@@ -175,7 +175,7 @@ import { takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pending
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -223,6 +223,7 @@ import {
   type ClassificationKind,
   type MovementDraft,
 } from '@/domain/movementForm'
+import { compareReceiptTotal, distributeDiscount } from '@/domain/receiptDiscount'
 import { buildFoodReceiptIds, buildProductKindSets, isPlaceholderProduct, purchaseLinkState, purchaseNature, type PurchaseLinkState } from '@/domain/products'
 import { saveStatsReturnContext, takeStatsReturnContext } from '@/state/statsReturnContext'
 import { normalizeMeasurementUnit } from '@/domain/measurementUnit'
@@ -4334,8 +4335,10 @@ function MovementRow({
               elegida (Sueldo, Regalo, Ingreso genérico...). */}
           {/* ECO-CLASIF: con la categoría tocable, un toque abre el selector (buscador, sugerida y más usadas) sin entrar al formulario completo.
               «sugerida» = PEPA la eligió con confianza media; en un gasto pendiente se enseña, si la hay, la categoría que PEPA propone. */}
-          <span className="movement-row-category">
-            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />}{' '}
+          {/* COR-05: el nombre de la categoría SIEMPRE se ve junto a su icono; si no cabe, se recorta con «…» al final (nunca se sustituye entero por «…»). El importe y los
+              indicadores no se encogen: solo cede el nombre. */}
+          <span className="movement-row-category" title={e.category ?? undefined}>
+            {ownerMember !== undefined && <OwnerBadge owner={ownerMember} size={16} />}
             {onCategoryClick ? (
               <button
                 type="button"
@@ -4347,12 +4350,14 @@ function MovementRow({
                   onCategoryClick()
                 }}
               >
-                {category?.icon} {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
+                <span className="movement-row-category-icon">{category?.icon}</span>
+                <span className="movement-row-category-name">{isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}</span>
               </button>
             ) : (
-              <>
-                {category?.icon} {isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}
-              </>
+              <span className="movement-row-category-btn movement-row-category-static">
+                <span className="movement-row-category-icon">{category?.icon}</span>
+                <span className="movement-row-category-name">{isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}</span>
+              </span>
             )}
             {e.categorySource === 'sugerida' && (
               <span className="suggested-tag" title="PEPA la ha elegido por el comercio. Toca la categoría para cambiarla o darla por buena.">
@@ -5639,7 +5644,7 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab({ onBackToHistory }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void } = {}) {
+export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void; onOpenProduct?: (product: { productId: string; name: string }) => void } = {}) {
   // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
   const [openTarget] = useState(() => takePendingReceiptOpen())
   const [focusId, setFocusId] = useState<string | null>(null)
@@ -5973,6 +5978,8 @@ export function ReceiptsTab({ onBackToHistory }: { onBackToHistory?: (back: Pend
                         receipt={r}
                         hasTicket={r.hasTicket}
                         highlight={focusId === r.id}
+                        onOpenProduct={onOpenProduct}
+                        onDiscountChanged={reload}
                         members={members}
                         onEdit={() => setEditingId(r.id)}
                         onAttach={() => setAttachingId(r.id)}
@@ -6351,6 +6358,8 @@ function ReceiptRow({
   onEdit,
   onAttach,
   onDelete,
+  onOpenProduct,
+  onDiscountChanged,
   refunds = [],
   payments = [],
   wallets = [],
@@ -6372,8 +6381,16 @@ function ReceiptRow({
   onToggleRefund?: () => void
   onRefunded?: () => void
   onDelete: () => void
+  /** COR-10: abre la ficha del producto (Historial de precios), donde se corrige su clasificación. */
+  onOpenProduct?: (product: { productId: string; name: string }) => void
+  /** COR-09: se registró o quitó un descuento general: la lista de compras se vuelve a leer. */
+  onDiscountChanged?: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
+  // COR-09: revisión de la diferencia entre lo que suman los productos y lo pagado (solo avisa; registrar un descuento general lo decide la persona).
+  const [discountInput, setDiscountInput] = useState<string | null>(null)
+  const [discountBusy, setDiscountBusy] = useState(false)
+  const [discountError, setDiscountError] = useState<string | null>(null)
   const [lines, setLines] = useState<ReceiptLineDetail[] | null>(null)
   const [loadingLines, setLoadingLines] = useState(false)
   const [viewing, setViewing] = useState(false)
@@ -6518,11 +6535,91 @@ function ReceiptRow({
               const unitLabel = normalizeMeasurementUnit(l.unit) ?? 'ud'
               return (
                 <p key={l.id} className="muted receipt-row-detail-line">
-                  {l.name}
+                  {/* COR-10: el nombre lleva a la ficha del producto (Historial de precios), donde se ve y se corrige su clasificación. */}
+                  {onOpenProduct && l.productId ? (
+                    <button type="button" className="link-button" style={{ padding: 0, font: 'inherit', textAlign: 'left', textDecoration: 'underline', color: 'inherit' }} onClick={() => onOpenProduct({ productId: l.productId as string, name: l.name })}>
+                      {l.name}
+                    </button>
+                  ) : (
+                    l.name
+                  )}
                   {l.quantity && ` · ${l.quantity} ${unitLabel}`} · {l.price.toFixed(2)} €/{unitLabel}
                 </p>
               )
             })}
+          {!loadingLines && lines && lines.length > 0 && receipt.totalAmount != null && (() => {
+            // COR-09: ¿cuadran los productos con lo pagado? (precios originales − descuento general registrado = total pagado)
+            const linesTotal = lines.reduce((sum, l) => {
+              const q = Number(l.quantity)
+              return sum + l.price * (Number.isFinite(q) && q > 0 ? q : 1)
+            }, 0)
+            const diff = compareReceiptTotal(linesTotal, receipt.discountTotal ?? 0, receipt.totalAmount as number)
+            const fmt = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+            const saveDiscount = async (amount: number) => {
+              setDiscountBusy(true)
+              setDiscountError(null)
+              try {
+                await setReceiptDiscount(receipt.id, amount)
+                setDiscountInput(null)
+                onDiscountChanged?.()
+              } catch (err) {
+                setDiscountError(errorMessage(err, 'No se pudo guardar el descuento'))
+              } finally {
+                setDiscountBusy(false)
+              }
+            }
+            return (
+              <div data-testid="receipt-difference" style={{ marginTop: 6 }}>
+                {(receipt.discountTotal ?? 0) > 0 && (
+                  <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                    🏷️ Descuento general registrado: −{fmt(receipt.discountTotal ?? 0)} (los precios de los productos son los originales).{' '}
+                    <button type="button" className="link-button" disabled={discountBusy} onClick={() => void saveDiscount(0)}>
+                      Quitar descuento
+                    </button>
+                  </p>
+                )}
+                {diff.kind !== 'ok' && (
+                  <div style={{ background: '#fff7e6', border: '1px solid #f0c36d', borderRadius: 8, padding: '6px 8px', fontSize: 13 }}>
+                    <strong>⚠️ Los productos no cuadran con lo pagado.</strong> Suman {fmt(diff.linesTotal)}
+                    {diff.discount > 0 ? ` − ${fmt(diff.discount)} de descuento` : ''} y se pagó {fmt(diff.total)} (diferencia {diff.difference < 0 ? '−' : '+'}{fmt(Math.abs(diff.difference))}). Puede ser una promoción,
+                    el envío, una devolución, un artículo que falta o un error de lectura: revísalo antes de dar nada por hecho.
+                    {diff.kind === 'less_paid' && diff.suggestedDiscount != null && discountInput == null && (
+                      <>
+                        {' '}
+                        <button type="button" className="link-button" onClick={() => setDiscountInput(diff.suggestedDiscount?.toFixed(2).replace('.', ',') ?? '')}>
+                          Registrar un descuento general…
+                        </button>
+                      </>
+                    )}
+                    {discountInput != null && (
+                      <div className="inline-fields" style={{ alignItems: 'center', marginTop: 6 }}>
+                        <label style={{ flex: 1 }}>
+                          Descuento general confirmado (€)
+                          <input type="text" inputMode="decimal" value={discountInput} onChange={(e) => setDiscountInput(e.target.value)} />
+                        </label>
+                        <button
+                          type="button"
+                          disabled={discountBusy}
+                          onClick={() => {
+                            const n = Number(discountInput.replace(',', '.'))
+                            if (!Number.isFinite(n) || n <= 0) return setDiscountError('Escribe un importe mayor que cero')
+                            void saveDiscount(n)
+                          }}
+                        >
+                          Guardar descuento
+                        </button>
+                        <button type="button" className="link-button" onClick={() => setDiscountInput(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    )}
+                    {diff.kind === 'more_paid' && <> Si falta un artículo o hay que corregir un precio, usa ✏️ para editar la compra.</>}
+                    {discountError && <p className="error" style={{ margin: '4px 0 0' }}>{discountError}</p>}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
         </div>
       )}
     </div>
@@ -8121,11 +8218,18 @@ export function BudgetsTab({
       let itemizedFood = 0
       let itemizedNonFood = 0
       let itemizedUnknown = 0
-      for (const pr of lines) {
+      // COR-09: un descuento GENERAL registrado en la compra (receipts.discount_total) se reparte entre sus productos en proporción a su precio, con céntimos exactos: las
+      // clasificaciones suman lo realmente pagado. Los precios originales del Historial no se tocan. Sin descuento registrado, los importes son los de siempre.
+      const grossAmounts = lines.map((l) => {
+        const q = Number(l.quantity)
+        return l.price * (Number.isFinite(q) && q > 0 ? q : 1)
+      })
+      const lineAmounts = (receipt?.discountTotal ?? 0) > 0 ? distributeDiscount(grossAmounts, receipt?.discountTotal ?? 0) : grossAmounts
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const pr = lines[lineIndex]
         const product = productById.get(pr.productId)
         const displayName = product?.displayName ?? '?'
-        const qty = Number(pr.quantity)
-        const amount = pr.price * (Number.isFinite(qty) && qty > 0 ? qty : 1)
+        const amount = lineAmounts[lineIndex]
         const nature = purchaseNature(pr, foodReceiptIdsForPrices, nonFoodProductIds, foodProductIds)
         if (nature === 'desconocido') {
           // Ni Alimentos ni Otros: se contabiliza aparte como «Productos sin clasificar».

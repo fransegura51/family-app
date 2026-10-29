@@ -1,5 +1,5 @@
 // CLASES CAT-1 (las clases de producto del catálogo base de PEPA) tal como las conoce el catálogo maestro. Es un ESPEJO de la tabla del catálogo base
-// (migraciones 0139 + 0294 + 0334): la prueba catalog/catalogClasses.test.ts comprueba que las claves y los nombres coinciden con las migraciones. La base de
+// (migraciones 0139 + 0294 + 0334 + 0344): la prueba catalog/catalogClasses.test.ts comprueba que las claves y los nombres coinciden con las migraciones. La base de
 // datos sigue siendo la fuente de verdad de lo que ve cada familia; aquí solo está lo necesario para clasificar sin red.
 export type ClassKind = 'alimentacion' | 'no_alimentos'
 
@@ -42,6 +42,9 @@ export const CATALOG_CLASSES: readonly CatalogClass[] = [
   { key: 'other.mascotas', name: 'Mascotas', kind: 'no_alimentos', icon: '🐾' },
   { key: 'other.papeleria_oficina', name: 'Papelería y oficina', kind: 'no_alimentos', icon: '📓' },
   { key: 'other.cuidado_bebe', name: 'Higiene y cuidado del bebé', kind: 'no_alimentos', icon: '👶' },
+  // Nuevas en la 0344 (COR-06): muebles (un archivador de 5 cajones no es papelería ni ferretería) y manualidades/actividades creativas (no son juguetes ni comida).
+  { key: 'other.muebles_organizacion', name: 'Muebles y organización', kind: 'no_alimentos', icon: '🗄️' },
+  { key: 'other.manualidades_creatividad', name: 'Manualidades y creatividad', kind: 'no_alimentos', icon: '🎨' },
   { key: 'other.otros', name: 'Otros', kind: 'no_alimentos', icon: '🛍️' },
 ]
 
@@ -77,6 +80,8 @@ export const CLASS_CODES: Readonly<Record<string, string>> = {
   masc: 'other.mascotas',
   pap: 'other.papeleria_oficina',
   beb: 'other.cuidado_bebe',
+  mue: 'other.muebles_organizacion',
+  man: 'other.manualidades_creatividad',
   otro: 'other.otros',
 }
 

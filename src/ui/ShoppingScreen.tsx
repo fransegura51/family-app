@@ -262,6 +262,14 @@ export function ShoppingScreen() {
     window.scrollTo({ top: 0 })
   }
 
+  // COR-10: desde los productos de una compra (Tickets) se llega a su ficha en Historial de precios, donde ya se corrige su clasificación (sin otro clasificador). El conjunto
+  // Alimentos / Otros lo decide la propia ficha según la naturaleza real del producto.
+  function handleOpenProductFromTicket(p: { productId: string; name: string }) {
+    setPendingProductHistoryLink({ productId: p.productId, productName: p.name, openSheet: { fromStats: false } })
+    setTab('Historial')
+    window.scrollTo({ top: 0 })
+  }
+
   // COR-04C: de «Ver ticket / Ver compra» de la ficha de un producto, de vuelta a esa ficha (misma posición, mismo origen).
   function handleBackToHistory(back: PendingReceiptOpen['back']) {
     setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY, scope: back.scope } })
@@ -340,7 +348,7 @@ export function ShoppingScreen() {
       {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} />}
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab onBackToStats={() => setTab('Estadística compras')} onViewPurchase={() => setTab('Tickets')} />}
-      {tab === 'Tickets' && <ReceiptsTab onBackToHistory={handleBackToHistory} />}
+      {tab === 'Tickets' && <ReceiptsTab onBackToHistory={handleBackToHistory} onOpenProduct={handleOpenProductFromTicket} />}
       {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
         <BudgetsTab group="alimentacion" onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />
@@ -2486,7 +2494,11 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
     pendingLinkAppliedRef.current = true
     if (link.openSheet) {
       // COR-04: ficha del producto por IDENTIFICADOR, en el conjunto desde el que se tocó; la lista no se filtra. La ficha se abre en el efecto de más abajo, ya con ese conjunto aplicado.
-      setMode(link.openSheet.kind)
+      if (link.openSheet.kind) setMode(link.openSheet.kind)
+      else {
+        const productPrice = prices.find((p) => p.productId === link.productId)
+        if (productPrice) setMode(purchaseNature(productPrice, foodReceiptIds, nonFoodProductIds, foodProductIds) === 'alimentacion' ? 'alimentacion' : 'no_alimentos')
+      }
       setSheetScope(link.openSheet.scope ?? 'identical')
       setPendingSheet({ productId: link.productId, name: link.productName, fromStats: link.openSheet.fromStats !== false, scrollY: link.openSheet.scrollY ?? null })
       return

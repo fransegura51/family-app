@@ -23,7 +23,7 @@ beb.gel | Gel de baño infantil | beb | gel bebe; gel bano bebe; gel infantil | 
 beb.champu | Champú infantil | beb | champu bebe; champu infantil | l
 beb.gel.champu | Gel y champú infantil | beb | gel champu bebe; gel champu infantil | l
 beb.aceite | Aceite corporal de bebé | beb | aceite bebe; aceite infantil | l
-beb.chupete | Chupete | beb | | u
+beb.chupete | Chupete | beb | chupetes; chupetero; chupeteros; cadena chupete; cadenas chupetes; sujeta chupete; mordedor; mordedores | u
 beb.biberon | Biberón | beb | tetina; biberones | u
 beb.lactancia | Discos y protectores de lactancia | beb | disco lactancia; protector lactancia; conchas lactancia | u
 beb.empapador | Empapadores | beb | cambiador; empapador bebe | u

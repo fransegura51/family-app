@@ -48,6 +48,14 @@ export async function listLinkedTicketProducts(expenseId: string): Promise<{ nor
   return lines
 }
 
+// COR-09: registra (o quita, con 0) el descuento GENERAL confirmado de una compra. Solo escribe receipts.discount_total: no toca el total pagado, el movimiento del banco, el gasto ni los
+// precios originales de los productos. La base de datos exige un importe >= 0 y la política de la tabla limita el cambio a la familia.
+export async function setReceiptDiscount(receiptId: string, discount: number): Promise<void> {
+  if (!Number.isFinite(discount) || discount < 0) throw new Error('El descuento tiene que ser un importe positivo')
+  const { error } = await supabase.from('receipts').update({ discount_total: Math.round(discount * 100) / 100 }).eq('id', receiptId)
+  if (error) throw error
+}
+
 export async function listReceipts(): Promise<Receipt[]> {
   const data = await fetchAllRows((from, to) =>
     supabase

@@ -25,13 +25,13 @@ pap.colores | Lápices de colores y ceras | pap | lapices colores; ceras; cera c
 pap.pegamento | Pegamento | pap | barra pegamento; cola blanca; pegamento instantaneo; loctite; pegamento barra; pegamento liquido; silicona | u
 pap.tijeras | Tijeras | pap | tijera; tijeras escolares; tijeras cocina | u
 pap.folios | Folios | pap | folio; papel a4; resma; papel impresora; papel fotocopiadora; paquete folios; a4 | u
-pap.carpeta | Carpetas y archivadores | pap | archivador; clasificador; fundas; funda plastico; portafolios; carpeta anillas; carpeta plastico; separadores; carpetas | u
+pap.carpeta | Carpetas y archivadores | pap | archivador; clasificador; fundas; funda plastico; portafolios; carpeta anillas; carpeta plastico; separadores; carpetas | u | | cajones cajonera mueble ruedas
 pap.regla | Reglas y compases | pap | escuadra; cartabon; compas; transportador; regla escolar; juego reglas | u
 pap.cinta | Cinta adhesiva | pap | celo; cinta embalar; cinta carrocero; precinto; cinta doble cara; cinta adhesiva transparente; cinta carpintero | u
 pap.grapas | Grapas y clips | pap | grapa; grapadora; clips; clip; chincheta; chinchetas; pinza papel; gomillas | u
 pap.postit | Notas adhesivas | pap | post it; postit; notas adhesivas; taco notas; notas post it; marcapaginas | u
 pap.estuche | Estuche y mochila escolar | pap | mochila escolar; cartera escolar; mochila; cartera; estuche escolar; trolley escolar; neceser | u
-pap.tempera | Témperas y manualidades | pap | plastilina; acuarela; pincel; pinceles; pintura dedos; goma eva; cartulina; cartulinas; manualidades; purpurina; pistola silicona | u
+pap.tempera | Témperas y manualidades | man | plastilina; acuarela; pincel; pinceles; pintura dedos; goma eva; cartulina; cartulinas; manualidades; purpurina; pistola silicona | u
 pap.sobre | Sobres | pap | sobres; sobre carta; sobre acolchado; sobre manila | u
 pap.regalo | Papel de regalo | pap | envoltorio regalo; lazo regalo; felicitacion; lazo; cinta regalo; papel envolver | u
 ~pap.otros | Material de oficina | pap | oficina; material oficina; calculadora; agenda; calendario; etiquetas; etiqueta | u
@@ -49,6 +49,12 @@ uten.termo | Termos y botellas | uten | termo; botella termo; botella reutilizab
 ropa.calcetin | Calcetines | ropa | calcetines; calcetin; medias; pantys; leotardos; calcetin tobillero | u
 ropa.ropa.interior | Ropa interior | ropa | calzoncillo; calzoncillos; boxer; braga; bragas; slip; sujetador; bañador; bikini; camiseta interior | u
 ~ropa.otros | Ropa y calzado | ropa | ropa; camiseta; pantalon; camisa; sudadera; chaqueta; abrigo; vestido; falda; zapato; zapatos; zapatilla; zapatillas; chancla; chanclas; sandalia; sandalias; calzado; pijama; gorro; bufanda; gorra | u
+# Muebles y organización (COR-06): muebles de almacenaje, no material de oficina ni ferretería
+mue.cajonera | Cajoneras y muebles archivadores | mue | cajonera; cajoneras; archivador movil; archivador cajones; archivador ruedas; mueble archivador; cajonera oficina; archivador cerradura | u
+mue.estanteria | Estanterías y librerías | mue | estanteria; estanterias; libreria; librerias; balda; baldas | u
+mue.almacenaje | Muebles de almacenaje | mue | mueble almacenaje; zapatero; comoda; armario; mueble auxiliar; mesita noche; cubos almacenaje | u
+# Manualidades y creatividad (COR-06): actividades creativas con niños; los juegos educativos siguen siendo juguetes y los colorantes de cocina, comida
+man.kit | Kits de manualidades y experimentos | man | kit manualidades; kit experimentos; kit creativo; tubos ensayo; kit ciencia; actividades creativas; manualidades infantiles | u
 # Electrónica, jardín y otros
 ~elec.otros | Electrónica | elec | cargador; cable; auriculares; usb; pendrive; memoria; adaptador; altavoz; movil; funda movil; protector pantalla; bateria; regleta; alargador; enchufe; ladron | u
 jard.tierra | Tierra y abono | jard | tierra; sustrato; abono; fertilizante; turba; compost; mantillo; tierra macetas | k

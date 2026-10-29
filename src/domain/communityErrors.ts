@@ -34,6 +34,7 @@ export type CommunityErrorCode =
   | 'MENU_INVALID'
   | 'MENU_TEXT_STALE'
   | 'MENU_WEEK_TAKEN'
+  | 'POLL_WEEK_TAKEN'
   | 'MENU_WEEK_PAST'
   | 'BAD_PUBLISH_AT'
   | 'STALE'
@@ -75,6 +76,7 @@ export const COMMUNITY_ERROR_MESSAGES: Record<CommunityErrorCode, string> = {
   MENU_INVALID: 'El menú no es válido (7 días con comida y cena, recetas completas, sin platos repetidos de más…). Mira los avisos de la revisión del menú.',
   MENU_TEXT_STALE: 'Has cambiado el texto del menú sin revisar sus datos. Comprueba que el texto y el menú dicen lo mismo y confírmalo para aprobarlo.',
   MENU_WEEK_TAKEN: 'Esa semana ya tiene otro menú aprobado o publicado. Solo puede haber uno por semana: rechaza o reprograma el otro.',
+  POLL_WEEK_TAKEN: 'Ese fin de semana ya tiene otra encuesta programada o abierta. Elige otro sábado o reprograma la otra.',
   MENU_WEEK_PAST: 'La semana de este menú ya ha terminado: ya no se puede publicar. Reprográmalo a otro sábado o recházalo.',
   BAD_PUBLISH_AT: 'La fecha tiene que ser un sábado futuro a las 10:00 (hora peninsular).',
   STALE: 'El borrador cambió mientras tanto, así que la propuesta de Pepa ya no vale. Pide una nueva y se aplicará sobre la versión actual.',

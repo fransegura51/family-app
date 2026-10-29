@@ -62,12 +62,15 @@ export function TwoTapButton({
   onConfirm,
   disabled,
   variant = 'primary',
+  helpId,
 }: {
   label: string
   armedLabel?: string
   onConfirm: () => void
   disabled?: boolean
   variant?: 'primary' | 'danger' | 'secondary'
+  /** Marca de la Ayuda (data-help-id) del botón. */
+  helpId?: string
 }) {
   const [armed, setArmed] = useState(false)
   useEffect(() => {
@@ -81,6 +84,7 @@ export function TwoTapButton({
         type="button"
         className={`cadm-btn cadm-btn-${variant}${armed ? ' cadm-btn-armed' : ''}`}
         disabled={disabled}
+        data-help-id={helpId}
         onClick={() => {
           if (!armed) {
             setArmed(true)

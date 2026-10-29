@@ -624,7 +624,7 @@ export interface RevisionRow {
   id: string
   itemId: string
   baseVersion: number
-  scope: 'item' | 'dish'
+  scope: 'item' | 'dish' | 'day' | 'recipe'
   instruction: string
   status: 'proposed' | 'accepted' | 'rejected' | 'stale'
   notes: string
@@ -648,7 +648,7 @@ export function toRevisions(raw: unknown): RevisionRow[] {
       id: str(r.id),
       itemId: str(r.itemId),
       baseVersion: num(r.baseVersion, 1),
-      scope: r.scope === 'dish' ? ('dish' as const) : ('item' as const),
+      scope: r.scope === 'dish' || r.scope === 'day' || r.scope === 'recipe' ? (r.scope as 'dish' | 'day' | 'recipe') : ('item' as const),
       instruction: str(r.instruction),
       status: r.status === 'accepted' || r.status === 'rejected' || r.status === 'stale' ? (r.status as RevisionRow['status']) : ('proposed' as const),
       notes: str(r.notes),
@@ -915,4 +915,54 @@ export function canRevise(i: { kind: string; status: string; publishedPostId?: s
 
 export function madridTodayIso(now: Date = new Date()): string {
   return madridDay(now) ?? dayToIso(now)
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// Alcance de «Rectificar con Pepa» en un MENÚ: una receta, una comida (comida o cena de un día), un día entero o el menú semanal completo.
+// En la base de datos y en la función de servidor: recipe → 'recipe', meal → 'dish', day → 'day', week → 'item' (los valores que ya existían no se renombran).
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+export type ReviseScope = 'recipe' | 'meal' | 'day' | 'week'
+export type ReviseTarget =
+  | { scope: 'week' }
+  | { scope: 'day'; day: number }
+  | { scope: 'meal'; day: number; meal: MealKind }
+  | { scope: 'recipe'; day: number; meal: MealKind; recipe: number }
+
+export const REVISE_SCOPES: { id: ReviseScope; label: string; hint: string }[] = [
+  { id: 'recipe', label: 'Una receta', hint: 'Solo cambia esa receta; el resto de la comida queda igual.' },
+  { id: 'meal', label: 'Una comida', hint: 'Cambia la comida o la cena completa, con todas sus recetas.' },
+  { id: 'day', label: 'Un día', hint: 'Puede cambiar la comida y la cena de ese día; los demás días no se tocan.' },
+  { id: 'week', label: 'Todo el menú', hint: 'Pepa decide qué platos cambiar en toda la semana (como máximo 8).' },
+]
+
+export const REVISE_MAX_RECIPES_PER_MEAL = 6
+
+/** Lo que se manda a la función de servidor para cada alcance. */
+export function reviseWire(t: ReviseTarget): { scope: 'item' | 'dish' | 'day' | 'recipe'; target?: { day: number; meal?: MealKind; recipe?: number } } {
+  switch (t.scope) {
+    case 'week':
+      return { scope: 'item' }
+    case 'day':
+      return { scope: 'day', target: { day: t.day } }
+    case 'meal':
+      return { scope: 'dish', target: { day: t.day, meal: t.meal } }
+    case 'recipe':
+      return { scope: 'recipe', target: { day: t.day, meal: t.meal, recipe: t.recipe } }
+  }
+}
+
+/** Texto corto de lo que se va a cambiar: «Martes · Cena · receta 2». */
+export function reviseTargetText(t: ReviseTarget): string {
+  const day = (i: number) => WEEKDAYS[i] ?? `Día ${i + 1}`
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  switch (t.scope) {
+    case 'week':
+      return 'Todo el menú'
+    case 'day':
+      return cap(day(t.day))
+    case 'meal':
+      return `${cap(day(t.day))} · ${MEAL_TEXT[t.meal]}`
+    case 'recipe':
+      return `${cap(day(t.day))} · ${MEAL_TEXT[t.meal]} · receta ${t.recipe + 1}`
+  }
 }

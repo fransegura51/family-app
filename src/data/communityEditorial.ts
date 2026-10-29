@@ -13,10 +13,12 @@ import {
   toReviseProposal,
   toRevisions,
   toRuns,
+  reviseWire,
   type EditorialKey,
   type EditorialToggleKind,
   type GenerateResult,
   type ReviseProposal,
+  type ReviseTarget,
 } from '@/domain/communityEditorial'
 
 // ---- Estado y listas (RPC de administración; el servidor exige ser administrador de Comunidad)
@@ -88,8 +90,10 @@ export async function generateNow(kind: EditorialKey, week?: string): Promise<Ge
 }
 
 /** «Rectificar con Pepa»: pide una versión nueva del borrador. Solo PROPONE: no cambia nada hasta que se acepta con `decideRevision`. */
-export async function requestRevision(itemId: string, instruction: string, target?: { day: number; meal: 'comida' | 'cena' }): Promise<ReviseProposal> {
-  const json = await callEditorial({ action: 'revise', item_id: itemId, instruction: instruction.trim(), scope: target ? 'dish' : 'item', ...(target ? { target } : {}) }, reviseErrorText)
+// `target`: sin él (o con `{scope:'week'}`) es la rectificación general; `{day, meal}` (forma antigua) es UNA comida; con `scope`: una receta, una comida, un día o todo el menú.
+export async function requestRevision(itemId: string, instruction: string, target?: ReviseTarget | { day: number; meal: 'comida' | 'cena' }): Promise<ReviseProposal> {
+  const wire = target ? reviseWire('scope' in target ? target : { scope: 'meal', day: target.day, meal: target.meal }) : reviseWire({ scope: 'week' })
+  const json = await callEditorial({ action: 'revise', item_id: itemId, instruction: instruction.trim(), scope: wire.scope, ...(wire.target ? { target: wire.target } : {}) }, reviseErrorText)
   return toReviseProposal(json)
 }
 

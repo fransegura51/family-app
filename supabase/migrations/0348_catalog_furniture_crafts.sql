@@ -1,4 +1,4 @@
--- 0344 · COR-06 — Dos clases de producto y una categoría de Economía nuevas, tras auditar un caso real de Amazon (28/10/2026).
+-- 0348 · COR-06 — Dos clases de producto y una categoría de Economía nuevas, tras auditar un caso real de Amazon (28/10/2026).
 --
 -- Auditoría de las clases existentes (Familia prueba y catálogo CAT-1):
 --   · Bebé (chupetero, chupetes, mordedores, biberones, baberos): YA existe «Higiene y cuidado del bebé» (other.cuidado_bebe, 0334) y su catálogo ya reconoce chupete, biberón,
@@ -10,7 +10,7 @@
 --   · Economía: «Vivienda y hogar» no tenía una categoría para muebles → se añade «Muebles y organización» (la familia la recibe sola, como el resto del catálogo).
 -- Aditiva e idempotente: no borra, no renombra y no reclasifica NINGÚN dato de las familias (productos, tickets, gastos, presupuestos, clasificaciones). Las familias reciben las
 -- clases y la categoría nuevas por el sincronizador del catálogo (0338): una clase propia con el mismo nombre se enlaza sin renombrar nada.
--- ROLLBACK: supabase/rollbacks/0344_catalog_furniture_crafts_down.sql (solo quita lo no usado por ningún producto, gasto ni presupuesto).
+-- ROLLBACK: supabase/rollbacks/0348_catalog_furniture_crafts_down.sql (solo quita lo no usado por ningún producto, gasto ni presupuesto).
 do $$
 declare
   v_version integer;
@@ -29,14 +29,14 @@ begin
   on conflict (key) do nothing;
 
   insert into public.catalog_audit (actor, action, entity, key, after, note)
-  select 'migration:0344', 'promote', 'food_type', t.key, to_jsonb(t), 'COR-06 clases nuevas'
+  select 'migration:0348', 'promote', 'food_type', t.key, to_jsonb(t), 'COR-06 clases nuevas'
     from public.catalog_food_types t
    where t.key in ('other.muebles_organizacion', 'other.manualidades_creatividad')
-     and not exists (select 1 from public.catalog_audit a where a.key = t.key and a.actor = 'migration:0344');
+     and not exists (select 1 from public.catalog_audit a where a.key = t.key and a.actor = 'migration:0348');
 
   insert into public.catalog_audit (actor, action, entity, key, after, note)
-  select 'migration:0344', 'promote', 'category', c.key, to_jsonb(c), 'COR-06 categoría de Economía nueva'
+  select 'migration:0348', 'promote', 'category', c.key, to_jsonb(c), 'COR-06 categoría de Economía nueva'
     from public.catalog_categories c
    where c.key = 'g.vivienda_hogar.muebles_organizacion'
-     and not exists (select 1 from public.catalog_audit a where a.key = c.key and a.actor = 'migration:0344');
+     and not exists (select 1 from public.catalog_audit a where a.key = c.key and a.actor = 'migration:0348');
 end $$;

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { CATALOG_CLASSES, CLASS_CODES } from './classes'
 
 const FILES = import.meta.glob(
-  ['/supabase/migrations/0139_catalog_base.sql', '/supabase/migrations/0294_split_lacteos_huevos.sql', '/supabase/migrations/0334_catalog_master_classes.sql', '/supabase/pending-migrations/0334_catalog_master_classes.sql', '/supabase/rollbacks/0334_catalog_master_classes_down.sql', '/supabase/migrations/0344_catalog_furniture_crafts.sql', '/supabase/rollbacks/0344_catalog_furniture_crafts_down.sql'],
+  ['/supabase/migrations/0139_catalog_base.sql', '/supabase/migrations/0294_split_lacteos_huevos.sql', '/supabase/migrations/0334_catalog_master_classes.sql', '/supabase/pending-migrations/0334_catalog_master_classes.sql', '/supabase/rollbacks/0334_catalog_master_classes_down.sql', '/supabase/migrations/0348_catalog_furniture_crafts.sql', '/supabase/rollbacks/0348_catalog_furniture_crafts_down.sql'],
   { query: '?raw', import: 'default', eager: true },
 ) as Record<string, string>
 const find = (suffix: string) => Object.entries(FILES).find(([k]) => k.endsWith(suffix))?.[1] as string
@@ -12,8 +12,8 @@ const BASE = find('0139_catalog_base.sql')
 const SPLIT = find('0294_split_lacteos_huevos.sql')
 const NEW = find('0334_catalog_master_classes.sql')
 const DOWN = find('0334_catalog_master_classes_down.sql')
-const COR06 = find('0344_catalog_furniture_crafts.sql')
-const COR06_DOWN = find('0344_catalog_furniture_crafts_down.sql')
+const COR06 = find('0348_catalog_furniture_crafts.sql')
+const COR06_DOWN = find('0348_catalog_furniture_crafts_down.sql')
 const code = (sql: string) => sql.split('\n').filter((l) => !/^\s*--/.test(l)).join('\n')
 
 interface Row {
@@ -82,7 +82,7 @@ describe('migración 0334 · tres clases nuevas', () => {
   })
 })
 
-describe('migración 0344 · COR-06 muebles y manualidades', () => {
+describe('migración 0348 · COR-06 muebles y manualidades', () => {
   it('existe con su reversión y los $$ están emparejados', () => {
     expect(COR06).toBeTruthy()
     expect(COR06_DOWN).toBeTruthy()

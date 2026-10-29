@@ -1,4 +1,4 @@
--- ROLLBACK de 0344. Quita las dos clases y la categoría añadidas SOLO donde ningún producto, gasto ni presupuesto las usa; donde se usan se dejan
+-- ROLLBACK de 0348. Quita las dos clases y la categoría añadidas SOLO donde ningún producto, gasto ni presupuesto las usa; donde se usan se dejan
 -- (se desenlazan del catálogo y pasan a ser propias de la familia, sin perder ninguna clasificación).
 do $$
 begin

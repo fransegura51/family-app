@@ -51,7 +51,7 @@ export const ADMIN_TOOLS: AdminTool[] = [
   { id: 'com-readmisiones', label: 'Moderación: readmisiones', area: 'comunidad', tab: 'moderacion', seccion: 'readmisiones', keywords: 'readmision expulsado expulsion volver readmitir' },
   { id: 'com-eliminacion', label: 'Moderación: eliminación de contenido', area: 'comunidad', tab: 'moderacion', seccion: 'eliminacion', keywords: 'eliminar borrar contenido solicitud eliminacion' },
   { id: 'com-usuarios', label: 'Comunidad: Usuarios (alias, advertencias, expulsiones)', area: 'comunidad', tab: 'usuarios', keywords: 'usuarios alias advertencias expulsar expulsion perfiles personas' },
-  { id: 'com-oficial', label: 'Comunidad: Contenido oficial (artículos, menú semanal de Pepa)', area: 'comunidad', tab: 'oficial', keywords: 'oficial articulos propuestas menu semanal pepa publicar contenido generado ia aprobar' },
+  { id: 'com-oficial', label: 'Comunidad: Contenido oficial (artículos, menú semanal de Pepa)', area: 'comunidad', tab: 'oficial', keywords: 'oficial centro editorial resumen articulos encuestas propuestas menu semanal editar menu vista previa pepa publicar contenido generado ia aprobar reprogramar programacion historial errores' },
   { id: 'com-temas', label: 'Comunidad: Temas propuestos', area: 'comunidad', tab: 'temas', keywords: 'temas propuestos propuestas sugerencias temas nuevos' },
   { id: 'com-encuestas', label: 'Comunidad: Encuestas', area: 'comunidad', tab: 'encuestas', keywords: 'encuestas votaciones preguntas' },
   { id: 'com-destacados', label: 'Comunidad: Destacados', area: 'comunidad', tab: 'destacados', keywords: 'destacados destacar portada' },

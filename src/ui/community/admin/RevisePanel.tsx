@@ -16,6 +16,7 @@ import {
   optionsOf,
   restoreResultText,
   reviseErrorText,
+  reviseTargetText,
   shortcutsFor,
   validateInstruction,
   type EditorialItemKind,
@@ -23,11 +24,14 @@ import {
   type MealKind,
   type ReviseContent,
   type ReviseProposal,
+  type ReviseTarget,
   type RevisionRow,
 } from '@/domain/communityEditorial'
 import { checkReviseClaims, compareRecipeCards, recipeCardsOf } from '@/domain/communityEditorialRecipes'
+import { compareMenus } from '@/domain/communityMenuDiff'
 import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { RecipeCardsList, RecipeChangesView, ReviseWarnings } from '@/ui/community/admin/EditorialRecipes'
+import { MenuChanges } from '@/ui/community/admin/MenuChanges'
 import { AdminLoading, InfoBox, TwoTapButton } from '@/ui/community/admin/AdminShared'
 
 // «Rectificar con Pepa»: la persona escribe qué quiere cambiar, Pepa PROPONE una versión nueva, se compara con la anterior y se acepta o se rechaza. Aceptar guarda una
@@ -43,6 +47,7 @@ export function RevisePanel({
   kind,
   section,
   target,
+  scopeTarget,
   onClose,
   onChanged,
 }: {
@@ -52,6 +57,8 @@ export function RevisePanel({
   section?: string
   /** Solo en menús: cambiar UN plato (los demás no cambian). Sin él, la rectificación es general. */
   target?: DishTarget | null
+  /** Solo en menús: el alcance elegido (una receta, una comida, un día o todo el menú). Si se pasa, manda sobre `target`. */
+  scopeTarget?: ReviseTarget | null
   onClose: () => void
   /** Se llama cuando se acepta una propuesta o se restaura una versión (la lista debe recargarse). */
   onChanged: (message: string) => void
@@ -65,7 +72,14 @@ export function RevisePanel({
   const [done, setDone] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
   const lock = useRef(false)
-  const title = target ? `Cambiar este plato con Pepa: ${target.label}` : kind === 'menu' ? 'Pedir cambios generales del menú' : 'Rectificar con Pepa'
+  const title = scopeTarget ? `Rectificar con Pepa: ${reviseTargetText(scopeTarget)}` : target ? `Cambiar este plato con Pepa: ${target.label}` : kind === 'menu' ? 'Pedir cambios generales del menú' : 'Rectificar con Pepa'
+  // Cambiar de alcance deja sin efecto la propuesta que se estaba viendo (era de otro alcance); la instrucción escrita se conserva.
+  const scopeKey = scopeTarget ? JSON.stringify(scopeTarget) : ''
+  useEffect(() => {
+    setProposal(null)
+    setError(null)
+    setDone(null)
+  }, [scopeKey])
 
   const ask = async () => {
     if (lock.current) return
@@ -77,7 +91,7 @@ export function RevisePanel({
     setError(null)
     setDone(null)
     try {
-      const r = await requestRevision(itemId, instruction, target ? { day: target.day, meal: target.meal } : undefined)
+      const r = await requestRevision(itemId, instruction, scopeTarget ?? (target ? { day: target.day, meal: target.meal } : undefined))
       setProposal(r)
     } catch (e) {
       // La instrucción escrita NO se borra: se puede reintentar tal cual.
@@ -145,7 +159,7 @@ export function RevisePanel({
         disabled={busy !== null}
         aria-invalid={problem ? true : undefined}
         aria-describedby={problem ? `${id}-problem` : undefined}
-        placeholder={target ? 'Por ejemplo: «Cámbialo por un plato de pescado»' : 'Por ejemplo: «Haz la introducción más cercana»'}
+        placeholder={scopeTarget?.scope === 'recipe' ? 'Por ejemplo: «Pon menos sal y añade un paso para reposar»' : scopeTarget?.scope === 'day' ? 'Por ejemplo: «Haz el día más ligero»' : scopeTarget?.scope === 'week' ? 'Por ejemplo: «Que haya más pescado esta semana»' : target || scopeTarget ? 'Por ejemplo: «Cámbialo por un plato de pescado»' : 'Por ejemplo: «Haz la introducción más cercana»'}
         data-help-id="comunidad.revise-instruction"
         onChange={(e) => setInstruction(e.target.value)}
       />
@@ -313,8 +327,9 @@ export function RevisionCompare({ kind, proposal, section, instruction = '' }: {
   const claimWarnings = kind === 'menu' ? [] : checkReviseClaims({ notes, instruction, section, before: before.payload, result: result.payload })
   const options = diffOptions(before.payload, result.payload)
   const dishes = diffMenu(before.payload, result.payload, quality)
+  const menuRecipes = kind === 'menu' ? compareMenus(before.payload, result.payload) : []
   const general = generalQuality(quality)
-  const nothing = !hasChanges(titleDiff) && !hasChanges(bodyDiff) && recipeChanges.length === 0 && options.added.length === 0 && options.removed.length === 0 && dishes.length === 0
+  const nothing = !hasChanges(titleDiff) && !hasChanges(bodyDiff) && recipeChanges.length === 0 && options.added.length === 0 && options.removed.length === 0 && dishes.length === 0 && menuRecipes.length === 0
 
   return (
     <div className="cadm-compare" aria-label="Comparación con la versión anterior">
@@ -384,6 +399,7 @@ export function RevisionCompare({ kind, proposal, section, instruction = '' }: {
           </ul>
         </>
       )}
+      {kind === 'menu' && <MenuChanges before={before.payload} after={result.payload} notes={notes} showNames={false} />}
       {general.length > 0 && (
         <>
           <h5>Avisos de calidad</h5>

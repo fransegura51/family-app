@@ -1,0 +1,60 @@
+/* Cambios de un menú al rectificarlo con Pepa (Centro de Mando de Comunidad). Pensado para iPhone: todo se parte en líneas y nada fuerza el ancho. */
+.cadm-menu-changes {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.cadm-menu-changes .community-post-recipes-list {
+  padding-left: 0;
+  list-style: none;
+}
+
+.cadm-menu-names {
+  margin: 4px 0;
+}
+
+.cadm-menu-names .cadm-block {
+  display: block;
+}
+
+.cadm-menu-full > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+/* Selector de alcance de «Rectificar con Pepa» en un menú. */
+.cadm-scope {
+  min-width: 0;
+  max-width: 100%;
+  margin: 8px 0;
+}
+
+.cadm-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cadm-scope-chips .cadm-chip-button {
+  min-height: 44px;
+}
+
+.cadm-scope-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cadm-scope-fields select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+.cadm-scope-now {
+  margin: 6px 0 0;
+}

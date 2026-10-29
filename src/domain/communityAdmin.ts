@@ -1164,6 +1164,8 @@ export function toMenuData(raw: unknown): MenuData | null {
 
 // Un menú completo para revisarlo antes de aprobar: fila + texto + resumen de los datos + avisos de calidad.
 export interface MenuDetail extends MenuRow {
+  // El menú completo tal como lo devuelve el servidor (para la vista previa real y la comprobación editorial); `menu` es solo su resumen.
+  menuRaw: unknown
   body: string
   section: string
   topicId: string
@@ -1175,7 +1177,7 @@ export interface MenuDetail extends MenuRow {
 export function toMenuDetail(raw: unknown): MenuDetail | null {
   const r = asRec(raw)
   if (str(r.id) === '') return null
-  return { ...toMenuRow(r), body: str(r.body), section: str(r.section), topicId: str(r.topicId), menu: toMenuData(r.menu), check: toMenuCheck(r.check), itemError: strOrNull(r.itemError) }
+  return { ...toMenuRow(r), menuRaw: r.menu ?? null, body: str(r.body), section: str(r.section), topicId: str(r.topicId), menu: toMenuData(r.menu), check: toMenuCheck(r.check), itemError: strOrNull(r.itemError) }
 }
 
 // Semana de lunes a domingo: «Semana del 26 de octubre al 1 de noviembre de 2026».
@@ -1191,7 +1193,7 @@ export function menuStateLine(m: Pick<MenuRow, 'state' | 'weekStart' | 'weekEnd'
   if (m.state === 'published') return m.weekStart ? `Publicado · ${menuWeekText(m.weekStart, m.weekEnd)}` : 'Publicado'
   if (m.state === 'scheduled' && m.publishAt) return `Sale el ${formatMadrid(m.publishAt, 'full')} (hora peninsular) · ${menuWeekText(m.weekStart, m.weekEnd)}`
   if (m.state === 'error') return m.publishAt ? `Debía salir el ${formatMadrid(m.publishAt, 'full')} (hora peninsular)` : 'No se ha podido publicar'
-  if (m.state === 'draft') return m.weekly ? 'Al aprobarlo se programa para el próximo sábado a las 10:00' : 'Al aprobarlo se publica al momento (no es semanal)'
+  if (m.state === 'draft') return m.weekly ? 'Al aprobarlo se programa para el próximo sábado a las 10:00 (o, si ya tiene semana prevista y su sábado aún no ha pasado, para esa semana)' : 'Al aprobarlo se publica al momento (no es semanal)'
   return ''
 }
 
@@ -1219,6 +1221,14 @@ export function menuRetryText(result: unknown): { ok: boolean; text: string } {
   const r = asRec(result)
   if (bool(r.ok)) return { ok: true, text: 'Menú publicado.' }
   return { ok: false, text: `Sigue sin poder publicarse (intento ${num(r.attempts, 1)}). ${str(r.error)}`.trim() }
+}
+
+export function pollRescheduleText(result: unknown): string {
+  const r = asRec(result)
+  const opens = toDate(r.opens_at ?? r.opensAt)
+  const closes = toDate(r.closes_at ?? r.closesAt)
+  if (opens && closes) return `Encuesta reprogramada: abre el ${formatMadrid(opens, 'full')} y cierra el ${formatMadrid(closes, 'full')} (hora peninsular). El contenido no ha cambiado.`
+  return 'Encuesta reprogramada. El contenido no ha cambiado.'
 }
 
 export function menuRescheduleText(result: unknown): string {

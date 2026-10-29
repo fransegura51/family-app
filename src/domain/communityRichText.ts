@@ -8,6 +8,8 @@ export type Inline =
   | { t: 'bold'; c: Inline[] }
   | { t: 'italic'; c: Inline[] }
   | { t: 'link'; href: string; host: string; label: string; shortener: boolean }
+  // Enlace INTERNO a otra publicación de PEPA por su título: «[[Título exacto]]». Se resuelve al pintarlo (si no existe o no se puede ver, queda el título como texto).
+  | { t: 'post'; title: string }
 
 export type Block = { t: 'p'; c: Inline[] } | { t: 'ul'; items: Inline[][] } | { t: 'ol'; items: Inline[][] }
 
@@ -37,7 +39,7 @@ export function safeLink(raw: string): SafeLink | null {
   return { href: url.toString(), host: clean, shortener: SHORTENERS.has(clean) }
 }
 
-const INLINE_TOKEN = /(\*\*[^*\n]+\*\*)|(\*[^*\s][^*\n]*\*)|(_[^_\s][^_\n]*_)|(\[[^\]\n]+\]\((?:[^()\s]|\([^()\s]*\))+\))|(https?:\/\/[^\s)<>\]]+)/g
+const INLINE_TOKEN = /(\*\*[^*\n]+\*\*)|(\*[^*\s][^*\n]*\*)|(_[^_\s][^_\n]*_)|(\[[^\]\n]+\]\((?:[^()\s]|\([^()\s]*\))+\))|(https?:\/\/[^\s)<>\]]+)|(\[\[[^\]\n]{2,160}\]\])/g
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = []
@@ -55,6 +57,8 @@ export function parseInline(text: string): Inline[] {
       const link = parts ? safeLink(parts[2]) : null
       if (parts && link) out.push({ t: 'link', ...link, label: parts[1] })
       else out.push({ t: 'text', v: parts ? parts[1] : token })
+    } else if (m[6]) {
+      out.push({ t: 'post', title: token.slice(2, -2).trim() })
     } else {
       // Enlace suelto: se quita la puntuación final que no forma parte de la dirección.
       const trimmed = token.replace(/[.,;:!?]+$/, '')
@@ -110,7 +114,7 @@ export function parseRichText(body: string): Block[] {
 // Texto plano (para extractos, vistas previas y comprobaciones).
 export function richTextToPlain(body: string): string {
   const inlineText = (items: Inline[]): string =>
-    items.map((i) => (i.t === 'text' ? i.v : i.t === 'link' ? i.label : inlineText(i.c))).join('')
+    items.map((i) => (i.t === 'text' ? i.v : i.t === 'link' ? i.label : i.t === 'post' ? i.title : inlineText(i.c))).join('')
   return parseRichText(body)
     .map((b) => (b.t === 'p' ? inlineText(b.c) : b.items.map((it) => inlineText(it)).join(' · ')))
     .join(' ')

@@ -512,7 +512,7 @@ export const CARDS_OTROS: HelpCard[] = [
       'Mira la «Comprobación editorial»: lo que impide aprobar se distingue de las recomendaciones, como un consejo que falta, que no bloquean.',
       'Pulsa «Vista previa del menú» para ver cada día y receta como los verá la familia, y «Guardar menú» para guardar.',
     ],
-    more: 'Editar un menú ya aprobado lo devuelve a «pendiente de aprobar»: hay que aprobarlo de nuevo antes de que se publique. Solo se edita el contenido de este menú oficial: no se toca ninguna receta de la Cocina de ninguna familia. Si cambias nombres de platos, el texto de la publicación no se reescribe solo: revísalo con «Editar el texto». Si cierras con cambios sin guardar se te pregunta antes de descartarlos.',
+    more: 'Editar un menú ya aprobado lo devuelve a «pendiente de aprobar»: hay que aprobarlo de nuevo antes de que se publique. Solo se edita el contenido de este menú oficial: no se toca ninguna receta de la Cocina de ninguna familia. Si cambias nombres de platos, el texto de la publicación no se reescribe solo: revísalo con «Editar el texto». Si cierras con cambios sin guardar se te pregunta antes de descartarlos. Para promocionar un artículo, en el campo «Consejo» de una receta escribe su título exacto entre dobles corchetes, como [[Título del artículo]]: la familia lo verá como enlace al artículo dentro de PEPA (si no existe o no puede verlo, se ve como texto).',
     state: 'disponible',
     access: { ownerOnly: true, community: true },
     go: { path: '/administracion', dest: 'admin.comunidad-oficial' },

@@ -373,6 +373,7 @@ function RecipeSheet({ state, onChange, onSave, onCancel }: { state: SheetState;
 
         <label htmlFor={`${uid}-tip`}>Consejo (opcional)</label>
         <textarea id={`${uid}-tip`} rows={2} maxLength={400} value={f.tip} onChange={(e) => set({ tip: e.target.value })} />
+        <p className="muted cadm-small">Para enlazar un artículo de PEPA escribe su título exacto entre dobles corchetes: [[Título del artículo]]. Si no existe, se verá como texto.</p>
 
         <label className="cadm-menued-check">
           <input type="checkbox" checked={f.freezeIdeal} onChange={(e) => set({ freezeIdeal: e.target.checked })} /> Ideal para cocinar de más y congelar

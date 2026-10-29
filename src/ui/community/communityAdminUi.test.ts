@@ -9,11 +9,16 @@ import sharedSource from '@/ui/community/admin/AdminShared.tsx?raw'
 import reportsSource from '@/ui/community/admin/ModerationReports.tsx?raw'
 import listsSource from '@/ui/community/admin/ModerationLists.tsx?raw'
 import usersSource from '@/ui/community/admin/UsersTab.tsx?raw'
-import officialSource from '@/ui/community/admin/OfficialTab.tsx?raw'
+import officialTabSource from '@/ui/community/admin/OfficialTab.tsx?raw'
+import proposalCardSource from '@/ui/community/admin/ProposalCard.tsx?raw'
+import centerSource from '@/ui/community/admin/editorial/EditorialCenter.tsx?raw'
+import registrySource from '@/ui/community/admin/editorial/EditorialRegistry.tsx?raw'
 import pollsSource from '@/ui/community/admin/PollsTab.tsx?raw'
 import settingsSource from '@/ui/community/admin/SettingsTab.tsx?raw'
 import logSource from '@/ui/community/admin/LogTab.tsx?raw'
 import { readFileSync } from 'node:fs'
+// Desde la reorganización del Centro Editorial, «Contenido oficial» se reparte en varios archivos: las comprobaciones de código miran el conjunto.
+const officialSource = [officialTabSource, proposalCardSource, centerSource, registrySource].join('\n')
 import { join } from 'node:path'
 
 // El CSS se lee del disco (con ?raw vitest lo deja vacío).
@@ -33,6 +38,7 @@ const { ReportGroupCard } = await import('@/ui/community/admin/ModerationReports
 const { HiddenCard, ReadmissionCard, RemovalCard } = await import('@/ui/community/admin/ModerationLists')
 const { UserCard } = await import('@/ui/community/admin/UsersTab')
 const { ProposalCard, ProposalEditForm } = await import('@/ui/community/admin/OfficialTab')
+const { CenterFilterBar, INITIAL_LIST } = await import('@/ui/community/admin/editorial/CenterList')
 const { MenuCard, MenuReview } = await import('@/ui/community/admin/MenusSection')
 const { PollCard } = await import('@/ui/community/admin/PollsTab')
 const { FeaturedCard } = await import('@/ui/community/admin/FeaturedTab')
@@ -308,11 +314,14 @@ describe('Contenido oficial', () => {
     expect(a).toContain('Metodología')
     expect(a).toContain('tendrás que aprobarla de nuevo')
   })
-  it('la pestaña dice que nada se publica sin aprobación ni por fecha y filtra por estado', () => {
+  it('la pestaña dice que nada se publica sin aprobación ni por fecha y enseña las seis secciones del Centro Editorial', () => {
     const html = page('oficial')
     expect(html).toContain('Nada oficial se publica sin que una persona lo apruebe')
     expect(html).toContain('ni siquiera cuando llega la fecha')
-    for (const f of ['Pendientes', 'Aprobadas', 'Rechazadas', 'Publicadas']) expect(html).toContain(f)
+    for (const f of ['Resumen', 'Artículos', 'Encuestas', 'Menús semanales', 'Programación y configuración', 'Historial y errores']) expect(html).toContain(f)
+    // Los cuatro estados se conservan en el filtro de cada lista.
+    const bar = render(createElement(CenterFilterBar, { state: INITIAL_LIST, onChange: noop, onStatus: noop }))
+    for (const f of ['Pendientes', 'Aprobadas', 'Rechazadas', 'Publicadas']) expect(bar).toContain(f)
     expect(officialSource).toContain('adminEditProposal')
     expect(officialSource).toContain('adminRejectProposal')
   })
@@ -339,11 +348,9 @@ describe('Menú semanal de Pepa (Contenido oficial)', () => {
         },
       ],
     }).menus[0]
-  it('la pestaña enseña la sección del menú con su aviso y la propia lista de propuestas sigue debajo', () => {
+  it('los menús tienen su sección propia (con su gestor completo en el detalle) y no se repiten entre las propuestas', () => {
     const html = page('oficial')
-    expect(html).toContain('Menú semanal de Pepa')
-    expect(html).toContain('Cargando los menús')
-    expect(html).toContain('Consejos, encuestas y artículos')
+    expect(html).toContain('Menús semanales')
     expect(officialSource).toContain('MenusSection')
     expect(officialSource).toContain("p.kind !== 'menu'")
   })

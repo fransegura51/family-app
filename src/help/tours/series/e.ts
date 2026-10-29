@@ -16,11 +16,11 @@ export const SERIES_E: TutorialSeries[] = [
   {
     id: 'ser-comunidad-editorial',
     module: 'comunidad',
-    title: 'Generación semanal y Rectificar con Pepa (administración)',
-    summary: 'Los interruptores de la generación semanal, el programa de la semana y cómo pedirle a Pepa cambios en un borrador sin publicar nada.',
-    chapters: ['tut-comunidad-admin-generacion', 'tut-comunidad-admin-rectificar'],
-    cardIds: ['com-admin-generacion', 'com-admin-rectificar'],
-    synonyms: ['generación semanal', 'borradores', 'generar ahora', 'rectificar con pepa', 'programa de la semana', 'administración de comunidad'],
+    title: 'Centro Editorial, generación semanal y menú de Pepa (administración)',
+    summary: 'Moverte por el Centro Editorial, los interruptores de la generación semanal, pedirle a Pepa cambios en un borrador, editar el menú semanal y reprogramar contenido aprobado, sin publicar nada.',
+    chapters: ['tut-comunidad-admin-centro', 'tut-comunidad-admin-generacion', 'tut-comunidad-admin-rectificar', 'tut-comunidad-admin-menu-editar', 'tut-comunidad-admin-reprogramar'],
+    cardIds: ['com-admin-centro', 'com-admin-generacion', 'com-admin-rectificar', 'com-admin-menu-editor', 'com-admin-reprogramar'],
+    synonyms: ['centro editorial', 'contenido oficial', 'generación semanal', 'borradores', 'generar ahora', 'rectificar con pepa', 'programa de la semana', 'editar el menú', 'vista previa del menú', 'reprogramar', 'administración de comunidad'],
     access: { ownerOnly: true, community: true },
   },
   {

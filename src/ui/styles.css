@@ -9267,3 +9267,45 @@ input[type='search'] {
   min-height: 44px;
   font-weight: 600;
 }
+
+/* COR-05 — la categoría de cada movimiento se ve SIEMPRE con su nombre: el contenedor ocupa el hueco que deja el importe (flex 1, min-width 0), el icono no se encoge y el
+   nombre se recorta con «…» solo cuando de verdad no cabe. El importe, las etiquetas «sugerida» y el botón de eliminar no se encogen. */
+.movement-row-line > .movement-row-category {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.movement-row-line > .price-row-price {
+  flex: none;
+  white-space: nowrap;
+}
+
+.movement-row-category-btn,
+.movement-row-category-static {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.movement-row-category-icon {
+  flex: none;
+}
+
+.movement-row-category-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.movement-row-category .suggested-tag,
+.movement-row-category .pending-tag {
+  flex: none;
+}

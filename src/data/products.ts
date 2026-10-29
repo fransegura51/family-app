@@ -152,6 +152,8 @@ export async function setProductNonFood(productId: string, nonFood: boolean): Pr
 
 export interface ReceiptLineDetail {
   id: string
+  /** Producto de esta línea (para abrir su ficha en Historial de precios). */
+  productId: string | null
   name: string
   price: number
   quantity: string | null
@@ -169,14 +171,15 @@ export interface ReceiptLineDetail {
 export async function listProductPricesByReceipt(receiptId: string): Promise<ReceiptLineDetail[]> {
   let { data, error } = await supabase
     .from('product_prices')
-    .select('id, price, quantity, unit, pack_count, pack_amount, pack_unit, pack_source, products(display_name)')
+    .select('id, product_id, price, quantity, unit, pack_count, pack_amount, pack_unit, pack_source, products(display_name)')
     .eq('receipt_id', receiptId)
   if (isMissingColumn(error)) {
-    ;({ data, error } = (await supabase.from('product_prices').select('id, price, quantity, unit, products(display_name)').eq('receipt_id', receiptId)) as unknown as typeof data extends infer D ? { data: D; error: typeof error } : never)
+    ;({ data, error } = (await supabase.from('product_prices').select('id, product_id, price, quantity, unit, products(display_name)').eq('receipt_id', receiptId)) as unknown as typeof data extends infer D ? { data: D; error: typeof error } : never)
   }
   if (error) throw error
   return (data ?? []).map((r) => ({
     id: r.id,
+    productId: (r as { product_id?: string | null }).product_id ?? null,
     name: (r.products as unknown as { display_name: string } | null)?.display_name ?? '?',
     price: Number(r.price),
     quantity: r.quantity,

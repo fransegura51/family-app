@@ -1,25 +1,169 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Comunidad, solo administración de PEPA (cuentas propietarias): la generación semanal con IA y «Rectificar con Pepa». Viven en el Centro de Administración → Comunidad → Contenido
-// oficial (/administracion). Son recorridos INFORMATIVOS: ninguno pulsa, escribe, genera, acepta, aprueba ni publica por la persona (generar y rectificar gastan IA; aceptar guarda una
-// versión). Serie «Generación semanal y Rectificar con Pepa» (src/help/tours/series/e.ts).
+// Comunidad, solo administración de PEPA (cuentas propietarias): el Centro Editorial (Contenido oficial), la generación semanal con IA, «Rectificar con Pepa», el editor del menú semanal
+// y reprogramar. Viven en el Centro de Administración → Comunidad → Contenido oficial (/administracion). Son recorridos INFORMATIVOS: ninguno pulsa, escribe, genera, guarda, acepta, aprueba
+// ni publica por la persona (generar y rectificar gastan IA; aceptar y guardar crean una versión). Serie «Centro Editorial, generación semanal y menú de Pepa»
+// (src/help/tours/series/e.ts). El Centro reparte el contenido en secciones que solo se montan al visitarlas: los capítulos empiezan pidiendo entrar en la sección que enseñan.
 
 const ACCESS = { ownerOnly: true, community: true } as const
 
+// ───────────── Visita «Conoce esta sección»: el Centro Editorial
+export const visitaCentroEditorial: TourDef = {
+  id: 'visita-centro-editorial',
+  kind: 'visit',
+  module: 'comunidad',
+  summary: 'Un paseo por el Centro Editorial: el Resumen, las listas compactas, el detalle y dónde está la programación (solo administración de PEPA).',
+  access: ACCESS,
+  version: 1,
+  title: 'Conoce el Centro Editorial',
+  cardId: 'com-admin-centro',
+  durationSec: 100,
+  startPath: '/administracion',
+  startDest: 'admin.comunidad-oficial',
+  paths: ['/administracion'],
+  readyOn: ['comunidad.centro-secciones'],
+  steps: [
+    {
+      id: 'intro',
+      text: 'Este es el Centro Editorial: aquí revisas lo que Pepa prepara para Comunidad. Te enseño dónde está cada cosa; no voy a aprobar, rechazar ni publicar nada.',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'secciones',
+      text: 'Estas son las seis secciones: Resumen, Artículos, Encuestas, Menús semanales, Programación y configuración, e Historial y errores. Así no hay una página interminable: entras solo en la que necesitas.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'resumen',
+      text: 'El Resumen cuenta, con datos reales, lo que necesita atención: artículos, encuestas y menús pendientes, lo aprobado y programado, y los errores. Cada tarjeta te lleva a su lista con el filtro ya puesto.',
+      target: 'comunidad.centro-resumen',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'listas',
+      text: 'En Artículos, Encuestas y Menús semanales cada elemento es una tarjeta corta: tipo, título, tema, fecha, estado y versión. Arriba eliges Pendientes, Aprobadas, Rechazadas o Publicadas, filtras por fechas o buscas por título, y «Ver más» añade otro bloque.',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'detalle',
+      text: '«Ver / Gestionar» abre el detalle del elemento, con su contenido completo y todas las acciones: editar, rectificar con Pepa, aprobar, rechazar o reprogramar. «← Volver a la lista» te devuelve al mismo sitio, con tus filtros.',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'programacion',
+      text: 'En «Programación y configuración» están los interruptores de la generación semanal y el programa de la semana, con el estado real de cada día. Los errores y el historial están en «Historial y errores».',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Eso es el Centro Editorial. Recuerda: nada sale sin que lo apruebes tú. Si quieres practicar, mira el capítulo «Moverte por el Centro Editorial».',
+  next: ['com-admin-generacion', 'com-admin-menu-editor'],
+}
+
+// ───────────── Capítulo 1: moverse por el Centro Editorial
+export const comunidadAdminCentro: TourDef = {
+  id: 'tut-comunidad-admin-centro',
+  module: 'comunidad',
+  summary: 'Entrar en una sección, filtrar la lista, abrir un elemento con «Ver / Gestionar» y volver sin perder tu sitio (solo administración de PEPA).',
+  access: ACCESS,
+  version: 1,
+  title: 'Moverte por el Centro Editorial',
+  cardId: 'com-admin-centro',
+  durationSec: 100,
+  startPath: '/administracion',
+  startDest: 'admin.comunidad-oficial',
+  paths: ['/administracion'],
+  readyOn: ['comunidad.centro-secciones'],
+  steps: [
+    {
+      id: 'seccion',
+      text: 'Elige una sección de contenido: Artículos, Encuestas o Menús semanales. Tócala tú; yo solo te la señalo.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [{ type: 'appear', target: 'comunidad.centro-filtros' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-filtros' }],
+    },
+    {
+      id: 'filtros',
+      text: 'Aquí eliges el estado (Pendientes, Aprobadas, Rechazadas, Publicadas), filtras entre dos fechas y buscas por título. Los filtros se conservan al abrir un elemento y volver.',
+      target: 'comunidad.centro-filtros',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'tarjeta',
+      text: 'Cada elemento es una tarjeta corta, sin el texto entero: tipo, título, tema, fecha, estado y versión. Si hay más de veinte, «Ver más» añade el siguiente bloque.',
+      target: 'comunidad.centro-tarjeta',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'gestionar',
+      text: 'Toca «Ver / Gestionar» en una tarjeta para abrir su detalle. Abrirlo no cambia nada.',
+      target: 'comunidad.centro-gestionar',
+      completeOn: [{ type: 'click', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      optional: true,
+      missingText: 'Esta lista está vacía. Prueba con otro estado (por ejemplo «Aprobadas») u otra sección.',
+    },
+    {
+      id: 'detalle',
+      text: 'Este es el detalle: contenido completo y todas las acciones (editar, rectificar con Pepa, aprobar, rechazar, reprogramar). Aprobar o rechazar aquí cambia el estado de verdad; yo no lo toco.',
+      target: 'comunidad.centro-detalle',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'aprobar',
+      text: 'Si el elemento está pendiente, «Aprobar» pide un segundo toque para confirmar. Aprobar lo programa (un artículo o un menú, para su día; una encuesta, para el sábado) o lo publica, según el tipo; yo no lo pulso.',
+      target: 'comunidad.centro-aprobar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+      missingText: 'Este elemento no está pendiente, así que no tiene «Aprobar». Puedes verlo solo leyendo.',
+    },
+    {
+      id: 'volver',
+      text: '«← Volver a la lista» te devuelve a donde estabas, con tus filtros y tu posición. La lista y los contadores ya están al día, sin recargar la página.',
+      target: 'comunidad.centro-volver',
+      completeOn: [{ type: 'click', target: 'comunidad.centro-volver' }],
+      optional: true,
+    },
+  ],
+  finishText: 'Listo. El Resumen y el programa semanal se actualizan solos después de cada acción. Sigue con «Generación semanal» o con el editor del menú.',
+  next: ['com-admin-generacion', 'com-admin-menu-editor'],
+}
+
+// ───────────── Capítulo 2: generación semanal
 export const comunidadAdminGeneracion: TourDef = {
   id: 'tut-comunidad-admin-generacion',
   module: 'comunidad',
   summary: 'Los interruptores de la generación semanal, «Generar ahora» y el programa de la semana (solo administración de PEPA).',
   access: ACCESS,
-  version: 1,
+  version: 2,
   title: 'Generación semanal de borradores',
   cardId: 'com-admin-generacion',
-  durationSec: 100,
+  durationSec: 110,
   startPath: '/administracion',
   startDest: 'admin.comunidad-oficial',
   paths: ['/administracion'],
-  readyOn: ['comunidad.editorial-panel'],
+  readyOn: ['comunidad.centro-secciones'],
   steps: [
+    {
+      id: 'seccion',
+      text: 'La generación semanal está en «Programación y configuración». Tócala tú en la barra de secciones; yo solo te la señalo.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [{ type: 'appear', target: 'comunidad.editorial-panel' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.editorial-panel' }],
+    },
     {
       id: 'panel',
       text: 'Este es el panel «Generación semanal». Cada miércoles a las 08:00 (hora de Madrid) Pepa prepara BORRADORES: 7 artículos, 1 encuesta y 1 menú. Generar nunca publica nada; lo decides tú aprobando.',
@@ -49,53 +193,71 @@ export const comunidadAdminGeneracion: TourDef = {
       manualNext: true,
     },
     {
-      id: 'historial',
-      text: 'Aquí ves el historial de ejecuciones, con su resultado y los errores en español claro. Si algo falla, el panel lo cuenta sin textos técnicos.',
-      target: 'comunidad.editorial-history',
-      completeOn: [],
-      manualNext: true,
-    },
-    {
       id: 'programa',
-      text: 'El «Programa de la semana» enseña cada día con su artículo, la encuesta del sábado y el menú, con su estado: borrador, aprobado y programado a las 10:00, publicado o con error.',
+      text: 'El «Programa de la semana» enseña cada día con su artículo, la encuesta del sábado y el menú, con su estado real: borrador, aprobado y programado a las 10:00, publicado o con error. Se actualiza solo cuando apruebas, rechazas o editas algo.',
       target: 'comunidad.editorial-program',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'revisar',
-      text: '«Revisar» abre ese elemento justo debajo, en su tarjeta, para leerlo, rectificarlo, editarlo, aprobarlo o rechazarlo. Aprobar un artículo del programa lo programa para su día; no lo publica al momento.',
+      text: '«Revisar» abre ese elemento en su detalle, para leerlo, rectificarlo, editarlo, aprobarlo o rechazarlo. Aprobar un artículo del programa lo programa para su día; no lo publica al momento.',
       target: 'comunidad.editorial-review',
       completeOn: [],
       manualNext: true,
       optional: true,
     },
   ],
-  finishText: 'Eso es todo. Recuerda: nada sale sin que lo apruebes tú. Para cambiar un borrador con ayuda de Pepa, mira el capítulo «Rectificar con Pepa».',
+  finishText: 'Eso es todo. Recuerda: nada sale sin que lo apruebes tú. El historial de ejecuciones y los errores están en «Historial y errores». Para cambiar un borrador con ayuda de Pepa, mira el capítulo «Rectificar con Pepa».',
   next: ['com-admin-rectificar'],
 }
 
+// ───────────── Capítulo 3: rectificar con Pepa
 export const comunidadAdminRectificar: TourDef = {
   id: 'tut-comunidad-admin-rectificar',
   module: 'comunidad',
-  summary: 'Pedirle a Pepa cambios en un borrador, compararlos, aceptarlos o rechazarlos y volver a una versión anterior.',
+  summary: 'Pedirle a Pepa cambios en un borrador (en un menú, de una receta a todo el menú), compararlos, aceptarlos o rechazarlos y volver a una versión anterior.',
   access: ACCESS,
-  version: 1,
+  version: 2,
   title: 'Rectificar un borrador con Pepa',
   cardId: 'com-admin-rectificar',
-  durationSec: 110,
+  durationSec: 120,
   startPath: '/administracion',
   startDest: 'admin.comunidad-oficial',
   paths: ['/administracion'],
-  readyOn: ['comunidad.editorial-panel'],
-  needs: [{ target: 'comunidad.revise-open', message: 'Para practicar este capítulo necesitas algún artículo, encuesta o menú sin publicar en Contenido oficial, y ahora no hay ninguno. Puedes verlo solo leyendo.' }],
+  readyOn: ['comunidad.centro-secciones'],
   steps: [
     {
+      id: 'seccion',
+      text: 'Elige la sección del borrador que quieres cambiar: Artículos, Encuestas o Menús semanales. Tócala tú; yo solo te la señalo.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [{ type: 'appear', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      missingText: 'Elige primero una sección con borradores pendientes.',
+    },
+    {
+      id: 'gestionar',
+      text: 'Abre un borrador sin publicar con «Ver / Gestionar». Solo se pueden rectificar los pendientes y los aprobados que aún no han salido.',
+      target: 'comunidad.centro-gestionar',
+      completeOn: [{ type: 'click', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      missingText: 'No hay ningún borrador en esta lista. Prueba con «Pendientes» u otra sección; si no hay ninguno, puedes verlo solo leyendo.',
+    },
+    {
       id: 'abrir',
-      text: 'En un borrador sin publicar, el botón «Rectificar con Pepa» abre el panel de cambios. Pulsarlo no gasta IA ni cambia nada. En un menú, junto a cada plato verás «Cambiar este plato con Pepa».',
+      text: 'En el detalle, el botón «Rectificar con Pepa» abre el panel de cambios. Pulsarlo no gasta IA ni cambia nada. En un menú, «Pedir cambios generales del menú» o «Cambiar este plato con Pepa» junto a cada plato abren el panel con su alcance.',
       target: 'comunidad.revise-open',
       completeOn: [{ type: 'click', target: 'comunidad.revise-open' }],
       skipIf: [{ type: 'appear', target: 'comunidad.revise-panel' }],
+      missingText: 'Este elemento no se puede rectificar (ya está publicado o rechazado). Abre otro que esté pendiente.',
+    },
+    {
+      id: 'alcance',
+      text: 'En un menú eliges el alcance: «Una receta», «Una comida», «Un día» o «Todo el menú», y qué día, comida o receta. Pepa solo cambia lo que elijas y lo demás queda igual.',
+      target: 'comunidad.revise-scope',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
     },
     {
       id: 'instruccion',
@@ -113,7 +275,7 @@ export const comunidadAdminRectificar: TourDef = {
     },
     {
       id: 'comparar',
-      text: 'La comparación marca en verde lo añadido y en rojo lo eliminado, y muestra recetas, opciones de encuesta o platos del menú que cambian, con lo que dice Pepa que ha hecho.',
+      text: 'La comparación marca en verde lo añadido y en rojo lo eliminado, y muestra recetas, opciones de encuesta o platos del menú que cambian (con ingredientes, cantidades, pasos, tiempos y consejos), y lo que dice Pepa que ha hecho. Si algo no cuadra, te avisa.',
       target: 'comunidad.revise-compare',
       completeOn: [],
       manualNext: true,
@@ -133,10 +295,156 @@ export const comunidadAdminRectificar: TourDef = {
       target: 'comunidad.revise-history',
       completeOn: [],
       manualNext: true,
+      optional: true,
     },
   ],
   finishText: 'Listo. Puedes repetirlo las veces que haga falta o editar a mano con «Editar». Recuerda aprobar de nuevo el borrador rectificado.',
-  next: ['com-admin-generacion'],
+  next: ['com-admin-menu-editor'],
 }
 
-export const TOURS_COMUNIDAD_ADMIN: TourDef[] = [comunidadAdminGeneracion, comunidadAdminRectificar]
+// ───────────── Capítulo 4: editar el menú semanal
+export const comunidadAdminMenuEditar: TourDef = {
+  id: 'tut-comunidad-admin-menu-editar',
+  module: 'comunidad',
+  summary: 'Editar a mano un menú semanal por días, comidas y recetas, comprobarlo, verlo como lo verán las familias y guardarlo sin publicar (solo administración de PEPA).',
+  access: ACCESS,
+  version: 1,
+  title: 'Editar el menú semanal',
+  cardId: 'com-admin-menu-editor',
+  durationSec: 120,
+  startPath: '/administracion',
+  startDest: 'admin.comunidad-oficial',
+  paths: ['/administracion'],
+  readyOn: ['comunidad.centro-secciones'],
+  steps: [
+    {
+      id: 'seccion',
+      text: 'Entra en «Menús semanales». Tócala tú en la barra de secciones; yo solo te la señalo.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [{ type: 'appear', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      missingText: 'Entra primero en «Menús semanales».',
+    },
+    {
+      id: 'gestionar',
+      text: 'Abre un menú con «Ver / Gestionar». Si está pendiente de aprobar o aprobado y aún sin publicar, podrás editarlo.',
+      target: 'comunidad.centro-gestionar',
+      completeOn: [{ type: 'click', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      missingText: 'No hay ningún menú en esta lista. Prueba con otro estado, o puedes verlo solo leyendo.',
+    },
+    {
+      id: 'abrir',
+      text: '«Editar el menú» abre el editor por días, comidas y recetas. Abrirlo no cambia nada.',
+      target: 'comunidad.menu-editor-abrir',
+      completeOn: [{ type: 'click', target: 'comunidad.menu-editor-abrir' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.menu-editor' }],
+      missingText: 'Este menú no se puede editar (ya está publicado o rechazado). Abre otro.',
+    },
+    {
+      id: 'dias',
+      text: 'Elige el día arriba. Verás solo las comidas que existen en el menú, cada una con sus platos y recetas independientes.',
+      target: 'comunidad.menu-editor-dias',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'plato',
+      text: 'Aquí cambias el nombre del plato y su acompañamiento. Si cambias nombres, recuerda que el texto de la publicación no se reescribe solo.',
+      target: 'comunidad.menu-editor-plato',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'receta',
+      text: 'En cada receta: «Editar receta» abre su hoja (ingredientes, cantidades, pasos, tiempos, consejo y congelación), «Sustituir» la cambia, ↑ ↓ la ordenan y «Quitar» la elimina tras un segundo toque. Solo cambia este menú oficial, nunca la Cocina de una familia. Yo no la abro.',
+      target: 'comunidad.menu-editor-receta',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'comprobacion',
+      text: 'La «Comprobación editorial» separa lo que impide aprobar (datos obligatorios que faltan) de las recomendaciones, como un consejo que falta, que no bloquean nada.',
+      target: 'comunidad.menu-editor-check',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'vista',
+      text: '«Vista previa del menú» lo enseña con el mismo diseño que tendrá en Comunidad, con los siete días y todas las fichas desplegables. Es solo para mirar.',
+      target: 'comunidad.menu-editor-vista',
+      completeOn: [],
+      manualNext: true,
+    },
+    {
+      id: 'guardar',
+      text: '«Guardar menú» guarda una versión nueva sin aprobar ni publicar nada; si el menú estaba aprobado, vuelve a pendiente y habrá que aprobarlo de nuevo. Si cierras con cambios sin guardar, te pregunto antes de perderlos. Yo no lo pulso.',
+      target: 'comunidad.menu-editor-guardar',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Listo. Recuerda: guardar no publica. Para cambios con ayuda de Pepa, mira «Rectificar con Pepa».',
+  next: ['com-admin-rectificar', 'com-admin-reprogramar'],
+}
+
+// ───────────── Capítulo 5: reprogramar
+export const comunidadAdminReprogramar: TourDef = {
+  id: 'tut-comunidad-admin-reprogramar',
+  module: 'comunidad',
+  summary: 'Mover a otra fecha un artículo, una encuesta o un menú ya aprobado y aún sin publicar, sin cambiar su contenido (solo administración de PEPA).',
+  access: ACCESS,
+  version: 1,
+  title: 'Reprogramar contenido aprobado',
+  cardId: 'com-admin-reprogramar',
+  durationSec: 70,
+  startPath: '/administracion',
+  startDest: 'admin.comunidad-oficial',
+  paths: ['/administracion'],
+  readyOn: ['comunidad.centro-secciones'],
+  steps: [
+    {
+      id: 'seccion',
+      text: 'Entra en la sección del contenido que quieres mover (Artículos, Encuestas o Menús semanales) y elige el estado «Aprobadas». Tócalas tú; yo solo te las señalo.',
+      target: 'comunidad.centro-secciones',
+      completeOn: [{ type: 'appear', target: 'comunidad.centro-filtros' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-filtros' }],
+    },
+    {
+      id: 'gestionar',
+      text: 'Abre el elemento aprobado con «Ver / Gestionar». Solo se reprograma lo aprobado que aún no ha salido.',
+      target: 'comunidad.centro-gestionar',
+      completeOn: [{ type: 'click', target: 'comunidad.centro-gestionar' }],
+      skipIf: [{ type: 'appear', target: 'comunidad.centro-detalle' }],
+      missingText: 'No hay nada aprobado en esta lista. Puedes verlo solo leyendo.',
+    },
+    {
+      id: 'reprogramar',
+      text: 'En su detalle, «Reprogramar» deja elegir otra fecha: un artículo, otro día y hora; un menú, otro sábado a las 10:00; una encuesta, otro sábado (abre a las 10:00 y cierra el domingo siguiente a las 17:00, hora peninsular). Yo no lo pulso.',
+      target: 'comunidad.centro-reprogramar',
+      completeOn: [],
+      manualNext: true,
+      optional: true,
+    },
+    {
+      id: 'contenido',
+      text: 'Reprogramar solo mueve la fecha: no cambia el texto, las recetas ni las cantidades, y no publica nada. Si esa semana ya tiene otro menú u otra encuesta, el servidor no lo permite y te lo explica.',
+      completeOn: [],
+      manualNext: true,
+    },
+  ],
+  finishText: 'Listo. Para cambiar el contenido, usa «Editar» o «Rectificar con Pepa»; para la fecha, «Reprogramar».',
+  next: ['com-admin-centro'],
+}
+
+export const TOURS_COMUNIDAD_ADMIN: TourDef[] = [
+  visitaCentroEditorial,
+  comunidadAdminCentro,
+  comunidadAdminGeneracion,
+  comunidadAdminRectificar,
+  comunidadAdminMenuEditar,
+  comunidadAdminReprogramar,
+]

@@ -349,6 +349,8 @@ export const adminDismissTopicProposals = (groupKey: string) => rpc<number>('com
 
 export const adminListMenus = (limit = 50) => rpc<Record<string, unknown>>('community_admin_list_menus', { p_limit: limit })
 export const adminGetMenu = (id: string) => rpc<Record<string, unknown>>('community_admin_get_menu', { p_id: id })
+// Encuesta oficial aprobada y sin publicar → otro sábado a las 10:00 (hora de Madrid); el cierre es el domingo siguiente a las 17:00. Solo mueve las fechas.
+export const adminReschedulePoll = (id: string, opensAt: string) => rpc<Record<string, unknown>>('community_admin_reschedule_poll', { p_id: id, p_opens_at: opensAt })
 export const adminRescheduleMenu = (id: string, publishAt: string | null) => rpc<Record<string, unknown>>('community_admin_reschedule_menu', { p_id: id, p_publish_at: publishAt })
 export const adminRetryPublish = (id: string) => rpc<Record<string, unknown>>('community_admin_retry_publish', { p_id: id })
 export const adminRejectProposal = (id: string, note: string | null) => rpc<void>('community_admin_reject_proposal', { p_id: id, p_note: note })

@@ -14,6 +14,7 @@ import { TOURS_G8 } from '@/help/tours/defs/groups/g8'
 import { TOURS_G9 } from '@/help/tours/defs/groups/g9'
 import { TOURS_G10 } from '@/help/tours/defs/groups/g10'
 import { TOURS_LISTAS } from '@/help/tours/defs/g11/listas'
+import { TOURS_GRUPOS } from '@/help/tours/defs/g12/grupos'
 import { TOUR_ALIASES } from '@/help/tours/aliases'
 import type { TourDef } from '@/help/tours/types'
 
@@ -36,6 +37,7 @@ export const TOURS: readonly TourDef[] = [
   ...TOURS_G9,
   ...TOURS_G10,
   ...TOURS_LISTAS,
+  ...TOURS_GRUPOS,
 ]
 
 export const TOUR_IDS: readonly string[] = TOURS.map((t) => t.id)

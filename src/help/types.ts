@@ -19,6 +19,7 @@ export type HelpModuleId =
   | 'galeria'
   | 'documentos'
   | 'listas'
+  | 'grupos'
   | 'ubicacion'
   | 'comunidad'
   | 'configuracion'

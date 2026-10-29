@@ -4,6 +4,7 @@ import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type 
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
+import '@/ui/groups/groups.css'
 import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
 import { CategorySelect } from '@/ui/CategorySelect'
 import { CategoryEditInline } from '@/ui/CategoryEditInline'
@@ -703,6 +704,17 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           Presupuesto Generales...), repitiendo la misma tendencia sin
           venir a cuento en pantallas que no son de estadísticas. */}
       {tab === 'Estadísticas' && <BalanceTrendCard key={`trend-${refreshKey}`} />}
+      {/* Gestión de grupos: los botes compartidos (colectas de clase, equipo…) tienen su propia pantalla, con su control de pagos; desde Resumen se llega en un toque. */}
+      {tab === 'Resumen' && profile.role !== 'guest' && profile.role !== 'child' && (profile.allowedSections == null || profile.allowedSections.includes('grupos')) && (
+        <Link to="/grupos" className="grp-row" data-help-id="economia.botes-grupos">
+          <span aria-hidden="true">💰</span>
+          <span className="grp-row-main">
+            <span className="grp-row-title">Botes compartidos</span>
+            <span className="grp-row-sub" style={{ display: 'block' }}>Colectas de tus grupos: quién ha pagado y quién falta</span>
+          </span>
+          <span aria-hidden="true">›</span>
+        </Link>
+      )}
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece

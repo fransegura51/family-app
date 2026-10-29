@@ -1,6 +1,7 @@
 import { HELP_DETAILS, HELP_VIDEOS, SETTINGS_ENTRY, SUMMARIES } from '@/help/legacy/legacyHelp'
 import { CARDS_DIA_A_DIA } from '@/help/catalog/cardsDiaADia'
 import { CARDS_GENERAL } from '@/help/catalog/cardsGeneral'
+import { CARDS_GRUPOS } from '@/help/catalog/cardsGrupos'
 import { CARDS_OTROS } from '@/help/catalog/cardsOtros'
 import { HELP_MODULES, HELP_MODULE_BY_ID } from '@/help/catalog/modules'
 import type { HelpCard, HelpDocEntry, HelpModule, HelpModuleId } from '@/help/types'
@@ -9,7 +10,7 @@ import type { HelpCard, HelpDocEntry, HelpModule, HelpModuleId } from '@/help/ty
 export { HELP_MODULES, HELP_MODULE_BY_ID }
 export { HELP_VIDEOS, SUMMARIES }
 
-export const HELP_CARDS: HelpCard[] = [...CARDS_GENERAL, ...CARDS_DIA_A_DIA, ...CARDS_OTROS]
+export const HELP_CARDS: HelpCard[] = [...CARDS_GENERAL, ...CARDS_DIA_A_DIA, ...CARDS_OTROS, ...CARDS_GRUPOS]
 export const HELP_CARD_BY_ID = new Map(HELP_CARDS.map((c) => [c.id, c]))
 
 export function cardsOfModule(id: HelpModuleId): HelpCard[] {

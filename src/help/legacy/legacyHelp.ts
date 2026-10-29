@@ -20,6 +20,7 @@ export const SUMMARIES: Record<string, string> = {
   '/galeria': 'Fotos de la familia, compartibles también con invitados que solo tengan acceso a esta sección.',
   '/documentos': 'Documentos importantes por persona o carpeta, con fecha de vencimiento y recordatorios de renovación si hace falta.',
   '/listas': 'Tus listas de tareas, ideas o comparativas, en carpetas, privadas o familiares, con importación desde foto, PDF o voz.',
+  '/grupos': 'Tus clases, equipos o grupos de amigos: participantes, botes compartidos para recaudar dinero y ver quién falta por pagar, y eventos y listas vinculados.',
 }
 
 // Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan

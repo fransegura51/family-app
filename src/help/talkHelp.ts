@@ -45,6 +45,7 @@ const MODULE_WORDS: [HelpModuleId, RegExp][] = [
   ['galeria', /\b(?:galeria|fotos)\b/],
   ['documentos', /\b(?:documentos)\b/],
   ['listas', /\b(?:mis listas|listas)\b/],
+  ['grupos', /\b(?:gestion de grupos|grupos?|botes?|bote compartido|colecta|recaudacion)\b/],
   ['ubicacion', /\b(?:ubicacion|localizacion|el mapa|mapa)\b/],
   ['comunidad', /\b(?:comunidad)\b/],
   ['notificaciones', /\b(?:notificaciones|avisos|la campana)\b/],

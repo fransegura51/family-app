@@ -46,6 +46,8 @@ const ContactsScreen = lazy(() => import('@/ui/ContactsScreen').then((m) => ({ d
 const GalleryScreen = lazy(() => import('@/ui/GalleryScreen').then((m) => ({ default: m.GalleryScreen })))
 const ListsScreen = lazy(() => import('@/ui/lists/ListsScreen').then((m) => ({ default: m.ListsScreen })))
 const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({ default: m.DocumentsScreen })))
+const GroupFundPublicScreen = lazy(() => import('@/ui/groups/GroupFundPublicScreen').then((m) => ({ default: m.GroupFundPublicScreen })))
+const GruposScreen = lazy(() => import('@/ui/GruposScreen').then((m) => ({ default: m.GruposScreen })))
 const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
 const AyudaScreen = lazy(() => import('@/ui/AyudaScreen').then((m) => ({ default: m.AyudaScreen })))
 const SuggestionsScreen = lazy(() => import('@/ui/SuggestionsScreen').then((m) => ({ default: m.SuggestionsScreen })))
@@ -93,6 +95,11 @@ function wishlistGuestTokenFromLocation(): string | null {
   return new URLSearchParams(window.location.search).get('deseos')
 }
 
+// Consulta pública de un bote de Gestión de grupos ("/?bote=TOKEN"): mismo patrón que RSVP y la lista de deseos.
+function fundShareTokenFromLocation(): string | null {
+  return new URLSearchParams(window.location.search).get('bote')
+}
+
 // Enlace de "¿Olvidaste tu contraseña?" (LoginScreen) — Supabase
 // vuelve aquí con #access_token=...&type=recovery en el hash. Se
 // reconoce ANTES que nada (como RsvpScreen más abajo), para no pasar
@@ -120,6 +127,14 @@ export function App() {
     return (
       <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <WishlistGuestScreen token={wishlistGuestToken} />
+      </Suspense>
+    )
+  }
+  const fundToken = fundShareTokenFromLocation()
+  if (fundToken) {
+    return (
+      <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
+        <GroupFundPublicScreen token={fundToken} />
       </Suspense>
     )
   }
@@ -174,6 +189,7 @@ function AuthedApp() {
             <Route path="/galeria" element={<GalleryScreen />} />
             <Route path="/documentos" element={<DocumentsScreen />} />
             <Route path="/listas/*" element={<ListsScreen />} />
+            <Route path="/grupos/*" element={<GruposScreen />} />
             <Route path="/peso" element={<Navigate to="/familia" replace state={{ tab: 'Peso y medidas' }} />} />
             <Route path="/menu-organizar" element={<MenuSettingsScreen profile={profile} />} />
             {/* Centro de Administración único (solo cuentas propietarias de PEPA; la puerta pregunta al servidor). La dirección antigua del «Panel de admin» redirige al área Usuarios. */}

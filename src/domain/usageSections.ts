@@ -20,6 +20,7 @@ export const USAGE_SECTIONS: Record<string, string> = {
   galeria: 'Galería',
   documentos: 'Documentos',
   listas: 'Mis listas',
+  grupos: 'Gestión de grupos',
   'menu-organizar': 'Organizar menú',
   ayuda: 'Ayuda',
   sugerencias: 'Sugerencias',

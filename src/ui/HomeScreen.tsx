@@ -65,6 +65,7 @@ const HOME_CARD_BODY: Record<string, string> = {
   galeria: 'Fotos de la familia',
   documentos: 'Por cada miembro',
   listas: 'Tareas, ideas y comparativas',
+  grupos: 'Clases, equipos y botes',
 }
 
 const HOME_CARDS: HomeCardDef[] = NAV_TABS.filter((t) => t.to !== '/')

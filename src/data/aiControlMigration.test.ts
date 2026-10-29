@@ -14,9 +14,13 @@ const code = UP.replace(/--.*$/gm, '')
 
 const PURPOSE_FILES = import.meta.glob('/supabase/functions/_shared/ai/purposes/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
+// Funciones registradas después de la 0335 (migraciones que solo añaden filas a ai_function): 0353 = Importar participantes (Gestión de grupos).
+const LATER = import.meta.glob('/supabase/migrations/0353_ai_participants_document.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+
 function registered(): string[] {
   const block = code.slice(code.indexOf('insert into public.ai_function'), code.indexOf('on conflict (purpose) do nothing'))
-  return [...block.matchAll(/^\s*\('([a-z0-9_-]+)',/gm)].map((m) => m[1])
+  const later = Object.values(LATER).flatMap((sql) => [...sql.replace(/--.*$/gm, '').matchAll(/^\s*\('([a-z0-9_-]+)',/gm)].map((m) => m[1]))
+  return [...[...block.matchAll(/^\s*\('([a-z0-9_-]+)',/gm)].map((m) => m[1]), ...later]
 }
 
 describe('0335 · registro central de funciones con IA', () => {
@@ -32,7 +36,7 @@ describe('0335 · registro central de funciones con IA', () => {
   it('cada función tiene nombre en español y un módulo de los siete pedidos', () => {
     const block = code.slice(code.indexOf('insert into public.ai_function'), code.indexOf('on conflict (purpose) do nothing'))
     const rows = [...block.matchAll(/^\s*\('([a-z0-9_-]+)', '([^']+)', '([a-z_]+)', '/gm)]
-    expect(rows.length).toBe(registered().length)
+    expect(rows.map((r) => r[1])).toEqual(registered().slice(0, rows.length)) // las de la 0335 se leen todas (las posteriores van detrás)
     for (const [, purpose, label, module] of rows) {
       expect(['compras_economia', 'comunidad', 'ayuda', 'cocina', 'mis_listas', 'eventos', 'otros'], purpose).toContain(module)
       expect(label, purpose).not.toMatch(/[_]|enabled|^ai /)

@@ -646,6 +646,7 @@ import { RecoverMomentDialog } from '@/ui/RecoverMomentDialog'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { LocationPickerModal } from '@/ui/LocationPickerModal'
 import { GuestExportModal } from '@/ui/GuestExportModal'
+import { GroupGuestsSheet } from '@/ui/groups/GroupGuestsSheet'
 import { InvitationBackground, InvitationCanvasEditor, InvitationCanvasView, InvitationTemplatePicker } from '@/ui/InvitationDesigner'
 import { getInvitationEventDataChanges, invitationHasTrackedEventData } from '@/domain/invitationAutoCompose'
 import { formatDate, formatDateTime } from '@/domain/dateFormat'
@@ -12059,6 +12060,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
   const [showAdd, setShowAdd] = useState(false)
   const [invitationGuest, setInvitationGuest] = useState<EventGuest | null>(null)
   const [showExport, setShowExport] = useState(false)
+  const [showGroupGuests, setShowGroupGuests] = useState(false)
   const [statusFilter, setStatusFilter] = useState<EventGuestRsvpStatus | 'todos'>('todos')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -12272,6 +12274,9 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       <button type="button" className="link-button" data-help-id="eventos.guest-add" onClick={() => setShowAdd(true)}>
         + Añadir invitado
       </button>
+      <button type="button" className="link-button" data-help-id="eventos.guest-from-group" onClick={() => setShowGroupGuests(true)}>
+        👥 Desde un grupo
+      </button>
       {showAdd && (
         <AddGuestModal
           event={event}
@@ -12285,6 +12290,7 @@ function GuestsSection({ event, onOpenInvitation }: { event: FamilyEvent; onOpen
       {invitationGuest && <InvitationModal event={event} guest={invitationGuest} onClose={() => setInvitationGuest(null)} onCreateInvitation={onOpenInvitation} />}
       {manualShare && <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />}
       {showExport && <GuestExportModal event={event} onClose={() => setShowExport(false)} />}
+      {showGroupGuests && <GroupGuestsSheet eventId={event.id} onClose={() => setShowGroupGuests(false)} onChanged={reload} />}
     </div>
   )
 }

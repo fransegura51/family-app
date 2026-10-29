@@ -1,0 +1,21 @@
+-- Deshacer 0350. DESTRUCTIVO: borra botes, apuntes y repartos. Solo antes de que existan datos reales.
+drop function if exists public.reopen_group_fund(uuid);
+drop function if exists public.close_group_fund(uuid, text, uuid, text);
+drop function if exists public.transfer_between_funds(uuid, uuid, numeric, text);
+drop function if exists public.create_group_fund(uuid, text, text, numeric);
+drop policy if exists "group_receipts: read" on storage.objects;
+drop policy if exists "group_receipts: insert" on storage.objects;
+drop policy if exists "group_receipts: delete" on storage.objects;
+drop table if exists public.fund_entry_allocations;
+drop table if exists public.fund_entries;
+drop table if exists public.fund_members;
+drop table if exists public.group_funds;
+drop function if exists private.fund_balance(uuid);
+drop function if exists private.participant_in_fund_group(uuid, uuid);
+drop function if exists private.fund_write_ok(uuid);
+drop function if exists private.fund_read_ok(uuid);
+drop function if exists private.fund_group(uuid);
+drop function if exists private.group_can_txt(text);
+drop function if exists private.group_funds_guard();
+drop function if exists private.fund_entries_guard();
+drop function if exists private.fund_alloc_guard();

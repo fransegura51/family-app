@@ -29,6 +29,7 @@ export const NAV_TABS: NavTab[] = [
   { to: '/galeria', label: 'Galería', icon: '📷' },
   { to: '/documentos', label: 'Documentos', icon: '📁' },
   { to: '/listas', label: 'Mis listas', icon: '📝' },
+  { to: '/grupos', label: 'Gestión de grupos', icon: '👥' },
 ]
 
 export const NAV_TAB_PATHS = NAV_TABS.map((t) => t.to)

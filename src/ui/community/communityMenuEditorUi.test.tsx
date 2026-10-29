@@ -289,6 +289,19 @@ describe('vista previa y comprobación editorial', () => {
     expect(within(check).getByText(/Recomendaciones \(\d+\) · no impiden aprobar/)).toBeTruthy()
   })
 
+  it('la vista previa pone el texto de la publicación ANTES del menú, como la publicación real', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <MenuPreview menu={menuOf()} title="Menú de prueba" body="Texto de portada de la semana" />
+      </MemoryRouter>,
+    )
+    const text = container.querySelector('.community-post-body')
+    expect(text?.textContent).toMatch(/Texto de portada de la semana/)
+    const plan = container.querySelector('.community-post-body ~ *')
+    expect(plan).toBeTruthy()
+    expect(container.innerHTML.indexOf('Texto de portada')).toBeLessThan(container.innerHTML.indexOf(plan!.outerHTML))
+  })
+
   it('un menú completo dice que no hay nada que impida aprobar; la falta de consejo es solo recomendación', async () => {
     const menu = menuOf()
     ;(((menu.days as Rec[])[0].meals as Rec).comida as Rec).recipes = [recipe('Sin truco', { tip: undefined })]

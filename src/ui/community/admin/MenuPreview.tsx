@@ -1,19 +1,22 @@
 import { useMemo } from 'react'
 import { checkSummaryLines, menuEditorialCheck, type MenuEditorialCheck } from '@/domain/communityMenuEdit'
 import { parseMenu } from '@/domain/communityMenu'
+import { CommunityRichText } from '@/ui/community/CommunityRichText'
 import { MenuPlanView } from '@/ui/community/menu/MenuPlanView'
 import '@/ui/community/admin/menuEditor.css'
 
 // «Vista previa del menú»: el menú tal como lo verá la familia en Comunidad. Reutiliza EL MISMO componente de presentación de la publicación (`MenuPlanView`,
 // con su selector de días, comidas, raciones y fichas desplegables con ingredientes, pasos, tiempos, consejo y congelación) y el mismo `parseMenu`: no hay una
 // segunda presentación que pueda diferir. Solo se desactivan las acciones de Cocina y Compras (aquí nada se importa ni se guarda en ninguna familia).
-export function MenuPreview({ menu, title }: { menu: unknown; title?: string }) {
+export function MenuPreview({ menu, title, body }: { menu: unknown; title?: string; body?: string | null }) {
   const parsed = useMemo(() => parseMenu(menu), [menu])
   return (
     <section className="cadm-menupreview" aria-label="Vista previa del menú" data-help-id="comunidad.menu-editor-preview">
       <h4>Vista previa del menú</h4>
       {title && <p className="cadm-menupreview-title">{title}</p>}
       <p className="muted cadm-small">Así lo verá la familia en Comunidad. Despliega cada receta para ver sus ingredientes, la elaboración, los tiempos, el consejo y la congelación. Aquí no se importa nada a ninguna Cocina. Las fechas de cada día se asignan al programar el menú (semana siguiente a su sábado de publicación), por eso aquí puede aparecer como «menú de ejemplo».</p>
+      {/* Mismo orden que la publicación (MenuPostPanel): primero el texto completo y justo debajo el plan semanal. */}
+      {body && <CommunityRichText text={body} className="community-post-body" />}
       {parsed ? (
         <MenuPlanView postId="preview" menu={parsed} canUseKitchen={false} />
       ) : (

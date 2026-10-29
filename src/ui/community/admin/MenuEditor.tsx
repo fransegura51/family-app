@@ -302,7 +302,7 @@ export function MenuEditor({
         )}
       </div>
 
-      {preview && <MenuPreview menu={menu} title={item.title} />}
+      {preview && <MenuPreview menu={menu} title={item.title} body={item.body} />}
 
       {sheet && <RecipeSheet state={sheet} onChange={setSheet} onSave={saveRecipe} onCancel={() => setSheet(null)} />}
       {closing && (

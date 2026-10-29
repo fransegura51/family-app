@@ -1440,7 +1440,7 @@ Encargo «Implementación completa de Gestión de grupos y Botes compartidos». 
 
 | ID | Requisito | Estado | Evidencia |
 |---|---|---|---|
-| GRP-1a | Tarjeta propia «Gestión de grupos» en Inicio (no escondida en otra sección), con permiso por sección | **Implementado y probado** | `navTabs.ts`, `HomeScreen.tsx`, `App.tsx`; las pruebas de menú/Inicio/reseñas pasan; cabecera ilustrada `assets/grupos/grupos-header.svg` (no hay foto MASTER: ver pendiente) |
+| GRP-1a | Tarjeta propia «Gestión de grupos» en Inicio (no escondida en otra sección), con permiso por sección | **Implementado y probado** | `navTabs.ts`, `HomeScreen.tsx`, `App.tsx`; las pruebas de menú/Inicio/reseñas pasan; cabecera de la sección `assets/grupos/grupos-header.jpg` (imagen aportada por Jennifer el 29/10/2026; ver GRP-LIM-3) |
 | GRP-1b | Carpetas opcionales de dos niveles, cerradas por defecto; renombrar, mover y eliminar sin perder grupos; buscador; archivados aparte | **Implementado y probado** | `domain/groups.ts` (`organizeGroups`), `GruposHome.tsx`, `groupsUi.test.tsx`; las carpetas son de cada persona (tablas `group_folders`/`group_placements`), no dan permisos |
 | GRP-1c | Alta de grupo con solo el nombre; pantalla de grupo sin módulos vacíos; «Gestionar participantes» destacado; «＋ Añadir» (bote, evento, lista) | **Implementado y probado** | `GroupDetail.tsx`, `GroupAddSheets.tsx`, `groupsUi.test.tsx` |
 | GRP-1d | Participantes: solo el nombre obligatorio, resto opcional, editar/baja/eliminar con historial preservado (clave restrictiva), buscar y ordenar | **Implementado y probado** | `ParticipantsScreen.tsx`, 0349 (`left_at`), 0350 (`on delete restrict`); ensayo: un participante con historial no se borra |
@@ -1472,7 +1472,7 @@ Encargo «Implementación completa de Gestión de grupos y Botes compartidos». 
 |---|---|---|---|
 | GRP-LIM-1 | **Permisos por actividad** (GRP-1g): un responsable lo es de todo el grupo; no se puede dar acceso a un solo bote | **Pendiente de revisión** | Tabla de colaboradores por bote y políticas que dejen ver solo ese bote y los nombres imprescindibles de sus participantes |
 | GRP-LIM-2 | **Justificantes en las copias históricas** (GRP-3d): al copiar un historial a otro espacio no viajan los archivos, solo consta que existían | **Pendiente de revisión** | Función de servidor que copie los archivos entre carpetas de espacios distintos, con la misma autorización de la copia |
-| GRP-LIM-3 | **Cabecera MASTER no aprobada**: la cabecera de la sección es una ilustración SVG provisional (`assets/grupos/grupos-header.svg`) | **Pendiente de aprobación** | Sustituirla por la imagen aprobada, con las mismas proporciones que el resto de cabeceras |
+| GRP-LIM-3 | **Cabecera**: el 29/10/2026 Jennifer aportó la imagen y se publicó como `assets/grupos/grupos-header.jpg` (1600×658); falta que confirme que es la cabecera MASTER definitiva y revisar su encaje en móvil | **Implementado; pendiente de aprobación** | Confirmación expresa de Jennifer tras verla en iPhone/Android |
 
 ## Rediseño del Centro Editorial y editor del menú semanal (EDIT-CENTRO, 29/10/2026)
 

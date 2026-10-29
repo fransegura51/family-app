@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import gruposHeaderImg from '@/assets/grupos/grupos-header.svg'
+import gruposHeaderImg from '@/assets/grupos/grupos-header.jpg'
 import { createFolder, createGroup, deleteFolder, groupsErrorMessage, loadGroupsHome, moveGroupToFolder, renameFolder, type GroupsHomeData } from '@/data/groups'
 import { cleanFolderName, groupTitle, organizeGroups, type GroupFolder, type GroupItem } from '@/domain/groups'
 import { emitHelpEvent } from '@/help/tours/helpBus'

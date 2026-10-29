@@ -1466,6 +1466,14 @@ Encargo «Implementación completa de Gestión de grupos y Botes compartidos». 
 
 **Pendiente (honesto).** (1) Probar en iPhone y Android: crear «Clase de Eric», importar una lista real de 24 alumnos (foto, PDF y Excel), crear el bote de la excursión, excluir a quienes no van, registrar Bizums (incluido uno para dos hermanos), ver y compartir los pendientes por WhatsApp, crear el bote de material y comprobar que vuelven los 24, vincular un evento y una lista, copiar a otra usuaria con solo participantes y con historial. (2) La lectura de fotos/PDF por IA no se ha probado con listas reales (solo el parseo y la vista previa); el Excel real de la usuaria puede traer formatos que no se han visto. (3) Sin foto MASTER aprobada: la cabecera es una ilustración nueva, pendiente de que se sustituya por la aprobada. (4) GRP-1g (permisos por actividad) y GRP-3d (archivos de justificantes en la copia). (5) El aviso «Ya he pagado» avisa dentro del bote; no envía notificación push. (6) Las familias aún no han dado su autorización legal para compartir directorios de menores: la copia exige una declaración de quien la envía y es opt-in, pero la revisión legal de las condiciones es de la persona responsable. Nada pasa a Aprobado sin confirmación expresa.
 
+**GRP-1 · Limitaciones registradas para revisión posterior (acordado el 29/10/2026; la sección NO está aprobada y falta probarla en iPhone y Android).**
+
+| ID | Limitación | Estado | Qué haría falta |
+|---|---|---|---|
+| GRP-LIM-1 | **Permisos por actividad** (GRP-1g): un responsable lo es de todo el grupo; no se puede dar acceso a un solo bote | **Pendiente de revisión** | Tabla de colaboradores por bote y políticas que dejen ver solo ese bote y los nombres imprescindibles de sus participantes |
+| GRP-LIM-2 | **Justificantes en las copias históricas** (GRP-3d): al copiar un historial a otro espacio no viajan los archivos, solo consta que existían | **Pendiente de revisión** | Función de servidor que copie los archivos entre carpetas de espacios distintos, con la misma autorización de la copia |
+| GRP-LIM-3 | **Cabecera MASTER no aprobada**: la cabecera de la sección es una ilustración SVG provisional (`assets/grupos/grupos-header.svg`) | **Pendiente de aprobación** | Sustituirla por la imagen aprobada, con las mismas proporciones que el resto de cabeceras |
+
 ## Rediseño del Centro Editorial y editor del menú semanal (EDIT-CENTRO, 29/10/2026)
 
 Encargo del usuario (2026-10-29), bloques 1 a 7. Reglas que NO cambian: Comunidad solo para mayores de 18 años; **generar, rectificar, editar y guardar no publican**; aprobar exige una persona administradora de PEPA (no una administradora familiar); los interruptores de generación (artículos, encuestas, menús) y el de publicación automática del menú siguen siendo independientes y **no se ha activado ninguno**; no se tocan los siete borradores del 2 al 8 de noviembre ni ningún dato. Rama `rec-rev` (sin publicar ni desplegar).

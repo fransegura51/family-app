@@ -152,7 +152,7 @@ Deno.serve(async (req) => {
           .upsert(cleaned !== original ? { ...row, original_name: original } : row, { onConflict: "family_id,normalized_name" })
           .select("id")
           .single()
-        // Sin la columna original_name (migración 0349 aún no aplicada) se guarda igual, sin el título original.
+        // Sin la columna original_name (migración 0359 aún no aplicada) se guarda igual, sin el título original.
         if (inserted.error && (inserted.error.code === "42703" || inserted.error.code === "PGRST204")) {
           inserted = await admin.from("products").upsert(row, { onConflict: "family_id,normalized_name" }).select("id").single()
         }

@@ -2,6 +2,7 @@
 // Regla: NO se inventa nada. Cada dato va a su campo solo si está claro (cabecera conocida, o tipo evidente: teléfono, correo); lo dudoso se marca para revisar.
 // Los duplicados se detectan y se ofrece COMPLETAR la ficha existente; nunca se fusiona nada automáticamente.
 import { foldText, participantName, type Participant } from '@/domain/groups'
+import { splitFullNames, type FullNameMode } from '@/domain/fullNameSplit'
 
 export interface ImportRow {
   /** Identificador estable dentro de la vista previa. */
@@ -13,6 +14,8 @@ export interface ImportRow {
   email: string | null
   /** Motivos por los que la fila pide revisión (vacío = clara). */
   doubts: string[]
+  /** Texto original cuando nombre y apellidos se han separado por propuesta (para volver a leerlo con otro criterio). */
+  fullName?: string
 }
 
 export type ImportColumn = 'name' | 'surname' | 'guardian' | 'phone' | 'email'
@@ -146,7 +149,7 @@ const nextKey = () => `imp-${++keySeq}`
 /**
  * Interpreta filas de celdas. Con cabecera conocida se respeta; sin cabecera se usa el contenido (teléfono, correo) y el orden (nombre, luego madre/padre).
  */
-export function interpretTable(cells: string[][], opts: { surnameFirst?: boolean } = {}): ImportResult {
+export function interpretTable(cells: string[][], opts: { surnameFirst?: boolean; fullNames?: FullNameMode } = {}): ImportResult {
   const notices: string[] = []
   const rowsIn = cells.map((r) => r.map((c) => (c ?? '').toString().trim())).filter((r) => r.some((c) => c))
   if (rowsIn.length === 0) return { rows: [], notices }
@@ -244,14 +247,15 @@ export function interpretTable(cells: string[][], opts: { surnameFirst?: boolean
     out.push(row)
   }
   if (!mapping && assumed) notices.push('Sin cabecera de columnas: he supuesto «Nombre · Madre/padre · Teléfono». Revisa que cada dato esté en su sitio antes de importar.')
-  return { rows: out, notices }
+  const split = splitFullNames(out, opts.fullNames ?? 'auto')
+  return { rows: split.rows, notices: [...notices, ...split.notices] }
 }
 
 /**
  * Texto pegado o CSV. Una lista sin cabecera con dos textos por línea separados por coma es, casi siempre, «Apellidos, Nombre» (el formato de las listas de clase):
  * se lee así y se AVISA, con la opción de volver a leerla como «Nombre, madre/padre» (order = 'name-first'). Con otras separaciones (tabulador, «;») no se supone nada.
  */
-export function parseParticipantsText(text: string, order: NameOrder = 'auto'): ImportResult {
+export function parseParticipantsText(text: string, order: NameOrder = 'auto', fullNames: FullNameMode = 'auto'): ImportResult {
   const { cells, delimiter } = splitCellsDetailed(text)
   let surnameFirst = order === 'surname-first'
   let guessed = false
@@ -265,7 +269,7 @@ export function parseParticipantsText(text: string, order: NameOrder = 'auto'): 
       guessed = true
     }
   }
-  const result = interpretTable(cells, { surnameFirst })
+  const result = interpretTable(cells, { surnameFirst, fullNames })
   if (guessed) result.notices.push('He leído cada línea como «Apellidos, Nombre». Si en tu lista la segunda palabra es la madre o el padre, cámbialo abajo.')
   return result
 }
@@ -418,6 +422,17 @@ export function findNameFixes(list: Participant[]): NameFix[] {
           to: { name: tidyName(g), surname: tidyName(p.name), guardianName: null },
         })
       }
+    }
+  }
+  // «Nombre Apellidos» sin coma: solo se propone (siempre como dudoso, nunca marcado de antemano) y solo si TODA la lista de fichas sin apellidos apunta a lo mismo.
+  const done = new Set(out.map((f) => f.participantId))
+  const loose = list.filter((p) => !p.leftAt && !p.surname && !p.guardianName && !done.has(p.id))
+  if (loose.length > 0 && list.every((p) => !p.surname || p.leftAt)) {
+    const rows: ImportRow[] = loose.map((p) => ({ key: p.id, name: p.name, surname: null, guardianName: null, phone: null, email: null, doubts: [] }))
+    for (const r of splitFullNames(rows, 'auto').rows) {
+      if (r.fullName === undefined || !r.surname) continue
+      const p = loose.find((x) => x.id === r.key)!
+      out.push({ participantId: p.id, confidence: 'dudoso', reason: `¿«${p.name}» es nombre «${r.name}» y apellidos «${r.surname}»?`, from: { name: p.name, surname: null, guardianName: null }, to: { name: r.name, surname: r.surname, guardianName: null } })
     }
   }
   return out

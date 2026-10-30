@@ -485,7 +485,7 @@ export const tutGruposContactos: TourDef = {
     },
     {
       id: 'reutilizar',
-      text: 'Si al añadir o importar a alguien ya lo tienes en otro grupo, PEPA te lo dice y te deja «Reutilizar esta ficha» (comparte identidad y datos personales) o crear una persona nueva. Botes, pagos y permisos de cada grupo son independientes y nunca se fusiona nada solo por el nombre.',
+      text: 'Si al añadir o importar a alguien ya lo tienes en otro grupo, PEPA te lo dice y te deja «Reutilizar esta ficha» (sus datos personales quedan iguales en todos sus grupos) o crear una persona nueva. Botes, pagos y permisos son de cada grupo y nunca se fusiona nada solo por el nombre.',
       ...info,
     },
   ],

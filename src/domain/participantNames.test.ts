@@ -40,9 +40,11 @@ describe('BLOQUE 2.1 · nombre y apellidos al importar', () => {
     const r = parseParticipantsText('Apellidos;Nombre\nAboutaleb Bassry;Seifeddine')
     expect(r.rows[0]).toMatchObject({ name: 'Seifeddine', surname: 'Aboutaleb Bassry' })
   })
-  it('«Nombre Apellidos» sin pistas queda junto, para revisar, sin inventar', () => {
+  it('«Nombre Apellidos» sin coma se propone (con aviso); «No separar» lo deja junto', () => {
     const r = parseParticipantsText('Eric García Pérez\nLucía Martínez')
-    expect(r.rows[0]).toMatchObject({ name: 'Eric García Pérez', surname: null })
+    expect(r.rows[0]).toMatchObject({ name: 'Eric', surname: 'García Pérez', fullName: 'Eric García Pérez' })
+    expect(r.notices.join(' ')).toMatch(/sin coma/)
+    expect(parseParticipantsText('Eric García Pérez', 'auto', 'none').rows[0]).toMatchObject({ name: 'Eric García Pérez', surname: null })
   })
   it('la lectura de una foto o PDF también separa «Apellidos, Nombre»', () => {
     const r = fromAiRows([{ name: 'Aboutaleb Bassry, Seifeddine' }, { name: 'Eric', surname: 'García' }])

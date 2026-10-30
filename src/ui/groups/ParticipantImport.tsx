@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { addParticipants, groupsErrorMessage, listParticipants, loadGroupsHome, updateParticipant } from '@/data/groups'
 import { createReusedParticipants, loadKnownPeople } from '@/data/groupContacts'
 import { findDuplicates, findInternalDuplicates, interpretTable, parseParticipantsText, type DuplicateInfo, type ImportResult, type ImportRow, type NameOrder } from '@/domain/participantImport'
+import { FULL_NAME_NOTICE, splitFullNames, type FullNameMode } from '@/domain/fullNameSplit'
 import { findPersonMatches, reusedParticipantData, type KnownPerson, type PersonMatch } from '@/domain/participantMatch'
 import { activeParticipants, groupTitle, participantName, type GroupItem, type Participant } from '@/domain/groups'
 import { emitHelpEvent } from '@/help/tours/helpBus'
@@ -147,6 +148,14 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
     }
     return m
   }, [lines, known, group.id])
+  // «Nombre Apellidos» sin coma: la separación es una propuesta; se puede cambiar el criterio o dejar los nombres sin separar.
+  const [unsplit, setUnsplit] = useState(false)
+  const hasProposal = lines.some((l) => l.row.fullName !== undefined) || unsplit
+  const refull = (mode: FullNameMode) => {
+    const r = splitFullNames(lines.map((l) => l.row), mode)
+    setUnsplit(mode === 'none')
+    start({ rows: r.rows, notices: [...notices.filter((n) => !n.startsWith(FULL_NAME_NOTICE) && !/fila(s) repetida/.test(n)), ...r.notices] }, pastedText)
+  }
   const reorder = (order: NameOrder) => {
     if (pastedText !== null) start(parseParticipantsText(pastedText, order), pastedText)
   }
@@ -317,6 +326,19 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
         <div className="grp-actions">
           <button type="button" className="grp-secondary" data-help-id="grupos.importar-orden" onClick={() => reorder('name-first')}>
             Es «Nombre, madre/padre»: leerlo así
+          </button>
+        </div>
+      )}
+      {hasProposal && (
+        <div className="grp-actions">
+          <button type="button" className="grp-secondary" onClick={() => refull('surnames-first')}>
+            Leer como «Apellidos Nombre»
+          </button>
+          <button type="button" className="grp-secondary" onClick={() => refull('names-first')}>
+            Leer como «Nombre Apellidos»
+          </button>
+          <button type="button" className="grp-secondary" onClick={() => refull('none')}>
+            No separar
           </button>
         </div>
       )}

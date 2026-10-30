@@ -329,7 +329,7 @@ export function FormEditor({
           <p className="muted">
             Se guardan protegidos (solo tú puedes verlos, y queda constancia de cada vez), nunca van a las notas ni a las exportaciones y se eliminan solos en la fecha que indiques. Quien responde puede elegir una fecha anterior y verá la fecha exacta.
           </p>
-          <Field label={`Conservarlos como máximo hasta (hasta ${MAX_RETENTION_DAYS} días)`}>
+          <Field label={`Conservarlos como máximo hasta (tope provisional de ${MAX_RETENTION_DAYS} días)`} hint="Pon la fecha más cercana que te baste para lo que pides: puede ser mucho antes del tope.">
             <DateField value={retention} onChange={setRetention} placeholder="Elige la fecha" min={addDays(today, 1)} max={addDays(today, MAX_RETENTION_DAYS)} />
           </Field>
           {form && form.retentionMax && retention && retention !== form.retentionMax && (
@@ -339,6 +339,7 @@ export function FormEditor({
                 : 'Al alargar la fecha, los datos ya recogidos NO se alargan: cada persona aceptó la suya. Solo afecta a las respuestas nuevas.'}
             </p>
           )}
+          <p className="muted">Conserva los datos solo para la finalidad que has explicado a las familias. Si una obligación legal te exige guardar algo más tiempo, hazlo tú fuera de PEPA y con la base legal que corresponda.</p>
           <p className="muted">PEPA solo elimina lo que guarda ella. Si descargas o envías esos datos a otra parte (Google Drive, una agencia…), esas copias las tienes que borrar tú.</p>
         </div>
       )}

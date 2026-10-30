@@ -179,3 +179,9 @@ export async function resolvePending(id: string, status: 'vinculado' | 'descarta
 export const pendingPhoneKeys = (list: PendingContact[]): Set<string> => new Set(list.map((p) => phoneKey(p.phone)).filter((k): k is string => !!k))
 
 export type { Participant }
+
+/** Deja de compartir la identidad: la ficha conserva sus datos de ahora, pero ya no se sincroniza con las demás. */
+export async function unlinkParticipantPerson(participantId: string): Promise<void> {
+  const { error } = await supabase.from('group_participants').update({ person_id: null }).eq('id', participantId)
+  if (error) throw error
+}

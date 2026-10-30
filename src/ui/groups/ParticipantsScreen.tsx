@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { addParticipant, deleteParticipant, groupsErrorMessage, listParticipants, loadGroup, setParticipantLeft, updateParticipant, type ParticipantInput } from '@/data/groups'
 import { addMembers, listFunds } from '@/data/groupFunds'
 import type { FundItem } from '@/domain/groupFunds'
-import { createReusedParticipants, listLinkedContacts, listPendingContacts, loadKnownPeople, type PendingContact } from '@/data/groupContacts'
+import { createReusedParticipants, listLinkedContacts, listPendingContacts, loadKnownPeople, unlinkParticipantPerson, type PendingContact } from '@/data/groupContacts'
 import { findPersonMatches, reusedParticipantData, type KnownPerson } from '@/domain/participantMatch'
 import type { LinkedContactRow } from '@/domain/contactShare'
 import { makeNamer, sortByPrefs } from '@/domain/groupNames'
@@ -266,6 +266,19 @@ function ParticipantSheet({ groupId, participant, links, readOnly, onLinksChange
   }
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Si esta persona está también en otros grupos con la misma identidad, sus datos personales son los mismos en todos.
+  const [sharedWith, setSharedWith] = useState<string[]>([])
+  const personId = participant?.personId ?? null
+  const ownId = participant?.id ?? null
+  useEffect(() => {
+    if (!personId || !ownId) return
+    loadKnownPeople()
+      .then((all) => {
+        const mine = all.find((k) => k.personKey === personId)
+        setSharedWith((mine?.sheets ?? []).filter((s) => s.participant.id !== ownId).map((s) => s.groupName))
+      })
+      .catch(() => undefined)
+  }, [personId, ownId])
   const set = (k: keyof ParticipantInput) => (e: { target: { value: string } }) => (setF((p) => ({ ...p, [k]: e.target.value })), setProblem(null))
 
   const save = async () => {
@@ -304,6 +317,24 @@ function ParticipantSheet({ groupId, participant, links, readOnly, onLinksChange
         <Field label="Teléfono de contacto (opcional)">
           <input className="grp-input" inputMode="tel" value={f.phone ?? ''} onChange={set('phone')} disabled={readOnly} />
         </Field>
+        {participant && sharedWith.length > 0 && (
+          <div className="grp-banner grp-banner-info">
+            <p style={{ margin: 0 }}>
+              <strong>Nombre, apellidos, teléfono y correo son los mismos en: {sharedWith.join(', ')}.</strong> Si los cambias aquí, se cambian también allí. Las observaciones, los botes, los pagos y los permisos de cada grupo siguen siendo independientes.
+            </p>
+            {!readOnly && (
+              <ConfirmButton
+                label="Dejar de compartir los datos con los otros grupos"
+                confirmMessage="Esta ficha conserva sus datos de ahora, pero deja de actualizarse con las de los otros grupos."
+                onConfirm={() => {
+                  void unlinkParticipantPerson(participant.id)
+                    .then(() => onSaved())
+                    .catch((e) => setProblem(groupsErrorMessage(e)))
+                }}
+              />
+            )}
+          </div>
+        )}
         {matches.length > 0 && (
           <div className="grp-banner grp-banner-info" data-help-id="grupos.reutilizar-persona">
             <p style={{ margin: '0 0 6px' }}>
@@ -325,7 +356,7 @@ function ParticipantSheet({ groupId, participant, links, readOnly, onLinksChange
                 </button>
               </div>
             ))}
-            <p className="muted" style={{ margin: 0 }}>Los botes, pagos y permisos de cada grupo siguen siendo independientes. Si es otra persona, sigue rellenando y guarda como nueva.</p>
+            <p className="muted" style={{ margin: 0 }}>Nombre, apellidos, teléfono y correo quedarán iguales en todos sus grupos; los botes, pagos y permisos de cada grupo siguen siendo independientes. Si es otra persona, sigue rellenando y guarda como nueva.</p>
           </div>
         )}
         {!more && (

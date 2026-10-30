@@ -256,8 +256,8 @@ describe('importar participantes', () => {
   })
   it('líneas sueltas con el teléfono dentro del texto', () => {
     const r = parseParticipantsText('Eric García 612 345 678\nLucía Martínez - 623.456.789')
-    expect(r.rows[0]).toMatchObject({ name: 'Eric García', phone: '612345678' })
-    expect(r.rows[1]).toMatchObject({ name: 'Lucía Martínez', phone: '623456789' })
+    expect(r.rows[0]).toMatchObject({ name: 'Eric', surname: 'García', phone: '612345678' })
+    expect(r.rows[1]).toMatchObject({ name: 'Lucía', surname: 'Martínez', phone: '623456789' })
   })
   it('sin cabecera con nombre y madre/padre: se avisa de la suposición', () => {
     const r = parseParticipantsText('Eric García;Jennifer;612345678')

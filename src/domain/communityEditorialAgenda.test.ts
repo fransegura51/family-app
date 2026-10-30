@@ -150,4 +150,3 @@ describe('agenda editorial: semana por fecha efectiva (reprogramaciones)', () =>
   })
 })
 
-const prev0 = row({ id: 'prev0', slotDate: '2026-10-27', publishAt: '2026-10-27T09:00:00Z', status: 'approved' })

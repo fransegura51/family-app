@@ -161,17 +161,13 @@ describe('BLOQUE 6.2 · quién falta y mensajes', () => {
   })
   it('el mensaje de invitación dice quién pide los datos, para qué, hasta cuándo y lleva el enlace', () => {
     const t = inviteText({ title: 'Excursión', requesterName: 'Colegio X', purpose: 'Organizar la salida', deadline: '2026-11-05' }, 'Clase de Eric', 'https://x/?formulario=abc', 'Eric', (d) => d.split('-').reverse().join('/'))
-    expect(t).toContain('Colegio X · Clase de Eric')
-    expect(t).toContain('Excursión (Eric)')
-    expect(t).toContain('Para: Organizar la salida')
-    expect(t).toContain('Antes del 05/11/2026.')
+    expect(t.split('\n\n')).toEqual(['Colegio X — Clase de Eric', 'Excursión (Eric)', 'Organizar la salida', 'Fecha límite: 05/11/2026', 'https://x/?formulario=abc'])
     expect(t).toContain('https://x/?formulario=abc')
   })
-  it('el enlace usa el parámetro «formulario»', () => {
-    // jsdom no es necesario: solo comprueba que se compone con el origen y el parámetro.
-    const g = globalThis as { window?: { location: { origin: string } } }
-    g.window = { location: { origin: 'https://pepa.test' } }
-    expect(formShareUrl('TOKEN')).toMatch(/\?formulario=TOKEN$/)
-    delete g.window
+  it('el enlace usa el dominio oficial y el parámetro «formulario»; quien solicita va primero, sin la descripción genérica de PEPA', () => {
+    expect(formShareUrl('TOKEN')).toBe('https://pepafamilyapp.es/f/?formulario=TOKEN')
+    const t = inviteText({ title: 'Correo', requesterName: 'Jennifer', purpose: 'Compartir carpetas', deadline: null }, 'Clase', 'https://pepafamilyapp.es/f/?formulario=T', null, (d) => d)
+    expect(t.startsWith('Jennifer — Clase')).toBe(true)
+    expect(t).not.toMatch(/Fecha límite|Para:/)
   })
 })

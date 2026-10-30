@@ -1,7 +1,9 @@
 // «Solicitar datos» (Gestión de grupos) — dominio puro del lado de la aplicación. Las reglas de las preguntas y de las respuestas viven en el módulo compartido con el servidor
 // (supabase/functions/_shared/groups/formSchema.ts): lo que acepta quien construye el formulario y lo que acepta quien responde sale de las MISMAS reglas.
+import { PEPA_PUBLIC_WEBSITE_URL } from '@/domain/brand'
 import {
   addDays,
+  compatibleMaps,
   daysBetween,
   FIELD_TYPES,
   hasSensitive,
@@ -20,7 +22,7 @@ import {
   type MapsTo,
 } from '../../supabase/functions/_shared/groups/formSchema'
 
-export { addDays, daysBetween, FIELD_TYPES, hasSensitive, MAPS_TO, MAX_FIELDS, MAX_RETENTION_DAYS, normalizeFields, notesBlock, retentionExpiry, retentionMaxError, todayIn, validateAnswers }
+export { addDays, compatibleMaps, daysBetween, FIELD_TYPES, hasSensitive, MAPS_TO, MAX_FIELDS, MAX_RETENTION_DAYS, normalizeFields, notesBlock, retentionExpiry, retentionMaxError, todayIn, validateAnswers }
 export type { AnswerValue, FieldType, FormField, MapsTo }
 
 export const FIELD_TYPE_LABEL: Record<FieldType, string> = {
@@ -40,6 +42,14 @@ export const MAPS_TO_LABEL: Record<MapsTo, string> = {
   guardianName: 'Madre, padre o tutor',
   phone: 'Teléfono',
   email: 'Correo',
+}
+
+/** Etiquetas del selector «Guardar también en la ficha», según el tipo de pregunta. */
+export const MAPS_TO_OPTION_LABEL: Record<MapsTo, string> = {
+  surname: 'Apellidos',
+  guardianName: 'Madre, padre o tutor',
+  phone: 'Teléfono de la ficha',
+  email: 'Correo de la ficha',
 }
 
 export interface FormItem {
@@ -211,20 +221,52 @@ export function responseStatus(recipients: FormRecipient[], responses: FormRespo
 
 export const isOpenForAnswers = (form: Pick<FormItem, 'status' | 'deadline'>, today: string): boolean => form.status === 'abierto' && (!form.deadline || form.deadline >= today)
 
+/**
+ * Enlace que se comparte: el dominio oficial de PEPA. La página `/f/` de la web (repositorio pepa-web) lleva a la persona al formulario sin registrarse. Los enlaces antiguos
+ * (`fransegura51.github.io/family-app/?formulario=…`) siguen abriendo el mismo formulario porque la app no ha cambiado de sitio.
+ */
 export function formShareUrl(token: string): string {
-  const base = `${window.location.origin}${import.meta.env.BASE_URL ?? '/'}`
-  return `${base}?formulario=${token}`
+  return `${PEPA_PUBLIC_WEBSITE_URL}/f/?formulario=${token}`
 }
 
-/** Mensaje de invitación (WhatsApp, etc.): dice quién pide los datos, para qué y hasta cuándo, y lleva el enlace. */
+/** Mensaje de invitación (WhatsApp, etc.): primero quién pide los datos (con el grupo), luego qué se pide, para qué, hasta cuándo y el enlace. */
 export function inviteText(form: Pick<FormItem, 'title' | 'requesterName' | 'purpose' | 'deadline'>, groupName: string, url: string, who: string | null, formatDate: (d: string) => string): string {
   return [
-    `${form.requesterName} · ${groupName}`,
+    `${form.requesterName} — ${groupName}`,
     `${form.title}${who ? ` (${who})` : ''}`,
-    `Para: ${form.purpose}`,
-    form.deadline ? `Antes del ${formatDate(form.deadline)}.` : '',
+    form.purpose,
+    form.deadline ? `Fecha límite: ${formatDate(form.deadline)}` : '',
     url,
   ]
     .filter(Boolean)
-    .join('\n')
+    .join('\n\n')
+}
+
+/** Estado que ve quien gestiona: borrador, activo, caducado (pasó la fecha límite) o cerrado. */
+export function formStatusLabel(form: Pick<FormItem, 'status' | 'deadline'>, today: string): 'Borrador' | 'Activo' | 'Caducado' | 'Cerrado' {
+  if (form.status === 'borrador') return 'Borrador'
+  if (form.status === 'cerrado') return 'Cerrado'
+  return form.deadline && form.deadline < today ? 'Caducado' : 'Activo'
+}
+
+/** Ejemplo orientativo para el campo «Pregunta» según el tipo. Es solo un texto de ayuda: nunca se guarda ni se usa como pregunta. */
+export const FIELD_EXAMPLE: Record<FieldType, string> = {
+  texto: 'Por ejemplo: Alergias o necesidades a tener en cuenta',
+  numero: 'Por ejemplo: Número de acompañantes',
+  fecha: 'Por ejemplo: Fecha de nacimiento',
+  email: 'Por ejemplo: Correo electrónico de contacto',
+  telefono: 'Por ejemplo: Teléfono de urgencia',
+  si_no: 'Por ejemplo: ¿Asistirás a la excursión?',
+  seleccion: 'Por ejemplo: Tipo de menú',
+  multiple: 'Por ejemplo: Actividades en las que participarás',
+  archivo: 'Por ejemplo: Adjunta la autorización firmada',
+}
+
+export const isChoice = (t: FieldType) => t === 'seleccion' || t === 'multiple'
+
+/** Cambia el tipo de una pregunta conservando todo lo compatible: texto, ayuda, obligatoriedad, opciones (entre «una» y «varias») y la asociación a la ficha si sigue siendo coherente. */
+export function changeFieldType(field: FormField, type: FieldType): FormField {
+  // Las opciones se recuerdan aunque el tipo no las use, por si se vuelve atrás (al guardar, normalizeFields las descarta si no hacen falta).
+  const options = isChoice(type) && field.options.length < 2 ? [...field.options, ...Array<string>(2 - field.options.length).fill('')] : field.options
+  return { ...field, type, options, mapsTo: field.mapsTo && !field.sensitive && compatibleMaps(type).includes(field.mapsTo) ? field.mapsTo : null }
 }

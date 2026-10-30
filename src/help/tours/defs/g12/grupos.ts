@@ -690,6 +690,13 @@ export const tutGruposSolicitarDatos: TourDef = {
       ...info,
     },
     {
+      id: 'preguntas',
+      text: 'Las preguntas se añaden con «Añadir pregunta», que abre el selector de tipos (texto, número, fecha, correo, teléfono, sí/no, una o varias opciones, archivo). Cada pregunta queda plegada con su resumen; tócala para editarla y usa las flechas para subirla o bajarla.',
+      target: 'grupos.formulario-anadir-pregunta',
+      ...info,
+      optional: true,
+    },
+    {
       id: 'delicados',
       text: 'Si una pregunta es un dato delicado (DNI, pasaporte, salud…), se marca aquí: se guarda protegido, nunca va a las notas ni a las exportaciones, y tendrás que fijar hasta cuándo lo conservarás.',
       target: 'grupos.formulario-delicado',

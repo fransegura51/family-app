@@ -215,3 +215,28 @@ export async function deleteTemplate(id: string): Promise<void> {
   const { error } = await supabase.from('group_form_templates').delete().eq('id', id)
   if (error) throw error
 }
+
+/** Una solicitud con sus cifras, para la ficha del grupo y la lista de formularios. `pending` es null si aún no hay enlaces personales (no se puede saber quién falta). */
+export interface FormSummary {
+  form: FormItem
+  responses: number
+  pending: number | null
+}
+
+export async function loadFormsOverview(groupId: string): Promise<FormSummary[]> {
+  const forms = await listForms(groupId)
+  if (forms.length === 0) return []
+  const ids = forms.map((f) => f.id)
+  const [rec, resp] = await Promise.all([
+    supabase.from('group_form_recipients').select('id, form_id, kind, active').in('form_id', ids).limit(20000),
+    supabase.from('group_form_responses').select('form_id, recipient_id').in('form_id', ids).limit(20000),
+  ])
+  if (rec.error) throw rec.error
+  if (resp.error) throw resp.error
+  return forms.map((form) => {
+    const mine = (resp.data ?? []).filter((r) => r.form_id === form.id)
+    const answered = new Set(mine.map((r) => r.recipient_id as string))
+    const personal = (rec.data ?? []).filter((r) => r.form_id === form.id && r.kind === 'participante' && r.active)
+    return { form, responses: mine.length, pending: personal.length > 0 ? personal.filter((r) => !answered.has(r.id as string)).length : null }
+  })
+}

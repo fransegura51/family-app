@@ -4,12 +4,15 @@ import { groupsErrorMessage } from '@/data/groups'
 import {
   addDays,
   BUILTIN_TEMPLATES,
+  changeFieldType,
+  compatibleMaps,
+  FIELD_EXAMPLE,
   FIELD_TYPE_LABEL,
   FIELD_TYPES,
+  isChoice,
   fieldsFromTemplate,
   hasSensitive,
-  MAPS_TO,
-  MAPS_TO_LABEL,
+  MAPS_TO_OPTION_LABEL,
   MAX_FIELDS,
   MAX_RETENTION_DAYS,
   moveField,
@@ -90,71 +93,172 @@ export function TemplatePicker({ onPick }: { onPick: (t: StartTemplate) => void 
   )
 }
 
-function QuestionEditor({ field, index, total, onChange, onMove, onRemove }: { field: FormField; index: number; total: number; onChange: (f: FormField) => void; onMove: (d: -1 | 1) => void; onRemove: () => void }) {
-  const choice = field.type === 'seleccion' || field.type === 'multiple'
-  const canMap = !field.sensitive && (field.type === 'texto' || field.type === 'email' || field.type === 'telefono')
-  const mapOptions = MAPS_TO.filter((m) => !(m === 'email' && field.type === 'telefono') && !(m === 'phone' && field.type === 'email'))
+/** Editor de opciones (elegir una / varias): una fila por opción, con subir, bajar y quitar. Las filas vacías se avisan y no se guardan; no se pierde nada al editar. */
+function OptionsEditor({ options, onChange }: { options: string[]; onChange: (o: string[]) => void }) {
+  const move = (i: number, d: -1 | 1) => {
+    const j = i + d
+    if (j < 0 || j >= options.length) return
+    const next = [...options]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    onChange(next)
+  }
   return (
-    <div className="grp-card" style={{ marginBottom: 10 }} data-help-id="grupos.formulario-pregunta-editor">
-      <div className="grp-field-row">
-        <label className="grp-field">
-          <span>Tipo de pregunta</span>
-          <select
-            className="grp-input"
-            value={field.type}
-            onChange={(e) => {
-              const type = e.target.value as FieldType
-              onChange({ ...field, type, options: type === 'seleccion' || type === 'multiple' ? (field.options.length >= 2 ? field.options : ['', '']) : [], mapsTo: null })
-            }}
-          >
-            {FIELD_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {FIELD_TYPE_LABEL[t]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="grp-chips" style={{ alignSelf: 'end' }}>
-          <button type="button" className="chip" disabled={index === 0} aria-label="Subir la pregunta" onClick={() => onMove(-1)}>
+    <div className="grp-opts" data-help-id="grupos.formulario-opciones">
+      <span className="grp-opts-label">Opciones</span>
+      {options.map((o, i) => (
+        <div key={i} className="grp-opt-row">
+          <input
+            className={'grp-input' + (!o.trim() ? ' grp-input-warn' : '')}
+            value={o}
+            maxLength={100}
+            placeholder={`Opción ${i + 1}`}
+            aria-label={`Opción ${i + 1}`}
+            onChange={(e) => onChange(options.map((x, k) => (k === i ? e.target.value : x)))}
+          />
+          <button type="button" className="chip" disabled={i === 0} aria-label={`Subir la opción ${i + 1}`} onClick={() => move(i, -1)}>
             ↑
           </button>
-          <button type="button" className="chip" disabled={index === total - 1} aria-label="Bajar la pregunta" onClick={() => onMove(1)}>
+          <button type="button" className="chip" disabled={i === options.length - 1} aria-label={`Bajar la opción ${i + 1}`} onClick={() => move(i, 1)}>
             ↓
           </button>
+          <button type="button" className="chip" disabled={options.length <= 2} aria-label={`Quitar la opción ${i + 1}`} onClick={() => onChange(options.filter((_, k) => k !== i))}>
+            ✕
+          </button>
         </div>
+      ))}
+      {options.some((o) => !o.trim()) && <p className="muted grp-opts-warn">Rellena o quita las opciones vacías: no se guardan.</p>}
+      {options.length < 30 && (
+        <button type="button" className="link-button" onClick={() => onChange([...options, ''])}>
+          ＋ Añadir opción
+        </button>
+      )}
+    </div>
+  )
+}
+
+function QuestionEditor({
+  field,
+  index,
+  total,
+  open,
+  onToggle,
+  onChange,
+  onMove,
+  onRemove,
+}: {
+  field: FormField
+  index: number
+  total: number
+  open: boolean
+  onToggle: () => void
+  onChange: (f: FormField) => void
+  onMove: (d: -1 | 1) => void
+  onRemove: () => void
+}) {
+  const choice = isChoice(field.type)
+  const maps = field.sensitive ? [] : compatibleMaps(field.type)
+  // Una asociación antigua que ya no es coherente se sigue enseñando (para poder quitarla), pero no se ofrece para elegir.
+  const mapOptions = field.mapsTo && !maps.includes(field.mapsTo) ? [field.mapsTo, ...maps] : maps
+  const n = index + 1
+  return (
+    <div className={'grp-card grp-q' + (open ? ' grp-q-open' : '')} data-help-id="grupos.formulario-pregunta-editor">
+      <div className="grp-q-head">
+        <button type="button" className="grp-q-toggle" aria-expanded={open} onClick={onToggle}>
+          <span className="grp-q-num">{n}</span>
+          <span className="grp-q-text">
+            <span className="grp-q-title">{field.label.trim() || 'Pregunta sin título'}</span>
+            <span className="grp-q-meta">
+              {FIELD_TYPE_LABEL[field.type]}
+              {field.required ? ' · Obligatoria' : ''}
+              {field.sensitive ? ' · 🔒 Delicada' : ''}
+            </span>
+          </span>
+          <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+        </button>
+        <span className="grp-q-move">
+          <button type="button" className="chip" disabled={index === 0} aria-label={`Subir la pregunta ${n}`} onClick={() => onMove(-1)}>
+            ↑
+          </button>
+          <button type="button" className="chip" disabled={index === total - 1} aria-label={`Bajar la pregunta ${n}`} onClick={() => onMove(1)}>
+            ↓
+          </button>
+        </span>
       </div>
-      <Field label="Pregunta">
-        <input className="grp-input" value={field.label} maxLength={200} placeholder="Por ejemplo: Teléfono de urgencia" onChange={(e) => onChange({ ...field, label: e.target.value })} />
-      </Field>
-      <Field label="Explicación (opcional)">
-        <input className="grp-input" value={field.help ?? ''} maxLength={300} onChange={(e) => onChange({ ...field, help: e.target.value || null })} />
-      </Field>
-      {choice && (
-        <Field label="Opciones (una por línea)">
-          <textarea className="grp-input grp-textarea" rows={4} value={field.options.join('\n')} onChange={(e) => onChange({ ...field, options: e.target.value.split('\n') })} />
-        </Field>
+      {open && (
+        <div className="grp-q-body">
+          <Field label="Pregunta">
+            <input className="grp-input" value={field.label} maxLength={200} placeholder={FIELD_EXAMPLE[field.type]} onChange={(e) => onChange({ ...field, label: e.target.value })} aria-label={`Texto de la pregunta ${n}`} />
+          </Field>
+          <Field label="Tipo de respuesta">
+            <select className="grp-input" value={field.type} onChange={(e) => onChange(changeFieldType(field, e.target.value as FieldType))} aria-label={`Tipo de la pregunta ${n}`}>
+              {FIELD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {FIELD_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Explicación (opcional)">
+            <input className="grp-input" value={field.help ?? ''} maxLength={300} onChange={(e) => onChange({ ...field, help: e.target.value || null })} aria-label={`Explicación de la pregunta ${n}`} />
+          </Field>
+          {choice && <OptionsEditor options={field.options} onChange={(options) => onChange({ ...field, options })} />}
+          <label className="grp-check-row">
+            <input type="checkbox" checked={field.required} onChange={(e) => onChange({ ...field, required: e.target.checked })} />
+            <span>Obligatoria</span>
+          </label>
+          <label className="grp-check-row" data-help-id="grupos.formulario-delicado">
+            <input type="checkbox" checked={field.sensitive} onChange={(e) => onChange({ ...field, sensitive: e.target.checked, mapsTo: e.target.checked ? null : field.mapsTo })} />
+            <span>Dato delicado (DNI, pasaporte, salud…): se guarda protegido y caduca</span>
+          </label>
+          {mapOptions.length > 0 && (
+            <Field label="Guardar la respuesta también en la ficha de la persona (opcional)" hint="Solo se completa si ese dato estaba vacío; si ya hay otro, te pregunto antes de cambiarlo.">
+              <select className="grp-input" value={field.mapsTo ?? ''} onChange={(e) => onChange({ ...field, mapsTo: (e.target.value || null) as MapsTo | null })} aria-label={`Ficha de la pregunta ${n}`}>
+                <option value="">No guardar en la ficha</option>
+                {mapOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {MAPS_TO_OPTION_LABEL[m]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          {!field.sensitive && mapOptions.length === 0 && field.type !== 'archivo' && (
+            <p className="muted">Esta respuesta se queda en el formulario: la ficha de la persona no tiene un campo de este tipo.</p>
+          )}
+          <ConfirmButton label="Quitar esta pregunta" confirmMessage="¿Quitar la pregunta?" onConfirm={onRemove} />
+        </div>
       )}
-      <label className="grp-check-row">
-        <input type="checkbox" checked={field.required} onChange={(e) => onChange({ ...field, required: e.target.checked })} />
-        <span>Obligatoria</span>
-      </label>
-      <label className="grp-check-row" data-help-id="grupos.formulario-delicado">
-        <input type="checkbox" checked={field.sensitive} onChange={(e) => onChange({ ...field, sensitive: e.target.checked, mapsTo: e.target.checked ? null : field.mapsTo })} />
-        <span>Dato delicado (DNI, pasaporte, salud…): se guarda protegido y caduca</span>
-      </label>
-      {canMap && (
-        <Field label="Guardar la respuesta también en la ficha de la persona (opcional)" hint="Solo se completa si ese dato estaba vacío; si ya hay otro, te pregunto antes de cambiarlo.">
-          <select className="grp-input" value={field.mapsTo ?? ''} onChange={(e) => onChange({ ...field, mapsTo: (e.target.value || null) as MapsTo | null })}>
-            <option value="">No guardar en la ficha</option>
-            {mapOptions.map((m) => (
-              <option key={m} value={m}>
-                {MAPS_TO_LABEL[m]}
-              </option>
-            ))}
-          </select>
-        </Field>
+    </div>
+  )
+}
+
+/** «＋ Añadir pregunta»: un solo botón que abre el selector con los nueve tipos, cada uno con un ejemplo orientativo. */
+function AddQuestion({ onAdd }: { onAdd: (t: FieldType) => void }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="grp-add-q">
+      <button type="button" className="grp-secondary" aria-expanded={open} data-help-id="grupos.formulario-anadir-pregunta" onClick={() => setOpen((v) => !v)}>
+        ＋ Añadir pregunta
+      </button>
+      {open && (
+        <div className="grp-card grp-type-picker" role="menu" aria-label="Tipo de pregunta">
+          {FIELD_TYPES.map((t) => (
+            <button
+              key={t}
+              type="button"
+              role="menuitem"
+              className="grp-type-item"
+              onClick={() => {
+                onAdd(t)
+                setOpen(false)
+              }}
+            >
+              <span className="grp-type-name">{FIELD_TYPE_LABEL[t]}</span>
+              <span className="grp-type-ex">{FIELD_EXAMPLE[t].replace('Por ejemplo: ', '')}</span>
+            </button>
+          ))}
+        </div>
       )}
-      <ConfirmButton label="Quitar esta pregunta" confirmMessage="¿Quitar la pregunta?" onConfirm={onRemove} />
     </div>
   )
 }
@@ -193,6 +297,14 @@ export function FormEditor({
   const [problem, setProblem] = useState<string | null>(null)
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
+  const toggleOpen = (id: string) =>
+    setOpenIds((o) => {
+      const n = new Set(o)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
 
   const today = todayIn(new Date())
   const sensitive = hasSensitive(fields)
@@ -202,6 +314,8 @@ export function FormEditor({
     if (!title.trim()) return { ok: false, message: 'Ponle un título al formulario.' }
     if (!requester.trim()) return { ok: false, message: 'Indica quién solicita los datos (tu nombre o el de la organización).' }
     if (!purpose.trim()) return { ok: false, message: 'Indica para qué se piden los datos: es lo primero que verá quien responda.' }
+    const blank = fields.find((f) => isChoice(f.type) && f.options.some((o) => !o.trim()))
+    if (blank) return { ok: false, message: `Hay opciones vacías en «${blank.label.trim() || 'una pregunta'}»: rellénalas o quítalas.` }
     const n = normalizeFields(fields)
     if (n.errors.length > 0) return { ok: false, message: n.errors[0] }
     if (sensitive) {
@@ -304,21 +418,28 @@ export function FormEditor({
       </Field>
 
       <p className="grp-section">Preguntas</p>
-      {fields.length === 0 && <p className="muted">Añade la primera pregunta con los botones de abajo.</p>}
+      {fields.length === 0 && <p className="muted">Todavía no hay preguntas. Pulsa «＋ Añadir pregunta».</p>}
       {fields.map((f, i) => (
-        <QuestionEditor key={f.id} field={f} index={i} total={fields.length} onChange={(nf) => change(f.id, nf)} onMove={(d) => setFields((fs) => moveField(fs, f.id, d))} onRemove={() => setFields((fs) => fs.filter((x) => x.id !== f.id))} />
+        <QuestionEditor
+          key={f.id}
+          field={f}
+          index={i}
+          total={fields.length}
+          open={openIds.has(f.id)}
+          onToggle={() => toggleOpen(f.id)}
+          onChange={(nf) => change(f.id, nf)}
+          onMove={(d) => setFields((fs) => moveField(fs, f.id, d))}
+          onRemove={() => setFields((fs) => fs.filter((x) => x.id !== f.id))}
+        />
       ))}
       {fields.length < MAX_FIELDS && (
-        <>
-          <p className="muted" style={{ marginBottom: 4 }}>Añadir una pregunta de tipo:</p>
-          <div className="grp-chips" data-help-id="grupos.formulario-anadir-pregunta">
-            {FIELD_TYPES.map((t) => (
-              <button key={t} type="button" className="chip" onClick={() => setFields((fs) => [...fs, newField(t)])}>
-                ＋ {FIELD_TYPE_LABEL[t]}
-              </button>
-            ))}
-          </div>
-        </>
+        <AddQuestion
+          onAdd={(t) => {
+            const nf = newField(t)
+            setFields((fs) => [...fs, nf])
+            setOpenIds((o) => new Set(o).add(nf.id)) // una pregunta nueva se abre sola para escribirla
+          }}
+        />
       )}
 
       {sensitive && (

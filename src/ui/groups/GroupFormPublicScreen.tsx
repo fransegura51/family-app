@@ -259,7 +259,7 @@ export function FormFiller({
             </p>
             {view.retentionChangedSinceAnswer && view.retentionMax && (
               <p className="muted">
-                Ha cambiado la fecha máxima que fijó {view.requesterName} (ahora {formatDate(view.retentionMax)}). Tu fecha de eliminación no se alarga: sigue siendo {formatDate(exp)}.
+                Ha cambiado la fecha máxima que fijó {view.requesterName} (ahora {formatDate(view.retentionMax)}). Tu fecha de eliminación no se alarga sin tu permiso: sigue siendo {formatDate(exp)}. Si hiciera falta conservarlos más tiempo, tendría que pedírtelo y tú aceptarlo al volver a enviar la respuesta.
               </p>
             )}
             <p className="muted">

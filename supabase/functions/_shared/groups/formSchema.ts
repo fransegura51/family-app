@@ -8,6 +8,14 @@ export type FieldType = (typeof FIELD_TYPES)[number]
 export const MAPS_TO = ['surname', 'guardianName', 'phone', 'email'] as const
 export type MapsTo = (typeof MAPS_TO)[number]
 
+/** Qué campos de la ficha puede completar cada tipo de pregunta (solo asociaciones coherentes; no hay campos de fecha en la ficha, así que una fecha nunca se asocia). */
+export function compatibleMaps(type: FieldType): MapsTo[] {
+  if (type === 'texto') return ['surname', 'guardianName']
+  if (type === 'email') return ['email']
+  if (type === 'telefono') return ['phone']
+  return []
+}
+
 export interface FormField {
   id: string
   type: FieldType
@@ -53,7 +61,7 @@ export function normalizeFields(raw: unknown): { fields: FormField[]; errors: st
     if ((type === 'seleccion' || type === 'multiple') && options.length < 2) errors.push(`«${label}» necesita al menos dos opciones.`)
     const mapsTo = MAPS_TO.find((m) => m === o.mapsTo) ?? null
     // Solo un dato ORDINARIO de texto, correo o teléfono puede completar un campo de la ficha: nunca uno delicado ni un archivo.
-    const okMap = !!mapsTo && o.sensitive !== true && (type === 'texto' || type === 'email' || type === 'telefono') && !(mapsTo === 'email' && type === 'telefono') && !(mapsTo === 'phone' && type === 'email')
+    const okMap = !!mapsTo && o.sensitive !== true && compatibleMaps(type).includes(mapsTo)
     fields.push({
       id,
       type,

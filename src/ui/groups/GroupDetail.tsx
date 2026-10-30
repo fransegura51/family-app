@@ -4,12 +4,14 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '@/data/supabaseClient'
 import { deleteGroup, groupsErrorMessage, listGroupEvents, listGroupLists, listParticipants, loadGroup, unlinkEventFromGroup, unlinkListFromGroup, updateGroup, type LinkedItem } from '@/data/groups'
 import { listFunds } from '@/data/groupFunds'
+import { loadFormsOverview, type FormSummary } from '@/data/groupForms'
 import { CONTRIBUTION_LABEL, fmtEuro, type FundItem } from '@/domain/groupFunds'
 import { activeParticipants, groupTitle, type GroupItem } from '@/domain/groups'
 import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { AddSheet } from '@/ui/groups/GroupAddSheets'
+import { FormsSection } from '@/ui/groups/GroupFormsSection'
 import { AuditSheet, CopyGroupSheet, ManagersSheet, RenameGroupSheet } from '@/ui/groups/GroupSidePanels'
 import '@/ui/groups/groups.css'
 
@@ -22,6 +24,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   const [funds, setFunds] = useState<FundItem[]>([])
   const [events, setEvents] = useState<LinkedItem[]>([])
   const [lists, setLists] = useState<LinkedItem[]>([])
+  const [forms, setForms] = useState<FormSummary[]>([])
   const [userId, setUserId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [sheet, setSheet] = useState<Sheet>(null)
@@ -37,6 +40,8 @@ export function GroupDetail({ groupId }: { groupId: string }) {
       setFunds(f)
       setEvents(e)
       setLists(l)
+      // Las solicitudes de datos no son imprescindibles para abrir el grupo: si fallan, el resto se ve igual.
+      setForms(await loadFormsOverview(groupId).catch(() => []))
       setUserId(u.data.user?.id ?? '')
       setError(null)
     } catch (e) {
@@ -47,7 +52,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
   useEffect(() => {
     void reload()
   }, [reload])
-  useRealtimeRefresh(['groups', 'group_participants', 'group_funds', 'group_list_links', 'group_event_links', 'group_managers', 'user_lists', 'events'], reload, { paused: sheet !== null })
+  useRealtimeRefresh(['groups', 'group_participants', 'group_funds', 'group_list_links', 'group_event_links', 'group_forms', 'group_form_responses', 'group_form_recipients', 'group_managers', 'user_lists', 'events'], reload, { paused: sheet !== null })
 
   const run = async (fn: () => Promise<void>) => {
     try {
@@ -211,7 +216,8 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           ))}
         </>
       )}
-      {funds.length === 0 && events.length === 0 && lists.length === 0 && !group.archivedAt && (
+      <FormsSection groupId={group.id} summaries={forms} />
+      {funds.length === 0 && events.length === 0 && lists.length === 0 && forms.length === 0 && !group.archivedAt && (
         <p className="muted">Todavía no hay nada más en este grupo. Con «＋ Añadir» puedes crear un bote, un evento o una lista.</p>
       )}
 

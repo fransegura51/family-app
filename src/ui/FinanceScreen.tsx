@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { setNavOrigin } from '@/state/navOrigin'
 import { ReturnBar, useNavOrigin } from '@/ui/ReturnBar'
+import { getLatestBankImportExpenseIds } from '@/data/notifications'
 import '@/ui/groups/groups.css'
 import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
 import { CategorySelect } from '@/ui/CategorySelect'
@@ -592,6 +593,21 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
     if (pending) viewMovements(pending)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // NOT-04: el aviso «Has recibido 1 ingreso y 3 cargos nuevos» abre Movimientos solo con lo importado en esa tanda (/dinero?importados=1).
+  useEffect(() => {
+    if (!new URLSearchParams(economyLocation.search).has('importados')) return
+    let cancelled = false
+    getLatestBankImportExpenseIds()
+      .then((ids) => {
+        if (!cancelled && ids.length > 0) viewMovements({ label: 'Importados del banco', expenseIds: ids })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [economyLocation.search])
 
   function togglePinnedItem(key: EconomiaMenuItemKey) {
     setPinnedItems((prev) => {

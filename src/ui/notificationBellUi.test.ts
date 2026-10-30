@@ -71,7 +71,7 @@ describe('el panel', () => {
   })
 
   it('dos bloques plegables a mano con TODOS los avisos a la vista (nuevos en negrita y con punto, leídos normales), contadores separados y borrar con confirmación', () => {
-    expect(panel).toContain('buildBucketViews')
+    expect(panel).toContain('buildPersonalViews')
     expect(panel).toContain('view.items.map(renderItem)')
     expect(panel).not.toContain('Ver anteriores')
     expect(panel).toContain('countsLabel(unread, read)')

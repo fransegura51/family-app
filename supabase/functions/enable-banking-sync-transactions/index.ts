@@ -306,6 +306,8 @@ async function syncAccount(
 
   let continuationKey: string | null = null
   let synced = 0
+  // NOT-04: movimientos REALMENTE nuevos de esta sincronización (no los que ya estaban y solo se vuelven a escribir por el margen de 3 días).
+  const newRows: { entry_reference: string; transaction_date: string | null; credit_debit: string }[] = []
   do {
     const url = new URL(`https://api.enablebanking.com/accounts/${account.account_uid}/transactions`)
     if (dateFrom) url.searchParams.set("date_from", dateFrom)
@@ -328,6 +330,17 @@ async function syncAccount(
         raw: t,
       }))
     if (rows.length > 0) {
+      try {
+        const refs = rows.map((r) => r.entry_reference)
+        const known = new Set<string>()
+        for (let i = 0; i < refs.length; i += 80) {
+          const { data: existing } = await admin.from("bank_transactions").select("entry_reference").eq("account_id", account.id).in("entry_reference", refs.slice(i, i + 80))
+          for (const e of (existing ?? []) as { entry_reference: string }[]) known.add(e.entry_reference)
+        }
+        for (const r of rows) if (!known.has(r.entry_reference)) newRows.push({ entry_reference: r.entry_reference, transaction_date: r.transaction_date, credit_debit: String(r.credit_debit) })
+      } catch {
+        // Sin saber cuáles son nuevos no se avisa; la sincronización sigue igual.
+      }
       const { error: upsertError } = await admin.from("bank_transactions").upsert(rows, { onConflict: "account_id,entry_reference" })
       if (upsertError) throw upsertError
       synced += rows.length
@@ -336,7 +349,39 @@ async function syncAccount(
   } while (continuationKey)
 
   await linkTransactionsToExpenses(admin, account)
+  // NOT-04: UN solo aviso por tanda («Has recibido 1 ingreso y 3 cargos nuevos»). No se avisa de la primera importación de una cuenta (todo el histórico) ni de movimientos
+  // antiguos que llegan al ampliar el periodo: solo de lo que tiene como mucho una semana. Un fallo aquí nunca afecta a la sincronización.
+  if (latest?.transaction_date) {
+    try {
+      await notifyBankImport(admin, account, newRows)
+    } catch (err) {
+      console.error("notify_bank_import failed", err)
+    }
+  }
   return { synced }
+}
+
+async function notifyBankImport(
+  admin: ReturnType<typeof createClient>,
+  account: BankAccountRow,
+  newRows: { entry_reference: string; transaction_date: string | null; credit_debit: string }[],
+): Promise<void> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const recent = newRows.filter((r) => r.transaction_date && r.transaction_date >= since)
+  if (recent.length === 0) return
+  const credits = recent.filter((r) => r.credit_debit === "CRDT").length
+  const debits = recent.filter((r) => r.credit_debit === "DBIT").length
+  if (credits + debits === 0) return
+  const refs = recent.map((r) => r.entry_reference).sort()
+  // Huella del lote: el mismo conjunto de movimientos da siempre la misma clave, así que reprocesarlo no duplica el aviso.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(refs.join("|")))
+  const batch = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 32)
+  const expenseIds: string[] = []
+  for (let i = 0; i < refs.length && expenseIds.length < 200; i += 80) {
+    const { data } = await admin.from("bank_transactions").select("matched_expense_id").eq("account_id", account.id).in("entry_reference", refs.slice(i, i + 80)).not("matched_expense_id", "is", null)
+    for (const r of (data ?? []) as { matched_expense_id: string }[]) expenseIds.push(r.matched_expense_id)
+  }
+  await admin.rpc("notify_bank_import", { p_account_id: account.id, p_batch: batch, p_credits: credits, p_debits: debits, p_expense_ids: [...new Set(expenseIds)].slice(0, 200) })
 }
 
 // Compartida por el patrón "ANUL..." y por la nueva regla de reversión de comisión (FASE CA-1): pasa el

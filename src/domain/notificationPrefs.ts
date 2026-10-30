@@ -14,7 +14,16 @@ export interface NotificationPrefs {
   // Sugerencias de Comunidad («Para ti en Comunidad»): activadas por defecto, una cada N horas (solo salen entre 08:00 y 21:00 de la zona de la persona).
   communitySuggestionsEnabled: boolean
   communitySuggestionEveryHours: number
+  // NOT-01: cómo se ve el panel de avisos ('personal' = Personales / Otras, lo de siempre; 'areas' = agrupado por módulo) y qué tipos cuentan como personales (null = los de siempre).
+  notificationViewMode: 'areas' | 'personal'
+  personalCategories: string[] | null
+  // NOT-02: repetir el aviso de tareas atrasadas cada N horas (1, 2, 3, 6 o 24); null = no repetir.
+  overdueRepeatHours: number | null
+  // NOT-04: avisar de los movimientos nuevos importados del banco (un solo aviso por lote).
+  bankImportEnabled: boolean
 }
+
+export const OVERDUE_REPEAT_CHOICES = [1, 2, 3, 6, 24] as const
 
 // Límites que también impone la base de datos (check 6-720) y valor por defecto (≈ una cada 48 h, COM-144).
 export const COMMUNITY_SUGGESTION_MIN_HOURS = 6
@@ -34,6 +43,10 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   personalWindowEnd: '21:00',
   communitySuggestionsEnabled: true,
   communitySuggestionEveryHours: COMMUNITY_SUGGESTION_DEFAULT_HOURS,
+  notificationViewMode: 'personal',
+  personalCategories: null,
+  overdueRepeatHours: null,
+  bankImportEnabled: true,
 }
 
 // null = el comportamiento de siempre (asignados + administradores) hasta que un administrador elija otro modo.

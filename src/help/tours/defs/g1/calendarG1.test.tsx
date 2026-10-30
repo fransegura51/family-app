@@ -70,7 +70,7 @@ vi.mock('@/data/externalCalendarFeeds', async (orig) => ({
   listExternalEventDismissals: async () => [],
   listExternalEventCompletions: async () => [],
 }))
-vi.mock('@/data/notifications', async (orig) => ({ ...(await orig<typeof import('@/data/notifications')>()), getTaskNotifyModeCached: async () => null }))
+vi.mock('@/data/notifications', async (orig) => ({ ...(await orig<typeof import('@/data/notifications')>()), getTaskNotifyModeCached: async () => null, getNotifyModesCached: async () => ({ task: null, event: null }) }))
 vi.mock('@/services/voice', () => ({ isSpeechSupported: () => false, primeSpeech: () => undefined, speakAsync: async () => undefined, stopSpeech: () => undefined }))
 
 const { TourRunner } = await import('@/help/tours/TourRunner')

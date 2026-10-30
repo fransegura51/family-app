@@ -5,6 +5,8 @@ import { supabase } from '@/data/supabaseClient'
 import type { AppNotification, NotificationBucket } from '@/domain/notificationsCenter'
 import type { NotificationPrefs, TaskNotifyMode } from '@/domain/notificationPrefs'
 import { DEFAULT_NOTIFICATION_PREFS } from '@/domain/notificationPrefs'
+import { isViewMode } from '@/domain/notificationAreas'
+import type { NotifyModes } from '@/domain/eventRecipients'
 
 interface NotificationRow {
   id: string
@@ -43,6 +45,14 @@ export async function listNotifications(): Promise<AppNotification[]> {
   const { data, error } = await supabase.from('user_notifications').select(COLUMNS).order('created_at', { ascending: false }).limit(NOTIFICATIONS_LIMIT)
   if (error) throw error
   return ((data ?? []) as NotificationRow[]).map(fromRow)
+}
+
+// NOT-04: los movimientos (gastos) del último aviso agrupado de «movimientos nuevos del banco», para abrir Economía → Movimientos solo con ellos.
+export async function getLatestBankImportExpenseIds(): Promise<string[]> {
+  const { data, error } = await supabase.from('user_notifications').select('payload').eq('category', 'bank_import').order('created_at', { ascending: false }).limit(1).maybeSingle()
+  if (error) throw error
+  const ids = (data as { payload: { expense_ids?: unknown } | null } | null)?.payload?.expense_ids
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : []
 }
 
 // Solo el número (sin traer los avisos): es lo que se pide al abrir Inicio y al volver a la app.
@@ -113,9 +123,13 @@ interface PrefsRow {
   personal_window_end: string
   community_suggestions_enabled: boolean
   community_suggestion_every_hours: number
+  notification_view_mode: string | null
+  personal_categories: string[] | null
+  overdue_repeat_hours: number | null
+  bank_import_enabled: boolean | null
 }
 
-const PREFS_COLUMNS = 'timezone, task_today_enabled, task_today_time, task_overdue_enabled, task_overdue_time, personal_community_mode, personal_window_start, personal_window_end, community_suggestions_enabled, community_suggestion_every_hours'
+const PREFS_COLUMNS = 'timezone, task_today_enabled, task_today_time, task_overdue_enabled, task_overdue_time, personal_community_mode, personal_window_start, personal_window_end, community_suggestions_enabled, community_suggestion_every_hours, notification_view_mode, personal_categories, overdue_repeat_hours, bank_import_enabled'
 
 // Las horas llegan como «08:00:00»; la app las usa como «08:00».
 function hhmm(value: string): string {
@@ -138,6 +152,10 @@ export async function getNotificationPrefs(): Promise<NotificationPrefs> {
     personalWindowEnd: hhmm(row.personal_window_end),
     communitySuggestionsEnabled: row.community_suggestions_enabled ?? DEFAULT_NOTIFICATION_PREFS.communitySuggestionsEnabled,
     communitySuggestionEveryHours: row.community_suggestion_every_hours ?? DEFAULT_NOTIFICATION_PREFS.communitySuggestionEveryHours,
+    notificationViewMode: isViewMode(row.notification_view_mode) ? row.notification_view_mode : DEFAULT_NOTIFICATION_PREFS.notificationViewMode,
+    personalCategories: Array.isArray(row.personal_categories) ? row.personal_categories : null,
+    overdueRepeatHours: row.overdue_repeat_hours ?? null,
+    bankImportEnabled: row.bank_import_enabled ?? DEFAULT_NOTIFICATION_PREFS.bankImportEnabled,
   }
 }
 
@@ -156,6 +174,10 @@ export async function saveNotificationPrefs(patch: Partial<NotificationPrefs>): 
   if (patch.personalWindowEnd !== undefined) row.personal_window_end = patch.personalWindowEnd
   if (patch.communitySuggestionsEnabled !== undefined) row.community_suggestions_enabled = patch.communitySuggestionsEnabled
   if (patch.communitySuggestionEveryHours !== undefined) row.community_suggestion_every_hours = patch.communitySuggestionEveryHours
+  if (patch.notificationViewMode !== undefined) row.notification_view_mode = patch.notificationViewMode
+  if (patch.personalCategories !== undefined) row.personal_categories = patch.personalCategories
+  if (patch.overdueRepeatHours !== undefined) row.overdue_repeat_hours = patch.overdueRepeatHours
+  if (patch.bankImportEnabled !== undefined) row.bank_import_enabled = patch.bankImportEnabled
   const { error } = await supabase.from('user_notification_prefs').upsert(row, { onConflict: 'profile_id' })
   if (error) throw error
 }
@@ -174,23 +196,44 @@ export async function setTaskNotifyMode(familyId: string, mode: 'all' | 'assigne
   modeCache = null
 }
 
+// NOT-03: destinatarios de los EVENTOS (independientes de los de las tareas).
+export async function getEventNotifyMode(familyId: string): Promise<TaskNotifyMode> {
+  const { data, error } = await supabase.from('families').select('event_notify_mode').eq('id', familyId).maybeSingle()
+  if (error) throw error
+  const mode = (data as { event_notify_mode: string | null } | null)?.event_notify_mode
+  return mode === 'all' || mode === 'assigned' ? mode : null
+}
+
+export async function setEventNotifyMode(familyId: string, mode: 'all' | 'assigned'): Promise<void> {
+  const { error } = await supabase.from('families').update({ event_notify_mode: mode }).eq('id', familyId)
+  if (error) throw error
+  modeCache = null
+}
+
 // Los formularios de tarea/evento necesitan saber el modo para enseñar o no la casilla «Aviso a toda la familia»: se pide una vez cada 5 minutos
 // (la fila de la familia es la única que deja ver la RLS, no hace falta indicar el id).
-let modeCache: { at: number; value: Promise<TaskNotifyMode> } | null = null
+let modeCache: { at: number; value: Promise<NotifyModes> } | null = null
 const MODE_CACHE_MS = 5 * 60 * 1000
 
-export function getTaskNotifyModeCached(): Promise<TaskNotifyMode> {
+const asMode = (m: string | null | undefined): TaskNotifyMode => (m === 'all' || m === 'assigned' ? m : null)
+
+// Los dos ajustes (tareas y eventos) en UNA sola consulta; sin elegir, null (los valores por defecto los resuelve resolveNotifyMode).
+export function getNotifyModesCached(): Promise<NotifyModes> {
   const now = Date.now()
   if (modeCache && now - modeCache.at < MODE_CACHE_MS) return modeCache.value
   const value = (async () => {
-    const { data, error } = await supabase.from('families').select('task_notify_mode').limit(1).maybeSingle()
+    const { data, error } = await supabase.from('families').select('task_notify_mode, event_notify_mode').limit(1).maybeSingle()
     if (error) throw error
-    const mode = (data as { task_notify_mode: string | null } | null)?.task_notify_mode
-    return mode === 'all' || mode === 'assigned' ? mode : null
+    const row = data as { task_notify_mode: string | null; event_notify_mode: string | null } | null
+    return { task: asMode(row?.task_notify_mode), event: asMode(row?.event_notify_mode) }
   })()
   modeCache = { at: now, value }
   value.catch(() => {
     if (modeCache?.value === value) modeCache = null
   })
   return value
+}
+
+export function getTaskNotifyModeCached(): Promise<TaskNotifyMode> {
+  return getNotifyModesCached().then((m) => m.task)
 }

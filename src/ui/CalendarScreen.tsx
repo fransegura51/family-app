@@ -4120,7 +4120,7 @@ function EditEventForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
-      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
+      <NotifyFamilyCheckbox kind={isTask ? 'task' : 'event'} visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       {!isTask && (
         <>
           {!allDay && (
@@ -4468,7 +4468,7 @@ export function AddEventForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
-      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
+      <NotifyFamilyCheckbox kind={'event'} visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
         helpId="calendar.event-repeat"
         label="Repetición"
@@ -4641,7 +4641,7 @@ export function AddTaskForm({
         />
         🔒 Privado — Solo yo puedo verlo
       </label>
-      <NotifyFamilyCheckbox visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
+      <NotifyFamilyCheckbox kind={'task'} visibility={visibility} checked={notifyFamily} onChange={setNotifyFamily} />
       <FieldDropdown
         helpId="calendar.task-repeat"
         label="Repetición"

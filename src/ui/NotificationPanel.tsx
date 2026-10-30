@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObjec
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
+  getNotificationPrefs,
   deleteAllNotifications,
   deleteNotifications,
   listNotifications,
@@ -11,7 +12,14 @@ import {
   markNotificationUnread,
 } from '@/data/notifications'
 import {
-  buildBucketViews,
+  AREA_META,
+  buildAreaViews,
+  buildPersonalViews,
+  computeAreaOrder,
+  type NotificationArea,
+  type NotificationViewMode,
+} from '@/domain/notificationAreas'
+import {
   countsLabel,
   createDwellTracker,
   readCount,
@@ -68,6 +76,13 @@ export function NotificationPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [collapsed, setCollapsed] = useState<Partial<Record<NotificationBucket, boolean>>>({})
+  // NOT-01: forma de ver el panel (ajuste de la persona, igual en todos sus dispositivos). Hasta saberla se usa la de siempre.
+  const [viewMode, setViewMode] = useState<NotificationViewMode>('personal')
+  const [personalCategories, setPersonalCategories] = useState<string[] | null>(null)
+  const [prefsReady, setPrefsReady] = useState(false)
+  // Foto del momento de abrir: qué estaba sin leer y en qué orden van las áreas. NO se recalcula al leer ni al recargar: nada salta mientras se usa el panel.
+  const [snapshot, setSnapshot] = useState<{ unread: Set<string>; areaOrder: NotificationArea[] } | null>(null)
+  const [areaOpen, setAreaOpen] = useState<Partial<Record<NotificationArea, boolean>>>({})
   const [busy, setBusy] = useState(false)
   // Aviso agrupado de tareas abierto (vista de detalle dentro del panel).
   const [detail, setDetail] = useState<AppNotification | null>(null)
@@ -76,6 +91,7 @@ export function NotificationPanel({
     try {
       const list = await listNotifications()
       setItems(list)
+      setSnapshot((prev) => prev ?? { unread: new Set(list.filter((n) => n.readAt === null).map((n) => n.id)), areaOrder: computeAreaOrder(list) })
       onUnreadChange(unreadCount(list))
       setError(null)
       return list
@@ -91,6 +107,22 @@ export function NotificationPanel({
       if (list) setStatus(unreadAnnouncement(unreadCount(list)))
     })
   }, [load])
+
+  useEffect(() => {
+    let cancelled = false
+    getNotificationPrefs().then(
+      (p) => {
+        if (cancelled) return
+        setViewMode(p.notificationViewMode)
+        setPersonalCategories(p.personalCategories)
+        setPrefsReady(true)
+      },
+      () => !cancelled && setPrefsReady(true), // sin ajustes: la vista de siempre
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // El contador de la campana sigue a la lista (al marcar leídos o no leídos).
   useEffect(() => {
@@ -154,7 +186,8 @@ export function NotificationPanel({
   // Foco, Escape, scroll y fondo inerte (ver useModalDialog).
   useModalDialog(panelRef, { onClose, returnFocusRef })
 
-  const views = useMemo(() => buildBucketViews(items ?? []), [items])
+  const views = useMemo(() => (viewMode === 'personal' && snapshot ? buildPersonalViews(items ?? [], personalCategories, snapshot.unread) : []), [items, viewMode, personalCategories, snapshot])
+  const areaViews = useMemo(() => (viewMode === 'areas' && snapshot ? buildAreaViews(items ?? [], snapshot.areaOrder, snapshot.unread) : []), [items, viewMode, snapshot])
   const total = items?.length ?? 0
   const unread = items ? unreadCount(items) : 0
   const read = items ? readCount(items) : 0
@@ -488,7 +521,35 @@ export function NotificationPanel({
             </div>
           )}
 
-          {views.map((view) => {
+          {!prefsReady && items !== null && total > 0 && <p className="muted">Cargando…</p>}
+          {prefsReady &&
+            areaViews.map((view) => {
+              const isOpen = areaOpen[view.area] ?? view.startsExpanded
+              const bodyId = `${titleId}-area-${view.area}`
+              return (
+                <section key={view.area} className="notification-bucket" aria-label={view.title} data-testid={`area-${view.area}`}>
+                  <h3 className="notification-bucket-heading">
+                    <button
+                      type="button"
+                      className="notification-bucket-title"
+                      aria-expanded={isOpen}
+                      aria-controls={bodyId}
+                      onClick={() => setAreaOpen((prev) => ({ ...prev, [view.area]: !isOpen }))}
+                    >
+                      <span>
+                        {AREA_META[view.area].icon} {view.title} ({view.unreadCount > 0 ? `${view.unreadCount} sin leer · ` : ''}
+                        {view.items.length})
+                      </span>
+                      <span aria-hidden="true">{isOpen ? '▾' : '▸'}</span>
+                    </button>
+                  </h3>
+                  <div id={bodyId} hidden={!isOpen}>
+                    <ul className="notification-list">{view.items.map(renderItem)}</ul>
+                  </div>
+                </section>
+              )
+            })}
+          {prefsReady && views.map((view) => {
             const isCollapsed = collapsed[view.bucket] === true
             const bodyId = `${titleId}-${view.bucket}`
             return (

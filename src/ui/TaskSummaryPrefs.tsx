@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getPermissionState, hasPushSubscription, isNotificationsDisabledByUser } from '@/services/notifications'
-import { timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
+import { OVERDUE_REPEAT_CHOICES, timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
 import { TimeSelect24 } from '@/ui/TimeSelect24'
 
 // «Avisos de tareas» (Configuración → Avisos): dos resúmenes diarios INDEPENDIENTES de las tareas pendientes de la persona, cada uno con su interruptor y su hora
@@ -25,6 +25,27 @@ export function TaskSummaryPrefs({ prefs, onSave }: { prefs: NotificationPrefs; 
         <>
           <TimeSelect24 label="Hora del aviso de tareas atrasadas" value={prefs.taskOverdueTime} onChange={(v) => void onSave({ taskOverdueTime: v })} helpId="notifications.task-overdue-time" />
           <p className="muted task-summary-help">Un resumen de las tareas vencidas que siguen pendientes.</p>
+          {/* NOT-02: repetir el aviso mientras sigan atrasadas. Apagado por defecto; fuera del horario (antes de la hora de arriba y desde las 21:00) no se repite, y al volver sale UN solo aviso. */}
+          <label data-help-id="notifications.task-overdue-repeat">
+            Repetir el aviso de atrasadas
+            <select
+              value={prefs.overdueRepeatHours ?? ''}
+              onChange={(e) => void onSave({ overdueRepeatHours: e.target.value === '' ? null : Number(e.target.value) })}
+              aria-label="Repetir el aviso de tareas atrasadas"
+            >
+              <option value="">No repetir</option>
+              {OVERDUE_REPEAT_CHOICES.map((h) => (
+                <option key={h} value={h}>
+                  {h === 24 ? 'Cada día (24 h)' : h === 1 ? 'Cada hora' : `Cada ${h} horas`}
+                </option>
+              ))}
+            </select>
+          </label>
+          {prefs.overdueRepeatHours != null && (
+            <p className="muted task-summary-help">
+              Se repite mientras sigan atrasadas, desde la hora de arriba hasta las 21:00. Se deja de repetir al completarlas o borrarlas, y de noche no suena nada.
+            </p>
+          )}
         </>
       )}
 

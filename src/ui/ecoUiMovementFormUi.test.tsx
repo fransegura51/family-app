@@ -3,7 +3,7 @@
 //  · «✓ Compra vinculada» (con o sin foto del ticket) cuando hay una compra realmente vinculada al movimiento.
 //  · Compra con productos reales: se oculta el bloque de clasificación (manda el desglose) sin perder nada de lo guardado.
 //  · Compra vinculada SIN productos reales (sin líneas, o solo el marcador «Pendiente»): se indica y se conserva el selector de clasificación.
-//  · Sin compra vinculada: el selector y «Repartir entre varias clasificaciones» como siempre.
+//  · Sin compra vinculada: el selector y «+ Añadir clasificación» como siempre.
 //  · Etiquetas: selectores + «+ Añadir etiqueta» (buscador a demanda); los repartos se conservan al guardar.
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -122,7 +122,7 @@ describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
     await waitFor(() => expect(linkedBadge().textContent).toContain('Compra vinculada'))
     expect(screen.queryByText(/Ticket vinculado/)).toBeNull()
     expect(screen.queryByText(/Clasificación \(opcional\)/)).toBeNull()
-    expect(screen.queryByText(/Repartir entre varias clasificaciones/)).toBeNull()
+    expect(screen.queryByText(/Añadir clasificación/)).toBeNull()
     expect(screen.queryByText(/Reparto por clasificación/)).toBeNull()
     expect(data.ticketQueries).toEqual(['con-ticket']) // se mira el vínculo real de ESTE gasto, nunca por comercio ni fecha
     expect(screen.queryByText(/Ver ticket|Editar productos|Yogur/)).toBeNull()
@@ -150,7 +150,7 @@ describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
     await openEdit('Sin lineas')
     await waitFor(() => expect(linkedBadge()).toBeTruthy())
     expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '+ Añadir clasificación' })).toBeTruthy()
     expect((screen.getByDisplayValue(/Carne/) as HTMLSelectElement).value).toBe('Carne')
   })
 
@@ -158,7 +158,7 @@ describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
     await openEdit('Solo pendiente')
     await waitFor(() => expect(linkedBadge()).toBeTruthy())
     expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '+ Añadir clasificación' })).toBeTruthy()
   })
 
   it('sin compra vinculada: ni etiqueta de vínculo ni nada oculto; selector y reparto como siempre, con la clasificación guardada puesta', async () => {
@@ -166,7 +166,7 @@ describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
     await waitFor(() => expect(data.ticketQueries).toContain('sin-compra'))
     expect(screen.queryByTestId('movement-purchase-linked')).toBeNull()
     expect(screen.getByText(/Clasificación \(opcional\)/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: /Repartir entre varias clasificaciones/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '+ Añadir clasificación' })).toBeTruthy()
     expect((screen.getByDisplayValue(/Carne/) as HTMLSelectElement).value).toBe('Carne')
   })
 

@@ -1581,6 +1581,26 @@ Rama `fix/master-30-10`. Migraciones **0359, 0360 y 0361** (aplicadas en producc
 
 ---
 
+## Incidencia compra Amazon de 47,97 € y selector compacto de clasificaciones (INC-AMZ-4797, 31/10/2026)
+
+**Causa exacta (investigada en la base real, no supuesta).** Los repartos por clasificación NO tocan importes ni vínculos: `set_expense_classes` solo escribe el reparto y `expense_class_shares_sync` solo reescala el reparto cuando cambia el importe del gasto (nunca al revés). La secuencia real fue:
+1. 16/10 11:28 — el correo de Amazon entró por la función de importación con el pedido de 3 productos (suma 47,97 €) y un total de **6,99 €** (dato inferido del orden de los hechos: el gasto de ticket que se borró después ya no existe, así que su importe exacto no se puede leer, pero no era de 47,97 € cuando el banco creó el suyo): se creó un gasto «ticket» y la compra con total 6,99 €.
+2. 16/10 15:00 — la sincronización del banco creó el movimiento de 47,97 € como gasto aparte (no coincidía con ningún gasto de ticket de 47,97 €, lo que confirma que el de ticket no valía 47,97 €).
+3. 16/10 21:00 y 21:06 — se editó el gasto de ticket y se clasificó/repartió el movimiento del banco (40,98 € + 6,99 €).
+4. 16/10 21:11 — se **borró** el gasto de ticket de 6,99 € desde Movimientos. `receipts.expense_id` es `ON DELETE SET NULL`: la compra quedó **sin vínculo** y con su total de 6,99 €. Ningún borrado comprobaba que hubiera una compra detrás.
+
+**Datos reparados (una sola compra afectada, con ensayo de precondiciones y registro en `food_kind_migration_log`, fase `amazon-47-97-repair-20261031`):** la compra `7c6326ab…` pasa a total 47,97 € y se vincula al movimiento bancario `6979dc7f…` (que pasa de `banco` a `ticket_banco`, como cualquier compra con ticket y banco). El movimiento conserva 47,97 € y su reparto 40,98 € + 6,99 €; los tres productos conservan sus importes; la devolución de 25,99 € (ingreso del 26/10) no se ha tocado ni se ha vinculado. No se ha creado ni borrado ningún registro.
+
+**Revisión de otras compras.** Es la única compra con productos cuyo total no cuadra por una diferencia grande y la única sin vínculo. Los otros repartos (tres movimientos con reparto de clasificación o de etiquetas) suman su importe y no tienen compras descolgadas. Fuera de este caso quedan dos avisos que no se han tocado: Mercadona 03/10 (total 129,25 € frente a 166,70 € de líneas, ya vinculada; se ve el aviso de descuadre en su ficha) y MACRO ASIA 02/09 (3 céntimos).
+
+**Código corregido.** `deleteExpense` rechaza borrar un gasto con compra vinculada (mensaje: bórrala desde Compras → Compras registradas) y la pantalla muestra el error; si no se puede comprobar el vínculo, no borra.
+
+**Selector compacto (parte 2).** `ClassSharesField` sigue el patrón de las etiquetas: solo se ven las clasificaciones elegidas, cada una en una fila con su nombre (se cambia con el desplegable) e importe y su ✕ para quitarla; «+ Añadir clasificación» abre el catálogo completo con buscador solo al pulsarlo. Se conservan los repartos a partes iguales, en euros y en %, la comprobación de la suma y lo que se guarda; el total del movimiento no se modifica.
+
+**Pruebas.** `amazon4797IncidentUi.test.tsx` (Compras muestra 47,97 €, productos intactos, compra cuadrada, estadísticas 40,98 + 6,99 contando el movimiento una vez, devolución independiente, movimiento y reparto intactos), `deleteExpenseLinkedGuard.test.ts`, `classSharesField.test.tsx` (selector compacto: añadir, cambiar, quitar, euros, %, buscador) y las existentes del formulario de movimiento. **Nota:** al vincular la compra con productos, las estadísticas usan la clase confirmada de cada producto (las pegatinas figuran como «Ferretería y bricolaje», confirmada el 22/10) en lugar de «Papelería y oficina» del reparto del movimiento; el reparto guardado no se ha borrado. Si prefiere «Papelería», se cambia la clase del producto en Historial de precios. **Pendiente de verificar en el iPhone por la usuaria; no se da por aprobada.**
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

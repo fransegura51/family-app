@@ -4212,7 +4212,7 @@ export function ExpensesTab({
                     icon="✕"
                     className="icon-button"
                     ariaLabel="Borrar movimiento"
-                    onConfirm={() => deleteExpense(e.id).then(reload)}
+                    onConfirm={() => deleteExpense(e.id).then(reload).catch((err) => setError(errorMessage(err, 'No se pudo borrar el movimiento')))}
                   />
                 </>
               }
@@ -4731,57 +4731,127 @@ export function ClassSharesField({
   total: number
   onChange: (next: { value: string; split: ClassSplitDraft | null }) => void
 }) {
-  if (!split) {
-    return (
-      <div>
-        <label>
-          Clasificación (opcional)
-          <select value={value} onChange={(e) => onChange({ value: e.target.value, split: null })}>
-            <option value="">Sin clasificar</option>
-            {options.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.icon} {t.name}
-              </option>
-            ))}
-          </select>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Para que cuente en «Reparto por clasificación» de Estadística compras.
-          </span>
-        </label>
-        {options.length >= 2 && (
-          <button
-            type="button"
-            className="link-button"
-            data-help-id="finance.class-split"
-            style={{ fontSize: 12, padding: '4px 0' }}
-            onClick={() => {
-              const first = value || options[0].name
-              const second = (options.find((t) => t.name !== first) ?? options[1]).name
-              onChange({ value: first, split: startClassSplit([first, second], total) })
-            }}
-          >
-            ＋ Repartir entre varias clasificaciones
-          </button>
-        )}
-      </div>
-    )
+  // Mismo patrón compacto que las etiquetas (ECO-UI-02/03): solo se ven las clasificaciones YA elegidas, cada una en una fila con su nombre (se puede cambiar) y su importe (se
+  // puede quitar), y debajo «+ Añadir clasificación», que abre el catálogo completo con buscador SOLO al pulsarlo y se cierra al elegir. Antes salían todas como botones.
+  // Los repartos (partes iguales, euros, %), la comprobación de la suma y lo que se guarda son los de siempre.
+  const [picking, setPicking] = useState(false)
+  const [query, setQuery] = useState('')
+  const chosen = split ? split.ids : value ? [value] : []
+  const optionOf = (name: string) => options.find((o) => o.name === name)
+  const available = options.filter((o) => !chosen.includes(o.name))
+  const needle = query.trim().toLowerCase()
+  const pickable = available.filter((o) => !needle || o.name.toLowerCase().includes(needle))
+  const mainClass = (ids: string[]) => (ids.includes(value) ? value : (ids[0] ?? ''))
+  const resolved = split ? resolveTagSplit(split, total, CLASS_NOUN) : null
+  const shownAmount = new Map((resolved && resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
+  const euro = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+
+  function changeClass(old: string, name: string) {
+    if (!name || name === old) return
+    if (split) onChange({ value: value === old ? name : value, split: replaceSplitTag(split, old, name) })
+    else onChange({ value: name, split: null })
   }
+  function removeClass(old: string) {
+    if (split) {
+      const next = removeSplitTag(split, old, total)
+      if (next) onChange({ value: mainClass(next.ids), split: next })
+      else onChange({ value: split.ids.filter((x) => x !== old)[0] ?? '', split: null })
+    } else onChange({ value: '', split: null })
+  }
+  function addClass(name: string) {
+    setPicking(false)
+    setQuery('')
+    if (chosen.length === 0) onChange({ value: name, split: null })
+    else if (split) onChange({ value: mainClass(split.ids), split: addSplitTag(split, name, total) })
+    else onChange({ value, split: startClassSplit([value, name], total) })
+  }
+
   return (
-    <div>
+    <div data-help-id="finance.class-select">
       <span style={{ display: 'block', margin: '4px 0 2px' }}>Clasificación (opcional)</span>
-      <ShareSplitEditor
-        items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
-        noun={CLASS_NOUN}
-        split={split}
-        total={total}
-        helpId="finance.class-split-editor"
-        preferredSingle={value}
-        onSplit={(next) => onChange({ value, split: next })}
-        onSingle={(name) => onChange({ value: name, split: null })}
-      />
-      <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-        Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
-      </p>
+      {chosen.length === 0 && (
+        <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+          Sin clasificar
+        </p>
+      )}
+      {chosen.map((name, i) => {
+        const amount = split ? shownAmount.get(name) : Number.isFinite(total) && total > 0 ? total : undefined
+        return (
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <select style={{ flex: 1, minWidth: 0 }} aria-label={`Clasificación ${i + 1}`} value={name} onChange={(e) => changeClass(name, e.target.value)}>
+              {options
+                .filter((o) => o.name === name || !chosen.includes(o.name))
+                .map((o) => (
+                  <option key={o.id} value={o.name}>
+                    {o.icon} {o.name}
+                  </option>
+                ))}
+              {!optionOf(name) && <option value={name}>{name}</option>}
+            </select>
+            {amount != null && (
+              <strong data-testid="class-amount" style={{ flex: 'none', fontSize: 13 }}>
+                {euro(amount)}
+              </strong>
+            )}
+            <button type="button" className="link-button" style={{ flex: 'none', minWidth: 32, minHeight: 32 }} aria-label={`Quitar la clasificación ${name}`} onClick={() => removeClass(name)}>
+              ✕
+            </button>
+          </div>
+        )
+      })}
+      {picking && (
+        <div className="card" data-testid="class-picker" style={{ padding: 8, marginBottom: 4 }}>
+          <input type="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar clasificación…" aria-label="Buscar clasificación" style={{ marginBottom: 4 }} />
+          <div role="listbox" aria-label="Clasificaciones disponibles" style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {pickable.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="link-button"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, textAlign: 'left', color: 'var(--text)', fontSize: 14 }}
+                onClick={() => addClass(o.name)}
+              >
+                <span aria-hidden="true">{o.icon}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.name}</span>
+              </button>
+            ))}
+            {pickable.length === 0 && <p className="muted" style={{ margin: '6px 0', fontSize: 13 }}>{available.length === 0 ? 'Ya están todas las clasificaciones.' : 'Ninguna clasificación coincide.'}</p>}
+          </div>
+          <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => { setPicking(false); setQuery('') }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+      {!picking && available.length > 0 && (
+        <button type="button" className="link-button" data-help-id="finance.class-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPicking(true)}>
+          + Añadir clasificación
+        </button>
+      )}
+      {!split && (
+        <span className="muted" style={{ fontSize: 12, display: 'block' }}>
+          Para que cuente en «Reparto por clasificación» de Estadística compras.
+        </span>
+      )}
+      {split && (
+        <>
+          <ShareSplitEditor
+            items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
+            noun={CLASS_NOUN}
+            split={split}
+            total={total}
+            helpId="finance.class-split-editor"
+            preferredSingle={value}
+            chooser={false}
+            onSplit={(next) => onChange({ value: mainClass(next.ids), split: next })}
+            onSingle={(name) => onChange({ value: name, split: null })}
+          />
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
+          </p>
+        </>
+      )}
     </div>
   )
 }

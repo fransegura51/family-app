@@ -685,7 +685,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
       const soleMember = ev && ev.memberIds.length === 1 ? ev.memberIds[0] : null
       await completeEventOccurrence(eventId, dateStr, soleMember, ev?.points ?? 0)
       emitHelpEvent('calendar.event-completed') // para los tutoriales «Enséñame»: el apunte YA está marcado como hecho
-      reload()
+      reload(true) // CAL-01: recarga de fondo, sin «Cargando calendario…»: la página no salta arriba ni se pierde filtro, fecha o vista
     } catch (err) {
       setError(errorMessage(err, 'No se pudo marcar como hecho'))
     }
@@ -698,7 +698,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   async function handleUncompleteEvent(eventId: string, dateStr: string) {
     try {
       await uncompleteEventOccurrence(eventId, dateStr)
-      reload()
+      reload(true) // CAL-01: recarga de fondo, sin «Cargando calendario…»: la página no salta arriba ni se pierde filtro, fecha o vista
     } catch (err) {
       setError(errorMessage(err, 'No se pudo deshacer'))
     }
@@ -775,7 +775,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   async function handleCompleteExternal(feedId: string, uid: string, dateStr: string) {
     try {
       await completeExternalEventOccurrence(feedId, uid, dateStr)
-      reload()
+      reload(true) // CAL-01: recarga de fondo, sin «Cargando calendario…»: la página no salta arriba ni se pierde filtro, fecha o vista
     } catch (err) {
       setError(errorMessage(err, 'No se pudo marcar como hecho'))
     }
@@ -784,7 +784,7 @@ export function CalendarScreen({ profile }: { profile: Profile }) {
   async function handleUncompleteExternal(feedId: string, uid: string, dateStr: string) {
     try {
       await uncompleteExternalEventOccurrence(feedId, uid, dateStr)
-      reload()
+      reload(true) // CAL-01: recarga de fondo, sin «Cargando calendario…»: la página no salta arriba ni se pierde filtro, fecha o vista
     } catch (err) {
       setError(errorMessage(err, 'No se pudo deshacer'))
     }

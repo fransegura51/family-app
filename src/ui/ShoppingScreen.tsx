@@ -63,7 +63,8 @@ import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
 import { useSectionHome } from '@/ui/useSectionHome'
 import { useCloseMenusOnHelp, useHelpDestinations } from '@/help/destinations'
 import { HelpDestMark } from '@/help/ui/HelpDest'
-import { listReceipts } from '@/data/receipts'
+import { listPendingLineCounts, listReceipts } from '@/data/receipts'
+import { pendingPurchasesLabel } from '@/domain/pendingPurchaseLines'
 import { listBudgetCategories } from '@/data/finance'
 import { buildFoodReceiptIds, buildProductKindSets, computeProductStats, isFoodPurchase, isLikelyAlcohol, purchaseNature } from '@/domain/products'
 import { normalize } from '@/domain/voiceQuery'
@@ -228,6 +229,32 @@ export function ShoppingScreen() {
   usePrefChange('familyapp:compras-pinned-tabs', () => setPinnedItems(loadComprasPinnedItems()))
   usePrefChange('familyapp:compras-menu-layout', () => setMenuLayout(loadComprasMenuLayout()))
   const [placeholderNotice, setPlaceholderNotice] = useState(false)
+  // COMP-06: contador de Compras → Inicio y estadística llevan a Tickets con solo las compras con productos por identificar.
+  const [ticketsPendingOnly, setTicketsPendingOnly] = useState(false)
+  // COMP-07 / NAV-01: de una compra de «Descuentos y ahorro» (Estadística compras) a esa compra en Tickets, con «← Volver a Estadísticas» que recupera la posición.
+  const [ticketsBackTo, setTicketsBackTo] = useState<{ label: string; scrollY: number } | null>(null)
+  function handleOpenReceiptFromStats(receiptId: string) {
+    setTicketsBackTo({ label: 'Estadísticas', scrollY: window.scrollY })
+    setPendingReceiptOpen({ receiptId })
+    setTab('Tickets')
+  }
+  function handleBackToStats() {
+    const y = ticketsBackTo?.scrollY ?? 0
+    setTicketsBackTo(null)
+    setTab('Estadística compras')
+    if (y > 0) window.setTimeout(() => window.scrollTo(0, y), 350)
+  }
+  function handleResolvePending() {
+    setTicketsPendingOnly(true)
+    setTab('Tickets')
+    window.scrollTo({ top: 0 })
+  }
+  useEffect(() => {
+    if (tab !== 'Tickets') {
+      setTicketsPendingOnly(false)
+      setTicketsBackTo(null)
+    }
+  }, [tab])
 
   function togglePinnedItem(key: ComprasMenuItemKey) {
     setPinnedItems((prev) => {
@@ -273,7 +300,7 @@ export function ShoppingScreen() {
 
   // COR-04C: de «Ver ticket / Ver compra» de la ficha de un producto, de vuelta a esa ficha (misma posición, mismo origen).
   function handleBackToHistory(back: NonNullable<PendingReceiptOpen['back']>) {
-    setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY, scope: back.scope } })
+    setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY, scope: back.scope, query: back.query, collapsed: back.collapsed } })
     setTab('Historial')
   }
 
@@ -346,19 +373,24 @@ export function ShoppingScreen() {
       {tab === 'Historial' && <HelpDestMark id="compras.historial" />}
       {tab === 'Tickets' && <HelpDestMark id="compras.tickets" />}
       {tab === 'Estadística compras' && <HelpDestMark id="compras.estadistica" />}
-      {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} />}
+      {tab === 'Inicio' && <ComprasInicioTab onNavigate={setTab} onViewMovements={handleViewMovements} onResolvePending={handleResolvePending} />}
       {tab === 'Lista' && <ShoppingListTab />}
       {tab === 'Historial' && <HistoryTab onBackToStats={() => setTab('Estadística compras')} onViewPurchase={() => setTab('Tickets')} />}
-      {tab === 'Tickets' && <ReceiptsTab onBackToHistory={handleBackToHistory} onOpenProduct={handleOpenProductFromTicket} />}
+      {tab === 'Tickets' && <ReceiptsTab key={ticketsPendingOnly ? 'pending' : 'all'} onBackToHistory={handleBackToHistory} onOpenProduct={handleOpenProductFromTicket} initialPendingOnly={ticketsPendingOnly} backTo={ticketsBackTo ? { label: ticketsBackTo.label, onBack: handleBackToStats } : undefined} />}
       {tab === 'Comparar' && <ComparePricesTab />}
       {tab === 'Estadística compras' && (
-        <BudgetsTab group="alimentacion" onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} />
+        <BudgetsTab group="alimentacion" onViewMovements={handleViewMovements} onOpenProduct={handleOpenProduct} onResolvePending={handleResolvePending} onOpenReceipt={handleOpenReceiptFromStats} />
       )}
     </div>
   )
 }
 
-function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void }) {
+function ComprasInicioTab({ onNavigate, onViewMovements, onResolvePending }: { onNavigate: (tab: SubTab) => void; onViewMovements: (f: MovementsFilter) => void; onResolvePending: () => void }) {
+  // COMP-06: cuántas compras tienen productos «Pendiente» sin identificar (contador que lleva directo a resolverlas).
+  const [pendingPurchases, setPendingPurchases] = useState(0)
+  useEffect(() => {
+    listPendingLineCounts().then((m) => setPendingPurchases(m.size)).catch(() => {})
+  }, [])
   const shortcuts: { tab: SubTab; body: string; 'data-help-id': string }[] = [
     { tab: 'Lista', body: 'La lista de la compra, agrupada por tienda y clase de producto.', 'data-help-id': 'shopping.card-lista' },
     { tab: 'Tickets', body: 'Registra una compra con o sin ticket y consulta el gasto por tienda.', 'data-help-id': 'shopping.card-tickets' },
@@ -421,6 +453,19 @@ function ComprasInicioTab({ onNavigate, onViewMovements }: { onNavigate: (tab: S
 
   return (
     <div>
+      {pendingPurchases > 0 && (
+        <button type="button" className="section-shortcut-card" data-testid="inicio-pending-purchases" style={{ marginBottom: 8, borderLeft: '4px solid #f0a020' }} onClick={onResolvePending}>
+          <span className="section-shortcut-card-icon" aria-hidden="true">
+            ⏳
+          </span>
+          <span>
+            <strong>{pendingPurchasesLabel(pendingPurchases)}</strong>
+            <p className="muted" style={{ margin: '4px 0 0' }}>
+              Toca para verlas y resolver cada producto pendiente.
+            </p>
+          </span>
+        </button>
+      )}
       <div className="event-list">
         {shortcuts.map((s, i) => {
           const meta = COMPRAS_MENU_ITEM_META[s.tab]
@@ -2501,6 +2546,9 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
         if (productPrice) setMode(purchaseNature(productPrice, foodReceiptIds, nonFoodProductIds, foodProductIds) === 'alimentacion' ? 'alimentacion' : 'no_alimentos')
       }
       setSheetScope(link.openSheet.scope ?? 'identical')
+      // COMP-09: al volver de la compra, el Historial recupera la búsqueda y las clases plegadas que tenía.
+      if (link.openSheet.query != null) setQuery(link.openSheet.query)
+      if (link.openSheet.collapsed) setCollapsedClasses(new Set(link.openSheet.collapsed))
       setPendingSheet({ productId: link.productId, name: link.productName, fromStats: link.openSheet.fromStats !== false, scrollY: link.openSheet.scrollY ?? null })
       return
     }
@@ -3119,7 +3167,7 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
               onViewPurchase={
                 onViewPurchase
                   ? (receiptId) => {
-                      setPendingReceiptOpen({ receiptId, back: { productId: detail.productId, productName: detail.name, kind: mode, scrollY: window.scrollY, fromStats: returnToStats === 'open', scope: sheetScope } })
+                      setPendingReceiptOpen({ receiptId, back: { productId: detail.productId, productName: detail.name, kind: mode, scrollY: window.scrollY, fromStats: returnToStats === 'open', scope: sheetScope, query, collapsed: [...collapsedClasses] } })
                       onViewPurchase()
                     }
                   : undefined

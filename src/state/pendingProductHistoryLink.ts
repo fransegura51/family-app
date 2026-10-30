@@ -19,6 +19,9 @@ export interface PendingProductHistoryLink {
     scrollY?: number
     /** Alcance con el que estaba la ficha («Solo el mismo» / «+ Equivalentes»). */
     scope?: 'identical' | 'equivalent'
+    /** COMP-09: búsqueda escrita y clases plegadas en el Historial al salir hacia la compra; se recuperan al volver. */
+    query?: string
+    collapsed?: string[]
   }
 }
 

@@ -6,6 +6,7 @@ import { toDateStr } from '@/domain/dateRanges'
 import { pickTicketExpenseMatch, sourceAfterTicketMatch, TICKET_MATCH_SOURCES, TICKET_MATCH_WINDOW_DAYS } from '@/domain/ticketExpenseMatch'
 import type { Receipt } from '@/domain/types'
 import { hasRealTicketBreakdown } from '@/domain/products'
+import { countPendingLinesByReceipt } from '@/domain/pendingPurchaseLines'
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00')
@@ -67,6 +68,14 @@ export async function findLinkedPurchase(expenseId: string): Promise<{ receiptId
     lines: (r.product_prices ?? []).map((l) => ({ normalizedName: l.products?.normalized_name ?? null, displayName: l.products?.display_name ?? null })),
   }))
   return all.find((r) => hasRealTicketBreakdown(r.lines)) ?? all[0]
+}
+
+// COMP-06: cuántas líneas «Pendiente» tiene cada compra (una sola consulta pequeña: solo las líneas cuyo producto empieza por «pendiente»; el resto lo decide isPlaceholderProduct).
+export async function listPendingLineCounts(): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('product_prices').select('receipt_id, products!inner(normalized_name, display_name)').ilike('products.normalized_name', 'pendiente%').not('receipt_id', 'is', null)
+  if (error) throw error
+  const rows = (data ?? []) as unknown as { receipt_id: string | null; products: { normalized_name: string | null; display_name: string | null } | null }[]
+  return countPendingLinesByReceipt(rows.map((r) => ({ receiptId: r.receipt_id, product: r.products ? { normalizedName: r.products.normalized_name, displayName: r.products.display_name } : null })))
 }
 
 export async function listReceipts(): Promise<Receipt[]> {

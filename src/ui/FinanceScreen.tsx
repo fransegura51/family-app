@@ -5,7 +5,7 @@ import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, Touch
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { setNavOrigin } from '@/state/navOrigin'
-import { useNavOrigin } from '@/ui/ReturnBar'
+import { ReturnBar, useNavOrigin } from '@/ui/ReturnBar'
 import '@/ui/groups/groups.css'
 import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
 import { CategorySelect } from '@/ui/CategorySelect'
@@ -176,11 +176,13 @@ import { useMovementColorMode, type MovementColorMode } from '@/state/movementCo
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
 import { setPendingReceiptOpen, takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
 import { FundLinkSheet } from '@/ui/FundLinkSheet'
+import { pendingPurchasesLabel } from '@/domain/pendingPurchaseLines'
+import { summarizeReceiptDiscounts } from '@/domain/receiptDiscount'
 import type { IncomingBankTx } from '@/data/groupFunds'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, findLinkedPurchase, listManualPurchasesWithoutTicket, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, findLinkedPurchase, listManualPurchasesWithoutTicket, listPendingLineCounts, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -5742,13 +5744,91 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistory?: (back: NonNullable<PendingReceiptOpen['back']>) => void; onOpenProduct?: (product: { productId: string; name: string }) => void } = {}) {
+
+// COMP-07 — «Descuentos y ahorro» en Compras → Estadística compras. Suma los descuentos GENERALES registrados (receipts.discount_total): total del periodo, evolución mensual y las compras
+// de las que salen, cada una con su enlace directo. Original − descuento = pagado siempre cuadra y cada compra cuenta una sola vez.
+export function DiscountSavingsCard({
+  receipts,
+  from,
+  to,
+  onOpenReceipt,
+}: {
+  receipts: readonly Receipt[]
+  from: string
+  to: string
+  onOpenReceipt?: (receiptId: string) => void
+}) {
+  const summary = useMemo(() => summarizeReceiptDiscounts(receipts, from, to), [receipts, from, to])
+  if (summary.byMonth.length === 0) return null // sin ningún descuento registrado nunca: no se enseña la sección
+  const fmt = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+  const monthLabel = (m: string) => {
+    const [y, mo] = m.split('-').map(Number)
+    return new Date(y, mo - 1, 1).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })
+  }
+  const recent = summary.byMonth.slice(-12)
+  const max = Math.max(...recent.map((m) => m.discount), 0.01)
+  return (
+    <div className="card event-card" data-testid="discount-savings" style={{ marginTop: 8 }}>
+      <h3 style={{ margin: '0 0 4px' }}>🏷️ Descuentos y ahorro</h3>
+      <p style={{ margin: '0 0 6px' }} data-testid="discount-total">
+        {summary.purchases.length === 0 ? (
+          'Sin descuentos registrados en este periodo.'
+        ) : (
+          <>
+            Este periodo has ahorrado <strong>{fmt(summary.total)}</strong> en {summary.purchases.length} {summary.purchases.length === 1 ? 'compra' : 'compras'} con descuento.
+          </>
+        )}
+      </p>
+      <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
+        Evolución mensual (todas las fechas)
+      </p>
+      <div data-testid="discount-months">
+        {recent.map((m) => (
+          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: '2px 0' }}>
+            <span style={{ width: 64 }}>{monthLabel(m.month)}</span>
+            <span aria-hidden="true" style={{ flex: 1, height: 6, background: 'rgba(100,116,139,0.15)', borderRadius: 3 }}>
+              <span style={{ display: 'block', height: 6, width: `${Math.max(4, (m.discount / max) * 100)}%`, background: '#2f9e44', borderRadius: 3 }} />
+            </span>
+            <span>
+              {fmt(m.discount)} <span className="muted">({m.purchases})</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      {summary.purchases.length > 0 && (
+        <div style={{ marginTop: 8 }} data-testid="discount-purchases">
+          <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
+            Compras de este periodo con descuento
+          </p>
+          {summary.purchases.map((p) => (
+            <p key={p.receiptId} style={{ margin: '4px 0', fontSize: 13 }}>
+              {formatDate(p.date)} · {p.store ?? 'Compra'}: original {fmt(p.original)} − descuento {fmt(p.discount)} = pagado {fmt(p.paid)}
+              {onOpenReceipt && (
+                <>
+                  {' '}
+                  <button type="button" className="link-button" style={{ padding: 0 }} onClick={() => onOpenReceipt(p.receiptId)}>
+                    Ver compra →
+                  </button>
+                </>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ReceiptsTab({ onBackToHistory, onOpenProduct, initialPendingOnly = false, backTo }: { onBackToHistory?: (back: NonNullable<PendingReceiptOpen['back']>) => void; onOpenProduct?: (product: { productId: string; name: string }) => void; /** COMP-06: llegar desde el contador de Compras → Inicio: solo las compras con productos por identificar. */ initialPendingOnly?: boolean; /** NAV-01: «← Volver a …» cuando la compra se abrió desde otra pestaña de Compras (p. ej. Estadísticas → Descuentos). */ backTo?: { label: string; onBack: () => void } } = {}) {
   // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
   const [openTarget] = useState(() => takePendingReceiptOpen())
   // NAV-01: compra abierta desde un movimiento de Economía («Ver compra vinculada») → «← Volver a Economía».
   const { bar: ticketsReturnBar } = useNavOrigin('tickets')
   const [focusId, setFocusId] = useState<string | null>(null)
   const [targetMissing, setTargetMissing] = useState(false)
+  // COMP-06: compras con líneas «Pendiente» (receiptId → nº de líneas) y vista «solo las pendientes».
+  const [pendingCounts, setPendingCounts] = useState<Map<string, number>>(new Map())
+  const [pendingOnly, setPendingOnly] = useState(initialPendingOnly)
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0312 estas listas quedan vacías).
@@ -5785,6 +5865,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
+    listPendingLineCounts().then(setPendingCounts).catch(() => {})
     Promise.all([listReceipts(), listExpenses(), listBudgetCategories(), listPurchaseRefunds(), listPurchasePayments(), listCashLinkedExpenseIds(), listWalletsSafe()])
       .then(([r, allExpenses, cats, refundRows, paymentRows, cashIds, walletRows]) => {
         setReceipts(r)
@@ -5918,6 +5999,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
   const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
+  const shownGrouped = pendingOnly ? groupReceiptsByStore(displayReceipts.filter((r) => pendingCounts.has(r.id)), knownStores) : rangeGrouped
   const storeColorOf = storeColorResolver(
     storeEntries,
     grouped.map((g) => g.store),
@@ -5927,6 +6009,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
     <div>
       {error && <p className="error">{error}</p>}
       {ticketsReturnBar}
+      {backTo && <ReturnBar label={backTo.label} onBack={backTo.onBack} />}
       {openTarget?.back && onBackToHistory && (
         // COR-04F: barra que se queda PEGADA arriba mientras se hace scroll (la compra se centra en pantalla al llegar y el botón, al principio de la página, quedaba fuera de vista).
         <div className="receipt-back-bar" data-testid="receipt-back-bar">
@@ -6009,8 +6092,32 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
           y los de este... quiero filtrarme solo por los de este mes o
           por esta semana". */}
       <h2 className="section-title" data-help-id="shopping.receipts-saved">Historial de compras</h2>
+      {pendingCounts.size > 0 && (
+        // COMP-06: las compras con productos «Pendiente» no se pierden de vista: contador y vista directa de solo esas.
+        <div className="card event-card" data-testid="pending-purchases-banner" style={{ borderLeft: '4px solid #f0a020' }}>
+          <strong>⏳ {pendingPurchasesLabel(pendingCounts.size)}</strong>
+          <p className="muted" style={{ margin: '4px 0' }}>
+            Su importe cuenta en las estadísticas por la clasificación del gasto, pero sus productos aún no están identificados. Ábrelas y toca «Resolver» en cada línea.
+          </p>
+          <button
+            type="button"
+            className="link-button"
+            data-testid="toggle-pending-only"
+            onClick={() => {
+              const next = !pendingOnly
+              setPendingOnly(next)
+              if (next) {
+                const first = groupReceiptsByStore(displayReceipts.filter((r) => pendingCounts.has(r.id)), knownStores)[0]
+                if (first) setExpandedStore(first.store)
+              }
+            }}
+          >
+            {pendingOnly ? 'Ver todas las compras' : 'Ver solo estas compras'}
+          </button>
+        </div>
+      )}
       <p className="muted" style={{ marginTop: -8 }}>
-        Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
+        {pendingOnly ? 'Mostrando solo las compras con productos por identificar (de todas las fechas).' : `Se filtran con el selector de arriba (${PRESET_LABELS[rangePreset]}).`}
       </p>
       <AddStoreInline onAdded={() =>
           listShoppingStores().then((rows) => {
@@ -6019,7 +6126,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
           })
         } />
       <div className="store-folder-grid">
-        {rangeGrouped.map(({ store, receipts: storeReceipts, total }) => {
+        {shownGrouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
             <div key={store} className="store-folder" style={{ background: storeColorOf(store) }}>
@@ -6079,6 +6186,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
                         receipt={r}
                         hasTicket={r.hasTicket}
                         highlight={focusId === r.id}
+                        pendingLines={pendingCounts.get(r.id) ?? 0}
                         onOpenProduct={onOpenProduct}
                         onDiscountChanged={reload}
                         members={members}
@@ -6455,6 +6563,7 @@ function ReceiptRow({
   receipt,
   hasTicket,
   highlight = false,
+  pendingLines = 0,
   members,
   onEdit,
   onAttach,
@@ -6472,6 +6581,8 @@ function ReceiptRow({
   hasTicket: boolean
   /** COR-04C: la compra que se pidió desde el Historial de precios: sale desplegada, resaltada y a la vista. */
   highlight?: boolean
+  /** COMP-06: nº de líneas que siguen siendo «Pendiente» (producto sin identificar). */
+  pendingLines?: number
   members: FamilyMember[]
   onEdit: () => void
   onAttach?: () => void
@@ -6560,7 +6671,7 @@ function ReceiptRow({
   }
 
   return (
-    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : undefined}>
+    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : pendingLines > 0 ? { borderLeft: '4px solid #f0a020' } : undefined}>
       <div className="receipt-row-main">
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{formatDate(receipt.receiptDate)}</span>
@@ -6570,6 +6681,11 @@ function ReceiptRow({
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {isPaymentMethod(receipt.paymentMethod) && <span className="muted"> · {PAYMENT_METHOD_LABELS[receipt.paymentMethod]}</span>}
           {receipt.isManual && !receipt.storagePath && <span className="muted" title="Compra apuntada a mano, sin ticket"> · ✍️ sin ticket</span>}
+          {pendingLines > 0 && (
+            <span className="pending-tag" data-testid="receipt-pending-lines" title="Hay productos de esta compra sin identificar">
+              {' · '}⏳ {pendingLines} {pendingLines === 1 ? 'producto por identificar' : 'productos por identificar'}
+            </span>
+          )}
           {payments.length > 1 && <span className="muted"> · {payments.map((p) => `${(PAYMENT_METHOD_LABELS as Record<string, string>)[p.method]?.slice(0, 2) ?? ''} ${p.amount.toFixed(2)} €`).join(' + ')}</span>}
           {refundText && <span className="muted"> · {refundText}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
@@ -6638,13 +6754,21 @@ function ReceiptRow({
                 <p key={l.id} className="muted receipt-row-detail-line">
                   {/* COR-10: el nombre lleva a la ficha del producto (Historial de precios), donde se ve y se corrige su clasificación. */}
                   {onOpenProduct && l.productId ? (
-                    <button type="button" className="link-button" style={{ padding: 0, font: 'inherit', textAlign: 'left', textDecoration: 'underline', color: 'inherit' }} onClick={() => onOpenProduct({ productId: l.productId as string, name: l.name })}>
+                    <button type="button" className="link-button" style={{ padding: 0, font: 'inherit', textAlign: 'left', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }} title="Ver la ficha del producto (Historial de precios)" onClick={() => onOpenProduct({ productId: l.productId as string, name: l.name })}>
                       {l.name}
                     </button>
                   ) : (
                     l.name
                   )}
                   {l.quantity && ` · ${l.quantity} ${unitLabel}`} · {l.price.toFixed(2)} €/{unitLabel}
+                  {isPlaceholderProduct({ displayName: l.name }) && (
+                    <>
+                      {' '}
+                      <button type="button" className="link-button" data-testid="resolve-pending-line" style={{ padding: 0 }} onClick={onEdit}>
+                        ⏳ Resolver
+                      </button>
+                    </>
+                  )}
                 </p>
               )
             })}
@@ -8120,6 +8244,8 @@ export function BudgetsTab({
   myMemberId = null,
   onViewMovements,
   onOpenProduct,
+  onResolvePending,
+  onOpenReceipt,
 }: {
   group: string
   accountsMode?: AccountsMode
@@ -8131,6 +8257,10 @@ export function BudgetsTab({
   onViewMovements?: (filter: MovementsFilter) => void
   // COR-04: tocar un producto del desglose abre SU ficha en Compras → Historial de precios (por identificador). Solo lo pasa Compras; sin él, las filas no son tocables.
   onOpenProduct?: (product: { productId: string; name: string; kind: FoodTypeKind }) => void
+  // COMP-06: lleva a Compras → Tickets con solo las compras con productos por identificar.
+  onResolvePending?: () => void
+  // COMP-07: abre una compra concreta (Tickets) desde «Descuentos y ahorro»; al volver se recupera la estadística. Solo lo pasa Compras.
+  onOpenReceipt?: (receiptId: string) => void
 }) {
   // Piso compartido — solo aplica a Presupuesto Generales ('generales');
   // Alimentación se sigue viendo entera por todos siempre (RLS ya lo
@@ -8367,6 +8497,8 @@ export function BudgetsTab({
   const foodClassEntries: ClassifiableEntry[] = []
   const noAlimentosClassEntries: ClassifiableEntry[] = []
   const splits: ExpenseSplit[] = []
+  // COMP-06: compras cuyas líneas son (en parte) el marcador «Pendiente»: SÍ cuentan (por la clasificación del gasto), pero se avisa de que sus productos no están identificados.
+  const purchasesWithPendingLines = new Set<string>()
   for (const e of monthRealExpenses) {
     const receipt = receiptByExpenseId.get(e.id)
     const baseIsFood = isFoodCategory(e.category, categories)
@@ -8381,6 +8513,7 @@ export function BudgetsTab({
     const allLines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
     const lines = allLines.filter((pr) => !isPlaceholderProduct(productById.get(pr.productId)))
     const hadPlaceholderLines = lines.length < allLines.length
+    if (hadPlaceholderLines && receipt) purchasesWithPendingLines.add(receipt.id)
     let foodAmount = 0
     let nonFoodAmount = 0
     let unknownAmount = 0
@@ -8732,6 +8865,19 @@ export function BudgetsTab({
                 ni en Alimentación ni en Otros hasta que les pongas una clase.
               </p>
             )}
+            {purchasesWithPendingLines.size > 0 && (
+              <p className="muted" data-testid="stats-pending-lines" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                ⏳ {pendingPurchasesLabel(purchasesWithPendingLines.size)}: su importe SÍ está contado (por la clasificación del gasto), pero sus productos aún no están identificados.
+                {onResolvePending && (
+                  <>
+                    {' '}
+                    <button type="button" className="link-button" onClick={onResolvePending}>
+                      Resolver →
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <p className="muted" style={{ margin: '8px 0 0' }}>
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
@@ -8759,6 +8905,7 @@ export function BudgetsTab({
           </p>
         </div>
       )}
+      {group === 'alimentacion' && <DiscountSavingsCard receipts={receipts} from={periodFrom} to={periodTo} onOpenReceipt={onOpenReceipt} />}
 
       {/* Bug real (validación en iPhone): esta comparativa mostraba préstamos, clínica dental y otros
           gastos generales de Economía — CAUSA encontrada: isComparableSpend solo aplicaba el filtro

@@ -16,6 +16,9 @@ const toGroup = (r: any, folderId: string | null): GroupItem => ({
   copiedFrom: r.copied_from ?? null,
   createdAt: r.created_at,
   folderId,
+  nameFormat: r.name_format ?? 'full',
+  sortBy: r.sort_by ?? 'name',
+  contactSharePresets: Array.isArray(r.contact_share_presets) ? r.contact_share_presets : [],
 })
 const toFolder = (r: any): GroupFolder => ({ id: r.id, name: r.name, sortOrder: Number(r.sort_order) })
 export const toParticipant = (r: any): Participant => ({
@@ -30,11 +33,12 @@ export const toParticipant = (r: any): Participant => ({
   notes: r.notes,
   leftAt: r.left_at,
   createdAt: r.created_at,
+  personId: r.person_id ?? null,
 })
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
-const GROUP_COLS = 'id, family_id, name, period_label, created_by, archived_at, copied_from, created_at'
-const PARTICIPANT_COLS = 'id, group_id, name, surname, guardian_name, phone, email, payer_alias, notes, left_at, created_at'
+const GROUP_COLS = 'id, family_id, name, period_label, created_by, archived_at, copied_from, created_at, name_format, sort_by, contact_share_presets'
+const PARTICIPANT_COLS = 'id, group_id, name, surname, guardian_name, phone, email, payer_alias, notes, left_at, created_at, person_id'
 
 /** Mensajes comprensibles para los códigos que devuelve el servidor. */
 export function groupsErrorMessage(err: unknown, fallback = 'No se ha podido completar la operación.'): string {
@@ -45,6 +49,8 @@ export function groupsErrorMessage(err: unknown, fallback = 'No se ha podido com
     [/DECLARATION_REQUIRED/, 'Marca la casilla que confirma que puedes compartir estos datos.'],
     [/INVALID_CODE/, 'Ese código no existe, ya se usó o ha caducado.'],
     [/TOO_MANY_ATTEMPTS/, 'Demasiados intentos. Espera un rato y vuelve a probar.'],
+    [/SELF_INVITE/, 'Este código lo has creado tú: dáselo a la persona que va a ser responsable.'],
+    [/ALREADY_MANAGER/, 'Ya eres responsable de este grupo.'],
     [/SELF_TRANSFER/, 'Este código lo has creado tú: dáselo a la persona que va a recibir el grupo.'],
     [/TOO_MANY_PENDING/, 'Ya hay demasiados códigos pendientes de este grupo. Cancela alguno.'],
     [/ALLOCATION_EXCEEDS_AMOUNT/, 'El reparto no puede superar el importe de la aportación.'],
@@ -100,8 +106,14 @@ export async function createGroup(name: string, folderId: string | null, periodL
   return data.id as string
 }
 
-export async function updateGroup(id: string, patch: { name?: string; periodLabel?: string | null; archived?: boolean }): Promise<void> {
+export async function updateGroup(
+  id: string,
+  patch: { name?: string; periodLabel?: string | null; archived?: boolean; nameFormat?: GroupItem['nameFormat']; sortBy?: GroupItem['sortBy']; contactSharePresets?: unknown[] },
+): Promise<void> {
   const row: Record<string, unknown> = {}
+  if (patch.nameFormat !== undefined) row.name_format = patch.nameFormat
+  if (patch.sortBy !== undefined) row.sort_by = patch.sortBy
+  if (patch.contactSharePresets !== undefined) row.contact_share_presets = patch.contactSharePresets
   if (patch.name !== undefined) row.name = patch.name.trim()
   if (patch.periodLabel !== undefined) row.period_label = patch.periodLabel
   if (patch.archived !== undefined) row.archived_at = patch.archived ? new Date().toISOString() : null
@@ -151,14 +163,54 @@ export interface Manager {
 }
 
 export async function listManagers(group: GroupItem): Promise<Manager[]> {
-  const { data, error } = await supabase.from('group_managers').select('user_id').eq('group_id', group.id)
+  // Por función de servidor: un responsable de OTRO espacio no se ve en la tabla de perfiles de este.
+  const { data, error } = await supabase.rpc('group_manager_names', { p_group: group.id })
   if (error) throw error
-  const ids = (data ?? []).map((r) => r.user_id as string)
-  if (ids.length === 0) return []
-  const { data: profiles, error: pe } = await supabase.from('profiles').select('id, display_name').in('id', ids)
-  if (pe) throw pe
-  const names = new Map((profiles ?? []).map((p) => [p.id as string, (p.display_name as string) || 'Sin nombre']))
-  return ids.map((id) => ({ userId: id, name: names.get(id) ?? 'Otra persona', isCreator: id === group.createdBy }))
+  return ((data ?? []) as { user_id: string; display_name: string }[]).map((r) => ({ userId: r.user_id, name: r.display_name, isCreator: r.user_id === group.createdBy }))
+}
+
+// ------------------------------------------------------------------------------------------------------------- invitar a un responsable con código (0355)
+export interface ManagerInvitePreview {
+  groupName: string
+  fromName: string
+  participants: number
+  funds: number
+  alreadyManager: boolean
+}
+export interface PendingInvite {
+  id: string
+  code: string
+  expiresAt: string
+}
+export async function createManagerInvite(groupId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('create_group_manager_invite', { p_group: groupId })
+  if (error) throw error
+  return data as string
+}
+export async function listManagerInvites(groupId: string): Promise<PendingInvite[]> {
+  const { data, error } = await supabase
+    .from('group_manager_invites')
+    .select('id, code, expires_at')
+    .eq('group_id', groupId)
+    .eq('status', 'pendiente')
+    .gt('expires_at', new Date().toISOString())
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((r) => ({ id: r.id as string, code: r.code as string, expiresAt: r.expires_at as string }))
+}
+export async function revokeManagerInvite(id: string): Promise<void> {
+  const { error } = await supabase.rpc('revoke_group_manager_invite', { p_id: id })
+  if (error) throw error
+}
+export async function previewManagerInvite(code: string): Promise<ManagerInvitePreview> {
+  const { data, error } = await supabase.rpc('preview_group_manager_invite', { p_code: code })
+  if (error) throw error
+  return data as ManagerInvitePreview
+}
+export async function acceptManagerInvite(code: string): Promise<string> {
+  const { data, error } = await supabase.rpc('accept_group_manager_invite', { p_code: code })
+  if (error) throw error
+  return (data as { groupId: string }).groupId
 }
 
 /** Personas del mismo espacio que aún no son responsables. */

@@ -1,9 +1,8 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
-import { addContact, deleteContact, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { addContact, addContactReturningId, applyContactPatch, listContacts, updateContact, updateContactBirthDate } from '@/data/contacts'
 import { isContactPickerSupported, pickContacts, type PickedContact } from '@/services/contactPicker'
 import { parseIcs } from '@/domain/icsParser'
 import { parseVcf } from '@/domain/vcardParser'
-import { ConfirmIconButton } from '@/ui/ConfirmButton'
 import { DateField } from '@/ui/DateField'
 import { normalize } from '@/domain/voiceQuery'
 import type { Contact } from '@/domain/types'
@@ -14,6 +13,8 @@ import { shareText } from '@/services/share'
 import { ShareFallbackModal } from '@/ui/ShareFallbackModal'
 import { paletteByName } from '@/domain/colors'
 import { emitHelpEvent } from '@/help/tours/helpBus'
+import { allCategories, allEmails, allPhones, applyContactMerge, contactFullName, hasPatch, planContactMerge, type ContactMergePlan, type Resolution } from '@/domain/contactsModel'
+import { ContactSheet, emptyExtras, ExtraFields, extrasFromContact, toExtras, type ExtraState } from '@/ui/contacts/ContactParts'
 
 // Categorías de partida — ya no es una lista cerrada: cualquier
 // contacto puede llevar una categoría nueva escrita a mano (petición
@@ -26,7 +27,7 @@ const CATEGORIES = ['Colegio', 'Médico', 'Emergencia', 'Familia', 'Otros']
 function collectCategories(contacts: Contact[]): string[] {
   const set = new Set(CATEGORIES)
   for (const c of contacts) {
-    if (c.category?.trim()) set.add(c.category.trim())
+    for (const cat of allCategories(c)) set.add(cat)
   }
   return [...set].sort((a, b) => a.localeCompare(b))
 }
@@ -47,6 +48,9 @@ export function ContactsScreen() {
   // abra en una ventana emergente que se cierra cuando se haya
   // guardado el contacto".
   const [addingContact, setAddingContact] = useState(false)
+  // Tocar una tarjeta abre la ficha completa (con todas las acciones); la lista se queda compacta.
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   // Petición real: "Contactos: compartir uno o varios contactos" — el
   // icono 📤 de cada ficha comparte solo ese; este modo aparte es para
   // elegir varios de golpe y mandarlos en un único archivo .vcf.
@@ -79,18 +83,22 @@ export function ContactsScreen() {
     })
   }
 
-  async function handleShareSelected() {
-    const chosen = contacts.filter((c) => selectedIds.has(c.id))
-    if (chosen.length === 0) return
+  async function shareAndReport(chosen: Contact[]) {
     try {
       const outcome = await shareContacts(chosen)
       if (outcome.kind === 'clipboard') flashShareNotice('Copiado al portapapeles.')
       else if (outcome.kind === 'manual') setManualShare({ title: outcome.title, text: outcome.text })
-      setSelecting(false)
-      setSelectedIds(new Set())
     } catch (err) {
       setError(errorMessage(err, 'No se pudo compartir'))
     }
+  }
+
+  async function handleShareSelected() {
+    const chosen = contacts.filter((c) => selectedIds.has(c.id))
+    if (chosen.length === 0) return
+    await shareAndReport(chosen)
+    setSelecting(false)
+    setSelectedIds(new Set())
   }
 
   // Solo pone "Cargando…" en la primera carga — si se vuelve a llamar
@@ -108,20 +116,27 @@ export function ContactsScreen() {
 
   useEffect(reload, [])
 
-  if (loading) return <div className="screen">Cargando contactos…</div>
-
-  const availableCategories = collectCategories(contacts)
+  const availableCategories = useMemo(() => collectCategories(contacts), [contacts])
   // Petición real: "Contactos ya tienen clasificación, ponemos un
   // color por clase" — mismo criterio que las clases de producto de
   // Compras (paletteByName): nombre de categoría -> color estable,
   // calculado una vez aquí, no por tarjeta.
-  const categoryColors = paletteByName(availableCategories)
+  const categoryColors = useMemo(() => paletteByName(availableCategories), [availableCategories])
+
+  if (loading) return <div className="screen">Cargando contactos…</div>
+
   const normalizedSearch = normalize(search)
   const filteredContacts = contacts.filter((c) => {
-    if (categoryFilter !== 'Todas' && (c.category ?? 'Otros') !== categoryFilter) return false
-    if (normalizedSearch && !normalize(c.name).includes(normalizedSearch)) return false
+    if (categoryFilter !== 'Todas' && !allCategories(c).includes(categoryFilter) && !(categoryFilter === 'Otros' && allCategories(c).length === 0)) return false
+    if (
+      normalizedSearch &&
+      !normalize([contactFullName(c), c.nickname, c.whatsappName].filter(Boolean).join(' ')).includes(normalizedSearch)
+    )
+      return false
     return true
   })
+  const open = contacts.find((c) => c.id === openId) ?? null
+  const editing = contacts.find((c) => c.id === editingId) ?? null
 
   return (
     <div className="screen">
@@ -185,19 +200,16 @@ export function ContactsScreen() {
         </button>
       )}
 
-      <div className="event-list" data-help-id="contactos.lista">
+      <div className="event-list contact-list" data-help-id="contactos.lista">
         {filteredContacts.map((c) => (
-          <ContactCard
+          <ContactListCard
             key={c.id}
             contact={c}
             color={categoryColors.get(c.category || 'Otros')}
-            onChanged={reload}
             selecting={selecting}
             selected={selectedIds.has(c.id)}
             onToggleSelect={() => toggleSelected(c.id)}
-            onShareError={(msg) => setError(msg)}
-            onShareFallback={() => flashShareNotice('Copiado al portapapeles.')}
-            onManualShare={(title, text) => setManualShare({ title, text })}
+            onOpen={() => setOpenId(c.id)}
           />
         ))}
         {filteredContacts.length === 0 && <p className="muted">No hay contactos que coincidan.</p>}
@@ -232,6 +244,38 @@ export function ContactsScreen() {
         </div>
       )}
 
+      {open && !editing && (
+        <ContactSheet
+          contact={open}
+          onClose={() => setOpenId(null)}
+          onChanged={reload}
+          onEdit={() => setEditingId(open.id)}
+          onShare={() => shareAndReport([open])}
+        />
+      )}
+      {editing && (
+        <div className="modal-overlay" onClick={() => setEditingId(null)}>
+          <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                Editar contacto
+              </h2>
+              <button type="button" className="modal-close" onClick={() => setEditingId(null)} aria-label="Cerrar">
+                ✕
+              </button>
+            </div>
+            <EditContactForm
+              contact={editing}
+              onDone={() => {
+                setEditingId(null)
+                reload()
+              }}
+              onCancel={() => setEditingId(null)}
+            />
+          </div>
+        </div>
+      )}
+
       {manualShare && (
         <ShareFallbackModal title={manualShare.title} text={manualShare.text} onClose={() => setManualShare(null)} />
       )}
@@ -258,9 +302,9 @@ async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
   // cualquier app de mensajería, así que ahora se comparte siempre así
   // — se pierde el "añadir directo a Contactos" de un vCard real, pero
   // se gana que el menú "con quién compartir" salga siempre poblado.
-  const title = contacts.length === 1 ? contacts[0].name : `${contacts.length} contactos`
+  const title = contacts.length === 1 ? contactFullName(contacts[0]) : `${contacts.length} contactos`
   const text = contacts
-    .map((c) => `${c.name}${c.phone ? ' · ' + c.phone : ''}${c.email ? ' · ' + c.email : ''}`)
+    .map((c) => [contactFullName(c), ...allPhones(c), ...allEmails(c)].join(' · '))
     .join('\n')
   try {
     const shownText = await shareText({ title, text })
@@ -272,138 +316,49 @@ async function shareContacts(contacts: Contact[]): Promise<ShareOutcome> {
   }
 }
 
-function ContactCard({
+/**
+ * Tarjeta compacta: nombre destacado, categoría y teléfono en una línea, y el correo en su propia línea SIN cortar (si es largo ocupa varias líneas). Sin botones repetidos:
+ * al tocarla se abre la ficha completa. En modo «Compartir varios» tocarla marca o desmarca.
+ */
+function ContactListCard({
   contact: c,
   color,
-  onChanged,
   selecting,
   selected,
   onToggleSelect,
-  onShareError,
-  onShareFallback,
-  onManualShare,
+  onOpen,
 }: {
   contact: Contact
   color?: string
-  onChanged: () => void
   selecting: boolean
   selected: boolean
   onToggleSelect: () => void
-  onShareError: (msg: string) => void
-  onShareFallback: () => void
-  onManualShare: (title: string, text: string) => void
+  onOpen: () => void
 }) {
-  const [editingBirthday, setEditingBirthday] = useState(false)
-  const [editingAll, setEditingAll] = useState(false)
-  const [birthDate, setBirthDate] = useState(c.birthDate ?? '')
-  const [saving, setSaving] = useState(false)
-  // Bug real reportado: "no hace nada" al tocar compartir, sin poder
-  // ver la pantalla del móvil para saber en qué paso se queda — esto
-  // da una señal visible de que el toque SÍ se ha registrado, aunque
-  // lo que pase después (se abra el menú, o no) dependa del navegador.
-  const [sharing, setSharing] = useState(false)
-
-  async function handleShareOne() {
-    setSharing(true)
-    try {
-      const outcome = await shareContacts([c])
-      if (outcome.kind === 'clipboard') onShareFallback()
-      else if (outcome.kind === 'manual') onManualShare(outcome.title, outcome.text)
-    } catch (err) {
-      onShareError(errorMessage(err, 'No se pudo compartir'))
-    } finally {
-      setSharing(false)
-    }
-  }
-
-  async function handleSaveBirthday() {
-    setSaving(true)
-    try {
-      await updateContactBirthDate(c.id, birthDate || null)
-      setEditingBirthday(false)
-      onChanged()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (editingAll) {
-    return (
-      <EditContactForm
-        contact={c}
-        onDone={() => {
-          setEditingAll(false)
-          onChanged()
-        }}
-        onCancel={() => setEditingAll(false)}
-      />
-    )
-  }
-
+  const phones = allPhones(c)
+  const emails = allEmails(c)
   return (
-    <div className="card task-card contact-card" style={{ background: color }}>
-      {selecting && (
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={onToggleSelect}
-          aria-label={`Seleccionar ${c.name}`}
-          data-help-id="contactos.casilla"
-          style={{ marginRight: 4 }}
-        />
-      )}
-      <div className="task-card-main">
-        <strong>{c.name}</strong>
-        <p className="muted contact-card-detail">
-          {c.category}
-          {c.phone && ` · ${c.phone}`}
-          {c.email && ` · ${c.email}`}
-        </p>
-        {c.notes && <p className="muted contact-card-detail">{c.notes}</p>}
-        {editingBirthday ? (
-          <div className="inline-fields">
-            <DateField value={birthDate} onChange={setBirthDate} placeholder="Sin cumpleaños" />
-            <button type="button" className="link-button" onClick={handleSaveBirthday} disabled={saving}>
-              {saving ? 'Guardando…' : 'Guardar'}
-            </button>
-            <button type="button" className="link-button" onClick={() => setEditingBirthday(false)}>
-              Cancelar
-            </button>
-          </div>
-        ) : (
-          <button type="button" className="link-button contact-card-birthday" data-help-id="contactos.cumple-ficha" onClick={() => setEditingBirthday(true)}>
-            {c.birthDate ? `🎂 ${formatBirthDate(c.birthDate)}` : '🎂 Añadir cumpleaños'}
-          </button>
-        )}
-      </div>
-      {/* Antes solo se podía borrar o llamar — si el teléfono estaba mal
-          o quería cambiar la categoría, había que borrar y volver a
-          crear el contacto entero (bug/petición real). Los tres juntos
-          como iconos, en vez de repartidos en texto (petición real:
-          "los tres botones de comandos que sustituiría el texto por
-          los símbolos habituales"). */}
-      <div className="task-card-actions" data-help-id="contactos.acciones">
-        {c.phone && (
-          <a href={`tel:${c.phone}`} className="link-button" data-help-id="contactos.llamar" aria-label="Llamar">
-            📞
-          </a>
-        )}
-        <button
-          type="button"
-          className="icon-button-share"
-          data-help-id="contactos.compartir-uno"
-          onClick={handleShareOne}
-          disabled={sharing}
-          aria-label="Compartir contacto"
-        >
-          {sharing ? '…' : '📤'}
-        </button>
-        <button type="button" className="link-button" data-help-id="contactos.editar" onClick={() => setEditingAll(true)} aria-label="Editar">
-          ✏️
-        </button>
-        <ConfirmIconButton icon="✕" className="link-button" ariaLabel="Eliminar" onConfirm={() => deleteContact(c.id).then(onChanged)} />
-      </div>
-    </div>
+    <button
+      type="button"
+      className="card contact-card contact-card-compact"
+      data-help-id="contactos.tarjeta"
+      style={{ background: color }}
+      onClick={selecting ? onToggleSelect : onOpen}
+      aria-label={selecting ? `Seleccionar ${contactFullName(c)}` : `Abrir la ficha de ${contactFullName(c)}`}
+    >
+      {selecting && <input type="checkbox" checked={selected} readOnly tabIndex={-1} aria-hidden="true" data-help-id="contactos.casilla" style={{ marginRight: 4 }} />}
+      <span className="contact-card-body">
+        <strong className="contact-card-name">
+          {contactFullName(c)}
+          {c.nickname ? <span className="muted"> «{c.nickname}»</span> : null}
+        </strong>
+        <span className="muted contact-card-line">
+          {[c.category, phones[0] ? phones[0] + (phones.length > 1 ? ` (+${phones.length - 1})` : '') : null].filter(Boolean).join(' · ')}
+        </span>
+        {emails[0] && <span className="muted contact-card-email">{emails[0]}{emails.length > 1 ? ` (+${emails.length - 1})` : ''}</span>}
+        {c.birthDate && <span className="muted contact-card-line">🎂 {formatBirthDate(c.birthDate)}</span>}
+      </span>
+    </button>
   )
 }
 
@@ -422,6 +377,7 @@ function EditContactForm({
   const [email, setEmail] = useState(contact.email ?? '')
   const [notes, setNotes] = useState(contact.notes ?? '')
   const [birthDate, setBirthDate] = useState(contact.birthDate ?? '')
+  const [extras, setExtras] = useState<ExtraState>(() => extrasFromContact(contact))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -430,7 +386,7 @@ function EditContactForm({
     setSaving(true)
     setError(null)
     try {
-      await updateContact(contact.id, { name, category, phone, email, notes, birthDate: birthDate || null })
+      await updateContact(contact.id, { name, category, phone, email, notes, birthDate: birthDate || null, ...toExtras(extras) })
       emitHelpEvent('contacts.contact-edited') // para los tutoriales «Enséñame»: los cambios del contacto YA están guardados
       onDone()
     } catch (err) {
@@ -472,6 +428,7 @@ function EditContactForm({
         Notas
         <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
+      <ExtraFields value={extras} onChange={setExtras} />
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
         <button type="submit" disabled={saving} data-help-id="contactos.editar-guardar">
@@ -609,11 +566,15 @@ interface ContactCandidate {
   selected: boolean
 }
 
+const RESOLUTION_LABEL: Record<Resolution, string> = { anadir: 'Añadir como adicional', sustituir: 'Sustituir el anterior', conservar: 'Conservar el anterior' }
+
 function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts: Contact[]; onAdded: () => void }) {
   const [candidates, setCandidates] = useState<ContactCandidate[]>([])
   const [category, setCategory] = useState(CATEGORIES[0])
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  // Decisiones ante datos distintos de un contacto que ya existe: «índice:campo» → qué hacer. Sin decisión = conservar (nunca se pisa nada por defecto).
+  const [decisions, setDecisions] = useState<Record<string, Resolution>>({})
 
   async function handleFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -641,6 +602,7 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
       list.sort((a, b) => a.name.localeCompare(b.name))
       if (list.length === 0) setError('No se ha encontrado ningún contacto en ese archivo.')
       setCandidates(list)
+      setDecisions({})
     } catch {
       setError('No se pudo leer ese archivo — asegúrate de que es un .vcf exportado de Contactos.')
     }
@@ -650,24 +612,31 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
     setCandidates((prev) => prev.map((c, idx) => (idx === i ? { ...c, selected: !c.selected } : c)))
   }
 
+  // Para cada candidato que ya existe en la agenda: qué datos nuevos trae y cuáles chocan con los que ya hay.
+  const plans = useMemo(() => {
+    const m = new Map<number, { existing: Contact; plan: ContactMergePlan }>()
+    candidates.forEach((c, i) => {
+      const existing = existingContacts.find((ec) => ec.name.trim().toLowerCase() === c.name.trim().toLowerCase())
+      if (existing) m.set(i, { existing, plan: planContactMerge(existing, { phone: c.phone, email: c.email, birthDate: c.birthDate }, true) })
+    })
+    return m
+  }, [candidates, existingContacts])
+
   async function handleImport() {
     setSaving(true)
     setError(null)
     try {
-      for (const c of candidates) {
+      for (const [i, c] of candidates.entries()) {
         if (!c.selected) continue
-        const existing = existingContacts.find((ec) => ec.name.trim().toLowerCase() === c.name.trim().toLowerCase())
-        if (existing) {
-          await updateContact(existing.id, {
-            name: existing.name,
-            category: existing.category ?? category,
-            phone: existing.phone || c.phone,
-            email: existing.email || c.email,
-            notes: existing.notes ?? '',
-            birthDate: existing.birthDate ?? c.birthDate,
-          })
+        const found = plans.get(i)
+        if (found) {
+          // Un dato nuevo sobre un campo vacío se completa; si choca con uno que ya hay, solo se cambia si la persona lo decidió.
+          const mine: Record<string, Resolution | undefined> = {}
+          for (const cf of found.plan.conflicts) mine[cf.key] = decisions[`${i}:${cf.key}`]
+          const patch = applyContactMerge(found.existing, found.plan, mine)
+          if (hasPatch(patch)) await applyContactPatch(found.existing.id, patch)
         } else {
-          await addContact({ name: c.name, category, phone: c.phone, email: c.email, notes: '', birthDate: c.birthDate })
+          await addContactReturningId({ name: c.name, category, phone: c.phone, email: c.email, notes: '', birthDate: c.birthDate, source: { kind: 'vcf', at: new Date().toISOString() } })
         }
       }
       setCandidates([])
@@ -700,12 +669,32 @@ function ImportVcfContactsForm({ existingContacts, onAdded }: { existingContacts
             <input type="text" list="contact-categories" value={category} onChange={(e) => setCategory(e.target.value)} />
           </label>
           <div className="event-list">
-            {candidates.map((c, i) => (
-              <label key={`${c.name}-${i}`} className="checkbox-label">
-                <input type="checkbox" checked={c.selected} onChange={() => toggle(i)} />
-                {c.name} {c.phone && `· ${c.phone}`}
-              </label>
-            ))}
+            {candidates.map((c, i) => {
+              const found = plans.get(i)
+              return (
+                <div key={`${c.name}-${i}`}>
+                  <label className="checkbox-label">
+                    <input type="checkbox" checked={c.selected} onChange={() => toggle(i)} />
+                    {c.name} {c.phone && `· ${c.phone}`}
+                  </label>
+                  {c.selected &&
+                    found?.plan.conflicts.map((cf) => (
+                      <div key={cf.key} className="grp-banner" style={{ margin: '2px 0 6px' }}>
+                        <p style={{ margin: '0 0 4px' }}>
+                          Ya existe en tu agenda con otro dato — {cf.label}: ahora «{cf.existing}», el archivo trae «{cf.incoming}».
+                        </p>
+                        <div className="filter-row">
+                          {cf.options.map((o) => (
+                            <button key={o} type="button" className={'chip' + ((decisions[`${i}:${cf.key}`] ?? 'conservar') === o ? ' chip-active' : '')} onClick={() => setDecisions((d) => ({ ...d, [`${i}:${cf.key}`]: o }))}>
+                              {RESOLUTION_LABEL[o]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )
+            })}
           </div>
           <div className="form-actions">
             <button type="button" onClick={handleImport} disabled={saving || selectedCount === 0}>
@@ -852,6 +841,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
   const [email, setEmail] = useState('')
   const [notes, setNotes] = useState('')
   const [birthDate, setBirthDate] = useState('')
+  const [extras, setExtras] = useState<ExtraState>(emptyExtras())
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -878,13 +868,14 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
     setSaving(true)
     setError(null)
     try {
-      await addContact({ name, category, phone, email, notes, birthDate: birthDate || null })
+      await addContactReturningId({ name, category, phone, email, notes, birthDate: birthDate || null, ...toExtras(extras) })
       emitHelpEvent('contacts.contact-added') // para los tutoriales «Enséñame»: el contacto YA está guardado
       setName('')
       setPhone('')
       setEmail('')
       setNotes('')
       setBirthDate('')
+      setExtras(emptyExtras())
       onAdded()
     } catch (err) {
       setError(errorMessage(err, 'No se pudo añadir'))
@@ -939,6 +930,7 @@ function AddContactForm({ existingContacts, onAdded }: { existingContacts: Conta
         Notas
         <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} data-help-id="contactos.notas" />
       </label>
+      <ExtraFields value={extras} onChange={setExtras} />
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={saving} data-help-id="contactos.anadir">
         {saving ? 'Guardando…' : 'Añadir'}

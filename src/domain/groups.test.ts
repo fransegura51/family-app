@@ -17,6 +17,9 @@ import { findDuplicates, findInternalDuplicates, fromAiRows, parsePhone, parsePa
 
 const g = (id: string, name: string, extra: Partial<GroupItem> = {}): GroupItem => ({
   id,
+  nameFormat: 'full',
+  sortBy: 'name',
+  contactSharePresets: [],
   familyId: 'f',
   name,
   periodLabel: null,

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { addParticipants, groupsErrorMessage, listParticipants, loadGroupsHome, updateParticipant } from '@/data/groups'
-import { findDuplicates, findInternalDuplicates, interpretTable, parseParticipantsText, type DuplicateInfo, type ImportResult, type ImportRow } from '@/domain/participantImport'
+import { createReusedParticipants, loadKnownPeople } from '@/data/groupContacts'
+import { findDuplicates, findInternalDuplicates, interpretTable, parseParticipantsText, type DuplicateInfo, type ImportResult, type ImportRow, type NameOrder } from '@/domain/participantImport'
+import { findPersonMatches, reusedParticipantData, type KnownPerson, type PersonMatch } from '@/domain/participantMatch'
 import { activeParticipants, groupTitle, participantName, type GroupItem, type Participant } from '@/domain/groups'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { analyzeParticipantsImage, ParticipantsReaderUnavailableError } from '@/services/participantsDocument'
@@ -9,13 +11,15 @@ import { imageFileToCanvas, openPdf } from '@/ui/lists/sourceImage'
 import { GroupSheet } from '@/ui/groups/GroupSheet'
 
 type Step = 'source' | 'paste' | 'groups' | 'reading' | 'review'
-type Action = 'crear' | 'completar' | 'omitir'
+type Action = 'crear' | 'completar' | 'omitir' | 'reutilizar'
 interface Line {
   row: ImportRow
   include: boolean
   reviewed: boolean
   action: Action
   matchId: string | null
+  /** Persona de otro grupo cuya identidad se reutiliza (solo con action «reutilizar»). */
+  reuseKey: string | null
 }
 
 const MAX_PDF_PAGES = 8
@@ -31,6 +35,8 @@ function canvasToBlob(c: HTMLCanvasElement): Promise<Blob> {
 export function ParticipantImport({ group, existing, onClose, onDone }: { group: GroupItem; existing: Participant[]; onClose: () => void; onDone: (createdIds: string[]) => void }) {
   const [step, setStep] = useState<Step>('source')
   const [text, setText] = useState('')
+  const [pastedText, setPastedText] = useState<string | null>(null) // para poder volver a leer el texto con otro orden de nombres
+  const [known, setKnown] = useState<KnownPerson[]>([]) // personas ya registradas en OTROS grupos a los que tienes acceso
   const [lines, setLines] = useState<Line[]>([])
   const [notices, setNotices] = useState<string[]>([])
   const [problem, setProblem] = useState<string | null>(null)
@@ -41,7 +47,13 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
   const pdfRef = useRef<HTMLInputElement>(null)
   const sheetRef = useRef<HTMLInputElement>(null)
 
-  const start = (result: ImportResult) => {
+  useEffect(() => {
+    // Sin esperar: si falla, simplemente no se ofrecen coincidencias con otros grupos.
+    loadKnownPeople().then(setKnown).catch(() => undefined)
+  }, [])
+
+  const start = (result: ImportResult, fromText: string | null = null) => {
+    setPastedText(fromText)
     const internal = findInternalDuplicates(result.rows)
     const dups = findDuplicates(result.rows, existing)
     const next: Line[] = result.rows.map((row) => {
@@ -54,7 +66,7 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
           action = Object.keys(d.patch).length > 0 ? 'completar' : 'omitir'
         } else action = 'omitir'
       }
-      return { row, include: !internal.has(row.key), reviewed: row.doubts.length === 0, action, matchId }
+      return { row, include: !internal.has(row.key), reviewed: row.doubts.length === 0, action, matchId, reuseKey: null }
     })
     setLines(next)
     setNotices([...result.notices, ...(internal.size ? [`${internal.size} fila(s) repetida(s) dentro del archivo: las he dejado sin marcar.`] : [])])
@@ -108,7 +120,11 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
       const kind = spreadsheetKind(file)
       if (kind === 'unsupported') throw new SpreadsheetError('Ese formato antiguo no se puede abrir. Guárdalo como Excel (.xlsx) o CSV y vuelve a probar.')
       const buffer = await file.arrayBuffer()
-      start(kind === 'xlsx' ? interpretTable(await readXlsx(buffer)) : parseParticipantsText(decodeCsv(buffer)))
+      if (kind === 'xlsx') start(interpretTable(await readXlsx(buffer)))
+      else {
+        const t = decodeCsv(buffer)
+        start(parseParticipantsText(t), t)
+      }
     } catch (e) {
       fail(e)
     }
@@ -120,12 +136,34 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
   }
 
   const duplicates: DuplicateInfo[] = useMemo(() => findDuplicates(lines.map((l) => l.row), existing), [lines, existing])
+  // Coincidencias con personas de otros grupos: se enseñan SIEMPRE todas las candidatas; nunca se fusiona por el nombre solo.
+  const personMatches = useMemo(() => {
+    const m = new Map<string, PersonMatch[]>()
+    if (known.length === 0) return m
+    for (const l of lines) {
+      if (!l.row.name.trim()) continue
+      const found = findPersonMatches(l.row, known, group.id)
+      if (found.length > 0) m.set(l.row.key, found)
+    }
+    return m
+  }, [lines, known, group.id])
+  const reorder = (order: NameOrder) => {
+    if (pastedText !== null) start(parseParticipantsText(pastedText, order), pastedText)
+  }
   const setLine = (key: string, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.row.key === key ? { ...l, ...patch } : l)))
   const setRow = (key: string, patch: Partial<ImportRow>) => setLines((ls) => ls.map((l) => (l.row.key === key ? { ...l, row: { ...l.row, ...patch } } : l)))
 
   const active = lines.filter((l) => l.include && l.action !== 'omitir')
   const pendingReview = active.filter((l) => !l.reviewed)
   const toCreate = active.filter((l) => l.action === 'crear' && l.row.name.trim())
+  const toReuse = active.filter((l) => l.action === 'reutilizar' && l.reuseKey)
+  const strongOnes = lines.filter((l) => l.include && l.action === 'crear' && (personMatches.get(l.row.key) ?? []).length === 1 && personMatches.get(l.row.key)![0].reason === 'nombre y teléfono')
+  const singleOnes = lines.filter((l) => l.include && l.action === 'crear' && (personMatches.get(l.row.key) ?? []).length === 1)
+  const reuseNow = (l: Line) => ({ ...l, action: 'reutilizar' as Action, reuseKey: personMatches.get(l.row.key)![0].person.personKey })
+  const reuseMany = (which: Line[]) => {
+    const keys = new Set(which.map((l) => l.row.key))
+    setLines((ls) => ls.map((l) => (keys.has(l.row.key) ? reuseNow(l) : l)))
+  }
   const toComplete = active.filter((l) => l.action === 'completar' && l.matchId)
 
   const confirm = async () => {
@@ -136,6 +174,15 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
         group.id,
         toCreate.map((l) => ({ name: l.row.name, surname: l.row.surname, guardianName: l.row.guardianName, phone: l.row.phone, email: l.row.email })),
       )
+      // Reutilizar: identidad y datos personales de la ficha existente; NADA de botes, pagos, permisos ni observaciones.
+      const reused = await createReusedParticipants(
+        group.id,
+        toReuse.flatMap((l) => {
+          const match = (personMatches.get(l.row.key) ?? []).find((m) => m.person.personKey === l.reuseKey)
+          return match ? [{ sourceId: match.person.reference.id, sourcePersonId: match.person.reference.personId ?? null, data: reusedParticipantData(l.row, match) }] : []
+        }),
+      )
+      created.push(...reused)
       for (const l of toComplete) {
         const d = duplicates.find((x) => x.rowKey === l.row.key)
         const m = d?.matches.find((x) => x.id === l.matchId)
@@ -169,7 +216,7 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
     try {
       const people = activeParticipants(await listParticipants(g.id))
       start({
-        rows: people.map((p, i) => ({ key: `grp-${i}`, name: participantName(p), surname: null, guardianName: p.guardianName, phone: p.phone, email: p.email, doubts: [] })),
+        rows: people.map((p, i) => ({ key: `grp-${i}`, name: p.name, surname: p.surname, guardianName: p.guardianName, phone: p.phone, email: p.email, doubts: [] })),
         notices: [],
       })
     } catch (e) {
@@ -221,7 +268,7 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
         <p className="muted">Un participante por línea. Si tiene madre/padre y teléfono, sepáralos con tabulador, «;» o coma (o pega directamente desde Excel). Por ejemplo: «Eric García; Jennifer; 612 345 678».</p>
         <textarea className="grp-input grp-textarea" value={text} onChange={(e) => setText(e.target.value)} placeholder={'Eric García\tJennifer\t612 345 678\nLucía Martínez\tAna\t623 456 789'} aria-label="Texto con los participantes" autoFocus />
         <div className="form-actions">
-          <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => start(parseParticipantsText(text))}>
+          <button type="button" className="primary-button" disabled={!text.trim()} onClick={() => start(parseParticipantsText(text), text)}>
             Ver vista previa
           </button>
           <button type="button" className="link-button" onClick={() => setStep('source')}>
@@ -266,6 +313,32 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
           {n}
         </div>
       ))}
+      {pastedText !== null && /Apellidos, Nombre/.test(notices.join(' ')) && (
+        <div className="grp-actions">
+          <button type="button" className="grp-secondary" data-help-id="grupos.importar-orden" onClick={() => reorder('name-first')}>
+            Es «Nombre, madre/padre»: leerlo así
+          </button>
+        </div>
+      )}
+      {strongOnes.length + singleOnes.length > 0 && (
+        <div className="grp-banner" data-help-id="grupos.importar-reutilizar">
+          <p style={{ margin: '0 0 6px' }}>
+            Hay <strong>{singleOnes.length}</strong> {singleOnes.length === 1 ? 'persona' : 'personas'} que ya tienes en otros grupos. Reutilizar su ficha comparte la identidad y los datos personales; los botes, pagos y permisos de cada grupo siguen siendo independientes.
+          </p>
+          <div className="grp-chips">
+            {strongOnes.length > 0 && (
+              <button type="button" className="chip" onClick={() => reuseMany(strongOnes)}>
+                Reutilizar las {strongOnes.length} que coinciden en nombre y teléfono
+              </button>
+            )}
+            {singleOnes.length > strongOnes.length && (
+              <button type="button" className="chip" onClick={() => reuseMany(singleOnes)}>
+                Reutilizar las {singleOnes.length} con un único candidato
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       {lines.length === 0 && <p>No he encontrado ninguna persona en ese archivo.</p>}
       {lines.map((l) => {
         const d = duplicates.find((x) => x.rowKey === l.row.key)
@@ -281,6 +354,12 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
                 <span>Nombre</span>
                 <input className="grp-input" value={l.row.name} onChange={(e) => setRow(l.row.key, { name: e.target.value })} />
               </label>
+              <label className="grp-field">
+                <span>Apellidos</span>
+                <input className="grp-input" value={l.row.surname ?? ''} onChange={(e) => setRow(l.row.key, { surname: e.target.value || null })} />
+              </label>
+            </div>
+            <div className="grp-field-row">
               <label className="grp-field">
                 <span>Teléfono</span>
                 <input className="grp-input" inputMode="tel" value={l.row.phone ?? ''} onChange={(e) => setRow(l.row.key, { phone: e.target.value || null })} />
@@ -343,15 +422,55 @@ export function ParticipantImport({ group, existing, onClose, onDone }: { group:
                 </div>
               </div>
             )}
+            {l.include && (personMatches.get(l.row.key) ?? []).length > 0 && (
+              <div className="grp-banner grp-banner-info" style={{ marginBottom: 0 }} data-help-id={l === lines[0] ? 'grupos.importar-coincidencia' : undefined}>
+                <p style={{ margin: '0 0 6px' }}>
+                  <strong>Ya tienes a {participantName(l.row)} registrado/a.</strong> ¿Quieres reutilizar sus datos?
+                </p>
+                {(personMatches.get(l.row.key) ?? []).map((m) => (
+                  <div key={m.person.personKey} style={{ marginBottom: 6 }}>
+                    <div>
+                      {participantName(m.person.reference)} · {m.person.sheets.map((s) => s.groupName).join(', ')}
+                      <span className="muted"> ({m.reason === 'nombre y teléfono' ? 'mismo nombre y teléfono' : 'mismo nombre'})</span>
+                    </div>
+                    {(m.person.reference.guardianName || m.person.reference.phone || m.person.reference.email) && (
+                      <div className="muted">{[m.person.reference.guardianName, m.person.reference.phone, m.person.reference.email].filter(Boolean).join(' · ')}</div>
+                    )}
+                    {m.person.linkedContacts.length > 0 && (
+                      <div className="muted">Contactos: {m.person.linkedContacts.map((c) => `${c.name}${c.relation ? ` (${c.relation})` : ''}`).join(', ')}</div>
+                    )}
+                    {m.differences.map((d) => (
+                      <div key={d} className="grp-doubt">
+                        ≠ {d}
+                      </div>
+                    ))}
+                    {m.inherits.length > 0 && <div className="muted">Heredaría: {m.inherits.join(' · ')}</div>}
+                    <button
+                      type="button"
+                      className={'chip' + (l.action === 'reutilizar' && l.reuseKey === m.person.personKey ? ' chip-active' : '')}
+                      onClick={() => setLine(l.row.key, { action: 'reutilizar', reuseKey: m.person.personKey, matchId: null })}
+                    >
+                      Reutilizar esta ficha
+                    </button>
+                  </div>
+                ))}
+                <div className="grp-chips">
+                  <button type="button" className={'chip' + (l.action === 'crear' ? ' chip-active' : '')} onClick={() => setLine(l.row.key, { action: 'crear', reuseKey: null })}>
+                    Crear una persona nueva
+                  </button>
+                </div>
+              </div>
+            )}
             {doubtful && l.include && <p className="muted" style={{ margin: '4px 0 0' }}>Revísala para poder importar.</p>}
           </div>
         )
       })}
       {problem && <p className="error">{problem}</p>}
       <div className="grp-sticky-bar">
-        <button type="button" className="primary-button" disabled={saving || pendingReview.length > 0 || toCreate.length + toComplete.length === 0} onClick={() => void confirm()} data-help-id="grupos.importar-confirmar">
+        <button type="button" className="primary-button" disabled={saving || pendingReview.length > 0 || toCreate.length + toComplete.length + toReuse.length === 0} onClick={() => void confirm()} data-help-id="grupos.importar-confirmar">
           {toCreate.length > 0 ? `Importar ${toCreate.length} ${toCreate.length === 1 ? 'persona' : 'personas'}` : 'Guardar cambios'}
           {toComplete.length > 0 ? ` y completar ${toComplete.length}` : ''}
+          {toReuse.length > 0 ? `${toCreate.length > 0 || toComplete.length > 0 ? ' y' : ' ·'} reutilizar ${toReuse.length}` : ''}
         </button>
         <button type="button" className="link-button" onClick={onClose}>
           Cancelar

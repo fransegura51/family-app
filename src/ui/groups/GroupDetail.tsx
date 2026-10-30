@@ -112,7 +112,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           <button type="button" className="link-button" onClick={() => (setMenu(false), setSheet('rename'))}>
             Cambiar nombre o curso
           </button>
-          <button type="button" className="link-button" onClick={() => (setMenu(false), setSheet('managers'))}>
+          <button type="button" className="link-button" data-help-id="grupos.responsables" onClick={() => (setMenu(false), setSheet('managers'))}>
             Responsables
           </button>
           <button type="button" className="link-button" data-help-id="grupos.copiar-grupo" onClick={() => (setMenu(false), setSheet('copy'))}>
@@ -184,7 +184,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           <p className="grp-section">Eventos</p>
           {events.map((e) => (
             <div key={e.id} className="grp-folder-head" style={{ marginBottom: 8 }}>
-              <Link to={`/eventos?event=${e.id}`} className="grp-row" style={{ marginBottom: 0 }}>
+              <Link to={`/eventos?event=${e.id}`} state={{ fromGroup: { id: group.id, name: groupTitle(group) } }} className="grp-row" style={{ marginBottom: 0 }}>
                 <span aria-hidden="true">🎉</span>
                 <span className="grp-row-main">
                   <span className="grp-row-title">{e.title}</span>
@@ -200,7 +200,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           <p className="grp-section">Listas</p>
           {lists.map((l) => (
             <div key={l.id} className="grp-folder-head" style={{ marginBottom: 8 }}>
-              <Link to={`/listas/${l.id}`} className="grp-row" style={{ marginBottom: 0 }}>
+              <Link to={`/listas/${l.id}`} state={{ fromGroup: { id: group.id, name: groupTitle(group) } }} className="grp-row" style={{ marginBottom: 0 }}>
                 <span aria-hidden="true">📝</span>
                 <span className="grp-row-main">
                   <span className="grp-row-title">{l.title}</span>
@@ -223,7 +223,7 @@ export function GroupDetail({ groupId }: { groupId: string }) {
           onClose={() => setSheet(null)}
           onFundCreated={(id) => navigate(`/grupos/${group.id}/bote/${id}`)}
           onLinked={() => void reload()}
-          onOpen={(path) => navigate(path)}
+          onOpen={(path) => navigate(path, { state: { fromGroup: { id: group.id, name: groupTitle(group) } } })}
         />
       )}
       {sheet === 'managers' && <ManagersSheet group={group} userId={userId} onClose={() => setSheet(null)} />}

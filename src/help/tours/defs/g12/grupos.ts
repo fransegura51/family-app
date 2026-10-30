@@ -1,6 +1,6 @@
-import type { TourDef } from '@/help/tours/types'
+import type { TourDef, TourStep } from '@/help/tours/types'
 
-// Gestión de grupos (g12): visita «Conoce Gestión de grupos» y siete capítulos «Enséñame» (crear · participantes · bote · WhatsApp · vincular · cerrar · copiar).
+// Gestión de grupos (g12): visita «Conoce Gestión de grupos» y trece capítulos «Enséñame» (crear · participantes · bote · WhatsApp · vincular · cerrar · copiar · nombres · contactos familiares · contactos de WhatsApp · compartir contactos · responsable con código · solicitar datos).
 // Cada control señalado lleva su `data-help-id` en src/ui/groups/*. Ningún paso guarda, envía, comparte ni borra por la persona: los que guardan son `sensitive` y esperan el
 // aviso de guardado, y los que abren WhatsApp o copian datos solo se señalan. Todos se pueden abandonar con «Salir».
 
@@ -387,4 +387,347 @@ export const tutGruposCopiar: TourDef = {
   next: ['grupos-crear', 'grupos-cerrar'],
 }
 
-export const TOURS_GRUPOS: TourDef[] = [visitaGrupos, tutGruposCrear, tutGruposParticipantes, tutGruposBote, tutGruposWhatsapp, tutGruposVincular, tutGruposCerrar, tutGruposCopiar]
+// ───────────────────────────── Contactos, nombres, WhatsApp, compartir contactos, responsables con código y formularios (30/10/2026)
+const abreGrupo: TourStep = {
+  id: 'abre-grupo',
+  text: 'Abre un grupo (o créalo). Cuando estés dentro, seguiré.',
+  completeOn: [{ type: 'appear', target: 'grupos.gestionar-participantes' }],
+}
+const gestionar: TourStep = {
+  id: 'gestionar',
+  text: 'Pulsa «Gestionar participantes».',
+  target: 'grupos.gestionar-participantes',
+  completeOn: [{ type: 'click', target: 'grupos.gestionar-participantes' }, { type: 'appear', target: 'grupos.importar-participantes' }],
+  skipIf: [{ type: 'appear', target: 'grupos.importar-participantes' }],
+}
+
+export const tutGruposNombres: TourDef = {
+  id: 'tut-grupos-nombres',
+  module: 'grupos',
+  group: 'Participantes y contactos',
+  summary: 'Importa nombres y apellidos sin mezclarlos y elige cómo se muestran las listas.',
+  version: 1,
+  title: 'Nombres y apellidos de los participantes',
+  cardId: 'grupos-nombres',
+  durationSec: 80,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    { ...abreGrupo },
+    { ...gestionar },
+    {
+      id: 'importar',
+      text: 'Al importar una lista, PEPA entiende «Apellidos, Nombre» (por ejemplo «Aboutaleb Bassry, Seifeddine») y pone cada cosa en su campo. En la vista previa ves y corriges nombre y apellidos antes de guardar. Aquí solo te lo señalo: yo no importo nada.',
+      target: 'grupos.importar-participantes',
+      ...info,
+    },
+    {
+      id: 'formato',
+      text: '«Formato de nombres» decide cómo salen las listas, también las de pagados y pendientes: solo nombre, repetidos diferenciados («Lucas A.», «Lucas B.»), nombre y apellidos, o apellidos y nombre, y el orden. Pulsa el botón para verlo, o «Siguiente».',
+      target: 'grupos.formato-nombres-boton',
+      completeOn: [{ type: 'appear', target: 'grupos.formato-nombres' }],
+      manualNext: true,
+    },
+    {
+      id: 'opciones',
+      text: 'Elige una opción y mira cómo quedaría abajo. Se guarda en el grupo solo cuando pulses «Guardar»; yo no lo pulso.',
+      target: 'grupos.formato-nombres',
+      ...info,
+    },
+    {
+      id: 'corregir',
+      text: 'Si importaste antes una lista con los apellidos dentro del nombre, aquí sale un aviso «Revisar y corregir» para arreglarlas sin duplicar a nadie ni perder pagos. Solo se toca lo que marques.',
+      target: 'grupos.revisar-nombres',
+      ...info,
+      optional: true,
+    },
+  ],
+  finishText: 'Cada envío por WhatsApp puede usar otro formato sin cambiar el del grupo.',
+  next: ['grupos-contactos-familiares', 'grupos-compartir'],
+}
+
+export const tutGruposContactos: TourDef = {
+  id: 'tut-grupos-contactos',
+  module: 'grupos',
+  group: 'Participantes y contactos',
+  summary: 'Vincula a la madre, el padre o el tutor de cada alumno con tu agenda, y reutiliza a quien ya está en otro grupo.',
+  version: 1,
+  title: 'Contactos familiares de cada alumno',
+  cardId: 'grupos-contactos-familiares',
+  durationSec: 100,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    { ...abreGrupo },
+    { ...gestionar },
+    {
+      id: 'ficha',
+      text: 'Toca a una persona de la lista para abrir su ficha. Si todavía no tienes ninguna, añádela con «Añadir persona» y vuelve a este capítulo; también puedes pulsar «Siguiente» para seguir leyendo.',
+      target: 'grupos.lista-participantes',
+      completeOn: [{ type: 'appear', target: 'grupos.contactos-familiares' }],
+      manualNext: true,
+    },
+    {
+      id: 'familiares',
+      text: 'En «Contactos familiares» ves los teléfonos y correos de quienes están vinculados a esta persona. Un alumno puede tener varios y un contacto puede ser familiar de varios alumnos.',
+      target: 'grupos.contactos-familiares',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'vincular',
+      text: '«Vincular o crear un contacto»: eliges la relación (madre, padre, tutor, familiar u otro) y buscas en tu agenda de Contactos, o creas uno nuevo sin salir del grupo. Los datos personales se guardan en Contactos; aquí solo se vinculan. Yo no vinculo ni creo nada.',
+      target: 'grupos.vincular-contacto',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'reutilizar',
+      text: 'Si al añadir o importar a alguien ya lo tienes en otro grupo, PEPA te lo dice y te deja «Reutilizar esta ficha» (comparte identidad y datos personales) o crear una persona nueva. Botes, pagos y permisos de cada grupo son independientes y nunca se fusiona nada solo por el nombre.',
+      ...info,
+    },
+  ],
+  finishText: 'Quien gestiona un grupo ve de tu agenda solo los contactos vinculados a ese grupo, nunca el resto.',
+  next: ['grupos-compartir-contactos', 'grupos-whatsapp-contactos'],
+}
+
+export const tutGruposWhatsappContactos: TourDef = {
+  id: 'tut-grupos-whatsapp-contactos',
+  module: 'grupos',
+  group: 'Participantes y contactos',
+  summary: 'Trae contactos desde capturas de WhatsApp: crear, vincular o dejarlos pendientes de identificar.',
+  version: 1,
+  title: 'Importar contactos desde capturas de WhatsApp',
+  cardId: 'grupos-whatsapp-contactos',
+  durationSec: 90,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    { ...abreGrupo },
+    { ...gestionar },
+    {
+      id: 'boton',
+      text: 'Pulsa «Contactos de WhatsApp». Solo se abre la ventana; no se lee ni se guarda nada todavía.',
+      target: 'grupos.importar-whatsapp',
+      completeOn: [{ type: 'click', target: 'grupos.importar-whatsapp' }, { type: 'appear', target: 'grupos.whatsapp-capturas' }],
+      skipIf: [{ type: 'appear', target: 'grupos.whatsapp-capturas' }],
+    },
+    {
+      id: 'capturas',
+      text: 'Aquí eliges las capturas de la lista de participantes de tu grupo de WhatsApp: varias a la vez, o más después con «Añadir más capturas». Las elige y las envía quien tú quieras; yo no elijo ninguna.',
+      target: 'grupos.whatsapp-capturas',
+      ...info,
+    },
+    {
+      id: 'revisar',
+      text: 'Ves cada contacto leído (nombre de WhatsApp y teléfono) y decides: crear uno nuevo en tu agenda, vincularlo con uno que ya tienes (si coincide el teléfono se propone solo) o dejarlo «pendiente de identificar». Las capturas sucesivas completan lo anterior sin duplicar.',
+      ...info,
+    },
+    {
+      id: 'pendientes',
+      text: 'Los que dejes pendientes quedan aquí, sin crear alumnos ni contar en los botes, para vincularlos cuando sepas quiénes son.',
+      target: 'grupos.pendientes',
+      ...info,
+      optional: true,
+    },
+  ],
+  finishText: 'Si un dato nuevo choca con uno ya confirmado (por ejemplo otro teléfono), PEPA te pregunta: añadir como adicional, sustituir o conservar el anterior.',
+  next: ['grupos-contactos-familiares', 'grupos-compartir-contactos'],
+}
+
+export const tutGruposCompartirContactos: TourDef = {
+  id: 'tut-grupos-compartir-contactos',
+  module: 'grupos',
+  group: 'Participantes y contactos',
+  summary: 'Comparte la lista de contactos del grupo con los campos que elijas: WhatsApp, correos, CSV, Excel o PDF.',
+  version: 1,
+  title: 'Compartir la lista de contactos',
+  cardId: 'grupos-compartir-contactos',
+  durationSec: 90,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    { ...abreGrupo },
+    { ...gestionar },
+    {
+      id: 'boton',
+      text: 'Pulsa «Compartir contactos».',
+      target: 'grupos.contactos-abrir',
+      completeOn: [{ type: 'click', target: 'grupos.contactos-abrir' }, { type: 'appear', target: 'grupos.contactos-campos' }],
+      skipIf: [{ type: 'appear', target: 'grupos.contactos-campos' }],
+    },
+    {
+      id: 'campos',
+      text: 'Marca solo los campos que quieras compartir: nombre y apellidos del alumno, nombre y relación del padre, madre o tutor, teléfono, correo. Nunca se incluyen notas privadas ni datos delicados.',
+      target: 'grupos.contactos-campos',
+      ...info,
+    },
+    {
+      id: 'quien',
+      text: '«Elegir a quién incluir» deja marcar personas concretas y, de cada alumno, uno o varios contactos familiares. También quita las filas vacías o repetidas.',
+      target: 'grupos.contactos-quien',
+      ...info,
+    },
+    {
+      id: 'previa',
+      text: 'Aquí ves tal cual lo que se va a compartir, antes de enviar nada.',
+      target: 'grupos.contactos-vista-previa',
+      ...info,
+    },
+    {
+      id: 'enviar',
+      text: '«Texto para WhatsApp» prepara el mensaje para que tú elijas el chat; también puedes copiar la lista o solo los correos, o sacar un CSV, Excel o PDF. Yo no envío ni descargo nada. No se crea ningún enlace público.',
+      target: 'grupos.contactos-whatsapp',
+      ...info,
+    },
+  ],
+  finishText: 'Con «Guardar esta configuración» recuerdas los campos elegidos para la próxima vez.',
+  next: ['grupos-contactos-familiares', 'grupos-compartir'],
+}
+
+export const tutGruposResponsableCodigo: TourDef = {
+  id: 'tut-grupos-responsable-codigo',
+  module: 'grupos',
+  group: 'Compartir el grupo',
+  summary: 'Invita a otra persona de PEPA a ser responsable del mismo grupo con un código de un solo uso.',
+  version: 1,
+  title: 'Invitar a un responsable con un código',
+  cardId: 'grupos-responsable-codigo',
+  durationSec: 80,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    {
+      id: 'abre-grupo',
+      text: 'Abre el grupo. Cuando estés dentro, seguiré.',
+      completeOn: [{ type: 'appear', target: 'grupos.mas' }],
+    },
+    {
+      id: 'mas',
+      text: 'Pulsa «Más».',
+      target: 'grupos.mas',
+      completeOn: [{ type: 'click', target: 'grupos.mas' }, { type: 'appear', target: 'grupos.responsables' }],
+      skipIf: [{ type: 'appear', target: 'grupos.responsables' }],
+    },
+    {
+      id: 'responsables',
+      text: 'Pulsa «Responsables».',
+      target: 'grupos.responsables',
+      completeOn: [{ type: 'click', target: 'grupos.responsables' }, { type: 'appear', target: 'grupos.responsable-codigo' }],
+      skipIf: [{ type: 'appear', target: 'grupos.responsable-codigo' }],
+    },
+    {
+      id: 'invitar',
+      text: '«Invitar responsable mediante código» crea un código de un solo uso, que caduca a los 7 días y puedes anular. Se lo das a la otra persona (que tiene su propia cuenta). No creo ningún código por ti.',
+      target: 'grupos.responsable-codigo',
+      ...info,
+    },
+    {
+      id: 'recibir',
+      text: 'Esa persona entra en Gestión de grupos → «Recibir un grupo», escribe el código, ve qué grupo es y qué podrá hacer, y pulsa «Aceptar ser responsable». No se crea ninguna copia: sois responsables del mismo grupo y los cambios se ven al momento en los dos móviles.',
+      ...info,
+    },
+  ],
+  finishText: 'Quien creó el grupo conserva la titularidad. Un responsable de otro espacio solo ve de tu agenda los contactos vinculados a este grupo.',
+  next: ['grupos-copiar', 'grupos-contactos-familiares'],
+}
+
+export const tutGruposSolicitarDatos: TourDef = {
+  id: 'tut-grupos-solicitar-datos',
+  module: 'grupos',
+  group: 'Pedir datos',
+  summary: 'Crea un formulario, protege los datos delicados y envía a cada familia su enlace.',
+  version: 1,
+  title: 'Solicitar datos a las familias',
+  cardId: 'grupos-solicitar-datos',
+  durationSec: 115,
+  startPath: '/grupos',
+  paths: PATHS,
+  readyOn: ['grupos.nuevo-grupo'],
+  steps: [
+    {
+      id: 'abre-grupo',
+      text: 'Abre un grupo. Cuando estés dentro, seguiré.',
+      completeOn: [{ type: 'appear', target: 'grupos.anadir' }],
+    },
+    {
+      id: 'anadir',
+      text: 'Pulsa «Añadir».',
+      target: 'grupos.anadir',
+      completeOn: [{ type: 'click', target: 'grupos.anadir' }, { type: 'appear', target: 'grupos.anadir-solicitar-datos' }],
+      skipIf: [{ type: 'appear', target: 'grupos.anadir-solicitar-datos' }],
+    },
+    {
+      id: 'solicitar',
+      text: 'Pulsa «Solicitar datos».',
+      target: 'grupos.anadir-solicitar-datos',
+      completeOn: [{ type: 'click', target: 'grupos.anadir-solicitar-datos' }, { type: 'appear', target: 'grupos.formulario-nuevo' }],
+      skipIf: [{ type: 'appear', target: 'grupos.formulario-nuevo' }],
+    },
+    {
+      id: 'nuevo',
+      text: 'Pulsa «Nuevo formulario». Todavía no se crea nada.',
+      target: 'grupos.formulario-nuevo',
+      completeOn: [{ type: 'click', target: 'grupos.formulario-nuevo' }, { type: 'appear', target: 'grupos.formulario-plantillas' }],
+      skipIf: [{ type: 'appear', target: 'grupos.formulario-plantillas' }],
+    },
+    {
+      id: 'plantilla',
+      text: 'Parte de una plantilla (correos para Drive, documentación de un viaje, excursión, menú, tallas, asistencia, o las tuyas) o de cero. Elige una; cuando salga el formulario, sigo yo.',
+      target: 'grupos.formulario-plantillas',
+      completeOn: [{ type: 'appear', target: 'grupos.formulario-editor' }],
+      manualNext: true,
+    },
+    {
+      id: 'solicitante',
+      text: 'Lo primero que verá quien responda: quién solicita los datos (tú o tu organización) y, justo debajo, para qué. PEPA no aparece como solicitante.',
+      target: 'grupos.formulario-solicitante',
+      ...info,
+    },
+    {
+      id: 'delicados',
+      text: 'Si una pregunta es un dato delicado (DNI, pasaporte, salud…), se marca aquí: se guarda protegido, nunca va a las notas ni a las exportaciones, y tendrás que fijar hasta cuándo lo conservarás.',
+      target: 'grupos.formulario-delicado',
+      ...info,
+      optional: true,
+    },
+    {
+      id: 'guardar',
+      text: 'Cuando lo tengas, pulsa «Guardar formulario»: se guarda de verdad. Yo no lo guardo por ti. Si no quieres crearlo, pulsa «Salir».',
+      target: 'grupos.formulario-guardar',
+      completeOn: [{ type: 'event', name: 'grupos.form-saved' }],
+      sensitive: true,
+    },
+    {
+      id: 'publicar',
+      text: 'Ahora eliges a quién enviarlo y «Publicar y crear enlaces»: cada familia recibe su enlace personal (así ves quién falta) y tú tienes un enlace general para el grupo de WhatsApp. Eso lo pulsas tú.',
+      target: 'grupos.formulario-publicar',
+      ...info,
+      optional: true,
+    },
+  ],
+  finishText: 'En «Respuestas» ves quién ha contestado, los cambios propuestos para las fichas y, solo tú, los datos protegidos (que se eliminan solos en la fecha acordada).',
+  next: ['grupos-contactos-familiares', 'grupos-compartir-contactos'],
+}
+
+export const TOURS_GRUPOS: TourDef[] = [
+  visitaGrupos,
+  tutGruposCrear,
+  tutGruposParticipantes,
+  tutGruposBote,
+  tutGruposWhatsapp,
+  tutGruposVincular,
+  tutGruposCerrar,
+  tutGruposCopiar,
+  tutGruposNombres,
+  tutGruposContactos,
+  tutGruposWhatsappContactos,
+  tutGruposCompartirContactos,
+  tutGruposResponsableCodigo,
+  tutGruposSolicitarDatos,
+]

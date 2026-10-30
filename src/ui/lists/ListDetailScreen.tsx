@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   addColumn,
   addListItems,
@@ -41,6 +41,7 @@ import { showToast } from '@/state/toast'
 import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { GroupBackLink, readFromGroup } from '@/ui/groups/GroupBackLink'
 import { CalendarLinksSheet } from '@/ui/lists/CalendarLinksSheet'
 import { useDragSort } from '@/ui/lists/gestures'
 import { ImportFlow } from '@/ui/lists/ImportFlow'
@@ -65,6 +66,8 @@ function between(prev: number | undefined, next: number | undefined): number | n
 
 export function ListDetailScreen({ listId }: { listId: string }) {
   const navigate = useNavigate()
+  // «← Volver a [grupo]» si esta lista se abrió desde Gestión de grupos (viaja en la navegación; no se guarda nada).
+  const fromGroup = readFromGroup(useLocation().state)
   const [detail, setDetail] = useState<ListDetail | null | undefined>(undefined)
   const [items, setItems] = useState<ListItem[]>([])
   const [columns, setColumns] = useState<ListColumn[]>([])
@@ -492,6 +495,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
 
   return (
     <div className="screen lists-screen">
+      <GroupBackLink from={fromGroup} />
       <SectionBreadcrumb subsection={[{ label: 'Inicio', to: '/listas' }, { label: list.title }]} />
       {error && <p className="error">{error}</p>}
 

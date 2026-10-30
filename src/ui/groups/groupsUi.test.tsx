@@ -67,6 +67,9 @@ import { GroupDetail } from '@/ui/groups/GroupDetail'
 
 const grp = (id: string, name: string, over: Partial<GroupItem> = {}): GroupItem => ({
   id,
+  nameFormat: 'full',
+  sortBy: 'name',
+  contactSharePresets: [],
   familyId: 'F',
   name,
   periodLabel: null,

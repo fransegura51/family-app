@@ -1,0 +1,20 @@
+-- Deshacer 0354. DESTRUCTIVO para los vínculos y los pendientes creados desde entonces (las columnas añadidas a `contacts` se eliminan con sus datos).
+drop table if exists public.group_pending_contacts;
+drop function if exists public.group_linked_contacts(uuid);
+drop table if exists public.group_participant_contacts;
+drop function if exists private.gpc_fill_group();
+drop function if exists private.contact_is_mine(uuid);
+drop function if exists private.participant_group_can(uuid);
+alter table public.groups drop column if exists contact_share_presets;
+alter table public.groups drop column if exists sort_by;
+alter table public.groups drop column if exists name_format;
+drop index if exists public.idx_group_participants_person;
+alter table public.group_participants drop column if exists person_id;
+alter table public.contacts drop column if exists source;
+alter table public.contacts drop column if exists address;
+alter table public.contacts drop column if exists extra_categories;
+alter table public.contacts drop column if exists extra_emails;
+alter table public.contacts drop column if exists extra_phones;
+alter table public.contacts drop column if exists whatsapp_name;
+alter table public.contacts drop column if exists nickname;
+alter table public.contacts drop column if exists surname;

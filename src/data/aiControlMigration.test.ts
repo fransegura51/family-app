@@ -14,8 +14,8 @@ const code = UP.replace(/--.*$/gm, '')
 
 const PURPOSE_FILES = import.meta.glob('/supabase/functions/_shared/ai/purposes/*.ts', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
-// Funciones registradas después de la 0335 (migraciones que solo añaden filas a ai_function): 0353 = Importar participantes (Gestión de grupos).
-const LATER = import.meta.glob('/supabase/migrations/0353_ai_participants_document.sql', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
+// Funciones registradas después de la 0335 (migraciones que solo añaden filas a ai_function): 0353 = Importar participantes (Gestión de grupos); 0356 = Importar contactos desde capturas de WhatsApp.
+const LATER = import.meta.glob(['/supabase/migrations/0353_ai_participants_document.sql', '/supabase/migrations/0356_group_forms.sql'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 function registered(): string[] {
   const block = code.slice(code.indexOf('insert into public.ai_function'), code.indexOf('on conflict (purpose) do nothing'))

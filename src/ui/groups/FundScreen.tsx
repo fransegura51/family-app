@@ -16,7 +16,9 @@ import {
   type MemberState,
   type ParticipantFundStatus,
 } from '@/domain/groupFunds'
-import { activeParticipants, foldText, participantName, type GroupItem, type Participant } from '@/domain/groups'
+import { activeParticipants, foldText, type GroupItem, type Participant } from '@/domain/groups'
+import { makeNamer, sortByPrefs, type NamePrefs } from '@/domain/groupNames'
+import { NamePrefsProvider } from '@/ui/groups/NamePrefsContext'
 import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
@@ -78,13 +80,23 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
   }, [detail])
 
   const byId = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
-  const rows = useMemo(
-    () =>
-      (summary?.rows ?? [])
-        .map((r) => ({ name: byId.get(r.participantId) ? participantName(byId.get(r.participantId) as Participant) : '—', row: r }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'es')),
-    [summary, byId],
-  )
+  // Formato de nombres del grupo (solo nombre, nombre y apellidos…) y orden: se aplica a todas las listas y mensajes del bote.
+  const prefs: NamePrefs = useMemo(() => ({ format: group?.nameFormat ?? 'full', sortBy: group?.sortBy ?? 'name' }), [group?.nameFormat, group?.sortBy])
+  const namer = useMemo(() => {
+    const live = people.filter((p) => !p.leftAt)
+    return makeNamer(live.length ? live : people, prefs)
+  }, [people, prefs])
+  const nameOf = (id: string) => {
+    const p = byId.get(id)
+    return p ? namer(p) : '—'
+  }
+  const rows = useMemo(() => {
+    const order = new Map(sortByPrefs(people, prefs.sortBy).map((p, i) => [p.id, i]))
+    return (summary?.rows ?? [])
+      .map((r) => ({ name: nameOf(r.participantId), row: r }))
+      .sort((a, b) => (order.get(a.row.participantId) ?? 0) - (order.get(b.row.participantId) ?? 0))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary, byId, namer, prefs.sortBy, people])
 
   if (detail === undefined) return <div className="screen grp-screen">Cargando…</div>
   if (detail === null || !summary || !group)
@@ -132,7 +144,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
   const entryRow = (e: FundEntry) => {
     const income = INCOME_KINDS.includes(e.kind)
     const al = allocsByEntry.get(e.id) ?? []
-    const who = al.length === 0 ? null : al.map((a) => (byId.get(a.participantId) ? participantName(byId.get(a.participantId) as Participant) : '—')).join(', ')
+    const who = al.length === 0 ? null : al.map((a) => nameOf(a.participantId)).join(', ')
     const unidentified = e.kind === 'aportacion' && !e.voidedAt && al.length === 0
     return (
       <button key={e.id} type="button" className={'grp-row' + (e.voidedAt ? ' grp-entry-void' : '')} onClick={() => setSheet({ t: 'entry', id: e.id })}>
@@ -162,6 +174,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
   const personSheetFor = sheet?.t === 'person' ? byId.get(sheet.id) : undefined
 
   return (
+    <NamePrefsProvider participants={people} prefs={prefs}>
     <div className="screen grp-screen">
       <SectionBreadcrumb subsection={[{ label: 'Inicio', to: '/grupos' }, { label: group.name, to: `/grupos/${group.id}` }, { label: fund.name }]} />
       {error && <p className="error">{error}</p>}
@@ -292,7 +305,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
           <strong>Avisos «Ya he pagado» por verificar</strong>
           {pendingNotices.map((n) => (
             <div key={n.id} style={{ marginTop: 6 }}>
-              {byId.get(n.participantId) ? participantName(byId.get(n.participantId) as Participant) : '—'} dice que ha pagado
+              {nameOf(n.participantId)} dice que ha pagado
               {n.note ? `: «${n.note}»` : ''} <small className="muted">({formatDateFromTimestamp(n.createdAt)})</small>
               <div className="form-actions" style={{ margin: 0 }}>
                 {writable && (
@@ -322,7 +335,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
         <>
           {missing.length > 0 && writable && (
             <div className="grp-banner">
-              {missing.length === 1 ? `${participantName(missing[0])} no está en este bote.` : `${missing.length} personas del grupo no están en este bote.`}{' '}
+              {missing.length === 1 ? `${namer(missing[0])} no está en este bote.` : `${missing.length} personas del grupo no están en este bote.`}{' '}
               <button type="button" className="link-button" style={{ padding: 0 }} onClick={() => void run(() => addMembers(fund.id, missing.map((p) => p.id)))}>
                 Incorporar
               </button>
@@ -446,11 +459,12 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
           onPay={() => setSheet({ t: 'new', kind: 'aportacion', preselect: [personSheetFor.id] })}
         />
       )}
-      {sheet?.t === 'report' && <ReportSheet fund={fund} summary={summary} rows={rows} entries={detail.entries} onClose={() => setSheet(null)} />}
+      {sheet?.t === 'report' && <ReportSheet fund={fund} summary={summary} rows={rows} entries={detail.entries} participants={people} onClose={() => setSheet(null)} />}
       {sheet?.t === 'close' && <CloseFundSheet fund={fund} summary={summary} onClose={() => setSheet(null)} onDone={() => (setSheet(null), void reload())} />}
       {sheet?.t === 'transfer' && <TransferFundsSheet fund={fund} summary={summary} onClose={() => setSheet(null)} onDone={() => (setSheet(null), void reload())} />}
       {sheet?.t === 'edit' && <EditFundSheet fund={fund} canChangeType={detail.entries.length === 0} onClose={() => setSheet(null)} onSaved={() => (setSheet(null), void reload())} />}
       {sheet?.t === 'links' && <LinksSheet fund={fund} participants={people} onClose={() => setSheet(null)} />}
     </div>
+    </NamePrefsProvider>
   )
 }

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { fmtEuro, isClearMatch, splitEvenly, suggestPayerMatches } from '@/domain/groupFunds'
-import { participantName, type Participant } from '@/domain/groups'
+import { foldText, type Participant } from '@/domain/groups'
+import { useNamePrefs } from '@/ui/groups/NamePrefsContext'
 
 export interface AllocationOption {
   participant: Participant
@@ -27,6 +28,7 @@ export function AllocationEditor({
   value: Record<string, number>
   onChange: (v: Record<string, number>) => void
 }) {
+  const { namer, sort } = useNamePrefs()
   const [query, setQuery] = useState('')
   const [onlyPending, setOnlyPending] = useState(false)
   const chosen = Object.keys(value)
@@ -52,9 +54,11 @@ export function AllocationEditor({
     if (ids.length === 0) onChange({})
     else redistribute(ids)
   }
+  // La búsqueda mira el nombre completo aunque la lista muestre solo el nombre.
+  const order = new Map(sort(options.map((o) => o.participant)).map((p, i) => [p.id, i]))
   const shown = options
-    .filter((o) => (!onlyPending || o.pending > 0 || value[o.participant.id] !== undefined) && participantName(o.participant).toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => participantName(a.participant).localeCompare(participantName(b.participant), 'es'))
+    .filter((o) => (!onlyPending || o.pending > 0 || value[o.participant.id] !== undefined) && foldText([o.participant.name, o.participant.surname].filter(Boolean).join(' ')).includes(foldText(query)))
+    .sort((a, b) => (order.get(a.participant.id) ?? 0) - (order.get(b.participant.id) ?? 0))
 
   return (
     <div data-help-id="grupos.asignar-pago">
@@ -70,7 +74,7 @@ export function AllocationEditor({
               <span key={c.participantId}>
                 {i > 0 ? ' · ' : ''}
                 <button type="button" className="link-button" style={{ padding: 0 }} onClick={() => toggle(c.participantId)}>
-                  {participantName(o.participant)}
+                  {namer(o.participant)}
                 </button>
               </span>
             ) : null
@@ -89,7 +93,7 @@ export function AllocationEditor({
             <label className="grp-check-row" style={{ flex: '1 1 auto', minWidth: 0, opacity: o.state === 'no_participa' ? 0.6 : 1 }}>
               <input type="checkbox" checked={value[o.participant.id] !== undefined} onChange={() => toggle(o.participant.id)} />
               <span style={{ overflowWrap: 'anywhere' }}>
-                {participantName(o.participant)}
+                {namer(o.participant)}
                 {o.pending > 0 && <small className="muted"> · debe {fmtEuro(o.pending)}</small>}
                 {o.state === 'exento' && <small className="muted"> · exento</small>}
                 {o.state === 'no_participa' && <small className="muted"> · no participa</small>}
@@ -100,7 +104,7 @@ export function AllocationEditor({
                 className="grp-input"
                 style={{ width: 90, flex: '0 0 auto' }}
                 inputMode="decimal"
-                aria-label={`Importe de ${participantName(o.participant)}`}
+                aria-label={`Importe de ${namer(o.participant)}`}
                 value={String(value[o.participant.id]).replace('.', ',')}
                 onChange={(e) => {
                   const n = Number(e.target.value.replace(',', '.'))

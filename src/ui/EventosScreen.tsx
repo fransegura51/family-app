@@ -1,5 +1,7 @@
 import { type CSSProperties, FormEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { linkEventToGroup } from '@/data/groups'
+import { GroupBackLink, readFromGroup } from '@/ui/groups/GroupBackLink'
 import eventosHeaderImg from '@/assets/eventos/eventos-header.jpg'
 import pepaFaceReference from '@/assets/brand/references/pepa-face-reference-official.jpg'
 import { SectionBreadcrumb, type BreadcrumbLevel } from '@/ui/SectionBreadcrumb'
@@ -836,6 +838,12 @@ export function EventosScreen() {
   // Inicio SIN depender de entrar en un evento concreto (nunca selectedId).
   const [showGlobalProviders, setShowGlobalProviders] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
+  // Gestión de grupos → evento vinculado: si se llegó desde un grupo, «← Volver a [grupo]» regresa a ESE grupo (viaja en la navegación; setSearchParams la pierde, por eso se
+  // captura una vez). `newForGroup` = el evento que se cree ahora mismo con el formulario de siempre se vincula a ese grupo al guardarlo.
+  const location = useLocation()
+  const [fromGroup] = useState(() => readFromGroup(location.state))
+  const [newForGroup, setNewForGroup] = useState<string | null>(null)
+  const [groupEventId, setGroupEventId] = useState<string | null>(null)
   const [initialModule, setInitialModule] = useState<EventModuleKey | null>(null)
   // "Eventos" del breadcrumb siempre vuelve a la lista (Inicio), incluso ya estando en /eventos.
   // initialModule se resetea también: si no, el próximo evento que se abra (normal, no por deep-link)
@@ -875,9 +883,17 @@ export function EventosScreen() {
   // vuelva a forzar el mismo módulo.
   useEffect(() => {
     if (loading) return
+    const groupParam = searchParams.get('grupo')
+    if (searchParams.get('nuevo') === '1' && groupParam && /^[0-9a-f-]{36}$/i.test(groupParam)) {
+      setNewForGroup(groupParam)
+      setShowCreate(true)
+      setSearchParams({}, { replace: true })
+      return
+    }
     const eventParam = searchParams.get('event')
     if (!eventParam) return
     if (events.some((e) => e.id === eventParam)) {
+      if (fromGroup) setGroupEventId(eventParam)
       setSelectedId(eventParam)
       setInitialModule(validInitialModule(searchParams.get('modulo')))
     }
@@ -902,6 +918,8 @@ export function EventosScreen() {
           del evento ("Eventos / Boda de plata / Preparativos") — "Boda de plata" pasa a ser un enlace real
           que vuelve al dashboard de ESE evento (state.eventHome, ver EventDetail más abajo), nunca solo a
           /eventos a secas. */}
+      {/* Solo si se llegó desde un grupo, y solo mientras se ve el evento que se abrió desde él (o el formulario de nuevo evento de ese grupo). */}
+      {fromGroup && (selected?.id === groupEventId || (showCreate && newForGroup === fromGroup.id)) && <GroupBackLink from={fromGroup} />}
       <SectionBreadcrumb
         subsection={
           // Bug real (orden de recuperación): "Eventos" (el primer nivel, lo pone SectionBreadcrumb solo)
@@ -949,11 +967,20 @@ export function EventosScreen() {
           </button>
           {showCreate && (
             <CreateEventModal
-              onClose={() => setShowCreate(false)}
+              onClose={() => {
+                setShowCreate(false)
+                setNewForGroup(null)
+              }}
               onCreated={(id) => {
                 setShowCreate(false)
                 reload()
                 setSelectedId(id)
+                if (newForGroup) {
+                  // El evento YA existe (formulario original): solo se vincula al grupo desde el que se pidió.
+                  setGroupEventId(id)
+                  linkEventToGroup(newForGroup, id).catch((err) => setError(errorMessage(err, 'El evento se creó, pero no se pudo vincular al grupo')))
+                  setNewForGroup(null)
+                }
               }}
             />
           )}

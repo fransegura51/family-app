@@ -91,10 +91,35 @@ function headerColumn(cell: string): ImportColumn | null {
   return null
 }
 
+/**
+ * «Aboutaleb Bassry, Seifeddine» → apellidos «Aboutaleb Bassry», nombre «Seifeddine». Solo se separa cuando hay UNA coma con texto a los dos lados: es el formato
+ * «Apellidos, Nombre». Sin coma NO se adivina dónde acaban los nombres y empiezan los apellidos (nombres y apellidos compuestos): se deja tal cual para revisar.
+ */
+export function splitSurnameFirst(raw: string): { name: string; surname: string } | null {
+  const parts = raw.split(',')
+  if (parts.length !== 2) return null
+  const surname = parts[0].replace(/\s+/g, ' ').trim()
+  const name = parts[1].replace(/\s+/g, ' ').trim()
+  if (!surname || !name || !/\p{L}/u.test(surname) || !/\p{L}/u.test(name)) return null
+  return { name: tidyName(name), surname: tidyName(surname) }
+}
+
+export type NameOrder = 'auto' | 'surname-first' | 'name-first'
+
+export interface SplitCellsResult {
+  cells: string[][]
+  /** Con qué se separaron las columnas (null = una sola columna por línea). */
+  delimiter: 'tab' | 'semicolon' | 'pipe' | 'comma' | null
+}
+
 /** Separa un texto en celdas. Prioridad: tabulador, «;», «|»; la coma solo si todas las líneas tienen el mismo número de columnas. */
 export function splitCells(text: string): string[][] {
+  return splitCellsDetailed(text).cells
+}
+
+export function splitCellsDetailed(text: string): SplitCellsResult {
   const lines = text.replace(/\r/g, '').split('\n').map((l) => l.trimEnd()).filter((l) => l.trim().length > 0)
-  if (lines.length === 0) return []
+  if (lines.length === 0) return { cells: [], delimiter: null }
   const pick = (re: RegExp, strict: boolean): RegExp | null => {
     const counts = lines.map((l) => l.split(re).length)
     const multi = counts.filter((c) => c > 1).length
@@ -102,9 +127,17 @@ export function splitCells(text: string): string[][] {
     if (strict && new Set(counts).size !== 1) return null
     return multi >= Math.ceil(lines.length * 0.6) ? re : null
   }
-  const delim = pick(/\t/, false) ?? pick(/;/, false) ?? pick(/\|/, false) ?? pick(/,(?=(?:[^"]*"[^"]*")*[^"]*$)/, true)
-  if (!delim) return lines.map((l) => [l.trim()])
-  return lines.map((l) => l.split(delim).map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim()))
+  const found: [RegExp, SplitCellsResult['delimiter']][] = [
+    [/\t/, 'tab'],
+    [/;/, 'semicolon'],
+    [/\|/, 'pipe'],
+    [/,(?=(?:[^"]*"[^"]*")*[^"]*$)/, 'comma'],
+  ]
+  for (const [re, name] of found) {
+    const delim = pick(re, name === 'comma')
+    if (delim) return { cells: lines.map((l) => l.split(delim).map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim())), delimiter: name }
+  }
+  return { cells: lines.map((l) => [l.trim()]), delimiter: null }
 }
 
 let keySeq = 0
@@ -113,7 +146,7 @@ const nextKey = () => `imp-${++keySeq}`
 /**
  * Interpreta filas de celdas. Con cabecera conocida se respeta; sin cabecera se usa el contenido (teléfono, correo) y el orden (nombre, luego madre/padre).
  */
-export function interpretTable(cells: string[][]): ImportResult {
+export function interpretTable(cells: string[][], opts: { surnameFirst?: boolean } = {}): ImportResult {
   const notices: string[] = []
   const rowsIn = cells.map((r) => r.map((c) => (c ?? '').toString().trim())).filter((r) => r.some((c) => c))
   if (rowsIn.length === 0) return { rows: [], notices }
@@ -138,7 +171,14 @@ export function interpretTable(cells: string[][]): ImportResult {
       const col = mapping ? mapping[i] ?? null : null
       if (col === 'phone') phones.push(...(cell.match(PHONE_IN_TEXT) ?? [cell]))
       else if (col === 'email') row.email = row.email ?? cell
-      else if (col === 'name') row.name = row.name ? `${row.name} ${cell}` : cell
+      else if (col === 'name') {
+        // Una coma dentro de la columna de nombre es «Apellidos, Nombre».
+        const sp = !row.name && !row.surname ? splitSurnameFirst(cell) : null
+        if (sp) {
+          row.name = sp.name
+          row.surname = sp.surname
+        } else row.name = row.name ? `${row.name} ${cell}` : cell
+      }
       else if (col === 'surname') row.surname = row.surname ? `${row.surname} ${cell}` : cell
       else if (col === 'guardian') row.guardianName = row.guardianName ? `${row.guardianName} ${cell}` : cell
       else if (isEmailCell(cell)) row.email = row.email ?? cell
@@ -169,12 +209,16 @@ export function interpretTable(cells: string[][]): ImportResult {
     }
     // Sin cabecera, el orden decide: primero el nombre, luego quien responde.
     if (!mapping) {
-      if (rest.length >= 1) row.name = rest[0]
-      if (rest.length >= 2) {
+      const sp = rest.length === 1 || (rest.length === 2 && opts.surnameFirst) ? splitSurnameFirst(rest.join(', ')) : null
+      if (sp) {
+        row.name = sp.name
+        row.surname = sp.surname
+      } else if (rest.length >= 1) row.name = rest[0]
+      if (!sp && rest.length >= 2) {
         row.guardianName = rest[1]
         assumed = true
       }
-      if (rest.length > 2) row.doubts.push(`Texto sobrante: «${rest.slice(2).join(' · ')}»`)
+      if (!sp && rest.length > 2) row.doubts.push(`Texto sobrante: «${rest.slice(2).join(' · ')}»`)
     } else if (rest.length) {
       if (!row.name) row.name = rest[0]
       else row.doubts.push(`Texto sin columna conocida: «${rest.join(' · ')}»`)
@@ -182,6 +226,7 @@ export function interpretTable(cells: string[][]): ImportResult {
 
     row.name = tidyName(row.name)
     row.surname = row.surname ? tidyName(row.surname) : null
+    if (row.surname && !row.name) row.doubts.push('Falta el nombre')
     row.guardianName = row.guardianName ? tidyName(row.guardianName) : null
 
     if (phones.length > 0) {
@@ -202,9 +247,27 @@ export function interpretTable(cells: string[][]): ImportResult {
   return { rows: out, notices }
 }
 
-/** Texto pegado o CSV. */
-export function parseParticipantsText(text: string): ImportResult {
-  return interpretTable(splitCells(text))
+/**
+ * Texto pegado o CSV. Una lista sin cabecera con dos textos por línea separados por coma es, casi siempre, «Apellidos, Nombre» (el formato de las listas de clase):
+ * se lee así y se AVISA, con la opción de volver a leerla como «Nombre, madre/padre» (order = 'name-first'). Con otras separaciones (tabulador, «;») no se supone nada.
+ */
+export function parseParticipantsText(text: string, order: NameOrder = 'auto'): ImportResult {
+  const { cells, delimiter } = splitCellsDetailed(text)
+  let surnameFirst = order === 'surname-first'
+  let guessed = false
+  if (order === 'auto' && delimiter === 'comma') {
+    const first = cells[0] ?? []
+    const hasHeader = first.some((c) => headerColumn(c)) && !first.some((c) => isPhoneCell(c) || isEmailCell(c))
+    const texts = (r: string[]) => r.filter((c) => c && !isPhoneCell(c) && !isEmailCell(c))
+    const body = hasHeader ? cells.slice(1) : cells
+    if (!hasHeader && body.length > 0 && body.every((r) => texts(r).length === 2)) {
+      surnameFirst = true
+      guessed = true
+    }
+  }
+  const result = interpretTable(cells, { surnameFirst })
+  if (guessed) result.notices.push('He leído cada línea como «Apellidos, Nombre». Si en tu lista la segunda palabra es la madre o el padre, cámbialo abajo.')
+  return result
 }
 
 // ---------------------------------------------------------------------------------------------- lo que devuelve la IA (foto o PDF)
@@ -226,13 +289,20 @@ export function fromAiRows(rows: AiParticipantRow[]): ImportResult {
     if (phone.doubt) doubts.push(phone.doubt)
     const email = r.email ? String(r.email).trim() : null
     if (email && !isEmailCell(email)) doubts.push(`Correo dudoso: «${email}»`)
-    const name = tidyName(String(r.name ?? ''))
+    let name = tidyName(String(r.name ?? ''))
+    let surname = r.surname ? tidyName(String(r.surname)) : null
+    // «Apellidos, Nombre» que la lectura dejó junto en una sola celda.
+    const sp = !surname ? splitSurnameFirst(name) : null
+    if (sp) {
+      name = sp.name
+      surname = sp.surname
+    }
     if (!name) doubts.push('Falta el nombre')
     if (r.uncertain) doubts.push('La lectura de esta fila no estaba clara: compruébala')
     out.push({
       key: nextKey(),
       name,
-      surname: r.surname ? tidyName(String(r.surname)) : null,
+      surname,
       guardianName: r.guardian ? tidyName(String(r.guardian)) : null,
       phone: phone.phone,
       email: email && isEmailCell(email) ? email : null,
@@ -305,4 +375,50 @@ export function findInternalDuplicates(rows: ImportRow[]): Set<string> {
     else seen.set(k, r.key)
   }
   return dup
+}
+
+// ---------------------------------------------------------------------------------------------- corregir nombres ya importados
+export interface NameFix {
+  participantId: string
+  /** 'seguro': la coma deja claro «Apellidos, Nombre». 'dudoso': posible orden cambiado; se propone pero NO viene marcado. */
+  confidence: 'seguro' | 'dudoso'
+  reason: string
+  from: { name: string; surname: string | null; guardianName: string | null }
+  to: { name: string; surname: string | null; guardianName: string | null }
+}
+
+/**
+ * Propuestas para arreglar fichas importadas antes de que el importador entendiera «Apellidos, Nombre». Solo toca nombre, apellidos y madre/padre de la MISMA ficha
+ * (por tanto no duplica nada ni rompe vínculos, botes o contactos). Nada se aplica sin que la persona lo marque.
+ */
+export function findNameFixes(list: Participant[]): NameFix[] {
+  const out: NameFix[] = []
+  for (const p of list) {
+    if (p.leftAt) continue
+    if (!p.surname) {
+      const sp = splitSurnameFirst(p.name)
+      if (sp) {
+        out.push({
+          participantId: p.id,
+          confidence: 'seguro',
+          reason: `«${p.name}» venía como «Apellidos, Nombre»`,
+          from: { name: p.name, surname: null, guardianName: p.guardianName },
+          to: { name: sp.name, surname: sp.surname, guardianName: p.guardianName },
+        })
+        continue
+      }
+      // «Aboutaleb Bassry» + madre/padre «Seifeddine» (una sola palabra): probablemente eran apellidos y nombre de la misma persona.
+      const g = (p.guardianName ?? '').trim()
+      if (g && !/\s/.test(g) && /\s/.test(p.name.trim())) {
+        out.push({
+          participantId: p.id,
+          confidence: 'dudoso',
+          reason: `¿«${p.name}» son los apellidos y «${g}» el nombre?`,
+          from: { name: p.name, surname: null, guardianName: g },
+          to: { name: tidyName(g), surname: tidyName(p.name), guardianName: null },
+        })
+      }
+    }
+  }
+  return out
 }

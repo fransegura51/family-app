@@ -4,15 +4,19 @@ import {
   addManager,
   cancelGroupTransfer,
   createGroupTransfer,
+  createManagerInvite,
   groupsErrorMessage,
   listAudit,
   listGroupTransfers,
   listManagerCandidates,
+  listManagerInvites,
   listManagers,
   removeManager,
+  revokeManagerInvite,
   updateGroup,
   type AuditEntry,
   type Manager,
+  type PendingInvite,
   type PendingTransfer,
 } from '@/data/groups'
 import type { GroupItem } from '@/domain/groups'
@@ -25,12 +29,14 @@ import { Field, GroupSheet } from '@/ui/groups/GroupSheet'
 export function ManagersSheet({ group, userId, onClose }: { group: GroupItem; userId: string; onClose: () => void }) {
   const [managers, setManagers] = useState<Manager[] | null>(null)
   const [candidates, setCandidates] = useState<{ userId: string; name: string }[]>([])
+  const [invites, setInvites] = useState<PendingInvite[]>([])
   const [problem, setProblem] = useState<string | null>(null)
   const load = useCallback(async () => {
     try {
-      const [m, c] = await Promise.all([listManagers(group), listManagerCandidates(group)])
+      const [m, c, inv] = await Promise.all([listManagers(group), listManagerCandidates(group), listManagerInvites(group.id)])
       setManagers(m)
       setCandidates(c)
+      setInvites(inv)
     } catch (e) {
       setProblem(groupsErrorMessage(e))
     }
@@ -80,6 +86,34 @@ export function ManagersSheet({ group, userId, onClose }: { group: GroupItem; us
           <p className="muted">Solo salen personas de tu mismo espacio PEPA. Una profesora, por ejemplo, puede llevar solo la clase que le des.</p>
         </>
       )}
+      <p className="grp-section">Invitar a otra persona con un código</p>
+      <p className="muted">Para alguien que tiene su propia cuenta PEPA (en tu espacio o en otro). Le das un código de un solo uso, lo escribe en «Recibir un grupo», ve qué grupo es y lo acepta. No se crea ninguna copia: trabajáis sobre el mismo grupo.</p>
+      <div className="form-actions">
+        <button type="button" className="primary-button" data-help-id="grupos.responsable-codigo" onClick={() => void run(async () => void (await createManagerInvite(group.id)))}>
+          Invitar responsable mediante código
+        </button>
+      </div>
+      {invites.map((i) => (
+        <div key={i.id} className="grp-card">
+          <div className="grp-code" style={{ fontSize: 22 }}>{i.code}</div>
+          <p className="muted" style={{ margin: '4px 0' }}>De un solo uso · caduca el {formatDateTime(i.expiresAt)}</p>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                void shareText({
+                  title: 'Responsable de un grupo de PEPA',
+                  text: `Te invito a ser responsable del grupo «${group.name}» en PEPA. Entra en Gestión de grupos → «Recibir un grupo» y escribe este código: ${i.code} (de un solo uso, caduca el ${formatDateTime(i.expiresAt)}).`,
+                }).catch(() => setProblem('No se ha podido compartir. Copia el código a mano.'))
+              }}
+            >
+              Compartir
+            </button>
+            <ConfirmButton label="Anular este código" onConfirm={() => void run(() => revokeManagerInvite(i.id))} />
+          </div>
+        </div>
+      ))}
       {problem && <p className="error">{problem}</p>}
     </GroupSheet>
   )

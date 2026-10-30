@@ -144,23 +144,33 @@ export const tutContactosAcciones: TourDef = {
   durationSec: 90,
   startPath: '/contactos',
   readyOn: ['contactos.lista'],
-  needs: [{ target: 'contactos.editar', message: 'Para este capítulo necesitas al menos un contacto en la agenda. Añade uno con el capítulo «Añadir un contacto» y vuelve aquí. Mientras tanto puedes verlo solo leyendo.' }],
+  needs: [{ target: 'contactos.tarjeta', message: 'Para este capítulo necesitas al menos un contacto en la agenda. Añade uno con el capítulo «Añadir un contacto» y vuelve aquí. Mientras tanto puedes verlo solo leyendo.' }],
   steps: [
     {
+      id: 'tarjeta',
+      text: 'Cada contacto es una tarjeta compacta. Tócala para abrir su ficha completa; cuando se abra, sigo yo.',
+      target: 'contactos.tarjeta',
+      completeOn: [
+        { type: 'click', target: 'contactos.tarjeta' },
+        { type: 'appear', target: 'contactos.ficha' },
+      ],
+      skipIf: [{ type: 'appear', target: 'contactos.ficha' }],
+    },
+    {
       id: 'acciones',
-      text: 'En cada contacto: 📞 llama (solo si tiene teléfono), 📤 lo comparte, ✏️ lo edita y ✕ lo elimina (te pregunta antes). Yo no pulso ninguno. Si al final guardas un cambio, se guarda de verdad.',
+      text: 'En la ficha: 📞 Llamar (solo si tiene teléfono), 📤 Compartir, ✏️ Editar y ✕ Eliminar (te pregunta antes). Yo no pulso ninguno. Si al final guardas un cambio, se guarda de verdad.',
       target: 'contactos.acciones',
       ...info,
     },
     {
       id: 'cumple',
-      text: 'Debajo del nombre, «🎂 Añadir cumpleaños» (o su fecha) lo pone o lo cambia ahí mismo. Con cumpleaños, el contacto sale en Cumpleaños y en el Calendario y entra en el aviso diario de las 09:00.',
+      text: '«🎂 Añadir cumpleaños» (o su fecha) lo pone o lo cambia ahí mismo. Con cumpleaños, el contacto sale en Cumpleaños y en el Calendario y entra en el aviso diario de las 09:00.',
       target: 'contactos.cumple-ficha',
       ...info,
     },
     {
       id: 'editar',
-      text: 'Para cambiar sus datos, pulsa ✏️ en el contacto.',
+      text: 'Para cambiar sus datos, pulsa ✏️ Editar.',
       target: 'contactos.editar',
       completeOn: [
         { type: 'click', target: 'contactos.editar' },
@@ -170,7 +180,7 @@ export const tutContactosAcciones: TourDef = {
     },
     {
       id: 'formulario',
-      text: 'Cambia lo que necesites: nombre, categoría, teléfono, email, cumpleaños o notas. Todavía no se guarda nada.',
+      text: 'Cambia lo que necesites: nombre, categoría, teléfono, email, cumpleaños o notas. «＋ Más datos» (opcional) añade apellidos, apodo, varios teléfonos y correos, categorías y dirección. Todavía no se guarda nada.',
       target: 'contactos.editar-form',
       ...info,
     },
@@ -182,8 +192,48 @@ export const tutContactosAcciones: TourDef = {
       sensitive: true,
     },
   ],
-  finishText: '¡Listo! Los cambios del contacto están guardados. Para llamarle, pulsa 📞 en su ficha (solo sale si tiene teléfono).',
+  finishText: '¡Listo! Los cambios del contacto están guardados. Para llamarle, abre su ficha y pulsa 📞 Llamar (solo sale si tiene teléfono).',
   next: ['con-agenda', 'cum-ver'],
+}
+
+export const tutContactosFicha: TourDef = {
+  id: 'tut-contactos-ficha',
+  module: 'contactos',
+  group: 'Agenda',
+  summary: 'Abre la ficha completa de un contacto y descubre los datos opcionales: varios teléfonos y correos, apodo, dirección y de quién es familiar.',
+  version: 1,
+  title: 'La ficha completa de un contacto',
+  cardId: 'con-ficha',
+  durationSec: 70,
+  startPath: '/contactos',
+  readyOn: ['contactos.lista'],
+  needs: [{ target: 'contactos.tarjeta', message: 'Para este capítulo necesitas al menos un contacto en la agenda. Añade uno con el capítulo «Añadir un contacto» y vuelve aquí. Mientras tanto puedes verlo solo leyendo.' }],
+  steps: [
+    {
+      id: 'tarjeta',
+      text: 'Las tarjetas son compactas: nombre, categoría, teléfono y el correo completo (si es largo, ocupa varias líneas). Toca una para abrir su ficha; cuando se abra, sigo yo.',
+      target: 'contactos.tarjeta',
+      completeOn: [
+        { type: 'click', target: 'contactos.tarjeta' },
+        { type: 'appear', target: 'contactos.ficha' },
+      ],
+      skipIf: [{ type: 'appear', target: 'contactos.ficha' }],
+    },
+    {
+      id: 'ficha',
+      text: 'La ficha reúne todos sus datos: teléfonos y correos (se llaman o se escriben con un toque), dirección, notas y cumpleaños. Si el contacto es madre, padre o tutor de alumnos de un grupo, también dice de quién y en qué grupo.',
+      target: 'contactos.ficha',
+      ...info,
+    },
+    {
+      id: 'editar',
+      text: '✏️ Editar abre sus datos. Allí, «＋ Más datos» añade apellidos, apodo, el nombre de WhatsApp, otros teléfonos y correos, otras categorías y la dirección. Todo es opcional y los contactos de siempre no cambian. Aquí solo te lo señalo.',
+      target: 'contactos.editar',
+      ...info,
+    },
+  ],
+  finishText: 'Si un teléfono o correo nuevo llega para un contacto que ya tiene otro (por ejemplo al importar), PEPA nunca lo sobrescribe sola: pregunta si añadirlo como adicional, sustituir o conservar.',
+  next: ['con-agenda', 'con-importar'],
 }
 
 // ───────────────────────────── Contactos · Importar y compartir contactos
@@ -239,24 +289,24 @@ export const tutContactosCompartir: TourDef = {
   durationSec: 90,
   startPath: '/contactos',
   readyOn: ['contactos.lista'],
-  needs: [{ target: 'contactos.compartir-uno', message: 'Para este capítulo necesitas al menos un contacto en la agenda. Añade uno con el capítulo «Añadir un contacto» y vuelve aquí. Mientras tanto puedes verlo solo leyendo.' }],
+  needs: [{ target: 'contactos.tarjeta', message: 'Para este capítulo necesitas al menos un contacto en la agenda. Añade uno con el capítulo «Añadir un contacto» y vuelve aquí. Mientras tanto puedes verlo solo leyendo.' }],
   steps: [
     {
       id: 'uno',
-      text: 'El icono 📤 de cada ficha manda ese contacto (nombre, teléfono y email) con el menú de compartir del móvil. Aquí solo te lo señalo: yo no lo pulso. En este capítulo no se manda nada por ti.',
-      target: 'contactos.compartir-uno',
+      text: 'Para mandar un solo contacto, ábrelo (toca su tarjeta): en su ficha, «📤 Compartir» lo manda (nombre, teléfono y email) con el menú de compartir del móvil. Aquí solo te lo explico: yo no lo pulso. En este capítulo no se manda nada por ti.',
+      target: 'contactos.tarjeta',
       ...info,
     },
     {
       id: 'varios',
-      text: 'Para mandar varios juntos, pulsa «📤 Compartir varios». Aparecen casillas en cada contacto; todavía no se manda nada.',
+      text: 'Para mandar varios juntos, pulsa «📤 Compartir varios». Cada tarjeta se marca al tocarla; todavía no se manda nada.',
       target: 'contactos.compartir-varios',
       completeOn: [{ type: 'appear', target: 'contactos.casilla' }],
       manualNext: true,
     },
     {
       id: 'marcar',
-      text: 'Marca las casillas de los contactos que quieras mandar. Al marcar el primero aparece el botón de enviar y sigo yo; si no quieres marcar ninguno, pulsa «Siguiente».',
+      text: 'Toca las tarjetas de los contactos que quieras mandar. Al marcar el primero aparece el botón de enviar y sigo yo; si no quieres marcar ninguno, pulsa «Siguiente».',
       target: 'contactos.lista',
       completeOn: [{ type: 'appear', target: 'contactos.mandar-seleccion' }],
       manualNext: true,
@@ -412,6 +462,7 @@ export const tutGaleriaCompartir: TourDef = {
 export const TOURS_G9_CONTACTOS_GALERIA: TourDef[] = [
   tutContactosAnadir,
   tutContactosBuscar,
+  tutContactosFicha,
   tutContactosAcciones,
   tutContactosImportar,
   tutContactosCompartir,

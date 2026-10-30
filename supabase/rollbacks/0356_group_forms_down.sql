@@ -1,0 +1,27 @@
+-- Deshacer 0356. DESTRUCTIVO: borra los formularios, sus respuestas y los datos delicados guardados. Los archivos del bucket «group-form-files» hay que vaciarlos aparte.
+select cron.unschedule('purge-group-form-data-daily');
+drop policy if exists "group_form_files: read" on storage.objects;
+drop function if exists private.form_file_ok(text);
+drop function if exists public.assign_form_response(uuid, uuid);
+drop function if exists public.resolve_form_proposal(uuid, text, boolean);
+drop function if exists public.resolve_form_deletion(uuid, text, text);
+drop function if exists public.read_form_sensitive(uuid);
+drop function if exists public.form_sensitive_overview(uuid);
+drop function if exists public.set_form_retention(uuid, date);
+drop function if exists public.set_form_recipient_active(uuid, boolean);
+drop function if exists public.set_group_form_status(uuid, text);
+drop function if exists public.publish_group_form(uuid, uuid[]);
+drop function if exists private.form_has_sensitive(jsonb);
+drop table if exists public.group_form_templates;
+drop table if exists public.group_form_access_log;
+drop table if exists public.group_form_deletion_requests;
+drop table if exists public.group_form_sensitive;
+drop table if exists public.group_form_responses;
+drop table if exists public.group_form_recipients;
+drop table if exists public.group_forms;
+drop function if exists private.group_forms_touch();
+drop function if exists private.form_is_creator(uuid);
+drop function if exists private.form_can(uuid);
+delete from public.ai_function where purpose = 'analyze-whatsapp-contacts';
+alter table public.group_participants drop constraint if exists group_participants_notes_check;
+alter table public.group_participants add constraint group_participants_notes_check check (notes is null or length(notes) <= 500);

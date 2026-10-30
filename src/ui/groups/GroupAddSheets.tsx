@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { createEvent, listEvents } from '@/data/events'
+import { listEvents } from '@/data/events'
 import { groupsErrorMessage, linkEventToGroup, linkListToGroup, type LinkedItem } from '@/data/groups'
 import { createFund } from '@/data/groupFunds'
 import { createList, loadListsOverview } from '@/data/lists'
 import { CONTRIBUTION_LABEL, type ContributionType } from '@/domain/groupFunds'
-import { RECOMMENDED_MODULES } from '@/domain/events'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { Field, GroupSheet } from '@/ui/groups/GroupSheet'
 
@@ -47,8 +46,12 @@ export function AddSheet({
           <span>📝 Lista vinculada</span>
           <span aria-hidden="true">›</span>
         </button>
+        <button type="button" className="grp-big-button" data-help-id="grupos.anadir-solicitar-datos" onClick={() => (onClose(), onOpen(`/grupos/${groupId}/formularios`))}>
+          <span>📋 Solicitar datos</span>
+          <span aria-hidden="true">›</span>
+        </button>
       </div>
-      <p className="muted">El evento y la lista son los de siempre (Eventos y Mis listas): aquí solo se vinculan, no se copian.</p>
+      <p className="muted">El evento y la lista son los de siempre (Eventos y Mis listas): aquí solo se vinculan, no se copian. «Solicitar datos» crea un formulario que las familias responden sin instalar PEPA.</p>
     </GroupSheet>
   )
 }
@@ -123,7 +126,6 @@ export function FundCreateSheet({ groupId, onClose, onCreated }: { groupId: stri
 export function LinkEventSheet({ groupId, already, onClose, onLinked, onOpen }: { groupId: string; already: LinkedItem[]; onClose: () => void; onLinked: () => void; onOpen: (path: string) => void }) {
   const [mode, setMode] = useState<'choose' | 'new'>('choose')
   const [events, setEvents] = useState<{ id: string; title: string; date: string | null }[] | null>(null)
-  const [title, setTitle] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   useEffect(() => {
@@ -146,22 +148,6 @@ export function LinkEventSheet({ groupId, already, onClose, onLinked, onOpen }: 
       setBusy(false)
     }
   }
-  const createNew = async () => {
-    if (busy) return
-    if (!title.trim()) return setProblem('Escribe el nombre del evento.')
-    setBusy(true)
-    try {
-      const id = await createEvent({ type: 'celebracion', title: title.trim(), dateStatus: 'pendiente', enabledModules: RECOMMENDED_MODULES.celebracion })
-      await linkEventToGroup(groupId, id)
-      onLinked()
-      onClose()
-      onOpen(`/eventos?event=${id}`)
-    } catch (e) {
-      setProblem(groupsErrorMessage(e))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <GroupSheet title="Evento del grupo" onClose={onClose}>
@@ -175,13 +161,20 @@ export function LinkEventSheet({ groupId, already, onClose, onLinked, onOpen }: 
       </div>
       {mode === 'new' ? (
         <>
-          <Field label="Nombre del evento" hint="Se crea en Eventos, donde podrás completarlo (fecha, invitados, menú…).">
-            <input autoFocus className="grp-input" placeholder="Por ejemplo: Fiesta de fin de curso" value={title} onChange={(e) => (setTitle(e.target.value), setProblem(null))} />
-          </Field>
-          {problem && <p className="error">{problem}</p>}
+          <p className="muted">
+            Se abre el formulario completo de «Nuevo evento» de Eventos (nombre, tipo, plantilla y qué quieres organizar). Al guardarlo, el evento queda vinculado a este grupo y podrás volver aquí con «← Volver al grupo».
+          </p>
           <div className="form-actions">
-            <button type="button" className="primary-button" disabled={busy} onClick={() => void createNew()}>
-              Crear y vincular
+            <button
+              type="button"
+              className="primary-button"
+              data-help-id="grupos.evento-nuevo"
+              onClick={() => {
+                onClose()
+                onOpen(`/eventos?nuevo=1&grupo=${groupId}`)
+              }}
+            >
+              Abrir «Nuevo evento»
             </button>
           </div>
         </>

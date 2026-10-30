@@ -5,6 +5,7 @@ import { compressImageFile } from '@/domain/imageCompression'
 import { toDateStr } from '@/domain/dateRanges'
 import { pickTicketExpenseMatch, sourceAfterTicketMatch, TICKET_MATCH_SOURCES, TICKET_MATCH_WINDOW_DAYS } from '@/domain/ticketExpenseMatch'
 import type { Receipt } from '@/domain/types'
+import { hasRealTicketBreakdown } from '@/domain/products'
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00')
@@ -54,6 +55,18 @@ export async function setReceiptDiscount(receiptId: string, discount: number): P
   if (!Number.isFinite(discount) || discount < 0) throw new Error('El descuento tiene que ser un importe positivo')
   const { error } = await supabase.from('receipts').update({ discount_total: Math.round(discount * 100) / 100 }).eq('id', receiptId)
   if (error) throw error
+}
+
+// ECO-02: la compra vinculada a un movimiento, por el identificador REAL (receipts.expense_id), nunca por comercio, importe o fecha. Si hubiera más de una, la que trae productos reales.
+export async function findLinkedPurchase(expenseId: string): Promise<{ receiptId: string; lines: { normalizedName: string | null; displayName: string | null }[] } | null> {
+  const { data, error } = await supabase.from('receipts').select('id, product_prices(products(normalized_name, display_name))').eq('expense_id', expenseId)
+  if (error) throw error
+  if (!data || data.length === 0) return null
+  const all = (data as unknown as { id: string; product_prices: { products: { normalized_name: string | null; display_name: string | null } | null }[] | null }[]).map((r) => ({
+    receiptId: r.id,
+    lines: (r.product_prices ?? []).map((l) => ({ normalizedName: l.products?.normalized_name ?? null, displayName: l.products?.display_name ?? null })),
+  }))
+  return all.find((r) => hasRealTicketBreakdown(r.lines)) ?? all[0]
 }
 
 export async function listReceipts(): Promise<Receipt[]> {

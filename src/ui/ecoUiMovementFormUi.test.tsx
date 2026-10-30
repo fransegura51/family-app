@@ -36,6 +36,7 @@ const data = vi.hoisted(() => ({
   classShares: new Map<string, { className: string; amount: number }[]>(),
   ticketLines: new Map<string, { normalizedName: string | null; displayName: string | null }[] | null>(),
   ticketQueries: [] as string[],
+  bankTx: [] as unknown[],
   updateExpense: vi.fn(async () => undefined),
   setExpenseTags: vi.fn(async () => undefined),
   setExpenseClasses: vi.fn(async () => undefined),
@@ -58,12 +59,13 @@ vi.mock('@/data/products', async (o) => ({ ...(await o<typeof import('@/data/pro
 vi.mock('@/data/receipts', async (o) => ({
   ...(await o<typeof import('@/data/receipts')>()),
   listReceipts: async () => [],
-  listLinkedTicketProducts: async (id: string) => {
+  findLinkedPurchase: async (id: string) => {
     data.ticketQueries.push(id)
-    return data.ticketLines.get(id) ?? null
+    const lines = data.ticketLines.get(id) ?? null
+    return lines ? { receiptId: 'receipt-of-' + id, lines } : null
   },
 }))
-vi.mock('@/data/bank', async (o) => ({ ...(await o<typeof import('@/data/bank')>()), listBankAccounts: async () => [], listBankTransactions: async () => [], listBankConnections: async () => [] }))
+vi.mock('@/data/bank', async (o) => ({ ...(await o<typeof import('@/data/bank')>()), listBankAccounts: async () => [], listBankTransactions: async () => data.bankTx, listBankConnections: async () => [] }))
 vi.mock('@/data/cash', async (o) => ({ ...(await o<typeof import('@/data/cash')>()), listWalletsSafe: async () => [], listAllMovementsSafe: async () => [] }))
 
 const { ExpensesTab } = await import('@/ui/FinanceScreen')
@@ -78,6 +80,7 @@ beforeEach(() => {
   data.setExpenseTags.mockClear()
   data.setExpenseClasses.mockClear()
   data.ticketQueries.length = 0
+  data.bankTx = []
   data.tagShares = new Map()
   data.classShares = new Map()
   data.ticketLines = new Map([
@@ -122,7 +125,7 @@ describe('ECO-UI-04 · «✓ Compra vinculada»', () => {
     expect(screen.queryByText(/Repartir entre varias clasificaciones/)).toBeNull()
     expect(screen.queryByText(/Reparto por clasificación/)).toBeNull()
     expect(data.ticketQueries).toEqual(['con-ticket']) // se mira el vínculo real de ESTE gasto, nunca por comercio ni fecha
-    expect(screen.queryByText(/Ver ticket|Ver compra|Editar productos|Yogur/)).toBeNull()
+    expect(screen.queryByText(/Ver ticket|Editar productos|Yogur/)).toBeNull()
   })
 
   it('al guardar NO se borra la clasificación antigua ni se toca el reparto de clasificaciones ni los importes', async () => {
@@ -211,5 +214,68 @@ describe('ECO-UI-02/03 · etiquetas en el formulario de edición', () => {
     await waitFor(() => expect(screen.getAllByText(/Escribe un importe mayor que cero|no suman|Sobran|Faltan/i).length).toBeGreaterThan(0))
     expect(data.updateExpense).not.toHaveBeenCalled()
     expect(data.setExpenseTags).not.toHaveBeenCalled()
+  })
+})
+
+// ECO-02 / ECO-03 / NAV-01 — enlace a la compra vinculada, «Enlazar con bote» y volver con el movimiento recuperado.
+vi.mock('@/data/groupFunds', async (o) => ({
+  ...(await o<typeof import('@/data/groupFunds')>()),
+  listFundLinksForBankTx: async () => [],
+  listOpenFundsAcrossGroups: async () => [{ id: 'fund1', groupId: 'g1', name: 'Excursión 5ºA', groupName: 'Clase' }],
+}))
+const { takePendingReceiptOpen } = await import('@/state/pendingReceiptOpen')
+const { takeNavOrigin, clearNavOrigin } = await import('@/state/navOrigin')
+const { takePendingFundEntry } = await import('@/state/pendingFundEntry')
+
+describe('ECO-02 · «Ver compra vinculada»', () => {
+  beforeEach(() => {
+    clearNavOrigin()
+    takePendingReceiptOpen()
+  })
+  it('abre ESA compra por su identificador real y deja anotado a dónde volver (el mismo movimiento)', async () => {
+    await openEdit('Con ticket')
+    fireEvent.click(await screen.findByTestId('open-linked-purchase'))
+    expect(takePendingReceiptOpen()).toEqual({ receiptId: 'receipt-of-con-ticket' })
+    const origin = takeNavOrigin('tickets')
+    expect(origin?.label).toBe('Economía')
+    expect(origin?.path).toBe('/dinero')
+    expect(origin?.routeState).toMatchObject({ restoreMovement: { expenseId: 'con-ticket', typeFilter: 'todos' } })
+  })
+  it('también con una compra anotada a mano (sin productos reales): hay enlace', async () => {
+    await openEdit('Sin lineas')
+    expect(await screen.findByTestId('open-linked-purchase')).toBeTruthy()
+  })
+  it('sin compra vinculada no hay enlace', async () => {
+    await openEdit('Sin compra')
+    await waitFor(() => expect(data.ticketQueries).toContain('sin-compra'))
+    expect(screen.queryByTestId('open-linked-purchase')).toBeNull()
+  })
+})
+
+describe('ECO-03 · «Enlazar con bote» al pie del editor', () => {
+  beforeEach(() => {
+    clearNavOrigin()
+    takePendingFundEntry('fund1')
+    data.bankTx = [{ id: 'bt1', accountId: 'acc', matchedExpenseId: 'sin-compra', transactionDate: '2026-10-20', amount: -12.5, description: 'EXCURSION', creditDebit: 'DBIT', currency: 'EUR' }]
+  })
+  it('solo aparece si detrás hay un movimiento bancario; va en la fila de abajo, a la derecha', async () => {
+    await openEdit('Sin compra')
+    const btn = await screen.findByTestId('link-to-fund')
+    expect(btn.textContent).toBe('Enlazar con bote')
+    const row = screen.getByTestId('movement-extra-actions')
+    expect(row.lastElementChild).toBe(btn)
+  })
+  it('un movimiento sin movimiento bancario detrás no ofrece enlazar', async () => {
+    await openEdit('Con ticket')
+    expect(screen.queryByTestId('link-to-fund')).toBeNull()
+  })
+  it('elegir un bote anota el apunte pendiente (con los datos del banco) y el regreso a Economía', async () => {
+    await openEdit('Sin compra')
+    fireEvent.click(await screen.findByTestId('link-to-fund'))
+    fireEvent.click(await screen.findByText('Excursión 5ºA'))
+    expect(takePendingFundEntry('fund1')).toMatchObject({ kind: 'gasto', bankTx: { id: 'bt1', amount: 12.5, date: '2026-10-20' } })
+    const origin = takeNavOrigin('bote')
+    expect(origin?.label).toBe('Economía')
+    expect(origin?.routeState).toMatchObject({ restoreMovement: { expenseId: 'sin-compra' } })
   })
 })

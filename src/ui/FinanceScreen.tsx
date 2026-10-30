@@ -3,7 +3,9 @@ import { addSplitTag, changeSplitMode, hasTag, NO_TAG, removeSplitTag, replaceSp
 import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { setNavOrigin } from '@/state/navOrigin'
+import { useNavOrigin } from '@/ui/ReturnBar'
 import '@/ui/groups/groups.css'
 import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
 import { CategorySelect } from '@/ui/CategorySelect'
@@ -172,11 +174,13 @@ import { getChartColorTheme } from '@/state/colorTheme'
 import { useDateFilterPreset } from '@/state/dateFilterPreset'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
-import { takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
+import { setPendingReceiptOpen, takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
+import { FundLinkSheet } from '@/ui/FundLinkSheet'
+import type { IncomingBankTx } from '@/data/groupFunds'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, findLinkedPurchase, listManualPurchasesWithoutTicket, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -495,7 +499,11 @@ function isDineroRestricted(profile: Profile): boolean {
 export function FinanceScreen({ profile }: { profile: Profile }) {
   const dineroRestricted = isDineroRestricted(profile)
   // El hijo con Economía restringida no llega a las pestañas: se devuelve antes su monedero (más abajo), así que su valor inicial da igual.
-  const [tab, setTab] = useState<SubTab>('Resumen')
+  // NAV-01: al volver de la compra vinculada o del bote, Economía reabre Movimientos con ESE movimiento en edición (y, si Economía a su vez venía de otro módulo, su «← Volver a …»).
+  const economyLocation = useLocation()
+  const restoreMovement = (economyLocation.state as { restoreMovement?: MovementsRestore } | null)?.restoreMovement ?? null
+  const { bar: economyReturnBar } = useNavOrigin('economia')
+  const [tab, setTab] = useState<SubTab>(restoreMovement ? 'Movimientos' : 'Resumen')
   // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
   useSectionHome(() => setTab('Resumen'))
   // «Llévame» de la Ayuda: cada pestaña de Economía (no son rutas) se abre por su nombre.
@@ -646,6 +654,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
 
   return (
     <div className="screen">
+      {economyReturnBar}
       {/* Petición real, con imagen de referencia: "y la de Economía"
           (mismo tratamiento de foto que las demás cabeceras) — "aquí
           tendrás que bajar los botones de las cuentas por debajo de la
@@ -705,17 +714,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           Presupuesto Generales...), repitiendo la misma tendencia sin
           venir a cuento en pantallas que no son de estadísticas. */}
       {tab === 'Estadísticas' && <BalanceTrendCard key={`trend-${refreshKey}`} />}
-      {/* Gestión de grupos: los botes compartidos (colectas de clase, equipo…) tienen su propia pantalla, con su control de pagos; desde Resumen se llega en un toque. */}
-      {tab === 'Resumen' && profile.role !== 'guest' && profile.role !== 'child' && (profile.allowedSections == null || profile.allowedSections.includes('grupos')) && (
-        <Link to="/grupos" className="grp-row" data-help-id="economia.botes-grupos">
-          <span aria-hidden="true">💰</span>
-          <span className="grp-row-main">
-            <span className="grp-row-title">Botes compartidos</span>
-            <span className="grp-row-sub" style={{ display: 'block' }}>Colectas de tus grupos: quién ha pagado y quién falta</span>
-          </span>
-          <span aria-hidden="true">›</span>
-        </Link>
-      )}
+      {/* ECO-04: los botes se gestionan SOLO en Gestión de grupos (antes había aquí una tarjeta que no hacía más que llevar allí). Desde un movimiento se enlaza con «Enlazar con bote». */}
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece
@@ -788,6 +787,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           myMemberId={myMemberId}
           onOpenNewMovement={() => setShowNewMovement(true)}
           focusWallet={focusWallet}
+          restore={restoreMovement}
         />
       )}
       {tab === 'Presupuesto Generales' && (
@@ -3507,6 +3507,18 @@ function EvolucionTemporal({
 // categorizar... traslado el botón flotante de Presupuesto General a
 // Gastos"). Presupuesto Generales y Registro Alimentación pasan a leer
 // de esta misma lista, sin su propio sitio para crearlos.
+export type MovementTypeFilter = 'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'
+/** NAV-01: lo que Movimientos recupera al volver de otra pantalla a la que se salió desde un movimiento. */
+export interface MovementsRestore {
+  expenseId: string
+  preset?: SpendRangePreset
+  customFrom?: string
+  customTo?: string
+  typeFilter?: MovementTypeFilter
+  categoryFilterValue?: string
+  searchQuery?: string
+  activeAccountId?: string | null
+}
 export function ExpensesTab({
   filter,
   onClearFilter,
@@ -3516,6 +3528,7 @@ export function ExpensesTab({
   myMemberId = null,
   onOpenNewMovement,
   focusWallet = null,
+  restore = null,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
@@ -3530,6 +3543,8 @@ export function ExpensesTab({
   onOpenNewMovement?: () => void
   /** Cartera que se debe mostrar elegida al abrir Movimientos (desde «Mis cuentas»). */
   focusWallet?: { id: string; n: number } | null
+  /** NAV-01: al volver de la compra vinculada o del bote, Movimientos recupera el filtro, la búsqueda y el movimiento que se estaba editando. */
+  restore?: MovementsRestore | null
 }) {
   // Piso compartido — solo tiene sentido elegir Individual/Común en modo
   // Separado; en Compartido no hay nada que separar (todo es una sola
@@ -3568,32 +3583,35 @@ export function ExpensesTab({
   // Resumen, Estadísticas, Banco y Presupuesto Generales, en vez de la
   // navegación ‹ Mes › propia de esta pantalla. Se ignora mientras haya
   // un `filter` activo (viene de "Ver X registros →" en Estadísticas).
-  const [preset, setPreset] = useDateFilterPreset()
-  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
-  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [preset, setPreset] = useDateFilterPreset(restore?.preset ?? null)
+  const [customFrom, setCustomFrom] = useState(restore?.customFrom ?? toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(restore?.customTo ?? toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  // ECO-03: hoja «Enlazar con bote» del movimiento abierto.
+  const [fundSheet, setFundSheet] = useState<{ expenseId: string; isIncome: boolean; bankTx: IncomingBankTx } | null>(null)
   // COR-04G: llegar desde una fila de estadística que es un movimiento: su ficha se abre sola (una vez por movimiento pedido).
   const openedExpenseRef = useRef<string | null>(null)
   useEffect(() => {
-    const id = filter?.openExpenseId
+    const id = filter?.openExpenseId ?? restore?.expenseId
     if (id && openedExpenseRef.current !== id) {
       openedExpenseRef.current = id
       setEditingId(id)
     }
-  }, [filter?.openExpenseId])
+  }, [filter?.openExpenseId, restore?.expenseId])
   // Petición real: "para Piso compartido/cuentas separadas primero hay
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
-  const [categoryFilterValue, setCategoryFilterValue] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<MovementTypeFilter>(restore?.typeFilter ?? 'todos')
+  const [categoryFilterValue, setCategoryFilterValue] = useState(restore?.categoryFilterValue ?? '')
+  const [searchQuery, setSearchQuery] = useState(restore?.searchQuery ?? '')
   // Base para "Piso compartido/cuentas separadas": poder ver solo la
   // cuenta de uno (o la común), no todas mezcladas — mismo dato
   // (expenseAccountId) que ya usa el avatar de cada fila, ahora también
   // como filtro. null = todas las cuentas.
-  const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(restore?.activeAccountId ?? null)
   // Carteras de efectivo (opcionales). cashView: null = todos los movimientos; CASH_WITHOUT_WALLET = efectivo sin cartera; otro valor = id de cartera.
   // Es el mismo patrón que activeAccountId (tocar la tarjeta filtra), y los dos filtros no se combinan: una cuenta bancaria o una cartera.
   const [wallets, setWallets] = useState<CashWallet[]>([])
@@ -3649,6 +3667,23 @@ export function ExpensesTab({
   }
 
   useEffect(reload, [])
+
+  // NAV-01: lo que Movimientos debe recuperar al volver de la compra vinculada o del bote (mismo movimiento abierto, mismos filtros y búsqueda).
+  function restoreStateFor(expenseId: string): MovementsRestore {
+    return { expenseId, preset, customFrom, customTo, typeFilter, categoryFilterValue, searchQuery, activeAccountId }
+  }
+  // ECO-02: «Ver compra vinculada» abre ESA compra (por su identificador real) en Compras → Tickets; allí aparece «← Volver a Economía».
+  function openLinkedPurchase(expenseId: string, receiptId: string) {
+    setNavOrigin({ to: 'tickets', label: 'Economía', path: '/dinero', routeState: { restoreMovement: restoreStateFor(expenseId) } })
+    setPendingReceiptOpen({ receiptId })
+    navigate('/compras', { state: { tab: 'Tickets' } })
+  }
+  // ECO-03: el movimiento bancario que hay detrás de este movimiento (si lo hay) es lo que se enlaza con el bote.
+  function bankTxForLink(expenseId: string): IncomingBankTx | null {
+    const bt = bankTransactions.find((t) => t.matchedExpenseId === expenseId)
+    if (!bt || !bt.transactionDate) return null
+    return { id: bt.id, date: bt.transactionDate, amount: Math.abs(bt.amount), description: bt.description ?? null }
+  }
 
   // Fase 1D-g.2 — "🔮 Añadir a Previsión": identidad IDÉNTICA a la que usa el detector automático
   // (account_id + normalizeMerchantKey(description) + currency, nunca solo palabras compartidas), y
@@ -3918,6 +3953,9 @@ export function ExpensesTab({
       {cashNotice && <p className="points-badge">{cashNotice}</p>}
       {!filter && <OtrosReviewCard expenses={expenses} categories={categories} memberNames={members.map((m) => m.name)} onChanged={reload} />}
       {quickCategory.dialogs}
+      {fundSheet && (
+        <FundLinkSheet bankTx={fundSheet.bankTx} isIncome={fundSheet.isIncome} restoreMovement={restoreStateFor(fundSheet.expenseId) as unknown as Record<string, unknown>} onClose={() => setFundSheet(null)} />
+      )}
       {hasWithdrawalCategory && (
         <WithdrawalsToAssign withdrawals={withdrawalsPending} movements={cashMovements} wallets={wallets} myMemberId={myMemberId} onChanged={reload} onNotice={setCashNotice} />
       )}
@@ -4082,6 +4120,8 @@ export function ExpensesTab({
               onCancel={() => setEditingId(null)}
               onAddToForecast={expenseAccountId.has(e.id) ? () => handleAddToForecast(e) : undefined}
               addToForecastBusy={forecastBusyExpenseId === e.id}
+              onOpenLinkedPurchase={(receiptId) => openLinkedPurchase(e.id, receiptId)}
+              onLinkToFund={bankTxForLink(e.id) ? () => setFundSheet({ expenseId: e.id, isIncome: e.isIncome, bankTx: bankTxForLink(e.id)! }) : undefined}
             />
           ) : (
             <MovementRow
@@ -4364,6 +4404,10 @@ function MovementRow({
               >
                 <span className="movement-row-category-icon">{category?.icon}</span>
                 <span className="movement-row-category-name">{isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}</span>
+                {/* ECO-01: lápiz discreto: solo el nombre + este icono cambian la categoría; el resto de la tarjeta abre el editor completo. */}
+                <span className="movement-row-category-edit" aria-hidden="true">
+                  ✎
+                </span>
               </button>
             ) : (
               <span className="movement-row-category-btn movement-row-category-static">
@@ -4738,6 +4782,7 @@ function MovementFormFields({
   pendingCategoryLabel,
   suggestedCategory,
   purchaseLink = 'none',
+  onOpenLinkedPurchase,
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4751,6 +4796,8 @@ function MovementFormFields({
   // ECO-UI-04: 'linked' = hay una compra realmente vinculada al movimiento (con o sin foto del ticket) pero sin productos reales: se indica y se puede clasificar a mano;
   // 'linked-products' = la compra trae productos reales y su desglose manda: no se pide clasificación aquí (lo ya guardado se conserva).
   purchaseLink?: PurchaseLinkState
+  /** ECO-02: abre la compra vinculada (por su identificador real). Solo si se sabe cuál es y quien llama sabe abrirla. */
+  onOpenLinkedPurchase?: () => void
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4840,6 +4887,14 @@ function MovementFormFields({
       {purchaseLink !== 'none' && (
         <p className="muted" data-testid="movement-purchase-linked" style={{ margin: 0, fontSize: 13 }}>
           ✓ Compra vinculada
+          {onOpenLinkedPurchase && (
+            <>
+              {' · '}
+              <button type="button" className="link-button" data-testid="open-linked-purchase" style={{ padding: 0, fontSize: 13 }} onClick={onOpenLinkedPurchase}>
+                Ver compra vinculada
+              </button>
+            </>
+          )}
         </p>
       )}
       {classificationKind && purchaseLink !== 'linked-products' && (
@@ -4898,6 +4953,8 @@ function EditExpenseInline({
   onCancel,
   onAddToForecast,
   addToForecastBusy,
+  onOpenLinkedPurchase,
+  onLinkToFund,
 }: {
   expense: Expense
   categories: BudgetCategory[]
@@ -4913,6 +4970,10 @@ function EditExpenseInline({
   // falta su account_id real, ver ExpensesTab).
   onAddToForecast?: () => void
   addToForecastBusy?: boolean
+  /** ECO-02: abre la compra vinculada (recibe su identificador). Solo en Movimientos. */
+  onOpenLinkedPurchase?: (receiptId: string) => void
+  /** ECO-03: «Enlazar con bote». Solo cuando el movimiento viene de un movimiento bancario. */
+  onLinkToFund?: () => void
 }) {
   const [draft, setDraft] = useState<MovementDraft>(() => ({
     isIncome: expense.isIncome,
@@ -4936,18 +4997,30 @@ function EditExpenseInline({
   // anotada a mano sin foto) y sus líneas. Es la MISMA regla que usa Estadística compras para decidir si manda el desglose de productos. Un ingreso no tiene compra. Mientras se comprueba
   // (o si falla) se enseña el selector de siempre: nunca se oculta algo que se necesita por no saber todavía.
   const [purchaseLink, setPurchaseLink] = useState<PurchaseLinkState>('none')
+  const [linkedReceiptId, setLinkedReceiptId] = useState<string | null>(null)
   useEffect(() => {
     if (expense.isIncome) return
     let cancelled = false
-    listLinkedTicketProducts(expense.id)
-      .then((lines) => {
-        if (!cancelled) setPurchaseLink(purchaseLinkState(lines))
+    findLinkedPurchase(expense.id)
+      .then((purchase) => {
+        if (cancelled) return
+        setPurchaseLink(purchaseLinkState(purchase ? purchase.lines : null))
+        setLinkedReceiptId(purchase?.receiptId ?? null)
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [expense.id, expense.isIncome])
+
+  // Salir hacia otra pantalla (compra vinculada, bote) con cambios sin guardar en este formulario: se avisa, nunca se pierden en silencio.
+  const initialDraftRef = useRef(JSON.stringify(draft))
+  function leaveGuard(go: () => void): () => void {
+    return () => {
+      if (JSON.stringify(draft) !== initialDraftRef.current && !window.confirm('Tienes cambios sin guardar en este movimiento. ¿Salir sin guardarlos?')) return
+      go()
+    }
+  }
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
@@ -5009,13 +5082,26 @@ function EditExpenseInline({
         categories={categories}
         tags={tags}
         purchaseLink={purchaseLink}
+        onOpenLinkedPurchase={onOpenLinkedPurchase && linkedReceiptId ? leaveGuard(() => onOpenLinkedPurchase(linkedReceiptId)) : undefined}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
         suggestedCategory={expense.category == null ? expense.categorySuggestion : null}
       />
-      {onAddToForecast && (
-        <button type="button" className="link-button" style={{ margin: '4px 0 0' }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
-          {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
-        </button>
+      {(onAddToForecast || onLinkToFund) && (
+        // ECO-03: fila al pie del editor, justo antes de Guardar/Cancelar: «Añadir a Previsión» a la izquierda y «Enlazar con bote» a la derecha.
+        <div data-testid="movement-extra-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '4px 0 0' }}>
+          {onAddToForecast ? (
+            <button type="button" className="link-button" style={{ margin: 0 }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
+              {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
+            </button>
+          ) : (
+            <span />
+          )}
+          {onLinkToFund && (
+            <button type="button" className="link-button" style={{ margin: 0 }} data-testid="link-to-fund" onClick={onLinkToFund}>
+              Enlazar con bote
+            </button>
+          )}
+        </div>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
@@ -5656,9 +5742,11 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void; onOpenProduct?: (product: { productId: string; name: string }) => void } = {}) {
+export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistory?: (back: NonNullable<PendingReceiptOpen['back']>) => void; onOpenProduct?: (product: { productId: string; name: string }) => void } = {}) {
   // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
   const [openTarget] = useState(() => takePendingReceiptOpen())
+  // NAV-01: compra abierta desde un movimiento de Economía («Ver compra vinculada») → «← Volver a Economía».
+  const { bar: ticketsReturnBar } = useNavOrigin('tickets')
   const [focusId, setFocusId] = useState<string | null>(null)
   const [targetMissing, setTargetMissing] = useState(false)
   const [receipts, setReceipts] = useState<Receipt[]>([])
@@ -5838,10 +5926,11 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      {openTarget && onBackToHistory && (
+      {ticketsReturnBar}
+      {openTarget?.back && onBackToHistory && (
         // COR-04F: barra que se queda PEGADA arriba mientras se hace scroll (la compra se centra en pantalla al llegar y el botón, al principio de la página, quedaba fuera de vista).
         <div className="receipt-back-bar" data-testid="receipt-back-bar">
-          <button type="button" onClick={() => onBackToHistory(openTarget.back)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
+          <button type="button" onClick={() => onBackToHistory(openTarget.back!)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
             ← Volver a Historial de precios
           </button>
           <span className="muted" style={{ fontSize: 12 }}>{openTarget.back.productName}</span>

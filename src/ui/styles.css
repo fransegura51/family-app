@@ -9298,6 +9298,18 @@ input[type='search'] {
   flex: none;
 }
 
+.movement-row-category-btn .movement-row-category-name {
+  /* ECO-01: subrayado discreto = «esto se puede tocar»; sin cambiar alturas ni colores de la tarjeta */
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.movement-row-category-edit {
+  flex: none;
+  font-size: 0.72em;
+  opacity: 0.55;
+  align-self: center;
+}
 .movement-row-category-name {
   min-width: 0;
   overflow: hidden;

@@ -4,7 +4,7 @@
 export interface PendingReceiptOpen {
   receiptId: string
   /** Para volver a la ficha del producto de la que se salió (y, si venía de Estadística compras, seguir devolviendo allí al cerrarla). */
-  back: { productId: string; productName: string; kind: 'alimentacion' | 'no_alimentos'; scrollY: number; fromStats: boolean; scope: 'identical' | 'equivalent' }
+  back?: { productId: string; productName: string; kind: 'alimentacion' | 'no_alimentos'; scrollY: number; fromStats: boolean; scope: 'identical' | 'equivalent' }
 }
 
 let pending: PendingReceiptOpen | null = null

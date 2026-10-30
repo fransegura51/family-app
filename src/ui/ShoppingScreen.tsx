@@ -272,7 +272,7 @@ export function ShoppingScreen() {
   }
 
   // COR-04C: de «Ver ticket / Ver compra» de la ficha de un producto, de vuelta a esa ficha (misma posición, mismo origen).
-  function handleBackToHistory(back: PendingReceiptOpen['back']) {
+  function handleBackToHistory(back: NonNullable<PendingReceiptOpen['back']>) {
     setPendingProductHistoryLink({ productId: back.productId, productName: back.productName, openSheet: { kind: back.kind, fromStats: back.fromStats, scrollY: back.scrollY, scope: back.scope } })
     setTab('Historial')
   }

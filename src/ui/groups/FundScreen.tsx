@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatDate, formatDateFromTimestamp } from '@/domain/dateFormat'
 import { Link, useNavigate } from 'react-router-dom'
 import { groupsErrorMessage, listParticipants, loadGroup } from '@/data/groups'
-import { addMembers, deleteEmptyFund, loadFund, markNoticeReviewed, reopenFund, setMembersState, type FundDetail } from '@/data/groupFunds'
+import { addMembers, deleteEmptyFund, loadFund, markNoticeReviewed, reopenFund, setMembersState, type FundDetail, type IncomingBankTx } from '@/data/groupFunds'
+import { takePendingFundEntry } from '@/state/pendingFundEntry'
+import { useNavOrigin } from '@/ui/ReturnBar'
 import {
   CONTRIBUTION_LABEL,
   ENTRY_KIND_LABEL,
@@ -30,7 +32,7 @@ import '@/ui/groups/groups.css'
 type NewKind = Exclude<EntryKind, 'traspaso_in' | 'traspaso_out'>
 type Sheet =
   | { t: 'menu' }
-  | { t: 'new'; kind: NewKind; preselect?: string[] }
+  | { t: 'new'; kind: NewKind; preselect?: string[]; bankTx?: IncomingBankTx }
   | { t: 'entry'; id: string }
   | { t: 'person'; id: string }
   | { t: 'report' }
@@ -44,6 +46,8 @@ type Filter = 'todos' | 'pendientes' | 'pagados' | 'exentos'
 
 export function FundScreen({ groupId, fundId }: { groupId: string; fundId: string }) {
   const navigate = useNavigate()
+  // NAV-01: si se llegó desde un movimiento de Economía («Enlazar con bote»), barra «← Volver a Economía».
+  const { bar: returnBar } = useNavOrigin('bote')
   const [detail, setDetail] = useState<FundDetail | null | undefined>(undefined)
   const [group, setGroup] = useState<GroupItem | null>(null)
   const [people, setPeople] = useState<Participant[]>([])
@@ -71,6 +75,12 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
   useEffect(() => {
     void reload()
   }, [reload])
+  // ECO-03: el bote elegido en «Enlazar con bote» abre, una sola vez, el MISMO formulario de apunte de siempre con los datos del movimiento bancario.
+  useEffect(() => {
+    if (!detail) return
+    const pending = takePendingFundEntry(fundId)
+    if (pending && detail.fund.status === 'abierto' && !detail.fund.readonlyHistory) setSheet({ t: 'new', kind: pending.kind, bankTx: pending.bankTx })
+  }, [detail?.fund.id, fundId]) // eslint-disable-line react-hooks/exhaustive-deps
   useRealtimeRefresh(['group_funds', 'fund_members', 'fund_entries', 'fund_entry_allocations', 'fund_payment_notices', 'group_participants'], reload, { paused: sheet !== null })
 
   const summary = useMemo(() => {
@@ -176,6 +186,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
   return (
     <NamePrefsProvider participants={people} prefs={prefs}>
     <div className="screen grp-screen">
+      {returnBar}
       <SectionBreadcrumb subsection={[{ label: 'Inicio', to: '/grupos' }, { label: group.name, to: `/grupos/${group.id}` }, { label: fund.name }]} />
       {error && <p className="error">{error}</p>}
       <h2 className="grp-title">{fund.name}</h2>
@@ -444,7 +455,7 @@ export function FundScreen({ groupId, fundId }: { groupId: string; fundId: strin
           </div>
         </GroupSheet>
       )}
-      {sheet?.t === 'new' && <EntrySheet ctx={ctx} kind={sheet.kind} preselect={sheet.preselect} onClose={() => setSheet(null)} onSaved={() => (setSheet(null), void reload())} />}
+      {sheet?.t === 'new' && <EntrySheet ctx={ctx} kind={sheet.kind} preselect={sheet.preselect} bankTx={sheet.bankTx} onClose={() => setSheet(null)} onSaved={() => (setSheet(null), void reload())} />}
       {entrySheetFor && <EntryDetailSheet ctx={ctx} entry={entrySheetFor} writable={writable} allocations={allocsByEntry.get(entrySheetFor.id) ?? []} onClose={() => setSheet(null)} onSaved={() => (setSheet(null), void reload())} />}
       {personSheetFor && (
         <ParticipantFundSheet

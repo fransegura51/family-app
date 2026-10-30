@@ -6,15 +6,10 @@ import {
   EDITORIAL_TEXT,
   RUN_STATUS_TEXT,
   aiLine,
-  buildProgram,
-  dayShort,
   draftsLine,
   formatMadridSlot,
   generateErrorText,
   generateResultText,
-  itemStatusText,
-  madridTodayIso,
-  mondayOf,
   nextRunLines,
   runErrorText,
   runSummary,
@@ -28,6 +23,7 @@ import {
 } from '@/domain/communityEditorial'
 import { ActionNotice, AdminEmpty, AdminError, AdminLoading, InfoBox } from '@/ui/community/admin/AdminShared'
 import { useAdminData } from '@/ui/community/admin/useAdminData'
+import { ProgramWeek } from '@/ui/community/admin/editorial/ProgramAgenda'
 
 // «Generación semanal»: el programa editorial con IA (7 artículos, 1 encuesta y 1 menú por semana). Cada tipo tiene su propio interruptor, su próxima ejecución, su
 // última ejecución, sus borradores y su «Generar ahora». NADA de aquí publica: generar solo crea borradores que una persona revisa y aprueba en las tarjetas de abajo.
@@ -339,97 +335,6 @@ function RunsHistory() {
           ))}
         </ul>
       )}
-    </div>
-  )
-}
-
-// ---- Programa de la semana: día a día, con el artículo, la encuesta del sábado y el menú, y «Revisar» en cada uno.
-export function ProgramWeek({
-  items,
-  loading,
-  error,
-  onReload,
-  onReview,
-  currentMonday,
-}: {
-  items: EditorialItemRow[] | null
-  loading: boolean
-  error: string | null
-  onReload: () => void
-  onReview: (item: EditorialItemRow) => void
-  currentMonday: string | null
-}) {
-  const [showPast, setShowPast] = useState(false)
-  const from = showPast ? null : (currentMonday ?? mondayOf(madridTodayIso()))
-  const weeks = buildProgram(items ?? [], from)
-
-  return (
-    <section className="cadm-stack" aria-labelledby="cadm-program-title" data-help-id="comunidad.editorial-program">
-      <h3 id="cadm-program-title">Programa de la semana</h3>
-      <p className="muted cadm-small">Los borradores preparados para cada día. «Revisar» abre ese elemento justo debajo, en las tarjetas de «Consejos, encuestas y artículos» (o en el menú semanal), para leerlo, rectificarlo con Pepa, editarlo, aprobarlo o rechazarlo.</p>
-      {loading && !items && <AdminLoading label="Cargando el programa…" />}
-      {error && <AdminError message={error} onRetry={onReload} />}
-      {items && weeks.length === 0 && <AdminEmpty>Todavía no hay borradores en el programa. Cuando Pepa los prepare (o pulses «Generar ahora») aparecerán aquí.</AdminEmpty>}
-      {weeks.map((w) => (
-        <div key={w.monday} className="cadm-card cadm-week" aria-label={w.title}>
-          <h4>{w.title}</h4>
-          <table className="cadm-program">
-            <thead>
-              <tr>
-                <th scope="col">Día</th>
-                <th scope="col">Contenido</th>
-              </tr>
-            </thead>
-            <tbody>
-              {w.days.map((d) => (
-                <tr key={d.date}>
-                  <th scope="row">{dayShort(d.date)}</th>
-                  <td>
-                    {d.articles.length === 0 && d.polls.length === 0 && <span className="muted cadm-small">Sin borrador de artículo</span>}
-                    {d.articles.map((a) => (
-                      <ProgramItem key={a.id} item={a} label="Artículo" onReview={onReview} />
-                    ))}
-                    {d.polls.map((a) => (
-                      <ProgramItem key={a.id} item={a} label="Encuesta" onReview={onReview} />
-                    ))}
-                  </td>
-                </tr>
-              ))}
-              <tr>
-                <th scope="row">Menú semanal</th>
-                <td>
-                  {w.menus.length === 0 && <span className="muted cadm-small">Sin borrador de menú</span>}
-                  {w.menus.map((m) => (
-                    <ProgramItem key={m.id} item={m} label="Menú" onReview={onReview} />
-                  ))}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      ))}
-      <div className="cadm-actions">
-        <button type="button" className="cadm-btn cadm-btn-ghost" onClick={() => setShowPast((v) => !v)}>
-          {showPast ? 'Ocultar semanas pasadas' : 'Ver también semanas pasadas'}
-        </button>
-      </div>
-    </section>
-  )
-}
-
-function ProgramItem({ item, label, onReview }: { item: EditorialItemRow; label: string; onReview: (item: EditorialItemRow) => void }) {
-  return (
-    <div className="cadm-program-item">
-      <p className="cadm-small">
-        <strong>{label}:</strong> {item.title}
-        {item.topicLabel ? ` · ${item.topicLabel}` : ''}
-      </p>
-      <p className="cadm-small">
-        <span className={`cadm-chip ${item.status === 'proposed' ? '' : item.publishError ? 'cadm-chip-warn' : 'cadm-chip-ok'}`}>{itemStatusText(item)}</span>
-      </p>
-      <button type="button" className="cadm-btn cadm-btn-secondary" aria-label={`Revisar ${label.toLowerCase()}: ${item.title}`} onClick={() => onReview(item)} data-help-id="comunidad.editorial-review">
-        Revisar
-      </button>
     </div>
   )
 }

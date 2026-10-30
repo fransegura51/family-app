@@ -462,7 +462,7 @@ export const CARDS_OTROS: HelpCard[] = [
       'Abre el Centro de Administración → Comunidad → Contenido oficial y entra en «Programación y configuración».',
       'En «Generación semanal», activa o pausa cada tipo con su interruptor; los tres empiezan en pausa.',
       'Mira la próxima ejecución, la última y los borradores de la semana; «Generar ahora» prepara borradores al momento, tras pedir confirmación.',
-      'En «Programa de la semana», cada día enseña su contenido con su estado real; pulsa «Revisar» para abrirlo en su detalle y leerlo, rectificarlo, aprobarlo o rechazarlo. El historial de ejecuciones y los errores están en «Historial y errores».',
+      'En «Programa de la semana» verás una agenda compacta ordenada por fecha y hora: el menú del sábado anterior primero, luego un artículo por día y la encuesta del sábado (con su cierre el domingo). Cada fila lleva un indicador de estado; pulsa la fila para abrir su detalle y leerlo, rectificarlo, aprobarlo o rechazarlo, y vuelve con «Volver a la lista». Las flechas de la cabecera cambian de semana. El historial de ejecuciones y los errores están en «Historial y errores».',
     ],
     more: 'Un artículo del programa se aprueba y queda programado para su día a las 10:00 (hora de Madrid); se puede reprogramar. Aparte hay un control «Publicar a su hora el menú ya aprobado»: decide si un menú que ya has aprobado sale solo el sábado a las 10:00; es independiente de la generación y al activarlo pide confirmación. El programa semanal se actualiza a la vez que las listas y los contadores cada vez que apruebas, rechazas, editas o reprogramas algo.',
     state: 'parcial',
@@ -472,7 +472,7 @@ export const CARDS_OTROS: HelpCard[] = [
     go: { path: '/administracion', dest: 'admin.comunidad-oficial' },
     tour: 'tut-comunidad-admin-generacion',
     featureId: 'comunidad-editorial',
-    labels: ['Programación y configuración', 'Generación semanal', 'Generar ahora', 'Programa de la semana', 'Revisar', 'Publicar a su hora el menú ya aprobado'],
+    labels: ['Programación y configuración', 'Generación semanal', 'Generar ahora', 'Programa de la semana', 'Publicar a su hora el menú ya aprobado'],
     verified: W,
   },
   {

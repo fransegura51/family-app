@@ -194,14 +194,14 @@ export const comunidadAdminGeneracion: TourDef = {
     },
     {
       id: 'programa',
-      text: 'El «Programa de la semana» enseña cada día con su artículo, la encuesta del sábado y el menú, con su estado real: borrador, aprobado y programado a las 10:00, publicado o con error. Se actualiza solo cuando apruebas, rechazas o editas algo.',
+      text: 'El «Programa de la semana» es una agenda por fechas y horas: el menú del sábado anterior primero, luego un artículo por día y la encuesta, cada uno con un indicador de su estado real. Las flechas de arriba cambian de semana. Se actualiza solo al aprobar, rechazar o editar.',
       target: 'comunidad.editorial-program',
       completeOn: [],
       manualNext: true,
     },
     {
       id: 'revisar',
-      text: '«Revisar» abre ese elemento en su detalle, para leerlo, rectificarlo, editarlo, aprobarlo o rechazarlo. Aprobar un artículo del programa lo programa para su día; no lo publica al momento.',
+      text: 'Pulsar una fila abre ese elemento en su detalle, para leerlo, rectificarlo, editarlo, aprobarlo o rechazarlo. Aprobar un artículo del programa lo programa para su día; no lo publica al momento.',
       target: 'comunidad.editorial-review',
       completeOn: [],
       manualNext: true,

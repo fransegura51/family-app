@@ -1,0 +1,38 @@
+/* Agenda editorial compacta («Programa de la semana»). Primero iPhone (375 px): filas de una línea, sin desplazamiento horizontal, superficie táctil de 48 px. */
+.cadm-agenda { padding: 10px 12px; }
+.cadm-ag-head { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 4px; }
+.cadm-ag-headtext { text-align: center; min-width: 0; }
+.cadm-ag-headtext h4 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.cadm-ag-headtext p { margin: 2px 0 0; }
+.cadm-ag-nav { min-width: 44px; min-height: 44px; border: 1px solid var(--border, #d8dce6); border-radius: 10px; background: var(--card, #fff); color: #1f2330; font-size: 1.5rem; line-height: 1; cursor: pointer; }
+.cadm-ag-nav:disabled { opacity: .35; cursor: default; }
+.cadm-ag-today { align-self: center; min-height: 44px; }
+
+.cadm-ag-days { margin-top: 6px; }
+.cadm-ag-day { display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: 4px; padding: 2px 0; border-top: 1px solid var(--border, #e3e6ee); }
+.cadm-ag-daylabel { margin: 0; padding-top: 14px; font-size: .85rem; font-weight: 700; white-space: nowrap; }
+.cadm-ag-rows { margin: 0; padding: 0; list-style: none; min-width: 0; }
+.cadm-ag-row + .cadm-ag-row { border-top: 1px solid var(--border, #eceef4); }
+.cadm-ag-btn { display: grid; grid-template-columns: 22px minmax(0, 1fr) 22px 12px; align-items: center; gap: 8px; width: 100%; min-height: 48px; padding: 6px 2px; border: 0; background: transparent; color: #1f2330; font: inherit; text-align: left; cursor: pointer; }
+.cadm-ag-icon { font-size: 1rem; text-align: center; opacity: .85; }
+.cadm-ag-main { display: flex; flex-direction: column; min-width: 0; }
+.cadm-ag-title { font-size: .92rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cadm-ag-meta { font-size: .78rem; color: #5b6275; margin-top: 1px; overflow-wrap: anywhere; }
+.cadm-ag-go { color: #8a90a2; font-size: 1.2rem; text-align: right; }
+
+.cadm-ag-state { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: .72rem; font-weight: 700; line-height: 1; border: 1.5px solid currentColor; box-sizing: border-box; }
+.cadm-ag-state-proposed { color: #b26a00; background: #fff4e0; }
+.cadm-ag-state-approved { color: #1f7a3d; background: #e6f6ec; }
+.cadm-ag-state-published { color: #fff; background: #3b4a8f; border-color: #3b4a8f; }
+.cadm-ag-state-rejected { color: #6b7280; background: #eef0f3; }
+.cadm-ag-state-error { color: #fff; background: #c0392b; border-color: #c0392b; }
+
+.cadm-ag-missing { margin: 6px 0 0; }
+.cadm-ag-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0 0; }
+.cadm-ag-legenditem { white-space: nowrap; }
+
+@media (min-width: 720px) {
+  .cadm-agenda { padding: 14px 18px; }
+  .cadm-ag-day { grid-template-columns: 6rem minmax(0, 1fr); }
+  .cadm-ag-title { font-size: 1rem; }
+}

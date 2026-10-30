@@ -132,11 +132,8 @@ function CenterBody({ onChanged }: { onChanged: () => void }) {
     }
   }, [openId, reg.data, known, ensure])
 
-  // «Revisar» del programa semanal y las tarjetas del Resumen abren ESE elemento en su gestor.
-  const review = (item: EditorialItemRow) => {
-    go(sectionOfKind(item.kind))
-    open(item.id)
-  }
+  // Pulsar una fila del programa semanal abre ESE elemento en su detalle SIN cambiar de sección: «Volver a la lista» regresa al calendario, en la misma semana y posición.
+  const review = (item: EditorialItemRow) => open(item.id)
   const jump = (target: 'articulos' | 'encuestas' | 'menus', status: ProposalStatus) => {
     if (status === 'rejected' || status === 'published') reg.ensure(status)
     setLists((l) => ({ ...l, [target]: { ...INITIAL_LIST, status } }))

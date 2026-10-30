@@ -159,7 +159,8 @@ describe('acceso discreto en cada línea del ticket', () => {
   })
   it('con una compra anterior propone el mismo formato y pide confirmarlo', () => {
     const onPack = vi.fn()
-    render(<LineFormatControl line={{ name: 'Cerveza Estrella', unit: 'ud', unitPrice: '5.00', quantity: '1' }} history={[{ price: 4.95, pack: { count: 6, amount: 330, unit: 'ml', source: 'manual' }, recordedDate: '2026-09-01' }]} onPack={onPack} />)
+    render(<LineFormatControl line={{ name: 'Cerveza Estrella', unit: 'ud', unitPrice: '6.20', quantity: '1' }} history={[{ price: 4.95, pack: { count: 6, amount: 330, unit: 'ml', source: 'manual' }, recordedDate: '2026-09-01' }]} onPack={onPack} />)
+    // (con casi el mismo precio que la compra anterior indicada a mano el formato se recuerda solo y no se pregunta; con +25 % sí se pide confirmar)
     fireEvent.click(screen.getByRole('button', { name: /Formato del envase/ }))
     expect(screen.getByText(/La última vez indicaste 6 × 330 ml = 1,98 l\. ¿Es el mismo\?/)).toBeTruthy()
     expect((screen.getByLabelText('Cantidad de cada envase') as HTMLInputElement).value).toBe('330')

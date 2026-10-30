@@ -189,7 +189,7 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setPriceLinePack, setProductCatalogKey, setProductEan, setProductNonFood } from '@/data/products'
+import { ensureProductId, listAllProductPrices, listProducts, setPriceLinePack, setProductCatalogKey, setProductEan, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
 import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
@@ -6584,6 +6584,7 @@ function ReceiptRow({
               <div data-testid="receipt-difference" style={{ marginTop: 6 }}>
                 {(receipt.discountTotal ?? 0) > 0 && (
                   <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                    {diff.kind === 'ok' && <>✓ Compra cuadrada: {fmt(diff.linesTotal)} − {fmt(diff.discount)} = {fmt(diff.total)}. </>}
                     🏷️ Descuento general registrado: −{fmt(receipt.discountTotal ?? 0)} (los precios de los productos son los originales).{' '}
                     <button type="button" className="link-button" disabled={discountBusy} onClick={() => void saveDiscount(0)}>
                       Quitar descuento
@@ -6659,6 +6660,8 @@ interface DraftLine {
   pack?: PackFormat | null
   // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
   ean?: string
+  // COMP-05: al editar una compra, la línea guardada (product_prices.id): su formato se puede guardar al momento sin pulsar «Guardar».
+  priceId?: string
   // Producto del catálogo maestro que la familia confirmó o corrigió en esta revisión (se guarda en el producto al guardar el ticket).
   catalogProductKey?: string
 }
@@ -6878,7 +6881,8 @@ function ReceiptForm({
   }
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
-  const [discountTotal, setDiscountTotal] = useState(0)
+  // COMP-01: al editar, el descuento YA registrado en la compra cuenta en la comprobación de importes (antes arrancaba en 0 y avisaba de una diferencia que ya estaba explicada).
+  const [discountTotal, setDiscountTotal] = useState(mode === 'edit' ? (receipt?.discountTotal ?? 0) : 0)
   const uploadedReceiptId = useRef<string | null>(null)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
@@ -7027,7 +7031,7 @@ function ReceiptForm({
         setLines(
           // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
           // nada, a diferencia de antes.
-          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), ...(l.pack ? { pack: l.pack } : {}) })),
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), priceId: l.id, ...(l.pack ? { pack: l.pack } : {}) })),
         ),
       )
       .catch(() => {})
@@ -7066,6 +7070,49 @@ function ReceiptForm({
 
   function updateLine(index: number, patch: Partial<DraftLine>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
+  }
+
+  // COMP-05: lo que se decide sobre un PRODUCTO (su clase, su identidad del catálogo, el formato de una compra ya guardada) se guarda al momento, sin esperar a «Guardar compra»:
+  // si se cierra la ventana o se sale sin guardar, el producto ya no vuelve a aparecer pendiente. Los importes, pesos y cantidades de ESTA compra siguen siendo de esta compra
+  // y solo se guardan con ella. El marcador «Pendiente» nunca se clasifica.
+  const [productSaveNote, setProductSaveNote] = useState<string | null>(null)
+  // Cambios de ESTA compra sin guardar (importes, líneas, fecha, tienda): al cancelar se pregunta; lo decidido sobre los productos ya está guardado.
+  const formSnapshot = JSON.stringify([store, receiptDate, totalAmount, category, lines.map((l) => [l.name, l.quantity, l.unit, l.unitPrice])])
+  const baselineRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode === 'edit' && !loadingLines && baselineRef.current === null) baselineRef.current = formSnapshot
+  }, [mode, loadingLines, formSnapshot])
+  const formDirty = mode === 'edit' && baselineRef.current !== null && baselineRef.current !== formSnapshot
+  const [leaveAsk, setLeaveAsk] = useState(false)
+  async function persistProduct(lineName: string, change: { classOverride?: { kind: FoodTypeKind; classification: string } | null; catalogKey?: string | null }) {
+    const name = lineName.trim()
+    if (!name || isPlaceholderProduct({ displayName: name, normalizedName: name })) return
+    try {
+      const productId = productByNormalizedName.get(normalizeProductName(name))?.id ?? (await ensureProductId(name))
+      await Promise.all([
+        ...(change.classOverride !== undefined ? [setProductFoodType(productId, change.classOverride?.classification ?? null, change.classOverride?.kind)] : []),
+        ...(change.catalogKey !== undefined ? [setProductCatalogKey(productId, change.catalogKey)] : []),
+      ])
+      setAllProducts(await listProducts())
+      setProductSaveNote('Guardado en el producto')
+      window.setTimeout(() => setProductSaveNote(null), 2500)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el cambio del producto'))
+    }
+  }
+  function commitClass(index: number, next: DraftLine['classOverride']) {
+    updateLine(index, { classOverride: next })
+    void persistProduct(lines[index]?.name ?? '', { classOverride: next ?? null })
+  }
+  function commitIdentity(index: number, key: string, classOverride: DraftLine['classOverride']) {
+    updateLine(index, { catalogProductKey: key, classOverride })
+    void persistProduct(lines[index]?.name ?? '', { catalogKey: key, ...(classOverride ? { classOverride } : {}) })
+  }
+  function commitPack(index: number, pack: PackFormat | null | undefined) {
+    updateLine(index, { pack })
+    const priceId = lines[index]?.priceId
+    // Solo una línea ya guardada tiene dónde persistir el formato; en una compra nueva se guarda con la compra y se recuerda de ahí en adelante.
+    if (priceId && pack !== undefined) void setPriceLinePack(priceId, pack).then(() => listAllProductPrices().then(setAllPrices)).catch((err) => setError(errorMessage(err, 'No se pudo guardar el formato')))
   }
 
   function removeLine(index: number) {
@@ -7485,6 +7532,11 @@ function ReceiptForm({
               onOpen={(i) => toggleLine(i, true)}
             />
           )}
+          {productSaveNote && (
+            <p className="muted" role="status" style={{ fontSize: 12, margin: '2px 0' }}>
+              ✓ {productSaveNote}
+            </p>
+          )}
           {lines.map((line, i) => {
             const resolved = resolveDraftLineClass(
               line,
@@ -7511,7 +7563,7 @@ function ReceiptForm({
               return (
                 <div key={i} className={'receipt-line-card receipt-line-compact' + (needsCheck ? ' receipt-line-attention' : '')} data-line-index={i} data-line-compact="true">
                   <div className="receipt-line-row">
-                    <ReceiptLineClassPicker resolved={resolved} foodTypesByKind={foodTypesByKind} onChange={(next) => updateLine(i, { classOverride: next })} />
+                    <ReceiptLineClassPicker resolved={resolved} foodTypesByKind={foodTypesByKind} onChange={(next) => commitClass(i, next)} />
                     <button type="button" className="receipt-line-summary" aria-expanded={false} aria-label={`Editar ${line.name}`} onClick={() => toggleLine(i, true)}>
                       <span className="receipt-line-summary-name">{line.name}</span>
                       <span className="receipt-line-summary-amount">
@@ -7530,7 +7582,7 @@ function ReceiptForm({
                   <ReceiptLineClassPicker
                     resolved={resolved}
                     foodTypesByKind={foodTypesByKind}
-                    onChange={(next) => updateLine(i, { classOverride: next })}
+                    onChange={(next) => commitClass(i, next)}
                   />
                   <input
                     type="text"
@@ -7597,17 +7649,21 @@ function ReceiptForm({
                   onChoose={(key) => {
                     // «Es correcto» confirma lo que ya se enseña. Cambiar de producto o de variante cambia lo que es: su categoría sigue a la nueva identidad (la de la familia que corresponde a la
                     // clase del catálogo), se ve al instante en el símbolo y se guarda con el producto, de modo que Compras, Economía y el Comparador leen la misma.
-                    if (key === reading.entryKey) return updateLine(i, { catalogProductKey: key })
+                    if (key === reading.entryKey) {
+                      updateLine(i, { catalogProductKey: key })
+                      void persistProduct(line.name, { catalogKey: key })
+                      return
+                    }
                     const classKey = catalogHitByKey(key)?.classKey
                     const own = classKey ? familyClassForCatalogClass([...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos], classKey) : undefined
-                    updateLine(i, { catalogProductKey: key, classOverride: own ? { kind: own.kind, classification: own.name } : undefined })
+                    commitIdentity(i, key, own ? { kind: own.kind, classification: own.name } : undefined)
                   }}
                   onRequestProduct={requestProduct ? (searched) => requestProduct({ raw: line.name, searched, classLabel: resolved.classification }) : undefined}
                 />
                 <LineFormatControl
                   line={line}
                   history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
-                  onPack={(pack) => updateLine(i, { pack })}
+                  onPack={(pack) => commitPack(i, pack)}
                   onReading={(reading) => {
                     const ean = eanHint(reading)
                     if (ean) updateLine(i, { ean })
@@ -7624,7 +7680,7 @@ function ReceiptForm({
               prices={allPrices}
               productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
               commonOf={commonOf}
-              onPack={(i, pack) => updateLine(i, { pack })}
+              onPack={(i, pack) => commitPack(i, pack)}
               onReading={(i, reading) => {
                 const ean = eanHint(reading)
                 if (ean) updateLine(i, { ean })
@@ -7688,12 +7744,25 @@ function ReceiptForm({
       {requestFor && SUPPORT_ENABLED && <ProductRequestSheet context={requestFor} onClose={() => setRequestFor(null)} />}
       {shortfall && createPortal(<ShortfallDialog notice={shortfall.notice} walletName={shortfall.walletName} onChoose={(c) => shortfall.resolve(c)} onAddCash={(add) => shortfall.resolve({ add })} />, document.body)}
       {error && <p className="error">{error}</p>}
+      {leaveAsk && (
+        <div className="receipt-line-card" role="alert" data-testid="leave-confirm">
+          <p style={{ margin: '0 0 6px' }}>Hay cambios de esta compra sin guardar. Lo que decidiste sobre cada producto (clase, identidad, formato de una compra ya guardada) ya está guardado.</p>
+          <div className="form-actions">
+            <button type="button" onClick={() => setLeaveAsk(false)}>
+              Seguir editando
+            </button>
+            <button type="button" className="link-button" onClick={() => onCancel?.()}>
+              Salir sin guardar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="form-actions">
         <button type="submit" disabled={saving} {...(mode === 'add' ? { 'data-help-id': 'shopping.receipt-save' } : {})}>
           {saving ? 'Guardando…' : mode === 'add' ? (noTicket ? 'Guardar compra' : attachTo ? 'Añadir ticket' : 'Guardar ticket') : 'Guardar'}
         </button>
         {mode === 'edit' && (
-          <button type="button" className="link-button" onClick={onCancel}>
+          <button type="button" className="link-button" onClick={() => (formDirty ? setLeaveAsk(true) : onCancel?.())}>
             Cancelar
           </button>
         )}

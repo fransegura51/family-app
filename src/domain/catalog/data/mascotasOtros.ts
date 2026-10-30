@@ -56,7 +56,7 @@ mue.almacenaje | Muebles de almacenaje | mue | mueble almacenaje; zapatero; como
 # Manualidades y creatividad (COR-06): actividades creativas con niños; los juegos educativos siguen siendo juguetes y los colorantes de cocina, comida
 man.kit | Kits de manualidades y experimentos | man | kit manualidades; kit experimentos; kit creativo; tubos ensayo; kit ciencia; actividades creativas; manualidades infantiles | u
 # Electrónica, jardín y otros
-~elec.otros | Electrónica | elec | cargador; cable; auriculares; usb; pendrive; memoria; adaptador; altavoz; movil; funda movil; protector pantalla; bateria; regleta; alargador; enchufe; ladron | u
+~elec.otros | Electrónica | elec | tecnologia; informatica; ethernet; cable red; cargador; cable; auriculares; usb; pendrive; memoria; adaptador; altavoz; movil; funda movil; protector pantalla; bateria; regleta; alargador; enchufe; ladron | u
 jard.tierra | Tierra y abono | jard | tierra; sustrato; abono; fertilizante; turba; compost; mantillo; tierra macetas | k
 jard.maceta | Macetas | jard | maceta; macetero; jardinera; maceteros; tiesto | u
 jard.semillas | Semillas y plantas | jard | semilla huerto; bulbo; planta; plantas; flor; flores; ramo; ramo flores; orquidea; cactus; suculenta; rosal; geranio | u

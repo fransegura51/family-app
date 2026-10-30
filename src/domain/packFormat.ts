@@ -52,6 +52,8 @@ export type FormatStatus =
 /** Un precio parecido (±40 %) al de la compra anterior es la misma presentación; muy distinto sugiere otro formato (pack de 6 frente a pack de 12). */
 const SIMILAR_PRICE_LOW = 0.6
 const SIMILAR_PRICE_HIGH = 1.6
+const MANUAL_SAME_LOW = 0.85
+const MANUAL_SAME_HIGH = 1 / 0.85
 
 export function formatStatus(line: { name: string; unit: string | null; price: number }, history: readonly PackHistoryLine[]): FormatStatus {
   if (normalizeMeasurementUnit(line.unit) === 'kg') return { kind: 'peso' }
@@ -64,7 +66,9 @@ export function formatStatus(line: { name: string; unit: string | null; price: n
   const latest = known[0]
   const ratio = latest.price > 0 ? line.price / latest.price : NaN
   if (!(ratio >= SIMILAR_PRICE_LOW && ratio <= SIMILAR_PRICE_HIGH)) return { kind: 'falta' }
-  const sure = known.length >= 2 && samePack(known[0].pack, known[1].pack)
+  // Se recuerda solo si las dos últimas compras coinciden, o si la persona lo indicó ella misma (manual) y el precio es casi el mismo (±15 %): un paquete cuyo contenido ya se
+  // confirmó a mano no se vuelve a preguntar en cada compra; un precio muy distinto sí (puede ser otro tamaño de paquete).
+  const sure = (known.length >= 2 && samePack(known[0].pack, known[1].pack)) || (latest.pack.source === 'manual' && ratio >= MANUAL_SAME_LOW && ratio <= MANUAL_SAME_HIGH)
   if (sure) return { kind: 'recordado', pack: { count: latest.pack.count, amount: latest.pack.amount, unit: latest.pack.unit, source: 'recordado' } }
   return {
     kind: 'confirmar',

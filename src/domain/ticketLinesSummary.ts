@@ -88,7 +88,9 @@ export function summaryMessage(s: TicketLinesSummary): { tone: SummaryTone; text
     if (s.ticketTotal == null) parts.push(`${base}. Escribe el importe total del ticket para comprobar que cuadra.`)
     else if (s.matches) {
       tone = 'ok'
-      parts.push(`✓ ${base}: cuadra con el total del ticket (${eur(s.ticketTotal)}).`)
+      // COMP-01: con descuentos ya registrados, una confirmación discreta con la cuenta completa (sin pedir ninguna explicación).
+      if (s.discount > 0) parts.push(`✓ Compra cuadrada: ${eur(s.linesTotal)} − ${eur(s.discount)} = ${eur(s.ticketTotal)}.`)
+      else parts.push(`✓ ${base}: cuadra con el total del ticket (${eur(s.ticketTotal)}).`)
     } else {
       tone = 'warn'
       const d = s.difference as number

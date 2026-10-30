@@ -32,7 +32,8 @@ import {
   updateShoppingItemStatus,
 } from '@/data/shopping'
 import { linkedShoppingIds } from '@/data/lists'
-import { getProductPhotoUrl, listAllProductPrices, listProducts, removeProductPhoto, setProductNonFood, uploadProductPhotoForName } from '@/data/products'
+import { getProductOriginalName, getProductPhotoUrl, listAllProductPrices, listProducts, removeProductPhoto, renameProduct, setProductNonFood, uploadProductPhotoForName } from '@/data/products'
+import { cleanCommercialTitle, looksLikeCommercialTitle } from '@/domain/commercialTitle'
 import { ensureCatalogSynced } from '@/data/catalogSync'
 import {
   listFamilyFoodTypes,
@@ -2708,6 +2709,46 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
     if (pendingSheet.fromStats) setReturnToStats('armed')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingSheet, loading, mode, scopedPrices])
+  // COMP-02: sugerencia de nombre legible para un producto con título comercial largo (solo se propone).
+  const [nameSuggestion, setNameSuggestion] = useState<{ suggested: string; original: string | null } | null>(null)
+  const [nameBusy, setNameBusy] = useState(false)
+  const [nameError, setNameError] = useState<string | null>(null)
+  useEffect(() => {
+    setNameError(null)
+    if (!detail || !looksLikeCommercialTitle(detail.name)) {
+      setNameSuggestion(null)
+      return
+    }
+    const suggested = cleanCommercialTitle(detail.name)
+    if (suggested === detail.name) {
+      setNameSuggestion(null)
+      return
+    }
+    let cancelled = false
+    void getProductOriginalName(detail.productId).then((original) => {
+      if (!cancelled) setNameSuggestion({ suggested, original: original ?? detail.name })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [detail?.productId, detail?.name]) // eslint-disable-line react-hooks/exhaustive-deps
+  async function applySuggestedName() {
+    if (!detail || !nameSuggestion) return
+    setNameBusy(true)
+    setNameError(null)
+    try {
+      await renameProduct(detail.productId, nameSuggestion.suggested)
+      const next = nameSuggestion.suggested
+      setProducts((prev) => prev.map((p) => (p.id === detail.productId ? { ...p, displayName: next, normalizedName: next.trim().toLowerCase() } : p)))
+      setDetail({ ...detail, name: next })
+      setNameSuggestion(null)
+    } catch (err) {
+      setNameError(errorMessage(err, 'No se pudo cambiar el nombre'))
+    } finally {
+      setNameBusy(false)
+    }
+  }
+
   // Al cerrar la ficha, la próxima arranca otra vez en «Solo el mismo».
   useEffect(() => {
     if (!detail) setSheetScope('identical')
@@ -3001,6 +3042,22 @@ function HistoryTab({ onBackToStats, onViewPurchase }: { onBackToStats?: () => v
                 ✕
               </button>
             </div>
+            {/* COMP-02: nombre largo importado (p. ej. un título comercial de Amazon): se propone uno legible; solo se cambia si la persona lo acepta, y el título original se conserva. */}
+            {nameSuggestion && (
+              <div className="receipt-line-card" data-testid="name-suggestion" style={{ fontSize: 13 }}>
+                <span className="muted">Nombre largo importado. Sugerido: </span>
+                <strong>{nameSuggestion.suggested}</strong>{' '}
+                <button type="button" className="link-button" disabled={nameBusy} onClick={() => void applySuggestedName()}>
+                  Usar este nombre
+                </button>
+                {nameSuggestion.original && (
+                  <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+                    Título original: {nameSuggestion.original}
+                  </p>
+                )}
+                {nameError && <p className="error" style={{ margin: '4px 0 0' }}>{nameError}</p>}
+              </div>
+            )}
             {returnToStats === 'open' && (
               <button type="button" className="link-button" style={{ minHeight: 44, textAlign: 'left' }} onClick={() => setDetail(null)}>
                 ← Volver a Estadística compras

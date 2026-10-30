@@ -74,9 +74,16 @@ describe('qué hay que preguntar', () => {
     expect(needsAnswer(s)).toBe(false)
   })
   it('una sola compra anterior: se propone y hay que confirmar', () => {
-    const s = formatStatus({ name: 'Cerveza Estrella', unit: 'ud', price: 5 }, [past(4.95, pack(6, 330, 'ml'), '2026-09-01')])
+    // precio algo distinto (+23 %): puede ser otro paquete; con casi el mismo precio y formato indicado a mano ya se recuerda solo (ver el caso siguiente)
+    const s = formatStatus({ name: 'Cerveza Estrella', unit: 'ud', price: 6.1 }, [past(4.95, pack(6, 330, 'ml'), '2026-09-01')])
     expect(s).toMatchObject({ kind: 'confirmar', reason: 'La última vez indicaste 6 × 330 ml = 1,98 l. ¿Es el mismo?' })
     expect(needsAnswer(s)).toBe(true)
+  })
+  it('COMP-03: un formato que la persona confirmó a mano se recuerda sin volver a preguntar si el precio es casi el mismo; con otro precio, sí se confirma', () => {
+    const manual = (price: number) => past(price, pack(8, 1, 'ud', 'manual'), '2026-10-04')
+    expect(formatStatus({ name: 'ZOCONE cadenas', unit: 'ud', price: 8.99 }, [manual(8.99)])).toMatchObject({ kind: 'recordado', pack: { count: 8, amount: 1, unit: 'ud' } })
+    expect(formatStatus({ name: 'ZOCONE cadenas', unit: 'ud', price: 9.5 }, [manual(8.99)])).toMatchObject({ kind: 'recordado' })
+    expect(formatStatus({ name: 'ZOCONE cadenas', unit: 'ud', price: 12.5 }, [manual(8.99)])).toMatchObject({ kind: 'confirmar' }) // ¿otro tamaño de paquete?
   })
   it('un precio muy distinto sugiere otro formato (pack de 12): no se arrastra el anterior', () => {
     expect(formatStatus({ name: 'Cerveza Estrella', unit: 'ud', price: 9.9 }, [past(4.95, pack(6, 330, 'ml'), '2026-09-01'), past(4.95, pack(6, 330, 'ml'), '2026-08-01')])).toEqual({ kind: 'falta' })

@@ -48,7 +48,9 @@ describe('comprobación de importes antes de guardar', () => {
   it('los descuentos del ticket se restan de la suma (el total impreso ya los lleva aplicados)', () => {
     const s = summarizeTicketLines(lines, '8,50', 1)
     expect(s).toMatchObject({ discount: 1, expectedTotal: 8.5, matches: true })
-    expect(summaryMessage(s)?.text).toMatch(/− descuentos 1,00 € = 8,50 €/)
+    // COMP-01: con descuentos que cuadran, confirmación discreta con la cuenta completa (sin pedir explicación)
+    expect(summaryMessage(s)).toMatchObject({ tone: 'ok' })
+    expect(summaryMessage(s)?.text).toMatch(/Compra cuadrada: 9,50 € − 1,00 € = 8,50 €/)
   })
 
   it('sin total escrito, pide escribirlo y no da error', () => {

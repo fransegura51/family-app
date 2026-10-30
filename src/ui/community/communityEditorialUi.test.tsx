@@ -278,9 +278,11 @@ describe('Programa de la semana', () => {
     await screen.findByText(/Trucos para ahorrar luz/)
     expect(screen.getByText(/¿Qué cenas?/)).toBeTruthy()
     expect(screen.getByText(/Menú de la semana/)).toBeTruthy()
-    expect(screen.getByText(/Aprobado · programado para el sábado 7 de noviembre a las 10:00/)).toBeTruthy()
-    expect(screen.getByText('lunes 2 nov')).toBeTruthy()
-    expect(screen.getByText('sábado 7 nov')).toBeTruthy()
+    // Agenda compacta: el menú aprobado sale su sábado a las 10:00; la encuesta, con su cierre el domingo a las 17:00.
+    expect(screen.getByRole('button', { name: /Revisar menú: Menú de la semana\. Aprobado y programado, 10:00/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Revisar encuesta: ¿Qué cenas\?\. Pendiente de aprobación, previsto 10:00 · cierra dom 8 nov, 17:00/ })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Lun 2 nov' })).toBeTruthy()
+    expect(screen.getAllByRole('region', { name: 'Sáb 7 nov' }).length).toBe(1)
     expect(ed.listEditorialItems).toHaveBeenCalledWith(null)
   })
 

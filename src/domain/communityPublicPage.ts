@@ -254,6 +254,8 @@ function inlineHtml(items: Inline[]): string {
       if (item.t === 'text') return escapeHtml(item.v).replace(/\n/g, '<br>')
       if (item.t === 'bold') return `<strong>${inlineHtml(item.c)}</strong>`
       if (item.t === 'italic') return `<em>${inlineHtml(item.c)}</em>`
+      // Enlace interno «[[Título]]»: en la página pública solo se enseña el título (sin resolver nada).
+      if (item.t === 'post') return escapeHtml(item.title)
       // Se vuelve a validar el enlace aunque el analizador ya lo haya hecho: esta es la última barrera antes de escribir un href.
       const link = safeLink(item.href)
       if (!link) return escapeHtml(item.label)

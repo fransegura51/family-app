@@ -198,8 +198,8 @@ describe('Centro Editorial: actualización inmediata (regresión: estados desact
     fireEvent.click(nav(/Programación y configuración/))
     await screen.findByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })
     const row = screen.getByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ }).closest('.cadm-program-item') as HTMLElement
-    expect(within(row).getByText(/Aprobado/)).toBeTruthy()
-    expect(within(row).queryByText(/Borrador \(pendiente de revisar\)/)).toBeNull()
+    expect(within(row).getByRole('img', { name: 'Aprobado y programado' })).toBeTruthy()
+    expect(within(row).queryByRole('img', { name: 'Pendiente de aprobación' })).toBeNull()
   })
 
   it('si el servidor RECHAZA la acción no se enseña un éxito: se muestra el error y el estado sigue siendo el real', async () => {
@@ -264,6 +264,25 @@ describe('Centro Editorial: programación y configuración (plegable: abierto y 
     // Cerrarlo no cambia nada de lo que ya se ve en el programa.
     fold.open = false
     expect(screen.getByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })).toBeTruthy()
+  })
+})
+
+describe('Centro Editorial: agenda del programa (cambio de semana y regreso del detalle)', () => {
+  it('las flechas cambian de semana y «Volver a la lista» regresa al calendario en la MISMA semana', async () => {
+    db.program = [prog(), prog({ id: 'p1', kind: 'poll', title: '¿Qué cenas el viernes?', slotDate: '2026-11-07' }), prog({ id: 'a9', title: 'Artículo de la semana siguiente', slotDate: '2026-11-10' })]
+    mount('/?ed=programacion')
+    await screen.findByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })
+    expect(screen.queryByRole('button', { name: /Artículo de la semana siguiente/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Semana anterior' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Semana siguiente' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Revisar artículo: Artículo de la semana siguiente/ }))
+    // El detalle se abre sin salir de «Programación» y, al volver, el calendario sigue en la semana que se miraba.
+    fireEvent.click(await screen.findByRole('button', { name: /Volver a la lista/ }))
+    await screen.findByRole('button', { name: /Revisar artículo: Artículo de la semana siguiente/ })
+    expect(screen.queryByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Semana siguiente' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Ir a la semana actual' }))
+    await screen.findByRole('button', { name: /Revisar artículo: Trucos para ahorrar luz/ })
   })
 })
 

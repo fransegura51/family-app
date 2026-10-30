@@ -1,4 +1,5 @@
 import { Fragment, type ReactNode } from 'react'
+import { PostLink } from '@/ui/community/PostLink'
 import { parseRichText, type Block, type Inline } from '@/domain/communityRichText'
 
 // Pinta el texto enriquecido de Comunidad como elementos de React (NUNCA como HTML): negrita, cursiva, listas y enlaces. Todos los enlaces llevan fuera de PEPA:
@@ -13,6 +14,8 @@ function renderInline(items: Inline[], keyPrefix = 'i'): ReactNode[] {
         return <strong key={key}>{renderInline(item.c, key)}</strong>
       case 'italic':
         return <em key={key}>{renderInline(item.c, key)}</em>
+      case 'post':
+        return <PostLink key={key} title={item.title} />
       case 'link':
         return (
           <a

@@ -408,6 +408,13 @@ export function MenuReview({
       <p className="muted cadm-small">
         La revisión es automática y limitada: no comprueba seguridad alimentaria, alérgenos ni valores nutricionales. La decisión es de la persona que aprueba.
       </p>
+      {/* En la publicación el texto va DELANTE del menú: aquí se enseña en el mismo orden. */}
+      {detail.body && (
+        <>
+          <h5>Texto que se publicará (aparece antes del menú)</h5>
+          <CommunityRichText text={detail.body} className="cadm-body" />
+        </>
+      )}
       {detail.menu && (
         <>
           <h5>Datos del menú ({detail.menu.servings} raciones)</h5>
@@ -467,15 +474,9 @@ export function MenuReview({
                   {preview ? 'Ocultar la vista previa del menú' : 'Vista previa del menú'}
                 </button>
               </div>
-              {preview && <MenuPreview menu={detail.menuRaw} title={detail.title} />}
+              {preview && <MenuPreview menu={detail.menuRaw} title={detail.title} body={detail.body} />}
             </>
           )}
-        </>
-      )}
-      {detail.body && (
-        <>
-          <h5>Texto que se publicará</h5>
-          <CommunityRichText text={detail.body} className="cadm-body" />
         </>
       )}
     </div>

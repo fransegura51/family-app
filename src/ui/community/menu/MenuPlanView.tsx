@@ -21,6 +21,7 @@ import {
   type SelectedRecipe,
   type MenuSelection,
 } from '@/domain/communityMenu'
+import { TextWithPostLinks } from '@/ui/community/PostLink'
 import { MenuImportSheet } from '@/ui/community/menu/MenuImportSheet'
 import { MenuShoppingSheet } from '@/ui/community/menu/MenuShoppingSheet'
 import '@/ui/community/recipes/communityRecipes.css'
@@ -348,7 +349,9 @@ export function RecipeBlock({
           <p className="community-menu-tip-title">
             <span aria-hidden="true">💡</span> Truco de Pepa
           </p>
-          <p>{recipe.tip}</p>
+          <p>
+            <TextWithPostLinks text={recipe.tip} />
+          </p>
         </aside>
       )}
       {canUseKitchen && (

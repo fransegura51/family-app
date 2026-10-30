@@ -286,6 +286,27 @@ describe('Centro Editorial: agenda del programa (cambio de semana y regreso del 
   })
 })
 
+describe('Centro Editorial: la agenda agrupa por fecha efectiva', () => {
+  it('una encuesta reprogramada al sáb 7 nov (hueco original 31 oct) sale en la semana del 2 al 8 y no en la anterior; los contadores la cuentan donde está', async () => {
+    db.program = [
+      prog({ id: 'old', title: 'Artículo anterior', slotDate: '2026-10-27', status: 'approved', publishAt: '2026-10-27T09:00:00Z' }),
+      prog(),
+      prog({ id: 'p1', kind: 'poll', title: '¿Qué cenas el viernes?', slotDate: '2026-10-31', status: 'approved', publishAt: '2026-11-07T09:00:00Z' }),
+    ]
+    mount('/?ed=programacion')
+    // Hoy es la semana del 26 oct: ahí solo está el artículo anterior; la encuesta (reprogramada al sáb 7 nov) NO.
+    await screen.findByRole('button', { name: /Revisar artículo: Artículo anterior/ })
+    expect(screen.queryByRole('button', { name: /Revisar encuesta/ })).toBeNull()
+    expect(screen.getByText(/1 publicación · todo aprobado/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Semana siguiente' }))
+    await screen.findByRole('button', { name: /Revisar encuesta: .*cenas el viernes.*10:00 · cierra dom 8 nov, 17:00/ })
+    expect(screen.getByRole('heading', { name: 'Semana del 2 al 8 de noviembre' })).toBeTruthy()
+    expect(document.querySelector('.cadm-ag-headtext p')?.textContent).toMatch(/^2 publicaciones/)
+    expect(screen.getByRole('region', { name: 'Sáb 7 nov' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Artículo anterior/ })).toBeNull()
+  })
+})
+
 describe('Centro Editorial: reprogramar encuestas', () => {
   it('una encuesta aprobada y programada se puede trasladar a otro sábado (solo cambia las fechas)', async () => {
     db.proposals.proposed = []

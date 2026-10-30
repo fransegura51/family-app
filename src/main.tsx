@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from '@/App'
 import { ErrorBoundary } from '@/ui/ErrorBoundary'
+import { ModalCloseEnhancer } from '@/ui/ModalCloseEnhancer'
 import { reportClientError } from '@/data/errorReports'
 import '@/ui/styles.css'
 import { applyColorTheme } from '@/state/colorTheme'
@@ -99,6 +100,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <App />
+      {/* UI-POP-01: X en toda ventana emergente que se pueda cerrar y no la tenga. */}
+      <ModalCloseEnhancer />
     </ErrorBoundary>
   </React.StrictMode>,
 )

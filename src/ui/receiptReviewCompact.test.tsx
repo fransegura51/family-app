@@ -109,8 +109,10 @@ describe('conexión con la pantalla y el guardado', () => {
     expect(text).toContain("'receipt-line-card receipt-line-compact' + (needsCheck ? ' receipt-line-attention' : '')")
   })
   it('cambiar de producto o de variante lleva consigo la categoría de la familia (se ve al instante y se guarda); confirmar no la toca', () => {
-    expect(text).toContain('if (key === reading.entryKey) return updateLine(i, { catalogProductKey: key })')
-    expect(text).toContain('classOverride: own ? { kind: own.kind, classification: own.name } : undefined')
+    // COMP-05: cada cambio de identidad o de clase se guarda en el producto AL MOMENTO (persistProduct), sin esperar a «Guardar compra».
+    expect(text).toContain('if (key === reading.entryKey) {')
+    expect(text).toContain('void persistProduct(line.name, { catalogKey: key })')
+    expect(text).toContain('commitIdentity(i, key, own ? { kind: own.kind, classification: own.name } : undefined)')
     expect(text).toContain('setProductCatalogKey(productId, line.catalogProductKey)')
   })
   it('«Solicitar nuevo producto» solo existe con el Soporte técnico encendido', () => {

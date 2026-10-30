@@ -1549,6 +1549,38 @@ Encargo del usuario (2026-10-29), bloques 1 a 7. Reglas que NO cambian: Comunida
 
 ---
 
+## Prompt maestro de correcciones y auditoría visual (COMP-01 a COMP-09, ECO-01 a ECO-05, NAV-01, CAL-01, NOT-01 a NOT-04, UI-POP-01, AUD-01 a AUD-04, 30/10/2026)
+
+Rama `fix/master-30-10`. Migraciones **0359, 0360 y 0361** (aplicadas en producción tras ensayo en transacción revertida; con reversión en `supabase/rollbacks/`). Función de servidor desplegada: `amazon-order-webhook` (v10). La función de sincronización del banco **no se ha tocado** (el aviso agrupado vive en la base de datos, 0361).
+
+| ID | Qué hace ahora | Cómo se ha comprobado |
+|---|---|---|
+| COMP-01 | Una compra con descuento registrado (BEWISHOME 95,58 − 9,56 = 86,02) ya no sale en rojo: «✓ Compra cuadrada: 95,58 € − 9,56 € = 86,02 €». El descuento se carga al editar y no se descuenta dos veces. | Pruebas de `ticketLinesSummary` y del formulario. |
+| COMP-02 | Los títulos largos de Amazon se limpian al importar (marca, tipo, cantidad y rasgo distintivo); el título original se guarda en `products.original_name`; en la ficha se propone el nombre limpio sin pisar nunca un nombre elegido a mano. | `commercialTitle.test.ts` (incluye que las dos copias del módulo son idénticas). `amazon-order-webhook` desplegado (v10): responde 401 a un token inválido, es decir, arranca con la importación nueva. **No** probado con un pedido real de Amazon. |
+| COMP-03 | «8 piezas» se reconoce como cantidad; un formato elegido a mano se reutiliza si el precio es parecido; solo se pregunta ante duda real. | Pruebas de `packFormat` y `productSize`. |
+| COMP-04 | El selector manual de clasificación usa el mismo catálogo que el reconocimiento automático (con entradas generales y buscador); «Cable Ethernet» → Tecnología y electrónica. | `lineReading.test.ts` y pruebas del selector. |
+| COMP-05 | Cambiar identidad, clase o formato de un producto se guarda **al momento**, sin esperar a «Guardar compra»; los importes de la compra no se propagan al producto; aviso si se sale con cambios sin guardar. | Pruebas del formulario de compra (`receiptReviewCompact`, `productClassMigration`). |
+| COMP-06 | Las compras con líneas «Pendiente» salen resaltadas, cada línea trae «⏳ Resolver» (abre el editor de ESA compra), Compras → Inicio tiene un contador accionable y Tickets una vista «solo estas». Esas compras **siguen contando** en estadísticas (por la clasificación del gasto) y ahora se avisa. | `comp06PendingPurchasesUi.test.tsx`, `pendingPurchaseLines.test.ts`. |
+| COMP-07 | Estadística compras → «🏷️ Descuentos y ahorro»: total del periodo, evolución mensual y compras de origen (original − descuento = pagado, una sola vez cada una) con «Ver compra →». Los casos Amazon 05/10 (2,40 €) y BEWISHOME 22/10 (9,56 €) **ya estaban registrados** en la base y no se han duplicado. | `receiptDiscount.test.ts`, `comp06PendingPurchasesUi.test.tsx`. |
+| COMP-08 | El nombre del producto en Estadística sigue subrayado (se ve que se toca) y en «Compras registradas» ya no hay subrayados indiscriminados; las funciones no cambian. | Revisión de código y pruebas de las pantallas. |
+| COMP-09 | Al volver de una compra al Historial se recupera el mismo producto, alcance, búsqueda y clases plegadas. Natillas/Mousse (2,55 €): sus precios pagados siguen visibles en «+ Equivalentes» sin formato y las equivalencias confirmadas no se modifican. | `corPriceHistoryIsolationUi.test.tsx` (ya existente y en verde). |
+| ECO-01 | El nombre de la categoría en la tarjeta del movimiento lleva subrayado discreto y un lápiz pequeño; solo ese nombre abre el cambio rápido, el resto de la tarjeta abre el editor. | `ecoUiMovementFormUi.test.tsx`. Revisión visual en móvil **pendiente**. |
+| ECO-02/05 | «Ver compra vinculada» en el editor abre ESA compra por su identificador real; «← Volver a Economía» recupera el movimiento, filtros, búsqueda y posición. | `ecoUiMovementFormUi.test.tsx`. |
+| ECO-03 | Fila al pie del editor: «🔮 Añadir a Previsión» a la izquierda y «Enlazar con bote» a la derecha; reutiliza el formulario de apunte de Gestión de grupos con los datos del banco; el enlace lo crea el propio apunte (no depende de «Guardar»). Solo si detrás hay un movimiento bancario. | `ecoUiMovementFormUi.test.tsx`. No probado con un bote real. |
+| ECO-04 | Quitada la tarjeta «Botes compartidos» de Economía → Inicio; los botes no se tocan. | Revisión de código. |
+| NAV-01 | Barra común «← Volver a [origen]» (`navOrigin` + `ReturnBar`): Economía→Compra, Economía→Bote, Estadísticas→Compra (descuentos) y Historial→Compra; solo si hay origen real, sin bucles. | Pruebas de ECO-02/03 y COMP-07. |
+| CAL-01 | Marcar hecho o deshacer una tarea o evento recarga de fondo: no vuelve a salir «Cargando calendario…» ni salta la página. | `cal01CompleteNoJumpUi.test.tsx` (falla con el comportamiento anterior). |
+| NOT-01 | Dos formas de ver los avisos, por persona (se guarda en el servidor): «Por áreas» (las áreas con no leídos suben y salen abiertas; el orden no se mueve al leer) y «Por prioridad personal» (Personales/Otras, con los tipos que cada persona elige, no leídos primero). | `notificationAreas.test.ts`, `notificationAreasPanelUi.test.tsx`, `notificationPrefsNewUi.test.tsx`. |
+| NOT-02 | «Repetir el aviso de atrasadas» cada 1/2/3/6/24 h (apagado por defecto), calculado en la base: no antes de la hora del aviso ni desde las 21:00, una sola repetición al terminar el silencio, se cancela al completar o borrar, sin duplicados entre dispositivos. **Alcance: tareas** (el aviso «atrasadas»); los eventos no tienen noción de «atrasado» en el servidor. | Ensayo en la base real (transacción revertida): 1.ª repetición enviada, la duplicada = 0, tras 61 min = 1. |
+| NOT-03 | Destinatarios de tareas y de eventos por separado. Sin elegir: tareas = solo asignados; eventos = toda la familia. «Aviso a toda la familia» y la excepción del menor sin cuenta se respetan. Quien había elegido un modo único lo conserva para las dos cosas (la familia de Jennifer: «solo asignados» en ambas hasta que cambie la de eventos). | `eventRecipients.test.ts`; ensayo en la base real. |
+| NOT-04 | «Has recibido 1 ingreso y 3 cargos nuevos»: un solo aviso por tanda (disparador en la base). No avisa de la primera importación de una cuenta, de movimientos con más de 7 días ni de movimientos reescritos; varias páginas de una sincronización se acumulan en el mismo aviso. Abre Economía → Movimientos solo con lo importado. Se puede apagar en Configuración. | Ensayo en la base real (acumula, no avisa al reescribir ni con fecha antigua). |
+| UI-POP-01 | X discreta arriba a la derecha en toda ventana emergente que se cierra tocando fuera y no la tiene (un solo mecanismo común, `ModalCloseEnhancer`); no duplica las existentes, cierra solo su ventana por el camino de siempre, no se añade a confirmaciones obligatorias y pregunta si hay algo escrito sin guardar. | `modalCloseEnhancerUi.test.tsx`. **No** revisado en un móvil real. |
+| AUD-01…04 | Informe navegable con 42 comparaciones y capturas reales (rama `audit/visual`, `docs/auditoria-visual/index.html`). Solo auditoría y propuestas: no se ha aplicado ningún cambio estético. | Informe del agente de auditoría; indica en él lo que no se pudo capturar. |
+
+**Pendiente (honesto).** (1) Probar en un iPhone y en Android real: X de ventanas, lápiz de categoría, barra «Volver a…», panel por áreas. (2) Probar un pedido real de Amazon con la función nueva y la primera sincronización del banco con el aviso agrupado. (3) Todas las decisiones estéticas del informe esperan aprobación. (4) Ningún requisito pasa a Aprobado sin confirmación expresa.
+
+---
+
 ## Procedimiento obligatorio desde ahora
 
 Antes de implementar un nuevo encargo sobre PEPA:

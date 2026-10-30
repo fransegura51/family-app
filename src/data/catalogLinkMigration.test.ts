@@ -123,6 +123,8 @@ describe('Fase 2: rollback y aislamiento', () => {
       '/src/domain/refunds.ts',
       '/src/domain/similarMovements.ts',
       '/src/domain/types.ts',
+      // COMP-05: el producto se guarda al momento (también su clave del catálogo) desde el formulario de la compra, sin esperar a «Guardar compra».
+      '/src/ui/FinanceScreen.tsx',
     ])
   })
 })

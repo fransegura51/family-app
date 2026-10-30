@@ -47,12 +47,17 @@ export async function listNotifications(): Promise<AppNotification[]> {
   return ((data ?? []) as NotificationRow[]).map(fromRow)
 }
 
-// NOT-04: los movimientos (gastos) del último aviso agrupado de «movimientos nuevos del banco», para abrir Economía → Movimientos solo con ellos.
+// NOT-04: los movimientos (gastos) del último aviso agrupado de «movimientos nuevos del banco», para abrir Economía → Movimientos solo con ellos. El aviso guarda los
+// identificadores de los movimientos del banco; aquí se resuelve a qué gastos corresponden (los que ya se han creado a partir de ellos).
 export async function getLatestBankImportExpenseIds(): Promise<string[]> {
   const { data, error } = await supabase.from('user_notifications').select('payload').eq('category', 'bank_import').order('created_at', { ascending: false }).limit(1).maybeSingle()
   if (error) throw error
-  const ids = (data as { payload: { expense_ids?: unknown } | null } | null)?.payload?.expense_ids
-  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : []
+  const raw = (data as { payload: { bank_tx_ids?: unknown } | null } | null)?.payload?.bank_tx_ids
+  const txIds = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []
+  if (txIds.length === 0) return []
+  const { data: rows, error: rowsError } = await supabase.from('bank_transactions').select('matched_expense_id').in('id', txIds).not('matched_expense_id', 'is', null)
+  if (rowsError) throw rowsError
+  return [...new Set(((rows ?? []) as { matched_expense_id: string }[]).map((r) => r.matched_expense_id))]
 }
 
 // Solo el número (sin traer los avisos): es lo que se pide al abrir Inicio y al volver a la app.

@@ -83,13 +83,19 @@ export function compareAgendaRows(a: AgendaRow, b: AgendaRow): number {
   )
 }
 
+/** Semana (lunes) de una fila: la de su fecha EFECTIVA de publicación en Madrid (así una reprogramación la cambia de semana). Única excepción deliberada: el menú, que va con la semana de contenido que anuncia aunque salga el sábado anterior. */
+export function agendaWeekMonday(row: AgendaRow): string {
+  return mondayOf(row.item.kind === 'menu' ? row.item.slotDate : row.day)
+}
+
 /** Agrupa el programa por semana de contenido y, dentro, por día efectivo. Lo rechazado no ocupa hueco en el programa (igual que antes). Semanas en orden. */
 export function buildAgenda(items: EditorialItemRow[]): AgendaWeek[] {
   const byWeek = new Map<string, AgendaRow[]>()
   for (const i of items) {
     if (i.status === 'rejected') continue
-    const mon = mondayOf(i.slotDate)
-    byWeek.set(mon, [...(byWeek.get(mon) ?? []), agendaRow(i)])
+    const row = agendaRow(i)
+    const mon = agendaWeekMonday(row)
+    byWeek.set(mon, [...(byWeek.get(mon) ?? []), row])
   }
   return [...byWeek.keys()].sort().map((monday) => {
     const rows = (byWeek.get(monday) ?? []).sort(compareAgendaRows)
@@ -99,7 +105,7 @@ export function buildAgenda(items: EditorialItemRow[]): AgendaWeek[] {
       if (last && last.date === r.day) last.rows.push(r)
       else days.push({ date: r.day, label: agendaDayLabel(r.day), rows: [r] })
     }
-    const withArticle = new Set(rows.filter((r) => r.item.kind === 'article').map((r) => r.item.slotDate))
+    const withArticle = new Set(rows.filter((r) => r.item.kind === 'article').map((r) => r.day))
     const missingArticles = withArticle.size === 0 ? [] : Array.from({ length: 7 }, (_, n) => addDays(monday, n)).filter((d) => !withArticle.has(d)).map(agendaDayLabel)
     return { monday, title: weekRangeText(monday), count: rows.length, pending: rows.filter((r) => r.item.status === 'proposed').length, days, missingArticles }
   })

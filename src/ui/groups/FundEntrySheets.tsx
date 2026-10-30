@@ -3,7 +3,8 @@ import { formatDate, formatDateFromTimestamp } from '@/domain/dateFormat'
 import { groupsErrorMessage, updateParticipant } from '@/data/groups'
 import { addEntry, getFundReceiptUrl, listIncomingBankTx, setAllocations, updateEntry, uploadFundReceipt, voidEntry, type FundMemberRow, type IncomingBankTx } from '@/data/groupFunds'
 import { ENTRY_KIND_LABEL, fmtEuro, type EntryKind, type FundEntry, type FundItem, type FundSummary } from '@/domain/groupFunds'
-import { activeParticipants, foldText, participantName, type Participant } from '@/domain/groups'
+import { activeParticipants, foldText, type Participant } from '@/domain/groups'
+import { useNamePrefs } from '@/ui/groups/NamePrefsContext'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { DateField } from '@/ui/DateField'
@@ -54,6 +55,7 @@ const WHO_LABEL: Record<NewKind, string> = {
 
 // ---------------------------------------------------------------------------------------------- nuevo apunte
 export function EntrySheet({ ctx, kind, preselect, bankTx, onClose, onSaved }: { ctx: FundCtx; kind: NewKind; preselect?: string[]; bankTx?: IncomingBankTx | null; onClose: () => void; onSaved: () => void }) {
+  const { namer } = useNamePrefs()
   const [amount, setAmount] = useState(bankTx ? String(bankTx.amount).replace('.', ',') : '')
   const [date, setDate] = useState(bankTx?.date ?? today())
   const [method, setMethod] = useState<Method | null>(bankTx ? 'transferencia' : kind === 'aportacion' ? 'bizum' : null)
@@ -186,7 +188,7 @@ export function EntrySheet({ ctx, kind, preselect, bankTx, onClose, onSaved }: {
           <label className="grp-check-row">
             <input type="checkbox" checked={rememberAlias} onChange={(e) => setRememberAlias(e.target.checked)} />
             <span>
-              Recordar «{who.trim()}» como pagador de {participantName(aliasTarget)}
+              Recordar «{who.trim()}» como pagador de {namer(aliasTarget)}
             </span>
           </label>
         )}
@@ -267,7 +269,8 @@ export function EntryDetailSheet({ ctx, entry, writable, allocations, onClose, o
   const [busy, setBusy] = useState(false)
   const amt = parseAmount(amount)
   const options = useMemo(() => allocationOptions(ctx, allocations.map((a) => a.participantId)), [ctx, allocations])
-  const names = new Map(ctx.participants.map((p) => [p.id, participantName(p)]))
+  const { namer: nameOf } = useNamePrefs()
+  const names = new Map(ctx.participants.map((p) => [p.id, nameOf(p)]))
 
   const openReceipt = async () => {
     try {

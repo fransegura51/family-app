@@ -34,6 +34,8 @@ import { emitHelpEvent } from '@/help/tours/helpBus'
 import { shareText } from '@/services/share'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { Field, GroupSheet } from '@/ui/groups/GroupSheet'
+import { useNamePrefs } from '@/ui/groups/NamePrefsContext'
+import { displayNames, NAME_FORMATS, NAME_FORMAT_LABEL, type NameFormat } from '@/domain/groupNames'
 
 // ---------------------------------------------------------------------------------------------- la persona dentro de ESTE bote
 export function ParticipantFundSheet({
@@ -57,6 +59,7 @@ export function ParticipantFundSheet({
   onSaved: () => void
   onPay: () => void
 }) {
+  const { namer } = useNamePrefs()
   const row = summary.rows.find((r) => r.participantId === participant.id)
   const [state, setState] = useState<MemberState>(member?.state ?? 'participa')
   const [req, setReq] = useState(member?.requiredAmount !== null && member?.requiredAmount !== undefined ? String(member.requiredAmount).replace('.', ',') : '')
@@ -83,7 +86,7 @@ export function ParticipantFundSheet({
     { id: 'exento', label: 'Exento' },
   ]
   return (
-    <GroupSheet title={participantName(participant)} onClose={onClose}>
+    <GroupSheet title={namer(participant)} onClose={onClose}>
       {row && (
         <p>
           <span className={'grp-status grp-status-' + row.status}>{STATUS_LABEL[row.status]}</span>{' '}
@@ -150,9 +153,22 @@ export function ParticipantFundSheet({
 }
 
 // ---------------------------------------------------------------------------------------------- compartir por WhatsApp
-export function ReportSheet({ fund, summary, rows, entries, onClose }: { fund: FundItem; summary: FundSummary; rows: { name: string; row: FundSummary['rows'][number] }[]; entries: FundEntry[]; onClose: () => void }) {
+export function ReportSheet({ fund, summary, rows, entries, participants, onClose }: { fund: FundItem; summary: FundSummary; rows: { name: string; row: FundSummary['rows'][number] }[]; entries: FundEntry[]; participants: Participant[]; onClose: () => void }) {
+  const { prefs } = useNamePrefs()
   const [kind, setKind] = useState<ReportKind | 'detalle'>('pendientes')
-  const base = useMemo(() => (kind === 'detalle' ? buildDetailedReport(fund.name, summary, entries) : buildFundReport(kind, fund.name, summary, rows)), [kind, fund.name, summary, rows, entries])
+  // El formato por defecto es el del grupo, pero se puede cambiar para ESTE envío sin tocar el del grupo.
+  const [format, setFormat] = useState<NameFormat>(prefs.format)
+  const named = useMemo(() => {
+    const live = participants.filter((p) => !p.leftAt)
+    const names = displayNames(live.length ? live : participants, format)
+    const byId = new Map(participants.map((p) => [p.id, p]))
+    const key = (id: string) => {
+      const p = byId.get(id)
+      return p ? (prefs.sortBy === 'surname' ? [p.surname, p.name] : [p.name, p.surname]).filter(Boolean).join(' ') : ''
+    }
+    return rows.map((r) => ({ ...r, name: names.get(r.row.participantId) ?? r.name, sort: key(r.row.participantId) }))
+  }, [rows, participants, format, prefs.sortBy])
+  const base = useMemo(() => (kind === 'detalle' ? buildDetailedReport(fund.name, summary, entries) : buildFundReport(kind, fund.name, summary, named)), [kind, fund.name, summary, named, entries])
   const [text, setText] = useState(base)
   const [note, setNote] = useState<string | null>(null)
   useEffect(() => setText(base), [base])
@@ -185,6 +201,19 @@ export function ReportSheet({ fund, summary, rows, entries, onClose }: { fund: F
           </button>
         ))}
       </div>
+      {kind !== 'detalle' && kind !== 'resumen' && (
+        <label className="grp-field" data-help-id="grupos.informe-formato-nombres">
+          <span>Cómo salen los nombres en este envío</span>
+          <select className="grp-input" value={format} onChange={(e) => setFormat(e.target.value as NameFormat)}>
+            {NAME_FORMATS.map((f) => (
+              <option key={f} value={f}>
+                {NAME_FORMAT_LABEL[f]}
+                {f === prefs.format ? ' (el del grupo)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <p className="muted" style={{ margin: '4px 0' }}>
         Vista previa (puedes editarla). {kind === 'detalle' ? 'El detallado lleva fechas e importes; ' : ''}No incluye teléfonos, correos ni alias de pago.
       </p>

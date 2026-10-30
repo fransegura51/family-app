@@ -81,9 +81,10 @@ export const SERIES_D: TutorialSeries[] = [
     chapters: [
       'tut-contactos-anadir',
       'tut-contactos-buscar',
+      'tut-contactos-ficha',
       'tut-contactos-acciones', // nuevo
     ],
-    cardIds: ['con-agenda'],
+    cardIds: ['con-agenda', 'con-ficha'],
     synonyms: ['agenda', 'teléfono del colegio', 'número del médico', 'añadir contacto', 'buscar contacto', 'editar contacto', 'llamar', 'cumpleaños de un contacto'],
   },
   {

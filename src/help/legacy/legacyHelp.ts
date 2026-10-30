@@ -16,11 +16,11 @@ export const SUMMARIES: Record<string, string> = {
   '/dinero': 'Economía familiar: resumen, estadísticas, movimientos y presupuesto — con todo trazable hasta el ticket o gasto exacto.',
   '/ubicacion': 'Dónde está cada miembro ahora mismo (con su permiso) y avisos automáticos de llegada/salida de sitios guardados.',
   '/cumpleanos': 'Próximos cumpleaños de la familia y de los contactos, con recordatorios.',
-  '/contactos': 'Agenda familiar (colegio, médico, emergencias...) — se puede importar desde el móvil con un archivo .vcf.',
+  '/contactos': 'Agenda familiar (colegio, médico, emergencias...) con tarjetas compactas que abren la ficha completa — se puede importar desde el móvil con un archivo .vcf.',
   '/galeria': 'Fotos de la familia, compartibles también con invitados que solo tengan acceso a esta sección.',
   '/documentos': 'Documentos importantes por persona o carpeta, con fecha de vencimiento y recordatorios de renovación si hace falta.',
   '/listas': 'Tus listas de tareas, ideas o comparativas, en carpetas, privadas o familiares, con importación desde foto, PDF o voz.',
-  '/grupos': 'Tus clases, equipos o grupos de amigos: participantes, botes compartidos para recaudar dinero y ver quién falta por pagar, y eventos y listas vinculados.',
+  '/grupos': 'Tus clases, equipos o grupos de amigos: participantes y sus contactos familiares, botes compartidos para recaudar dinero y ver quién falta por pagar, formularios para pedir datos a las familias, y eventos y listas vinculados.',
 }
 
 // Vídeos explicativos de cada sección. Viven en la web (pepafamilyapp.es, GitHub Pages), no en Supabase ni dentro de la app: así no gastan
@@ -258,7 +258,8 @@ export const HELP_DETAILS: Record<string, HelpItem[]> = {
   ],
   '/contactos': [
     { title: 'Categorías', text: 'Colegio, Médico, Emergencia, Familia, Otros, o las que tú escribas.' },
-    { title: 'Ficha de contacto', text: 'Teléfono con botón de llamada directa, email, notas y cumpleaños.' },
+    { title: 'Tarjetas y ficha de contacto', text: 'Cada contacto es una tarjeta compacta (nombre, categoría, teléfono y el correo completo, aunque sea largo). Al tocarla se abre su ficha con todos los datos: teléfonos y correos (llamar y escribir con un toque), notas, cumpleaños, y los botones 📞 Llamar, 📤 Compartir, ✏️ Editar y ✕ Eliminar. Si el contacto es madre, padre o tutor de alumnos de algún grupo, la ficha dice de quién y en qué grupo.' },
+    { title: 'Más datos (opcionales)', text: 'Al editar o crear un contacto, «＋ Más datos» añade apellidos, apodo o nombre habitual, el nombre original de WhatsApp, varios teléfonos y correos, varias categorías y la dirección. No hace falta rellenar nada de esto. Si llega un teléfono o correo nuevo para un contacto que ya tiene otro (por ejemplo al importar un .vcf), PEPA nunca lo sobrescribe sola: pregunta si añadirlo como adicional, sustituir el anterior o conservarlo.' },
     { title: 'Importar', text: 'Desde la agenda de tu móvil, desde un archivo .vcf exportado del iPhone, o los cumpleaños desde tu calendario de Google.' },
     { title: 'Compartir', text: 'El icono 📤 de cada ficha manda ese contacto (nombre, teléfono, email) como texto al menú de compartir del móvil, con quién quieras: WhatsApp, Instagram, email... "📤 Compartir varios" deja marcar varios con una casilla y mandarlos todos juntos en el mismo texto. Se manda como texto en vez de un archivo .vcf, porque muchas apps de Android no aceptan archivos de contacto y el menú se quedaba sin ningún sitio real donde mandarlo. Si ni el menú nativo ni el portapapeles funcionan aquí, se abre en su lugar una ventana con el texto ya listo para copiar o mandar directo por WhatsApp/email.' },
   ],

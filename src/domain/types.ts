@@ -615,6 +615,16 @@ export interface Contact {
   notes: string | null
   birthDate: string | null
   birthdayFavorite: boolean
+  // Ampliación de la ficha (0354): todo opcional; `phone` y `email` siguen siendo el teléfono y el correo principales.
+  surname?: string | null
+  nickname?: string | null
+  whatsappName?: string | null
+  extraPhones?: string[]
+  extraEmails?: string[]
+  extraCategories?: string[]
+  address?: string | null
+  /** Procedencia de los datos: { kind: 'manual' | 'whatsapp' | 'vcf' | 'telefono' | 'grupo' | 'formulario', at, detail? }. */
+  source?: { kind: string; at?: string; detail?: string } | null
 }
 
 export interface GalleryPhoto {

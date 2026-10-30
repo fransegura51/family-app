@@ -46,6 +46,7 @@ const ContactsScreen = lazy(() => import('@/ui/ContactsScreen').then((m) => ({ d
 const GalleryScreen = lazy(() => import('@/ui/GalleryScreen').then((m) => ({ default: m.GalleryScreen })))
 const ListsScreen = lazy(() => import('@/ui/lists/ListsScreen').then((m) => ({ default: m.ListsScreen })))
 const DocumentsScreen = lazy(() => import('@/ui/DocumentsScreen').then((m) => ({ default: m.DocumentsScreen })))
+const GroupFormPublicScreen = lazy(() => import('@/ui/groups/GroupFormPublicScreen').then((m) => ({ default: m.GroupFormPublicScreen })))
 const GroupFundPublicScreen = lazy(() => import('@/ui/groups/GroupFundPublicScreen').then((m) => ({ default: m.GroupFundPublicScreen })))
 const GruposScreen = lazy(() => import('@/ui/GruposScreen').then((m) => ({ default: m.GruposScreen })))
 const MenuSettingsScreen = lazy(() => import('@/ui/MenuSettingsScreen').then((m) => ({ default: m.MenuSettingsScreen })))
@@ -95,6 +96,11 @@ function wishlistGuestTokenFromLocation(): string | null {
   return new URLSearchParams(window.location.search).get('deseos')
 }
 
+// Formulario público de «Solicitar datos» de Gestión de grupos ("/?formulario=TOKEN"): quien responde no tiene cuenta PEPA.
+function groupFormTokenFromLocation(): string | null {
+  return new URLSearchParams(window.location.search).get('formulario')
+}
+
 // Consulta pública de un bote de Gestión de grupos ("/?bote=TOKEN"): mismo patrón que RSVP y la lista de deseos.
 function fundShareTokenFromLocation(): string | null {
   return new URLSearchParams(window.location.search).get('bote')
@@ -127,6 +133,14 @@ export function App() {
     return (
       <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
         <WishlistGuestScreen token={wishlistGuestToken} />
+      </Suspense>
+    )
+  }
+  const groupFormToken = groupFormTokenFromLocation()
+  if (groupFormToken) {
+    return (
+      <Suspense fallback={<div className="screen screen-centered">Cargando…</div>}>
+        <GroupFormPublicScreen token={groupFormToken} />
       </Suspense>
     )
   }

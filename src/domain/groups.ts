@@ -12,6 +12,11 @@ export interface GroupItem {
   createdAt: string
   /** Carpeta donde LA PERSONA que mira colocó el grupo (null = suelto). */
   folderId: string | null
+  /** Cómo se muestran los participantes en listas y mensajes de este grupo, y cómo se ordenan (0354). */
+  nameFormat: 'first' | 'first_unique' | 'full' | 'surname_first'
+  sortBy: 'name' | 'surname'
+  /** Configuraciones guardadas de «Compartir lista de contactos» (sin datos personales). */
+  contactSharePresets: unknown[]
 }
 
 export interface GroupFolder {
@@ -32,6 +37,8 @@ export interface Participant {
   notes: string | null
   leftAt: string | null
   createdAt: string
+  /** Identidad compartida con las fichas de este mismo niño/a en otros grupos (0354); null = ficha propia. */
+  personId?: string | null
 }
 
 export interface GroupHome {

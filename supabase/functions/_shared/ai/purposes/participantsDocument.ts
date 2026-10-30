@@ -28,8 +28,9 @@ const PROMPT =
   'Reglas estrictas:\n' +
   '- Una fila de la tabla = una persona. NUNCA mezcles datos de filas distintas: el teléfono de una fila pertenece a la persona de ESA fila.\n' +
   '- NUNCA inventes nombres, teléfonos ni correos. Si un dato no está en la fila, pon null.\n' +
-  '- "name" es el nombre de la persona que forma parte del grupo (el niño, la jugadora…), tal como aparece (con apellidos si vienen juntos en la misma celda, y sin cambiar acentos). ' +
-  'Solo usa "surname" si la tabla tiene una columna de apellidos aparte.\n' +
+  '- "name" es el nombre de la persona que forma parte del grupo (el niño, la jugadora…) y "surname" sus apellidos. Si la tabla tiene columnas separadas de nombre y apellidos, respétalas. ' +
+  'Si en una sola celda viene escrito «Apellidos, Nombre» (por ejemplo «Aboutaleb Bassry, Seifeddine»), separa: "surname": "Aboutaleb Bassry", "name": "Seifeddine". ' +
+  'Respeta los nombres y apellidos compuestos («García de la Fuente», «María José»). Si el nombre y los apellidos vienen juntos SIN coma y no puedes saber dónde se separan, pon todo en "name" y "surname": null: NO adivines. Nunca cambies acentos.\n' +
   '- "guardian" es el nombre de la madre, padre o tutor si la tabla lo indica (columnas como Madre, Padre, Madre/padre, Tutor, Responsable, Familiar). Si hay dos columnas (madre y padre) usa la que tenga valor; si hay las dos, ponlas juntas separadas por " / ".\n' +
   '- "phone": transcribe el teléfono tal cual, con sus dígitos; no lo completes ni lo corrijas. Si hay varios teléfonos en la fila, pon el primero y marca "uncertain": true.\n' +
   '- Si una palabra o cifra es DUDOSA, está tachada, cortada o ilegible, pon tu mejor lectura y "uncertain": true.\n' +

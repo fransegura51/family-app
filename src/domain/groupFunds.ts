@@ -152,6 +152,8 @@ export function isClearMatch(c: PayerCandidate[]): boolean {
 export interface ReportRow {
   name: string
   row: ParticipantFundRow
+  /** Clave de orden (nombre y apellidos o apellidos y nombre, según el grupo). Si falta, se ordena por `name`. */
+  sort?: string
 }
 
 export type ReportKind = 'pendientes' | 'pagados' | 'resumen'
@@ -167,13 +169,13 @@ export function buildFundReport(kind: ReportKind, fundName: string, summary: Fun
   const title = `*${fundName}*`
   const obliged = rows.filter((r) => r.row.state === 'participa')
   if (kind === 'pendientes') {
-    const pend = obliged.filter((r) => r.row.pending > 0).sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    const pend = obliged.filter((r) => r.row.pending > 0).sort((a, b) => (a.sort ?? a.name).localeCompare(b.sort ?? b.name, 'es'))
     if (pend.length === 0) return `${title}\n¡Todo cobrado! No queda ningún pago pendiente.`
     const lines = pend.map((r) => `• ${r.name}${r.row.paid > 0 ? ` — faltan ${fmtEuro(r.row.pending)} (ya pagó ${fmtEuro(r.row.paid)})` : ` — ${fmtEuro(r.row.pending)}`}`)
     return [`${title}`, `Pendientes de pago (${pend.length} de ${obliged.length}):`, ...lines, '', `Recaudado: ${fmtEuro(summary.collected)} de ${fmtEuro(summary.expected)}`].join('\n')
   }
   if (kind === 'pagados') {
-    const paid = obliged.filter((r) => r.row.status === 'pagado' || r.row.status === 'sobrepago').sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    const paid = obliged.filter((r) => r.row.status === 'pagado' || r.row.status === 'sobrepago').sort((a, b) => (a.sort ?? a.name).localeCompare(b.sort ?? b.name, 'es'))
     if (paid.length === 0) return `${title}\nTodavía no ha pagado nadie.`
     return [`${title}`, `Han pagado (${paid.length} de ${obliged.length}):`, ...paid.map((r) => `• ${r.name}`)].join('\n')
   }

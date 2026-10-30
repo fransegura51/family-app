@@ -3,7 +3,15 @@ import { Link } from 'react-router-dom'
 import { addParticipant, deleteParticipant, groupsErrorMessage, listParticipants, loadGroup, setParticipantLeft, updateParticipant, type ParticipantInput } from '@/data/groups'
 import { addMembers, listFunds } from '@/data/groupFunds'
 import type { FundItem } from '@/domain/groupFunds'
-import { activeParticipants, filterParticipants, groupTitle, participantName, sortParticipants, type GroupItem, type Participant } from '@/domain/groups'
+import { createReusedParticipants, listLinkedContacts, listPendingContacts, loadKnownPeople, unlinkParticipantPerson, type PendingContact } from '@/data/groupContacts'
+import { findPersonMatches, reusedParticipantData, type KnownPerson } from '@/domain/participantMatch'
+import type { LinkedContactRow } from '@/domain/contactShare'
+import { makeNamer, sortByPrefs } from '@/domain/groupNames'
+import { activeParticipants, filterParticipants, groupTitle, participantName, type GroupItem, type Participant } from '@/domain/groups'
+import { findNameFixes } from '@/domain/participantImport'
+import { NameFixSheet, NameFormatSheet, PendingContactsSheet, ShareContactsSheet } from '@/ui/groups/GroupContactTools'
+import { LinkedContactsSection } from '@/ui/groups/ParticipantContacts'
+import { WhatsappImport } from '@/ui/groups/WhatsappImport'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
@@ -22,14 +30,19 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
   const [editing, setEditing] = useState<Participant | 'new' | null>(null)
   const [importing, setImporting] = useState(false)
   const [offerFor, setOfferFor] = useState<string[] | null>(null) // participantes recién creados: ofrecer incorporarlos a botes abiertos
+  const [links, setLinks] = useState<LinkedContactRow[]>([])
+  const [pending, setPending] = useState<PendingContact[]>([])
+  const [tool, setTool] = useState<'whatsapp' | 'share' | 'format' | 'fix' | 'pending' | null>(null)
 
   const reload = useCallback(async () => {
     try {
       const g = await loadGroup(groupId)
       setGroup(g)
       if (!g) return
-      const [p, f] = await Promise.all([listParticipants(groupId), listFunds(groupId)])
+      const [p, f, l, pc] = await Promise.all([listParticipants(groupId), listFunds(groupId), listLinkedContacts(groupId).catch(() => []), listPendingContacts(groupId).catch(() => [])])
       setPeople(p)
+      setLinks(l)
+      setPending(pc)
       setOpenFunds(f.filter((x) => x.status === 'abierto' && !x.readonlyHistory))
       setError(null)
     } catch (e) {
@@ -40,10 +53,18 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
   useEffect(() => {
     void reload()
   }, [reload])
-  useRealtimeRefresh(['group_participants', 'groups', 'group_funds'], reload, { paused: editing !== null || importing || offerFor !== null })
+  useRealtimeRefresh(['group_participants', 'groups', 'group_funds', 'group_participant_contacts', 'group_pending_contacts', 'contacts'], reload, { paused: editing !== null || importing || offerFor !== null || tool !== null })
 
-  const active = useMemo(() => sortParticipants(filterParticipants(activeParticipants(people), query)), [people, query])
-  const left = useMemo(() => sortParticipants(filterParticipants(people.filter((p) => p.leftAt), query)), [people, query])
+  // Formato y orden de los nombres, definidos por grupo (Solo nombre, diferenciando repetidos, nombre y apellidos, apellidos y nombre).
+  const prefs = useMemo(() => ({ format: group?.nameFormat ?? 'full', sortBy: group?.sortBy ?? 'name' }) as const, [group?.nameFormat, group?.sortBy])
+  const namer = useMemo(() => {
+    const live = activeParticipants(people)
+    return makeNamer(live.length ? live : people, prefs)
+  }, [people, prefs])
+  const active = useMemo(() => sortByPrefs(filterParticipants(activeParticipants(people), query), prefs.sortBy), [people, query, prefs.sortBy])
+  const left = useMemo(() => sortByPrefs(filterParticipants(people.filter((p) => p.leftAt), query), prefs.sortBy), [people, query, prefs.sortBy])
+  const nameFixes = useMemo(() => findNameFixes(people), [people])
+  const waiting = pending.filter((p) => p.status === 'pendiente').length
 
   const afterCreate = (ids: string[]) => {
     if (ids.length > 0 && openFunds.length > 0) setOfferFor(ids)
@@ -80,6 +101,37 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
           </button>
         </div>
       )}
+      <div className="grp-actions" style={{ flexWrap: 'wrap' }}>
+        {!readOnly && (
+          <button type="button" className="grp-secondary" data-help-id="grupos.importar-whatsapp" onClick={() => setTool('whatsapp')}>
+            💬 Contactos de WhatsApp
+          </button>
+        )}
+        <button type="button" className="grp-secondary" data-help-id="grupos.contactos-abrir" onClick={() => setTool('share')}>
+          📤 Compartir contactos
+        </button>
+        <button type="button" className="grp-secondary" data-help-id="grupos.formato-nombres-boton" onClick={() => setTool('format')}>
+          🔤 Formato de nombres
+        </button>
+      </div>
+      {waiting > 0 && (
+        <button type="button" className="grp-row" data-help-id="grupos.pendientes" onClick={() => setTool('pending')}>
+          <span aria-hidden="true">⏳</span>
+          <span className="grp-row-main">
+            <span className="grp-row-title">{waiting} {waiting === 1 ? 'contacto pendiente' : 'contactos pendientes'} de identificar</span>
+            <span className="grp-row-sub" style={{ display: 'block' }}>De capturas de WhatsApp. No son alumnos ni cuentan en los botes.</span>
+          </span>
+          <span aria-hidden="true">›</span>
+        </button>
+      )}
+      {!readOnly && nameFixes.length > 0 && (
+        <div className="grp-banner" data-help-id="grupos.revisar-nombres">
+          Hay {nameFixes.length} {nameFixes.length === 1 ? 'ficha que parece tener' : 'fichas que parecen tener'} los apellidos dentro del nombre.{' '}
+          <button type="button" className="link-button" onClick={() => setTool('fix')}>
+            Revisar y corregir
+          </button>
+        </div>
+      )}
 
       <input className="grp-input" type="search" placeholder="Buscar por nombre, madre/padre o teléfono" aria-label="Buscar un participante" value={query} onChange={(e) => setQuery(e.target.value)} />
 
@@ -88,9 +140,9 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
           <button key={p.id} type="button" className="grp-row" onClick={() => setEditing(p)}>
             <span aria-hidden="true">🧒</span>
             <span className="grp-row-main">
-              <span className="grp-row-title">{participantName(p)}</span>
+              <span className="grp-row-title">{namer(p)}</span>
               <span className="grp-row-sub" style={{ display: 'block' }}>
-                {[p.guardianName, p.phone].filter(Boolean).join(' · ') || 'Sin datos de contacto'}
+                {[p.guardianName, p.phone].filter(Boolean).join(' · ') || (links.some((l) => l.participantId === p.id) ? 'Con contacto familiar vinculado' : 'Sin datos de contacto')}
               </span>
             </span>
             <span aria-hidden="true">›</span>
@@ -109,7 +161,7 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
               <button key={p.id} type="button" className="grp-row" style={{ opacity: 0.7 }} onClick={() => setEditing(p)}>
                 <span aria-hidden="true">🧒</span>
                 <span className="grp-row-main">
-                  <span className="grp-row-title">{participantName(p)}</span>
+                  <span className="grp-row-title">{namer(p)}</span>
                   <span className="grp-row-sub" style={{ display: 'block' }}>De baja</span>
                 </span>
               </button>
@@ -121,7 +173,9 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
         <ParticipantSheet
           groupId={group.id}
           participant={editing === 'new' ? null : editing}
+          links={links}
           readOnly={readOnly}
+          onLinksChanged={() => void reload()}
           onClose={() => setEditing(null)}
           onSaved={(createdId) => {
             setEditing(null)
@@ -141,12 +195,46 @@ export function ParticipantsScreen({ groupId }: { groupId: string }) {
           }}
         />
       )}
+      {tool === 'whatsapp' && (
+        <WhatsappImport
+          group={group}
+          participants={people}
+          onClose={() => setTool(null)}
+          onDone={() => {
+            setTool(null)
+            void reload()
+          }}
+        />
+      )}
+      {tool === 'share' && <ShareContactsSheet group={group} participants={people} links={links} onClose={() => setTool(null)} onPresetsChanged={() => void reload()} />}
+      {tool === 'format' && (
+        <NameFormatSheet
+          group={group}
+          participants={people}
+          onClose={() => setTool(null)}
+          onSaved={() => {
+            setTool(null)
+            void reload()
+          }}
+        />
+      )}
+      {tool === 'fix' && (
+        <NameFixSheet
+          participants={people}
+          onClose={() => setTool(null)}
+          onDone={() => {
+            setTool(null)
+            void reload()
+          }}
+        />
+      )}
+      {tool === 'pending' && <PendingContactsSheet group={group} participants={people} pending={pending} onClose={() => setTool(null)} onChanged={() => void reload()} />}
       {offerFor && <OfferFundsSheet participantIds={offerFor} funds={openFunds} onClose={() => setOfferFor(null)} />}
     </div>
   )
 }
 
-function ParticipantSheet({ groupId, participant, readOnly, onClose, onSaved }: { groupId: string; participant: Participant | null; readOnly: boolean; onClose: () => void; onSaved: (createdId?: string) => void }) {
+function ParticipantSheet({ groupId, participant, links, readOnly, onLinksChanged, onClose, onSaved }: { groupId: string; participant: Participant | null; links: LinkedContactRow[]; readOnly: boolean; onLinksChanged: () => void; onClose: () => void; onSaved: (createdId?: string) => void }) {
   const [f, setF] = useState<ParticipantInput>({
     name: participant?.name ?? '',
     surname: participant?.surname ?? '',
@@ -157,8 +245,40 @@ function ParticipantSheet({ groupId, participant, readOnly, onClose, onSaved }: 
     notes: participant?.notes ?? '',
   })
   const [more, setMore] = useState(!!(participant && (participant.surname || participant.email || participant.payerAlias || participant.notes)))
+  // Al crear una persona desde cero: ¿ya está en otro de tus grupos? Se ofrece reutilizar su identidad (nunca se fusiona sola por el nombre).
+  const [known, setKnown] = useState<KnownPerson[]>([])
+  useEffect(() => {
+    if (participant) return
+    loadKnownPeople().then(setKnown).catch(() => undefined)
+  }, [participant])
+  const matches = useMemo(() => (participant || f.name.trim().length < 2 ? [] : findPersonMatches({ name: f.name, surname: f.surname, phone: f.phone, email: f.email, guardianName: f.guardianName }, known, groupId)), [participant, f, known, groupId])
+  const reuse = async (m: (typeof matches)[number]) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const [id] = await createReusedParticipants(groupId, [{ sourceId: m.person.reference.id, sourcePersonId: m.person.reference.personId ?? null, data: reusedParticipantData({ name: f.name, surname: f.surname, phone: f.phone, email: f.email, guardianName: f.guardianName }, m) }])
+      emitHelpEvent('grupos.participant-added')
+      onSaved(id)
+    } catch (e) {
+      setProblem(groupsErrorMessage(e))
+      setBusy(false)
+    }
+  }
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Si esta persona está también en otros grupos con la misma identidad, sus datos personales son los mismos en todos.
+  const [sharedWith, setSharedWith] = useState<string[]>([])
+  const personId = participant?.personId ?? null
+  const ownId = participant?.id ?? null
+  useEffect(() => {
+    if (!personId || !ownId) return
+    loadKnownPeople()
+      .then((all) => {
+        const mine = all.find((k) => k.personKey === personId)
+        setSharedWith((mine?.sheets ?? []).filter((s) => s.participant.id !== ownId).map((s) => s.groupName))
+      })
+      .catch(() => undefined)
+  }, [personId, ownId])
   const set = (k: keyof ParticipantInput) => (e: { target: { value: string } }) => (setF((p) => ({ ...p, [k]: e.target.value })), setProblem(null))
 
   const save = async () => {
@@ -197,6 +317,48 @@ function ParticipantSheet({ groupId, participant, readOnly, onClose, onSaved }: 
         <Field label="Teléfono de contacto (opcional)">
           <input className="grp-input" inputMode="tel" value={f.phone ?? ''} onChange={set('phone')} disabled={readOnly} />
         </Field>
+        {participant && sharedWith.length > 0 && (
+          <div className="grp-banner grp-banner-info">
+            <p style={{ margin: 0 }}>
+              <strong>Nombre, apellidos, teléfono y correo son los mismos en: {sharedWith.join(', ')}.</strong> Si los cambias aquí, se cambian también allí. Las observaciones, los botes, los pagos y los permisos de cada grupo siguen siendo independientes.
+            </p>
+            {!readOnly && (
+              <ConfirmButton
+                label="Dejar de compartir los datos con los otros grupos"
+                confirmMessage="Esta ficha conserva sus datos de ahora, pero deja de actualizarse con las de los otros grupos."
+                onConfirm={() => {
+                  void unlinkParticipantPerson(participant.id)
+                    .then(() => onSaved())
+                    .catch((e) => setProblem(groupsErrorMessage(e)))
+                }}
+              />
+            )}
+          </div>
+        )}
+        {matches.length > 0 && (
+          <div className="grp-banner grp-banner-info" data-help-id="grupos.reutilizar-persona">
+            <p style={{ margin: '0 0 6px' }}>
+              <strong>Ya tienes a {participantName({ name: f.name, surname: f.surname ?? null })} registrado/a.</strong> ¿Quieres reutilizar sus datos?
+            </p>
+            {matches.map((m) => (
+              <div key={m.person.personKey} style={{ marginBottom: 6 }}>
+                <div>
+                  {participantName(m.person.reference)} · {m.person.sheets.map((s) => s.groupName).join(', ')}
+                </div>
+                {m.person.linkedContacts.length > 0 && <div className="muted">Contactos: {m.person.linkedContacts.map((c) => c.name).join(', ')}</div>}
+                {m.differences.map((d) => (
+                  <div key={d} className="grp-doubt">
+                    ≠ {d}
+                  </div>
+                ))}
+                <button type="button" className="chip" disabled={busy} onClick={() => void reuse(m)}>
+                  Reutilizar esta ficha
+                </button>
+              </div>
+            ))}
+            <p className="muted" style={{ margin: 0 }}>Nombre, apellidos, teléfono y correo quedarán iguales en todos sus grupos; los botes, pagos y permisos de cada grupo siguen siendo independientes. Si es otra persona, sigue rellenando y guarda como nueva.</p>
+          </div>
+        )}
         {!more && (
           <button type="button" className="link-button" onClick={() => setMore(true)}>
             ＋ Más datos (apellidos, correo, alias de Bizum, observaciones)
@@ -230,6 +392,7 @@ function ParticipantSheet({ groupId, participant, readOnly, onClose, onSaved }: 
           </div>
         )}
       </form>
+      {participant && <LinkedContactsSection participant={participant} links={links} readOnly={readOnly} onChanged={onLinksChanged} />}
       {participant && !readOnly && (
         <div className="grp-menu" style={{ paddingLeft: 0 }}>
           <button

@@ -73,6 +73,10 @@ export async function listProducts(): Promise<Product[]> {
 // que todavía no se ha comprado nunca, para poder attachearle una foto
 // (ver comentario de recordProductPurchase más arriba). A diferencia de
 // esa función, NUNCA inserta en product_prices — no es una compra.
+export async function ensureProductId(displayName: string): Promise<string> {
+  return getOrCreateProductId(displayName)
+}
+
 async function getOrCreateProductId(displayName: string): Promise<string> {
   const familyId = await currentFamilyId()
   const normalizedName = normalize(displayName)
@@ -295,6 +299,32 @@ export async function setProductEan(productId: string, ean: string | null): Prom
   const { error } = await supabase.from('products').update({ ean }).eq('id', productId)
   if (error) throw error
 }
+
+/** COMP-02: título comercial original de un producto importado (products.original_name, migración 0349); null si no hay o si la columna aún no existe. */
+export async function getProductOriginalName(productId: string): Promise<string | null> {
+  const { data, error } = await supabase.from('products').select('original_name').eq('id', productId).maybeSingle()
+  if (error) return null
+  return ((data as { original_name?: string | null } | null)?.original_name ?? null) || null
+}
+
+/**
+ * COMP-02: cambia el nombre visible de UN producto (por identificador). Se hace solo a petición de la persona. El nombre que tenía hasta entonces se conserva como título
+ * original si aún no había uno. No toca precios, compras ni clasificaciones; si ya existe otro producto con ese nombre, no se cambia nada (no se fusiona ni se borra nada).
+ */
+export async function renameProduct(productId: string, newName: string): Promise<void> {
+  const name = newName.trim()
+  if (!name) throw new Error('El nombre no puede estar vacío')
+  const { data: current, error: readError } = await supabase.from('products').select('display_name').eq('id', productId).single()
+  if (readError) throw readError
+  const patch = { display_name: name, normalized_name: normalize(name) }
+  const original = getProductOriginalName(productId)
+  let { error } = await supabase.from('products').update({ ...patch, ...((await original) ? {} : { original_name: current.display_name }) }).eq('id', productId)
+  if (error && isMissingColumnAny(error)) ({ error } = await supabase.from('products').update(patch).eq('id', productId))
+  if (error?.code === '23505') throw new Error('Ya existe otro producto con ese nombre')
+  if (error) throw error
+}
+
+const isMissingColumnAny = (err: { code?: string; message?: string } | null) => !!err && (err.code === '42703' || err.code === 'PGRST204' || /original_name/.test(err.message ?? ''))
 
 /** Guarda (o quita, con null) el producto del catálogo maestro que la familia confirmó o corrigió al revisar un ticket (migración 0336). */
 export async function setProductCatalogKey(productId: string, productKey: string | null): Promise<void> {

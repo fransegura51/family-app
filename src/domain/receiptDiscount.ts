@@ -68,3 +68,59 @@ export function compareReceiptTotal(linesTotal: number, discount: number, total:
   const kind: ReceiptDifferenceKind = Math.abs(difference) <= DISCOUNT_TOLERANCE ? 'ok' : difference < 0 ? 'less_paid' : 'more_paid'
   return { kind, linesTotal: lines, discount: disc, expected, total, difference, suggestedDiscount: kind === 'less_paid' ? fromCents(-toCents(difference)) : null }
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// COMP-07 — ahorro por descuentos (Compras → Estadística compras). Cada compra con descuento general registrado cuenta UNA sola vez: original (= pagado + descuento), descuento y
+// pagado cuadran siempre (en céntimos). Nunca se infiere un descuento: solo se suman los registrados en receipts.discount_total.
+export interface DiscountReceiptInput {
+  id: string
+  receiptDate: string
+  store: string | null
+  totalAmount: number | null
+  discountTotal?: number | null
+}
+export interface DiscountPurchase {
+  receiptId: string
+  date: string
+  store: string | null
+  /** Importe antes de descuentos (= pagado + descuento). */
+  original: number
+  discount: number
+  /** Lo realmente pagado (el total de la compra). */
+  paid: number
+}
+export interface DiscountMonth {
+  /** AAAA-MM */
+  month: string
+  discount: number
+  purchases: number
+}
+export interface DiscountSummary {
+  /** Suma de los descuentos de las compras del periodo. */
+  total: number
+  /** Compras con descuento del periodo, de la más reciente a la más antigua. */
+  purchases: DiscountPurchase[]
+  /** Evolución mensual (todas las fechas con descuento, de la más antigua a la más reciente). */
+  byMonth: DiscountMonth[]
+}
+
+export function summarizeReceiptDiscounts(receipts: readonly DiscountReceiptInput[], from: string, to: string): DiscountSummary {
+  const withDiscount = receipts.filter((r) => r.totalAmount != null && toCents(r.discountTotal ?? 0) > 0)
+  const toPurchase = (r: DiscountReceiptInput): DiscountPurchase => {
+    const paid = toCents(r.totalAmount as number)
+    const discount = toCents(r.discountTotal ?? 0)
+    return { receiptId: r.id, date: r.receiptDate, store: r.store, original: fromCents(paid + discount), discount: fromCents(discount), paid: fromCents(paid) }
+  }
+  const purchases = withDiscount
+    .filter((r) => r.receiptDate >= from && r.receiptDate <= to)
+    .map(toPurchase)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+  const monthCents = new Map<string, { cents: number; purchases: number }>()
+  for (const r of withDiscount) {
+    const key = r.receiptDate.slice(0, 7)
+    const cur = monthCents.get(key) ?? { cents: 0, purchases: 0 }
+    monthCents.set(key, { cents: cur.cents + toCents(r.discountTotal ?? 0), purchases: cur.purchases + 1 })
+  }
+  const byMonth = [...monthCents.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([month, v]) => ({ month, discount: fromCents(v.cents), purchases: v.purchases }))
+  return { total: fromCents(purchases.reduce((s, p) => s + toCents(p.discount), 0)), purchases, byMonth }
+}

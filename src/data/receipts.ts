@@ -5,6 +5,8 @@ import { compressImageFile } from '@/domain/imageCompression'
 import { toDateStr } from '@/domain/dateRanges'
 import { pickTicketExpenseMatch, sourceAfterTicketMatch, TICKET_MATCH_SOURCES, TICKET_MATCH_WINDOW_DAYS } from '@/domain/ticketExpenseMatch'
 import type { Receipt } from '@/domain/types'
+import { hasRealTicketBreakdown } from '@/domain/products'
+import { countPendingLinesByReceipt } from '@/domain/pendingPurchaseLines'
 
 function addDays(dateStr: string, days: number): string {
   const d = new Date(dateStr + 'T00:00')
@@ -54,6 +56,26 @@ export async function setReceiptDiscount(receiptId: string, discount: number): P
   if (!Number.isFinite(discount) || discount < 0) throw new Error('El descuento tiene que ser un importe positivo')
   const { error } = await supabase.from('receipts').update({ discount_total: Math.round(discount * 100) / 100 }).eq('id', receiptId)
   if (error) throw error
+}
+
+// ECO-02: la compra vinculada a un movimiento, por el identificador REAL (receipts.expense_id), nunca por comercio, importe o fecha. Si hubiera más de una, la que trae productos reales.
+export async function findLinkedPurchase(expenseId: string): Promise<{ receiptId: string; lines: { normalizedName: string | null; displayName: string | null }[] } | null> {
+  const { data, error } = await supabase.from('receipts').select('id, product_prices(products(normalized_name, display_name))').eq('expense_id', expenseId)
+  if (error) throw error
+  if (!data || data.length === 0) return null
+  const all = (data as unknown as { id: string; product_prices: { products: { normalized_name: string | null; display_name: string | null } | null }[] | null }[]).map((r) => ({
+    receiptId: r.id,
+    lines: (r.product_prices ?? []).map((l) => ({ normalizedName: l.products?.normalized_name ?? null, displayName: l.products?.display_name ?? null })),
+  }))
+  return all.find((r) => hasRealTicketBreakdown(r.lines)) ?? all[0]
+}
+
+// COMP-06: cuántas líneas «Pendiente» tiene cada compra (una sola consulta pequeña: solo las líneas cuyo producto empieza por «pendiente»; el resto lo decide isPlaceholderProduct).
+export async function listPendingLineCounts(): Promise<Map<string, number>> {
+  const { data, error } = await supabase.from('product_prices').select('receipt_id, products!inner(normalized_name, display_name)').ilike('products.normalized_name', 'pendiente%').not('receipt_id', 'is', null)
+  if (error) throw error
+  const rows = (data ?? []) as unknown as { receipt_id: string | null; products: { normalized_name: string | null; display_name: string | null } | null }[]
+  return countPendingLinesByReceipt(rows.map((r) => ({ receiptId: r.receipt_id, product: r.products ? { normalizedName: r.products.normalized_name, displayName: r.products.display_name } : null })))
 }
 
 export async function listReceipts(): Promise<Receipt[]> {

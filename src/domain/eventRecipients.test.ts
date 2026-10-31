@@ -52,3 +52,27 @@ describe('eventos privados', () => {
     expect(isEventRecipient({ visibility: 'private', memberIds: [] }, A, members, 'assigned')).toBe(true)
   })
 })
+
+// NOT-03 — los ajustes de TAREAS y de EVENTOS son independientes (supabase/migrations/0360): tareas sin elegir → solo asignados; eventos sin elegir → toda la familia.
+describe('NOT-03 · destinatarios separados para tareas y eventos', () => {
+  const taskForB: RecipientEvent = { visibility: 'shared', memberIds: ['mB'], kind: 'task' }
+  const eventForB: RecipientEvent = { visibility: 'shared', memberIds: ['mB'], kind: 'event' }
+  const whoModes = (ev: RecipientEvent, modes: { task: 'all' | 'assigned' | null; event: 'all' | 'assigned' | null }) =>
+    [A, B, C, D].filter((p) => isEventRecipient(ev, p, members, modes)).map((p) => p.id.slice(1)).join('')
+
+  it('por defecto: la tarea solo a quien la tiene asignada; el evento a toda la familia con calendario', () => {
+    expect(whoModes(taskForB, { task: null, event: null })).toBe('B')
+    expect(whoModes(eventForB, { task: null, event: null })).toBe('ABC')
+  })
+  it('cada tipo respeta su propio ajuste sin afectar al otro', () => {
+    expect(whoModes(taskForB, { task: 'all', event: 'assigned' })).toBe('ABC')
+    expect(whoModes(eventForB, { task: 'all', event: 'assigned' })).toBe('B')
+  })
+  it('«Aviso a toda la familia» y la excepción del menor sin cuenta se respetan en los dos tipos', () => {
+    expect(whoModes({ ...taskForB, notifyFamily: true }, { task: 'assigned', event: 'assigned' })).toBe('ABC')
+    expect(whoModes({ visibility: 'shared', memberIds: ['mKid'], kind: 'event' }, { task: null, event: 'assigned' })).toBe('ABCD')
+  })
+  it('un elemento privado no cambia con ningún ajuste', () => {
+    expect(isEventRecipient({ visibility: 'private', memberIds: [], kind: 'task' }, A, members, { task: 'assigned', event: 'all' })).toBe(true)
+  })
+})

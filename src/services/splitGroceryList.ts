@@ -11,3 +11,12 @@ export async function splitGroceryListWithAi(text: string): Promise<string[]> {
   const items = Array.isArray(json.items) ? json.items.filter((i): i is string => typeof i === 'string' && i.trim() !== '') : []
   return items.length > 0 ? items.map((i) => alias.restore(i)) : [text]
 }
+
+// Misma función y mismo control de uso que la de Compras, con instrucciones de LISTA (tareas, ideas o comparativa) en lugar de productos:
+// "Mis listas" no trata lo dictado como si fuera la compra. Solo propone; la persona lo revisa antes de guardar.
+export async function splitListItemsWithAi(text: string, kind: 'tareas' | 'ideas' | 'comparativa'): Promise<string[]> {
+  const alias = await loadAliasMap()
+  const json = (await callAiFunction('split-grocery-list', { text: alias.aliasize(text), kind })) as { items?: unknown }
+  const items = Array.isArray(json.items) ? json.items.filter((i): i is string => typeof i === 'string' && i.trim() !== '') : []
+  return items.length > 0 ? items.map((i) => alias.restore(i)) : [text]
+}

@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from "npm:@supabase/supabase-js@2"
+import { cleanCommercialTitle } from "../_shared/commercialTitle.ts"
 
 // Recibe pedidos de Amazon ya interpretados por un workflow externo
 // (Outlook reenvía el email de confirmación a Pipedream, que lo lee y
@@ -76,7 +77,8 @@ Deno.serve(async (req) => {
     // guardado en el ticket (recibos), pero lo que se ve en
     // Movimientos/Banco (Expense.notes) ahora son los productos, que sí
     // son legibles de un vistazo.
-    const itemsConcept = items.length > 0 ? items.map((it) => it.name.trim()).join(", ") : null
+    // COMP-02: el concepto del gasto lleva los nombres LIMPIOS (el título original completo se guarda aparte en products.original_name).
+    const itemsConcept = items.length > 0 ? items.map((it) => cleanCommercialTitle(it.name.trim())).join(", ") : null
     const orderConcept = orderNumber ? `Pedido ${orderNumber}` : null
 
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -128,16 +130,36 @@ Deno.serve(async (req) => {
     if (receiptError) throw receiptError
 
     for (const item of items) {
-      const normalizedName = item.name.trim().toLowerCase()
-      const { data: product, error: productError } = await admin
+      // COMP-02: nombre legible (marca, producto, cantidad y lo que distingue al artículo) y título original conservado como dato de referencia. Si el artículo ya existe con el
+      // título largo de antes (o con el limpio), se reutiliza ese producto: nunca se duplica ni se sobrescribe un nombre existente.
+      const original = item.name.trim()
+      const cleaned = cleanCommercialTitle(original)
+      const originalNorm = original.toLowerCase()
+      const cleanedNorm = cleaned.toLowerCase()
+      const { data: existing, error: existingError } = await admin
         .from("products")
-        .upsert(
-          { family_id: familyId, normalized_name: normalizedName, display_name: item.name.trim() },
-          { onConflict: "family_id,normalized_name" },
-        )
         .select("id")
-        .single()
-      if (productError) throw productError
+        .eq("family_id", familyId)
+        .in("normalized_name", [originalNorm, cleanedNorm])
+        .limit(1)
+        .maybeSingle()
+      if (existingError) throw existingError
+      let product: { id: string } | null = existing
+      if (!product) {
+        const row = { family_id: familyId, normalized_name: cleanedNorm, display_name: cleaned }
+        let inserted = await admin
+          .from("products")
+          .upsert(cleaned !== original ? { ...row, original_name: original } : row, { onConflict: "family_id,normalized_name" })
+          .select("id")
+          .single()
+        // Sin la columna original_name (migración 0359 aún no aplicada) se guarda igual, sin el título original.
+        if (inserted.error && (inserted.error.code === "42703" || inserted.error.code === "PGRST204")) {
+          inserted = await admin.from("products").upsert(row, { onConflict: "family_id,normalized_name" }).select("id").single()
+        }
+        if (inserted.error) throw inserted.error
+        product = inserted.data
+      }
+      if (!product) throw new Error("no se pudo crear el producto")
 
       const { error: priceError } = await admin.from("product_prices").insert({
         product_id: product.id,

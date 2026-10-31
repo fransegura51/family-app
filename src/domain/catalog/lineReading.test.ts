@@ -132,7 +132,10 @@ describe('buscador de producto de la ficha', () => {
     expect(hits.map((h) => h.key)).toContain('pes.merluza')
     expect(searchCatalogEntries('')).toEqual([])
     expect(searchCatalogEntries('zzzzqq')).toEqual([])
-    for (const h of searchCatalogEntries('queso', 20)) expect(h.name).not.toBe('Queso') // la entrada de clase «Queso» no se ofrece
+    // COMP-04: la entrada general de la categoría («Queso») sí se ofrece para elegir a mano, pero siempre DESPUÉS de los productos concretos
+    const cheese = searchCatalogEntries('queso', 20)
+    const generalAt = cheese.findIndex((h) => h.general)
+    if (generalAt >= 0) expect(cheese.slice(generalAt).every((h) => h.general)).toBe(true)
   })
 })
 

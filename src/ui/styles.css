@@ -9298,6 +9298,18 @@ input[type='search'] {
   flex: none;
 }
 
+.movement-row-category-btn .movement-row-category-name {
+  /* ECO-01: subrayado discreto = «esto se puede tocar»; sin cambiar alturas ni colores de la tarjeta */
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.movement-row-category-edit {
+  flex: none;
+  font-size: 0.72em;
+  opacity: 0.55;
+  align-self: center;
+}
 .movement-row-category-name {
   min-width: 0;
   overflow: hidden;
@@ -9371,4 +9383,41 @@ input[type='search'] {
 .contact-extras {
   display: grid;
   gap: 8px;
+}
+
+/* UI-POP-01 — X automática de las ventanas emergentes que no la traen (ModalCloseEnhancer). No ocupa sitio: el ancla es sticky y de alto 0. */
+.auto-modal-close-anchor {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 5;
+  overflow: visible;
+}
+.auto-modal-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted, #6b7280);
+  cursor: pointer;
+}
+.auto-modal-close:hover,
+.auto-modal-close:focus-visible {
+  background: rgba(100, 116, 139, 0.14);
+}
+/* El primer bloque de la ventana deja sitio a la X para que un título largo no quede debajo. */
+.auto-modal-close-anchor + * {
+  padding-right: 32px;
+  box-sizing: border-box;
 }

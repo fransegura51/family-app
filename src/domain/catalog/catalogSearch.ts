@@ -45,6 +45,11 @@ export interface CatalogHit {
   /** Clave del producto principal (la misma que `key` si no es una variante). */
   entryKey: string
   variant: boolean
+  /**
+   * COMP-04: entrada GENERAL de una categoría («Electrónica», «Ropa y calzado», «Carne»…): sirve cuando el artículo pertenece a la categoría pero el catálogo no tiene un producto más
+   * concreto (un cable Ethernet). Es la misma entrada que usa la clasificación automática (broad), ahora también elegible a mano.
+   */
+  general?: boolean
 }
 
 interface Indexed {
@@ -59,7 +64,7 @@ let INDEX: Indexed[] | null = null
 function indexEntry(entry: CatalogEntry): Indexed {
   const cls = catalogClass(entry.classKey)
   return {
-    hit: { key: entry.key, name: entry.name, classKey: entry.classKey, className: cls?.name ?? '', sub: entry.sub, entryKey: entry.key, variant: false },
+    hit: { key: entry.key, name: entry.name, classKey: entry.classKey, className: cls?.name ?? '', sub: entry.sub, entryKey: entry.key, variant: false, ...(entry.broad ? { general: true } : {}) },
     name: searchWords(entry.name),
     alias: new Set(entry.aliases.flat()),
     extra: new Set([...searchWords(entry.sub), ...searchWords(cls?.name ?? '')]),
@@ -68,7 +73,8 @@ function indexEntry(entry: CatalogEntry): Indexed {
 
 function build(): Indexed[] {
   if (INDEX) return INDEX
-  const entries = CATALOG_ENTRIES.filter((e) => !e.broad)
+  // COMP-04: las entradas generales (de clase) también se pueden elegir a mano; los productos concretos salen antes.
+  const entries = CATALOG_ENTRIES
   const byKey = new Map(entries.map((e) => [e.key, e]))
   const out = entries.map(indexEntry)
   for (const v of allVariants()) {
@@ -122,6 +128,7 @@ export function searchCatalog(query: string, limit = 8): CatalogHit[] {
     if (!ok) continue
     // Menos palabras sobrantes en el nombre = más específico a lo escrito; las variantes pasan después de su producto si lo escrito no las nombra.
     score -= Math.max(0, ix.name.length - q.length) * 0.15
+    if (ix.hit.general) score -= 1.5 // una entrada general solo gana cuando no hay un producto más concreto
     if (ix.hit.variant) {
       const extraWords = ix.name.filter((n) => !searchWords(CATALOG_ENTRIES.find((e) => e.key === ix.hit.entryKey)?.name ?? '').includes(n))
       const named = extraWords.length > 0 && extraWords.every((n) => q.some((w) => n.startsWith(w) || w === n))
@@ -129,7 +136,8 @@ export function searchCatalog(query: string, limit = 8): CatalogHit[] {
     }
     scored.push({ ix, score })
   }
-  scored.sort((a, b) => b.score - a.score || a.ix.hit.name.localeCompare(b.ix.hit.name, 'es'))
+  // Los productos concretos van siempre antes que las entradas generales de categoría (COMP-04).
+  scored.sort((a, b) => Number(!!a.ix.hit.general) - Number(!!b.ix.hit.general) || b.score - a.score || a.ix.hit.name.localeCompare(b.ix.hit.name, 'es'))
   const seen = new Set<string>()
   const out: CatalogHit[] = []
   for (const { ix } of scored) {
@@ -153,7 +161,8 @@ export interface CatalogCategoryInfo {
 /** Categorías con productos concretos (las de «clase» se saltan), en el orden en que las conoce el catálogo. */
 export function catalogCategories(): CatalogCategoryInfo[] {
   const counts = new Map<string, number>()
-  for (const e of CATALOG_ENTRIES) if (!e.broad) counts.set(e.classKey, (counts.get(e.classKey) ?? 0) + 1)
+  // COMP-04: cuentan también las entradas generales, para que TODA categoría con algo en el catálogo (p. ej. «Electrónica y hogar», que casi solo tiene la general) se pueda abrir.
+  for (const e of CATALOG_ENTRIES) counts.set(e.classKey, (counts.get(e.classKey) ?? 0) + 1)
   return CATALOG_CLASSES.filter((c) => (counts.get(c.key) ?? 0) > 0).map((c) => ({ key: c.key, name: c.name, icon: c.icon, count: counts.get(c.key) ?? 0 }))
 }
 
@@ -165,16 +174,24 @@ export interface CatalogBrowseGroup {
 /** Productos de una categoría agrupados por subcategoría y ordenados A–Z (sin variantes: estas se eligen al abrir el producto). */
 export function browseCategory(classKey: string): CatalogBrowseGroup[] {
   const groups = new Map<string, CatalogHit[]>()
+  const general: CatalogHit[] = []
   for (const e of CATALOG_ENTRIES) {
-    if (e.broad || e.classKey !== classKey) continue
+    if (e.classKey !== classKey) continue
     const { hit } = indexEntry(e)
+    if (e.broad) {
+      general.push(hit)
+      continue
+    }
     groups.set(e.sub || 'Otros', [...(groups.get(e.sub || 'Otros') ?? []), hit])
   }
-  return [...groups.entries()].map(([sub, items]) => ({ sub, items: items.sort((a, b) => a.name.localeCompare(b.name, 'es')) }))
+  const out = [...groups.entries()].map(([sub, items]) => ({ sub, items: items.sort((a, b) => a.name.localeCompare(b.name, 'es')) }))
+  // La categoría general al final: «si ninguno de estos encaja, elige la categoría» (COMP-04).
+  if (general.length > 0) out.push({ sub: 'Categoría general', items: general.sort((a, b) => a.name.localeCompare(b.name, 'es')) })
+  return out
 }
 
 export function catalogHitByKey(key: string): CatalogHit | undefined {
-  const entry = CATALOG_ENTRIES.find((e) => e.key === key && !e.broad)
+  const entry = CATALOG_ENTRIES.find((e) => e.key === key)
   if (entry) return indexEntry(entry).hit
   return build().find((ix) => ix.hit.key === key)?.hit
 }

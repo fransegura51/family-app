@@ -118,9 +118,11 @@ export interface CatalogSearchHit {
   key: string
   name: string
   className: string
+  /** Entrada general de la categoría (no un producto concreto): se elige a mano cuando no hay uno más específico. */
+  general?: boolean
 }
 
 /** Busca un producto del catálogo por lo que escribe la persona («merluza», «pañales», «leche semi»). Solo productos concretos y sus variantes (no los de «clase»). */
 export function searchCatalogEntries(query: string, limit = 6): CatalogSearchHit[] {
-  return searchCatalog(query, limit).map((h) => ({ key: h.key, name: h.name, className: h.className }))
+  return searchCatalog(query, limit).map((h) => ({ key: h.key, name: h.name, className: h.className, ...(h.general ? { general: true } : {}) }))
 }

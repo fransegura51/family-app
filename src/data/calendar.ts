@@ -614,6 +614,7 @@ export interface ReminderEvent {
   visibility: 'shared' | 'private'
   memberIds: string[]
   notifyFamily: boolean
+  kind: 'event' | 'task'
 }
 
 // Recordatorios activos (evento futuro, o su fin todavía por llegar si
@@ -624,7 +625,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('calendar_event_reminders')
-    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at, all_day, visibility, notify_family, calendar_event_members(member_id))')
+    .select('minutes_before, anchor, calendar_events!inner(id, title, start_at, end_at, all_day, visibility, notify_family, kind, calendar_event_members(member_id))')
     .gte('calendar_events.start_at', weekAgo)
 
   if (error) throw error
@@ -640,6 +641,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
         all_day: boolean | null
         visibility: string | null
         notify_family: boolean | null
+        kind: string | null
         calendar_event_members: { member_id: string }[] | null
       }
     }[]
@@ -659,6 +661,7 @@ export async function listActiveReminders(): Promise<ReminderEvent[]> {
             visibility: row.calendar_events.visibility === 'private' ? ('private' as const) : ('shared' as const),
             memberIds: (row.calendar_events.calendar_event_members ?? []).map((m) => m.member_id),
             notifyFamily: row.calendar_events.notify_family === true,
+            kind: row.calendar_events.kind === 'task' ? ('task' as const) : ('event' as const),
           }
         : null
     })

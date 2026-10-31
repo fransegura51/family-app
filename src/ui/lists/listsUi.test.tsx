@@ -13,6 +13,8 @@ const data = vi.hoisted(() => ({
   loadListsOverview: vi.fn(),
   loadListDetail: vi.fn(),
   createList: vi.fn(),
+  createListWithColumns: vi.fn(),
+  addColumns: vi.fn(),
   createFolder: vi.fn(),
   updateList: vi.fn(),
   deleteList: vi.fn(),
@@ -146,18 +148,18 @@ describe('Mis listas — pantalla principal', () => {
 
   it('«Nueva lista» pide título y crea una lista PRIVADA del tipo elegido', async () => {
     data.loadListsOverview.mockResolvedValue(overview())
-    data.createList.mockResolvedValue(mkList({ id: 'NEW', title: 'Compras', kind: 'ideas' }))
+    data.createListWithColumns.mockResolvedValue({ list: mkList({ id: 'NEW', title: 'Compras', kind: 'ideas' }), columns: [] })
     renderAt('/listas')
     await screen.findByText('Vacaciones')
     fireEvent.click(screen.getByRole('button', { name: 'Nueva lista' }))
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }))
     expect(screen.getByText('Escribe un título.')).toBeTruthy()
-    expect(data.createList).not.toHaveBeenCalled()
+    expect(data.createListWithColumns).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('Título de la lista'), { target: { value: 'Compras' } })
     fireEvent.click(screen.getByRole('radio', { name: /Ideas/ }))
     expect(screen.getByText(/Será privada/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Crear' }))
-    await waitFor(() => expect(data.createList).toHaveBeenCalledWith({ title: 'Compras', kind: 'ideas' }))
+    await waitFor(() => expect(data.createListWithColumns).toHaveBeenCalledWith({ title: 'Compras', kind: 'ideas' }, []))
   })
 
   it('«Nueva carpeta» rechaza un nombre repetido', async () => {

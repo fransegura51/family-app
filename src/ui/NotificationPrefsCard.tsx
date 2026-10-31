@@ -4,6 +4,7 @@ import { accessFromStatus } from '@/domain/communityAccess'
 import { getNotificationPrefs, saveNotificationPrefs } from '@/data/notifications'
 import { DEFAULT_NOTIFICATION_PREFS, detectDeviceTimezone, listTimezones, timezoneLabel, type NotificationPrefs } from '@/domain/notificationPrefs'
 import { TaskSummaryPrefs } from '@/ui/TaskSummaryPrefs'
+import { NotificationViewPrefs } from '@/ui/NotificationViewPrefs'
 import { CommunityNoticePrefs } from '@/ui/community/CommunityNoticePrefs'
 import { emitHelpEvent } from '@/help/tours/helpBus'
 
@@ -96,6 +97,7 @@ export function NotificationPrefsCard() {
               </button>
             </p>
           )}
+          <NotificationViewPrefs prefs={prefs} onSave={save} />
           <TaskSummaryPrefs prefs={prefs} onSave={save} />
           {communityVisible && (
             <>

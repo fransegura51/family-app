@@ -565,3 +565,150 @@
   width: 26px;
   flex: 0 0 auto;
 }
+
+/* Estilo de lista (Ideas): marca delante de cada elemento en lugar de la casilla. Ocupa el mismo hueco que la casilla para que nada salte. */
+.lists-mark {
+  flex: 0 0 26px;
+  min-width: 26px;
+  text-align: center;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--muted);
+  user-select: none;
+}
+.lists-mark-num {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  min-width: 34px;
+  flex-basis: 34px;
+}
+.lists-compare-setup {
+  border: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.lists-compare-setup legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+  padding: 0;
+}
+.lists-compare-count {
+  margin-top: 8px;
+}
+
+/* Revisión de lo importado: herramientas por elemento (separar, unir, mover, columna). Botones de al menos 36 px de alto para el dedo. */
+.lists-review-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #eee;
+}
+.lists-review-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-left: 34px;
+}
+.lists-review-sub .lists-review-tools {
+  padding-left: 34px;
+}
+.lists-mini {
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 1px solid #d5d8e0;
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text, #222);
+  font: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.lists-mini:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lists-review-col {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.lists-review-col select {
+  min-width: 0;
+  flex: 1;
+}
+.lists-review-note {
+  margin: 4px 0;
+}
+
+/* Menú de acciones (⋯): panel inferior con grupos, una acción por fila a todo el ancho y botones de al menos 44 px (sin enlaces sueltos en horizontal). */
+.lists-menu {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  flex-basis: 100%;
+  width: 100%;
+}
+.lists-menu .link-button,
+.lists-menu .confirm-delete {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 4px;
+  font-size: 16px;
+  text-align: left;
+  border-top: 1px solid #eee;
+}
+.lists-menu .confirm-delete {
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.lists-menu .link-button:disabled {
+  opacity: 0.45;
+}
+.lists-menu-group {
+  margin: 14px 0 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.lists-menu-group:first-child {
+  margin-top: 0;
+}
+.lists-menu-sheet h3 {
+  margin-top: 0;
+}
+
+/* Arrastrar listas en iPhone: asa con zona táctil de 44 px, sin menú de enlace ni selección al mantener pulsado, y la fila arrastrada se nota. */
+.lists-row .shopping-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -6px -8px -10px;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.lists-row,
+.lists-row-main {
+  -webkit-touch-callout: none;
+}
+.lists-row-dragging {
+  background: var(--card-bg);
+  touch-action: none;
+}
+.lists-row-dragging .lists-row-main {
+  -webkit-user-select: none;
+  user-select: none;
+}

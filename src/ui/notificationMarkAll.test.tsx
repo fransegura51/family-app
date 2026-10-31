@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   markAllNotificationsUnread: vi.fn(),
   deleteNotifications: vi.fn(),
   deleteAllNotifications: vi.fn(),
+  getNotificationPrefs: vi.fn(async () => ({ notificationViewMode: 'personal', personalCategories: null })),
 }))
 vi.mock('@/data/notifications', () => api)
 

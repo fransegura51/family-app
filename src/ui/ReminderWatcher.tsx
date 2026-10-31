@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { listActiveReminders, listEventCompletions, listUpcomingEvents } from '@/data/calendar'
-import { getTaskNotifyModeCached } from '@/data/notifications'
+import { getNotifyModesCached } from '@/data/notifications'
 import { listFamilyMembers } from '@/data/family'
-import { isEventRecipient, type RecipientMember } from '@/domain/eventRecipients'
+import { isEventRecipient, type NotifyModes, type RecipientMember } from '@/domain/eventRecipients'
 import type { Profile } from '@/domain/types'
 import { expandOccurrences } from '@/domain/calendar'
 import { daysBetweenDates, localReminderAction, madridParts, reminderBody, reminderTag } from '@/domain/reminderIdentity'
@@ -80,13 +80,13 @@ function todayStr(): string {
 // etiqueta de forma fiable).
 // Ajuste familiar de destinatarios + miembros de la familia, para filtrar los avisos locales igual que el servidor. Se pide como mucho cada 5 minutos
 // (no en cada comprobación de 30 s). Con el ajuste sin elegir no se filtra nada (sigue todo como antes).
-let recipientContext: { at: number; mode: 'all' | 'assigned' | null; members: RecipientMember[] } | null = null
+let recipientContext: { at: number; mode: NotifyModes; members: RecipientMember[] } | null = null
 async function loadRecipientContext(): Promise<NonNullable<typeof recipientContext>> {
   const now = Date.now()
   if (recipientContext && now - recipientContext.at < 5 * 60 * 1000) return recipientContext
-  const mode = await getTaskNotifyModeCached().catch(() => null)
-  // Sin ajuste elegido no hace falta la lista de miembros.
-  const members = mode === null ? [] : await listFamilyMembers().catch(() => [])
+  // NOT-03: tareas y eventos tienen su propio ajuste (sin elegir: tareas → asignados, eventos → toda la familia).
+  const mode: NotifyModes = await getNotifyModesCached().catch(() => ({ task: null, event: null }))
+  const members = await listFamilyMembers().catch(() => [])
   recipientContext = {
     at: now,
     mode,

@@ -146,7 +146,9 @@ describe('Fase 5: escritura — la clasificación automática NO se guarda como 
     expect(src).toContain('...(line.classOverride ? [setProductFoodType(productId, explicitClass, line.classOverride.kind)] : [])')
     expect(src).toContain('const explicitClass = line.classOverride?.classification || null')
     expect(src).not.toMatch(/setProductFoodType\(productId,\s*resolved\./)
-    expect(src.match(/setProductFoodType\(/g)).toHaveLength(1)
+    // COMP-05: la segunda llamada es la edición EXPLÍCITA del producto (persistProduct) con la clase que la persona acaba de elegir; nunca una clase resuelta.
+    expect(src.match(/setProductFoodType\(/g)).toHaveLength(2)
+    expect(src).toContain('change.classOverride !== undefined ? [setProductFoodType(productId, change.classOverride?.classification ?? null, change.classOverride?.kind)]')
   })
 
   it('en Historial, elegir una clase la guarda confirmada y «Automático» la borra (restablecer)', () => {

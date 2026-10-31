@@ -106,7 +106,7 @@ export function CatalogPicker({
                 <>
                   {hits.slice(0, shown).map((h) => (
                     <button key={h.key} type="button" className="catalog-picker-hit" onClick={() => choose(h)}>
-                      <strong>{h.name}</strong>
+                      <strong>{h.general ? `${h.name} (categoría general)` : h.name}</strong>
                       <span className="muted">{h.variant ? `Variante de ${catalogHitByKey(h.entryKey)?.name ?? ''} · ` : ''}{h.className}</span>
                     </button>
                   ))}
@@ -127,7 +127,7 @@ export function CatalogPicker({
                       <p className="catalog-picker-sub">{g.sub}</p>
                       {g.items.map((h) => (
                         <button key={h.key} type="button" className="catalog-picker-hit catalog-picker-hit-compact" onClick={() => choose(h)}>
-                          <strong>{h.name}</strong>
+                          <strong>{h.general ? `${h.name} (general)` : h.name}</strong>
                         </button>
                       ))}
                     </div>

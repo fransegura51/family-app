@@ -264,7 +264,14 @@ export async function setExpenseClasses(expenseId: string, shares: readonly Clas
   if (error) throw error
 }
 
+export const LINKED_PURCHASE_DELETE_MESSAGE = 'Este movimiento tiene una compra vinculada (con sus productos). Para no perder ese vínculo ni sus importes, bórrala desde Compras → Compras registradas.'
+
+// INCIDENCIA 47,97 € (31/10/2026): borrar aquí un gasto que tiene una compra vinculada dejaba la compra SIN vínculo en silencio (receipts.expense_id es ON DELETE SET NULL) y
+// luego la compra y el movimiento del banco ya no se encontraban. Un gasto con compra vinculada solo se retira borrando la compra (que deja todo coherente).
 export async function deleteExpense(id: string): Promise<void> {
+  const { data: linked, error: linkedError } = await supabase.from('receipts').select('id').eq('expense_id', id).limit(1)
+  if (linkedError) throw linkedError
+  if (linked && linked.length > 0) throw new Error(LINKED_PURCHASE_DELETE_MESSAGE)
   const { error } = await supabase.from('expenses').delete().eq('id', id)
   if (error) throw error
 }

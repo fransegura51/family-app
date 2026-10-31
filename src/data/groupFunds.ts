@@ -262,6 +262,29 @@ export async function listIncomingBankTx(days = 120): Promise<IncomingBankTx[]> 
   return (data ?? []).filter((r) => !taken.has(r.id as string)).map((r) => ({ id: r.id as string, date: r.transaction_date as string, amount: Number(r.amount), description: (r.description as string | null) ?? null }))
 }
 
+// ------------------------------------------------------------------------------------------------------------- enlace movimiento ↔ bote (ECO-03)
+export interface FundLink {
+  entryId: string
+  fundId: string
+  groupId: string
+  fundName: string
+  kindLabel: string
+  amount: number
+}
+/** Apuntes de bote (no anulados) ligados a ESTE movimiento bancario, por su identificador. */
+export async function listFundLinksForBankTx(bankTxId: string): Promise<FundLink[]> {
+  const { data, error } = await supabase.from('fund_entries').select('id, fund_id, kind, amount, voided_at, group_funds(name, group_id)').eq('bank_transaction_id', bankTxId).is('voided_at', null)
+  if (error) throw error
+  return (data as unknown as { id: string; fund_id: string; kind: string; amount: number | string; group_funds: { name: string; group_id: string } | null }[]).map((r) => ({
+    entryId: r.id,
+    fundId: r.fund_id,
+    groupId: r.group_funds?.group_id ?? '',
+    fundName: r.group_funds?.name ?? 'Bote',
+    kindLabel: r.kind === 'aportacion' ? 'Aportación' : r.kind === 'gasto' ? 'Gasto' : r.kind,
+    amount: Number(r.amount),
+  }))
+}
+
 // ------------------------------------------------------------------------------------------------------------- enlaces de consulta
 export interface ShareLink {
   id: string

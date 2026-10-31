@@ -3,7 +3,10 @@ import { addSplitTag, changeSplitMode, hasTag, NO_TAG, removeSplitTag, replaceSp
 import { CLASS_NOUN, classSharesOf, classSplitFromShares, startClassSplit, type ClassShare, type ClassSplitDraft } from '@/domain/classShares'
 import { type CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { setNavOrigin } from '@/state/navOrigin'
+import { ReturnBar, useNavOrigin } from '@/ui/ReturnBar'
+import { getLatestBankImportExpenseIds } from '@/data/notifications'
 import '@/ui/groups/groups.css'
 import { ensureCatalogSynced, restoreMyFamilyCatalog } from '@/data/catalogSync'
 import { CategorySelect } from '@/ui/CategorySelect'
@@ -172,11 +175,15 @@ import { getChartColorTheme } from '@/state/colorTheme'
 import { useDateFilterPreset } from '@/state/dateFilterPreset'
 import { useMovementColorMode, type MovementColorMode } from '@/state/movementColorMode'
 import { takePendingMovementsFilter } from '@/state/pendingMovementsFilter'
-import { takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
+import { setPendingReceiptOpen, takePendingReceiptOpen, type PendingReceiptOpen } from '@/state/pendingReceiptOpen'
+import { FundLinkSheet } from '@/ui/FundLinkSheet'
+import { pendingPurchasesLabel } from '@/domain/pendingPurchaseLines'
+import { summarizeReceiptDiscounts } from '@/domain/receiptDiscount'
+import type { IncomingBankTx } from '@/data/groupFunds'
 import { MemberAvatar } from '@/ui/MemberAvatar'
 import { ConfirmButton, ConfirmIconButton } from '@/ui/ConfirmButton'
 import { ForecastManualMatchSheet } from '@/ui/ForecastManualMatchSheet'
-import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, listLinkedTicketProducts, listManualPurchasesWithoutTicket, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
+import { attachReceiptFile, currentProfileId, deletePurchaseSafely, getReceiptUrl, findLinkedPurchase, listManualPurchasesWithoutTicket, listPendingLineCounts, listReceipts, setReceiptDiscount, updateReceipt, uploadReceipt } from '@/data/receipts'
 import { DeletePurchaseDialog, NewWalletForm, WalletTools, WithdrawalsToAssign, PaymentSection, PurchaseDuplicatesPanel, RefundPanel, ShortfallDialog, UndoNotice } from '@/ui/CashAndPaymentsUi'
 import { purchaseDeletionImpact } from '@/domain/purchaseDeletion'
 import { addMovement, cashErrorText, deleteMovement, listAllMovementsSafe, listCashLinkedExpenseIds, restoreEconomyLog, listPurchasePayments, listPurchaseRefunds, listWalletsSafe, setPurchasePayments, unlinkBankMovement, type PurchasePaymentRow, type PurchaseRefundRow } from '@/data/cash'
@@ -189,7 +196,7 @@ import { needsPaymentRecords, validateLegs, type PaymentLeg } from '@/domain/pur
 import { refundLine, refundSummary } from '@/domain/purchaseRefunds'
 import { isSavableLine, summarizeTicketLines, summaryMessage } from '@/domain/ticketLinesSummary'
 import { defaultPayerId, findManualPurchasesForTicket, isPaymentMethod, parseAmount, PAYMENT_METHOD_LABELS, validateManualPurchase } from '@/domain/manualPurchase'
-import { listAllProductPrices, listProducts, setPriceLinePack, setProductCatalogKey, setProductEan, setProductNonFood } from '@/data/products'
+import { ensureProductId, listAllProductPrices, listProducts, setPriceLinePack, setProductCatalogKey, setProductEan, setProductNonFood } from '@/data/products'
 import { resolveLinePack, type PackFormat } from '@/domain/packFormat'
 import { autoAssignToCommons, listCommonProductsData } from '@/data/commonProducts'
 import { eanHint } from '@/domain/packPhoto'
@@ -495,7 +502,11 @@ function isDineroRestricted(profile: Profile): boolean {
 export function FinanceScreen({ profile }: { profile: Profile }) {
   const dineroRestricted = isDineroRestricted(profile)
   // El hijo con Economía restringida no llega a las pestañas: se devuelve antes su monedero (más abajo), así que su valor inicial da igual.
-  const [tab, setTab] = useState<SubTab>('Resumen')
+  // NAV-01: al volver de la compra vinculada o del bote, Economía reabre Movimientos con ESE movimiento en edición (y, si Economía a su vez venía de otro módulo, su «← Volver a …»).
+  const economyLocation = useLocation()
+  const restoreMovement = (economyLocation.state as { restoreMovement?: MovementsRestore } | null)?.restoreMovement ?? null
+  const { bar: economyReturnBar } = useNavOrigin('economia')
+  const [tab, setTab] = useState<SubTab>(restoreMovement ? 'Movimientos' : 'Resumen')
   // "Economía" del breadcrumb siempre vuelve a Resumen, incluso ya estando en /dinero (ver useSectionHome).
   useSectionHome(() => setTab('Resumen'))
   // «Llévame» de la Ayuda: cada pestaña de Economía (no son rutas) se abre por su nombre.
@@ -583,6 +594,21 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // NOT-04: el aviso «Has recibido 1 ingreso y 3 cargos nuevos» abre Movimientos solo con lo importado en esa tanda (/dinero?importados=1).
+  useEffect(() => {
+    if (!new URLSearchParams(economyLocation.search).has('importados')) return
+    let cancelled = false
+    getLatestBankImportExpenseIds()
+      .then((ids) => {
+        if (!cancelled && ids.length > 0) viewMovements({ label: 'Importados del banco', expenseIds: ids })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [economyLocation.search])
+
   function togglePinnedItem(key: EconomiaMenuItemKey) {
     setPinnedItems((prev) => {
       const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -646,6 +672,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
 
   return (
     <div className="screen">
+      {economyReturnBar}
       {/* Petición real, con imagen de referencia: "y la de Economía"
           (mismo tratamiento de foto que las demás cabeceras) — "aquí
           tendrás que bajar los botones de las cuentas por debajo de la
@@ -705,17 +732,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           Presupuesto Generales...), repitiendo la misma tendencia sin
           venir a cuento en pantallas que no son de estadísticas. */}
       {tab === 'Estadísticas' && <BalanceTrendCard key={`trend-${refreshKey}`} />}
-      {/* Gestión de grupos: los botes compartidos (colectas de clase, equipo…) tienen su propia pantalla, con su control de pagos; desde Resumen se llega en un toque. */}
-      {tab === 'Resumen' && profile.role !== 'guest' && profile.role !== 'child' && (profile.allowedSections == null || profile.allowedSections.includes('grupos')) && (
-        <Link to="/grupos" className="grp-row" data-help-id="economia.botes-grupos">
-          <span aria-hidden="true">💰</span>
-          <span className="grp-row-main">
-            <span className="grp-row-title">Botes compartidos</span>
-            <span className="grp-row-sub" style={{ display: 'block' }}>Colectas de tus grupos: quién ha pagado y quién falta</span>
-          </span>
-          <span aria-hidden="true">›</span>
-        </Link>
-      )}
+      {/* ECO-04: los botes se gestionan SOLO en Gestión de grupos (antes había aquí una tarjeta que no hacía más que llevar allí). Desde un movimiento se enlaza con «Enlazar con bote». */}
 
       {/* Petición real: "quiero que los quites de ahí [debajo de las
           tarjetas del banco]" — ya no hay una fila fija; solo aparece
@@ -788,6 +805,7 @@ export function FinanceScreen({ profile }: { profile: Profile }) {
           myMemberId={myMemberId}
           onOpenNewMovement={() => setShowNewMovement(true)}
           focusWallet={focusWallet}
+          restore={restoreMovement}
         />
       )}
       {tab === 'Presupuesto Generales' && (
@@ -3507,6 +3525,18 @@ function EvolucionTemporal({
 // categorizar... traslado el botón flotante de Presupuesto General a
 // Gastos"). Presupuesto Generales y Registro Alimentación pasan a leer
 // de esta misma lista, sin su propio sitio para crearlos.
+export type MovementTypeFilter = 'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'
+/** NAV-01: lo que Movimientos recupera al volver de otra pantalla a la que se salió desde un movimiento. */
+export interface MovementsRestore {
+  expenseId: string
+  preset?: SpendRangePreset
+  customFrom?: string
+  customTo?: string
+  typeFilter?: MovementTypeFilter
+  categoryFilterValue?: string
+  searchQuery?: string
+  activeAccountId?: string | null
+}
 export function ExpensesTab({
   filter,
   onClearFilter,
@@ -3516,6 +3546,7 @@ export function ExpensesTab({
   myMemberId = null,
   onOpenNewMovement,
   focusWallet = null,
+  restore = null,
 }: {
   filter?: MovementsFilter | null
   onClearFilter?: () => void
@@ -3530,6 +3561,8 @@ export function ExpensesTab({
   onOpenNewMovement?: () => void
   /** Cartera que se debe mostrar elegida al abrir Movimientos (desde «Mis cuentas»). */
   focusWallet?: { id: string; n: number } | null
+  /** NAV-01: al volver de la compra vinculada o del bote, Movimientos recupera el filtro, la búsqueda y el movimiento que se estaba editando. */
+  restore?: MovementsRestore | null
 }) {
   // Piso compartido — solo tiene sentido elegir Individual/Común en modo
   // Separado; en Compartido no hay nada que separar (todo es una sola
@@ -3568,32 +3601,35 @@ export function ExpensesTab({
   // Resumen, Estadísticas, Banco y Presupuesto Generales, en vez de la
   // navegación ‹ Mes › propia de esta pantalla. Se ignora mientras haya
   // un `filter` activo (viene de "Ver X registros →" en Estadísticas).
-  const [preset, setPreset] = useDateFilterPreset()
-  const [customFrom, setCustomFrom] = useState(toDateStr(new Date()))
-  const [customTo, setCustomTo] = useState(toDateStr(new Date()))
+  const [preset, setPreset] = useDateFilterPreset(restore?.preset ?? null)
+  const [customFrom, setCustomFrom] = useState(restore?.customFrom ?? toDateStr(new Date()))
+  const [customTo, setCustomTo] = useState(restore?.customTo ?? toDateStr(new Date()))
   const [monthStartDay, setMonthStartDay] = useState(1)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const navigate = useNavigate()
+  // ECO-03: hoja «Enlazar con bote» del movimiento abierto.
+  const [fundSheet, setFundSheet] = useState<{ expenseId: string; isIncome: boolean; bankTx: IncomingBankTx } | null>(null)
   // COR-04G: llegar desde una fila de estadística que es un movimiento: su ficha se abre sola (una vez por movimiento pedido).
   const openedExpenseRef = useRef<string | null>(null)
   useEffect(() => {
-    const id = filter?.openExpenseId
+    const id = filter?.openExpenseId ?? restore?.expenseId
     if (id && openedExpenseRef.current !== id) {
       openedExpenseRef.current = id
       setEditingId(id)
     }
-  }, [filter?.openExpenseId])
+  }, [filter?.openExpenseId, restore?.expenseId])
   // Petición real: "para Piso compartido/cuentas separadas primero hay
   // que dejar Movimientos preparado... ponle los mismos filtros que a
   // Bancos (todos, gastos fijos, gastos variables, ingresos)" — mismo
   // chip row y mismo criterio que ya usa BankTab.
-  const [typeFilter, setTypeFilter] = useState<'todos' | 'fijos' | 'variables' | 'ingresos' | 'devoluciones' | 'categoria' | 'busqueda' | 'pendientes'>('todos')
-  const [categoryFilterValue, setCategoryFilterValue] = useState('')
-  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<MovementTypeFilter>(restore?.typeFilter ?? 'todos')
+  const [categoryFilterValue, setCategoryFilterValue] = useState(restore?.categoryFilterValue ?? '')
+  const [searchQuery, setSearchQuery] = useState(restore?.searchQuery ?? '')
   // Base para "Piso compartido/cuentas separadas": poder ver solo la
   // cuenta de uno (o la común), no todas mezcladas — mismo dato
   // (expenseAccountId) que ya usa el avatar de cada fila, ahora también
   // como filtro. null = todas las cuentas.
-  const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
+  const [activeAccountId, setActiveAccountId] = useState<string | null>(restore?.activeAccountId ?? null)
   // Carteras de efectivo (opcionales). cashView: null = todos los movimientos; CASH_WITHOUT_WALLET = efectivo sin cartera; otro valor = id de cartera.
   // Es el mismo patrón que activeAccountId (tocar la tarjeta filtra), y los dos filtros no se combinan: una cuenta bancaria o una cartera.
   const [wallets, setWallets] = useState<CashWallet[]>([])
@@ -3649,6 +3685,23 @@ export function ExpensesTab({
   }
 
   useEffect(reload, [])
+
+  // NAV-01: lo que Movimientos debe recuperar al volver de la compra vinculada o del bote (mismo movimiento abierto, mismos filtros y búsqueda).
+  function restoreStateFor(expenseId: string): MovementsRestore {
+    return { expenseId, preset, customFrom, customTo, typeFilter, categoryFilterValue, searchQuery, activeAccountId }
+  }
+  // ECO-02: «Ver compra vinculada» abre ESA compra (por su identificador real) en Compras → Tickets; allí aparece «← Volver a Economía».
+  function openLinkedPurchase(expenseId: string, receiptId: string) {
+    setNavOrigin({ to: 'tickets', label: 'Economía', path: '/dinero', routeState: { restoreMovement: restoreStateFor(expenseId) } })
+    setPendingReceiptOpen({ receiptId })
+    navigate('/compras', { state: { tab: 'Tickets' } })
+  }
+  // ECO-03: el movimiento bancario que hay detrás de este movimiento (si lo hay) es lo que se enlaza con el bote.
+  function bankTxForLink(expenseId: string): IncomingBankTx | null {
+    const bt = bankTransactions.find((t) => t.matchedExpenseId === expenseId)
+    if (!bt || !bt.transactionDate) return null
+    return { id: bt.id, date: bt.transactionDate, amount: Math.abs(bt.amount), description: bt.description ?? null }
+  }
 
   // Fase 1D-g.2 — "🔮 Añadir a Previsión": identidad IDÉNTICA a la que usa el detector automático
   // (account_id + normalizeMerchantKey(description) + currency, nunca solo palabras compartidas), y
@@ -3918,6 +3971,9 @@ export function ExpensesTab({
       {cashNotice && <p className="points-badge">{cashNotice}</p>}
       {!filter && <OtrosReviewCard expenses={expenses} categories={categories} memberNames={members.map((m) => m.name)} onChanged={reload} />}
       {quickCategory.dialogs}
+      {fundSheet && (
+        <FundLinkSheet bankTx={fundSheet.bankTx} isIncome={fundSheet.isIncome} restoreMovement={restoreStateFor(fundSheet.expenseId) as unknown as Record<string, unknown>} onClose={() => setFundSheet(null)} />
+      )}
       {hasWithdrawalCategory && (
         <WithdrawalsToAssign withdrawals={withdrawalsPending} movements={cashMovements} wallets={wallets} myMemberId={myMemberId} onChanged={reload} onNotice={setCashNotice} />
       )}
@@ -4082,6 +4138,8 @@ export function ExpensesTab({
               onCancel={() => setEditingId(null)}
               onAddToForecast={expenseAccountId.has(e.id) ? () => handleAddToForecast(e) : undefined}
               addToForecastBusy={forecastBusyExpenseId === e.id}
+              onOpenLinkedPurchase={(receiptId) => openLinkedPurchase(e.id, receiptId)}
+              onLinkToFund={bankTxForLink(e.id) ? () => setFundSheet({ expenseId: e.id, isIncome: e.isIncome, bankTx: bankTxForLink(e.id)! }) : undefined}
             />
           ) : (
             <MovementRow
@@ -4154,7 +4212,7 @@ export function ExpensesTab({
                     icon="✕"
                     className="icon-button"
                     ariaLabel="Borrar movimiento"
-                    onConfirm={() => deleteExpense(e.id).then(reload)}
+                    onConfirm={() => deleteExpense(e.id).then(reload).catch((err) => setError(errorMessage(err, 'No se pudo borrar el movimiento')))}
                   />
                 </>
               }
@@ -4364,6 +4422,10 @@ function MovementRow({
               >
                 <span className="movement-row-category-icon">{category?.icon}</span>
                 <span className="movement-row-category-name">{isPendingCategory(e.category) ? <span className="pending-tag">⏳ {PENDING_LABEL}</span> : e.category}</span>
+                {/* ECO-01: lápiz discreto: solo el nombre + este icono cambian la categoría; el resto de la tarjeta abre el editor completo. */}
+                <span className="movement-row-category-edit" aria-hidden="true">
+                  ✎
+                </span>
               </button>
             ) : (
               <span className="movement-row-category-btn movement-row-category-static">
@@ -4669,57 +4731,127 @@ export function ClassSharesField({
   total: number
   onChange: (next: { value: string; split: ClassSplitDraft | null }) => void
 }) {
-  if (!split) {
-    return (
-      <div>
-        <label>
-          Clasificación (opcional)
-          <select value={value} onChange={(e) => onChange({ value: e.target.value, split: null })}>
-            <option value="">Sin clasificar</option>
-            {options.map((t) => (
-              <option key={t.id} value={t.name}>
-                {t.icon} {t.name}
-              </option>
-            ))}
-          </select>
-          <span className="muted" style={{ fontSize: 12 }}>
-            Para que cuente en «Reparto por clasificación» de Estadística compras.
-          </span>
-        </label>
-        {options.length >= 2 && (
-          <button
-            type="button"
-            className="link-button"
-            data-help-id="finance.class-split"
-            style={{ fontSize: 12, padding: '4px 0' }}
-            onClick={() => {
-              const first = value || options[0].name
-              const second = (options.find((t) => t.name !== first) ?? options[1]).name
-              onChange({ value: first, split: startClassSplit([first, second], total) })
-            }}
-          >
-            ＋ Repartir entre varias clasificaciones
-          </button>
-        )}
-      </div>
-    )
+  // Mismo patrón compacto que las etiquetas (ECO-UI-02/03): solo se ven las clasificaciones YA elegidas, cada una en una fila con su nombre (se puede cambiar) y su importe (se
+  // puede quitar), y debajo «+ Añadir clasificación», que abre el catálogo completo con buscador SOLO al pulsarlo y se cierra al elegir. Antes salían todas como botones.
+  // Los repartos (partes iguales, euros, %), la comprobación de la suma y lo que se guarda son los de siempre.
+  const [picking, setPicking] = useState(false)
+  const [query, setQuery] = useState('')
+  const chosen = split ? split.ids : value ? [value] : []
+  const optionOf = (name: string) => options.find((o) => o.name === name)
+  const available = options.filter((o) => !chosen.includes(o.name))
+  const needle = query.trim().toLowerCase()
+  const pickable = available.filter((o) => !needle || o.name.toLowerCase().includes(needle))
+  const mainClass = (ids: string[]) => (ids.includes(value) ? value : (ids[0] ?? ''))
+  const resolved = split ? resolveTagSplit(split, total, CLASS_NOUN) : null
+  const shownAmount = new Map((resolved && resolved.ok ? resolved.shares : []).map((x) => [x.tagId, x.amount]))
+  const euro = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+
+  function changeClass(old: string, name: string) {
+    if (!name || name === old) return
+    if (split) onChange({ value: value === old ? name : value, split: replaceSplitTag(split, old, name) })
+    else onChange({ value: name, split: null })
   }
+  function removeClass(old: string) {
+    if (split) {
+      const next = removeSplitTag(split, old, total)
+      if (next) onChange({ value: mainClass(next.ids), split: next })
+      else onChange({ value: split.ids.filter((x) => x !== old)[0] ?? '', split: null })
+    } else onChange({ value: '', split: null })
+  }
+  function addClass(name: string) {
+    setPicking(false)
+    setQuery('')
+    if (chosen.length === 0) onChange({ value: name, split: null })
+    else if (split) onChange({ value: mainClass(split.ids), split: addSplitTag(split, name, total) })
+    else onChange({ value, split: startClassSplit([value, name], total) })
+  }
+
   return (
-    <div>
+    <div data-help-id="finance.class-select">
       <span style={{ display: 'block', margin: '4px 0 2px' }}>Clasificación (opcional)</span>
-      <ShareSplitEditor
-        items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
-        noun={CLASS_NOUN}
-        split={split}
-        total={total}
-        helpId="finance.class-split-editor"
-        preferredSingle={value}
-        onSplit={(next) => onChange({ value, split: next })}
-        onSingle={(name) => onChange({ value: name, split: null })}
-      />
-      <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
-        Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
-      </p>
+      {chosen.length === 0 && (
+        <p className="muted" style={{ margin: '0 0 4px', fontSize: 13 }}>
+          Sin clasificar
+        </p>
+      )}
+      {chosen.map((name, i) => {
+        const amount = split ? shownAmount.get(name) : Number.isFinite(total) && total > 0 ? total : undefined
+        return (
+          <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <select style={{ flex: 1, minWidth: 0 }} aria-label={`Clasificación ${i + 1}`} value={name} onChange={(e) => changeClass(name, e.target.value)}>
+              {options
+                .filter((o) => o.name === name || !chosen.includes(o.name))
+                .map((o) => (
+                  <option key={o.id} value={o.name}>
+                    {o.icon} {o.name}
+                  </option>
+                ))}
+              {!optionOf(name) && <option value={name}>{name}</option>}
+            </select>
+            {amount != null && (
+              <strong data-testid="class-amount" style={{ flex: 'none', fontSize: 13 }}>
+                {euro(amount)}
+              </strong>
+            )}
+            <button type="button" className="link-button" style={{ flex: 'none', minWidth: 32, minHeight: 32 }} aria-label={`Quitar la clasificación ${name}`} onClick={() => removeClass(name)}>
+              ✕
+            </button>
+          </div>
+        )
+      })}
+      {picking && (
+        <div className="card" data-testid="class-picker" style={{ padding: 8, marginBottom: 4 }}>
+          <input type="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar clasificación…" aria-label="Buscar clasificación" style={{ marginBottom: 4 }} />
+          <div role="listbox" aria-label="Clasificaciones disponibles" style={{ maxHeight: 220, overflowY: 'auto' }}>
+            {pickable.map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                role="option"
+                aria-selected={false}
+                className="link-button"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', minHeight: 40, textAlign: 'left', color: 'var(--text)', fontSize: 14 }}
+                onClick={() => addClass(o.name)}
+              >
+                <span aria-hidden="true">{o.icon}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.name}</span>
+              </button>
+            ))}
+            {pickable.length === 0 && <p className="muted" style={{ margin: '6px 0', fontSize: 13 }}>{available.length === 0 ? 'Ya están todas las clasificaciones.' : 'Ninguna clasificación coincide.'}</p>}
+          </div>
+          <button type="button" className="link-button" style={{ fontSize: 12, padding: '4px 0' }} onClick={() => { setPicking(false); setQuery('') }}>
+            Cancelar
+          </button>
+        </div>
+      )}
+      {!picking && available.length > 0 && (
+        <button type="button" className="link-button" data-help-id="finance.class-split" style={{ fontSize: 13, padding: '4px 0' }} onClick={() => setPicking(true)}>
+          + Añadir clasificación
+        </button>
+      )}
+      {!split && (
+        <span className="muted" style={{ fontSize: 12, display: 'block' }}>
+          Para que cuente en «Reparto por clasificación» de Estadística compras.
+        </span>
+      )}
+      {split && (
+        <>
+          <ShareSplitEditor
+            items={options.map((t) => ({ id: t.name, label: `${t.icon} ${t.name}` }))}
+            noun={CLASS_NOUN}
+            split={split}
+            total={total}
+            helpId="finance.class-split-editor"
+            preferredSingle={value}
+            chooser={false}
+            onSplit={(next) => onChange({ value: mainClass(next.ids), split: next })}
+            onSingle={(name) => onChange({ value: name, split: null })}
+          />
+          <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }}>
+            Si la compra tiene un ticket con productos clasificados, manda ese desglose y este reparto no se aplica.
+          </p>
+        </>
+      )}
     </div>
   )
 }
@@ -4738,6 +4870,7 @@ function MovementFormFields({
   pendingCategoryLabel,
   suggestedCategory,
   purchaseLink = 'none',
+  onOpenLinkedPurchase,
 }: {
   mode: 'create' | 'edit'
   draft: MovementDraft
@@ -4751,6 +4884,8 @@ function MovementFormFields({
   // ECO-UI-04: 'linked' = hay una compra realmente vinculada al movimiento (con o sin foto del ticket) pero sin productos reales: se indica y se puede clasificar a mano;
   // 'linked-products' = la compra trae productos reales y su desglose manda: no se pide clasificación aquí (lo ya guardado se conserva).
   purchaseLink?: PurchaseLinkState
+  /** ECO-02: abre la compra vinculada (por su identificador real). Solo si se sabe cuál es y quien llama sabe abrirla. */
+  onOpenLinkedPurchase?: () => void
 }) {
   // Fase CA-3 — fuente única para los 3 selectores de categoría de un INGRESO: además de las de
   // budgetGroup 'ingresos' de siempre, incluye «Cobro anulado» (vive en 'generales', ver domain/
@@ -4840,6 +4975,14 @@ function MovementFormFields({
       {purchaseLink !== 'none' && (
         <p className="muted" data-testid="movement-purchase-linked" style={{ margin: 0, fontSize: 13 }}>
           ✓ Compra vinculada
+          {onOpenLinkedPurchase && (
+            <>
+              {' · '}
+              <button type="button" className="link-button" data-testid="open-linked-purchase" style={{ padding: 0, fontSize: 13 }} onClick={onOpenLinkedPurchase}>
+                Ver compra vinculada
+              </button>
+            </>
+          )}
         </p>
       )}
       {classificationKind && purchaseLink !== 'linked-products' && (
@@ -4898,6 +5041,8 @@ function EditExpenseInline({
   onCancel,
   onAddToForecast,
   addToForecastBusy,
+  onOpenLinkedPurchase,
+  onLinkToFund,
 }: {
   expense: Expense
   categories: BudgetCategory[]
@@ -4913,6 +5058,10 @@ function EditExpenseInline({
   // falta su account_id real, ver ExpensesTab).
   onAddToForecast?: () => void
   addToForecastBusy?: boolean
+  /** ECO-02: abre la compra vinculada (recibe su identificador). Solo en Movimientos. */
+  onOpenLinkedPurchase?: (receiptId: string) => void
+  /** ECO-03: «Enlazar con bote». Solo cuando el movimiento viene de un movimiento bancario. */
+  onLinkToFund?: () => void
 }) {
   const [draft, setDraft] = useState<MovementDraft>(() => ({
     isIncome: expense.isIncome,
@@ -4936,18 +5085,30 @@ function EditExpenseInline({
   // anotada a mano sin foto) y sus líneas. Es la MISMA regla que usa Estadística compras para decidir si manda el desglose de productos. Un ingreso no tiene compra. Mientras se comprueba
   // (o si falla) se enseña el selector de siempre: nunca se oculta algo que se necesita por no saber todavía.
   const [purchaseLink, setPurchaseLink] = useState<PurchaseLinkState>('none')
+  const [linkedReceiptId, setLinkedReceiptId] = useState<string | null>(null)
   useEffect(() => {
     if (expense.isIncome) return
     let cancelled = false
-    listLinkedTicketProducts(expense.id)
-      .then((lines) => {
-        if (!cancelled) setPurchaseLink(purchaseLinkState(lines))
+    findLinkedPurchase(expense.id)
+      .then((purchase) => {
+        if (cancelled) return
+        setPurchaseLink(purchaseLinkState(purchase ? purchase.lines : null))
+        setLinkedReceiptId(purchase?.receiptId ?? null)
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
   }, [expense.id, expense.isIncome])
+
+  // Salir hacia otra pantalla (compra vinculada, bote) con cambios sin guardar en este formulario: se avisa, nunca se pierden en silencio.
+  const initialDraftRef = useRef(JSON.stringify(draft))
+  function leaveGuard(go: () => void): () => void {
+    return () => {
+      if (JSON.stringify(draft) !== initialDraftRef.current && !window.confirm('Tienes cambios sin guardar en este movimiento. ¿Salir sin guardarlos?')) return
+      go()
+    }
+  }
 
   async function handleSave() {
     const checked = movementFieldValues(draft)
@@ -5009,13 +5170,26 @@ function EditExpenseInline({
         categories={categories}
         tags={tags}
         purchaseLink={purchaseLink}
+        onOpenLinkedPurchase={onOpenLinkedPurchase && linkedReceiptId ? leaveGuard(() => onOpenLinkedPurchase(linkedReceiptId)) : undefined}
         pendingCategoryLabel={!expense.isIncome && expense.category == null ? `⏳ ${PENDING_LABEL}` : undefined}
         suggestedCategory={expense.category == null ? expense.categorySuggestion : null}
       />
-      {onAddToForecast && (
-        <button type="button" className="link-button" style={{ margin: '4px 0 0' }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
-          {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
-        </button>
+      {(onAddToForecast || onLinkToFund) && (
+        // ECO-03: fila al pie del editor, justo antes de Guardar/Cancelar: «Añadir a Previsión» a la izquierda y «Enlazar con bote» a la derecha.
+        <div data-testid="movement-extra-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, margin: '4px 0 0' }}>
+          {onAddToForecast ? (
+            <button type="button" className="link-button" style={{ margin: 0 }} onClick={onAddToForecast} disabled={!!addToForecastBusy}>
+              {addToForecastBusy ? 'Analizando…' : '🔮 Añadir a Previsión'}
+            </button>
+          ) : (
+            <span />
+          )}
+          {onLinkToFund && (
+            <button type="button" className="link-button" style={{ margin: 0 }} data-testid="link-to-fund" onClick={onLinkToFund}>
+              Enlazar con bote
+            </button>
+          )}
+        </div>
       )}
       {error && <p className="error">{error}</p>}
       <div className="form-actions">
@@ -5656,11 +5830,91 @@ function AddStoreInline({ onAdded }: { onAdded: () => void }) {
   )
 }
 
-export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistory?: (back: PendingReceiptOpen['back']) => void; onOpenProduct?: (product: { productId: string; name: string }) => void } = {}) {
+
+// COMP-07 — «Descuentos y ahorro» en Compras → Estadística compras. Suma los descuentos GENERALES registrados (receipts.discount_total): total del periodo, evolución mensual y las compras
+// de las que salen, cada una con su enlace directo. Original − descuento = pagado siempre cuadra y cada compra cuenta una sola vez.
+export function DiscountSavingsCard({
+  receipts,
+  from,
+  to,
+  onOpenReceipt,
+}: {
+  receipts: readonly Receipt[]
+  from: string
+  to: string
+  onOpenReceipt?: (receiptId: string) => void
+}) {
+  const summary = useMemo(() => summarizeReceiptDiscounts(receipts, from, to), [receipts, from, to])
+  if (summary.byMonth.length === 0) return null // sin ningún descuento registrado nunca: no se enseña la sección
+  const fmt = (n: number) => n.toFixed(2).replace('.', ',') + ' €'
+  const monthLabel = (m: string) => {
+    const [y, mo] = m.split('-').map(Number)
+    return new Date(y, mo - 1, 1).toLocaleDateString('es-ES', { month: 'short', year: 'numeric' })
+  }
+  const recent = summary.byMonth.slice(-12)
+  const max = Math.max(...recent.map((m) => m.discount), 0.01)
+  return (
+    <div className="card event-card" data-testid="discount-savings" style={{ marginTop: 8 }}>
+      <h3 style={{ margin: '0 0 4px' }}>🏷️ Descuentos y ahorro</h3>
+      <p style={{ margin: '0 0 6px' }} data-testid="discount-total">
+        {summary.purchases.length === 0 ? (
+          'Sin descuentos registrados en este periodo.'
+        ) : (
+          <>
+            Este periodo has ahorrado <strong>{fmt(summary.total)}</strong> en {summary.purchases.length} {summary.purchases.length === 1 ? 'compra' : 'compras'} con descuento.
+          </>
+        )}
+      </p>
+      <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
+        Evolución mensual (todas las fechas)
+      </p>
+      <div data-testid="discount-months">
+        {recent.map((m) => (
+          <div key={m.month} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, margin: '2px 0' }}>
+            <span style={{ width: 64 }}>{monthLabel(m.month)}</span>
+            <span aria-hidden="true" style={{ flex: 1, height: 6, background: 'rgba(100,116,139,0.15)', borderRadius: 3 }}>
+              <span style={{ display: 'block', height: 6, width: `${Math.max(4, (m.discount / max) * 100)}%`, background: '#2f9e44', borderRadius: 3 }} />
+            </span>
+            <span>
+              {fmt(m.discount)} <span className="muted">({m.purchases})</span>
+            </span>
+          </div>
+        ))}
+      </div>
+      {summary.purchases.length > 0 && (
+        <div style={{ marginTop: 8 }} data-testid="discount-purchases">
+          <p className="muted" style={{ margin: '0 0 4px', fontSize: 12 }}>
+            Compras de este periodo con descuento
+          </p>
+          {summary.purchases.map((p) => (
+            <p key={p.receiptId} style={{ margin: '4px 0', fontSize: 13 }}>
+              {formatDate(p.date)} · {p.store ?? 'Compra'}: original {fmt(p.original)} − descuento {fmt(p.discount)} = pagado {fmt(p.paid)}
+              {onOpenReceipt && (
+                <>
+                  {' '}
+                  <button type="button" className="link-button" style={{ padding: 0 }} onClick={() => onOpenReceipt(p.receiptId)}>
+                    Ver compra →
+                  </button>
+                </>
+              )}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function ReceiptsTab({ onBackToHistory, onOpenProduct, initialPendingOnly = false, backTo }: { onBackToHistory?: (back: NonNullable<PendingReceiptOpen['back']>) => void; onOpenProduct?: (product: { productId: string; name: string }) => void; /** COMP-06: llegar desde el contador de Compras → Inicio: solo las compras con productos por identificar. */ initialPendingOnly?: boolean; /** NAV-01: «← Volver a …» cuando la compra se abrió desde otra pestaña de Compras (p. ej. Estadísticas → Descuentos). */ backTo?: { label: string; onBack: () => void } } = {}) {
   // COR-04C: compra pedida desde el Historial de precios («Ver ticket» / «Ver compra»): se abre por su identificador y se ofrece volver a la ficha del producto.
   const [openTarget] = useState(() => takePendingReceiptOpen())
+  // NAV-01: compra abierta desde un movimiento de Economía («Ver compra vinculada») → «← Volver a Economía».
+  const { bar: ticketsReturnBar } = useNavOrigin('tickets')
   const [focusId, setFocusId] = useState<string | null>(null)
   const [targetMissing, setTargetMissing] = useState(false)
+  // COMP-06: compras con líneas «Pendiente» (receiptId → nº de líneas) y vista «solo las pendientes».
+  const [pendingCounts, setPendingCounts] = useState<Map<string, number>>(new Map())
+  const [pendingOnly, setPendingOnly] = useState(initialPendingOnly)
   const [receipts, setReceipts] = useState<Receipt[]>([])
   const [bankOnlyExpenses, setBankOnlyExpenses] = useState<Expense[]>([])
   // Efectivo, pagos y devoluciones de las compras (todo opcional: sin la migración 0312 estas listas quedan vacías).
@@ -5697,6 +5951,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
 
   function reload() {
     if (!hasLoadedOnceRef.current) setLoading(true)
+    listPendingLineCounts().then(setPendingCounts).catch(() => {})
     Promise.all([listReceipts(), listExpenses(), listBudgetCategories(), listPurchaseRefunds(), listPurchasePayments(), listCashLinkedExpenseIds(), listWalletsSafe()])
       .then(([r, allExpenses, cats, refundRows, paymentRows, cashIds, walletRows]) => {
         setReceipts(r)
@@ -5830,6 +6085,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
   const [rangeFrom, rangeTo] = rangeForPreset(rangePreset, rangeCustomFrom, rangeCustomTo)
   const rangeFilteredReceipts = displayReceipts.filter((r) => r.receiptDate >= rangeFrom && r.receiptDate <= rangeTo)
   const rangeGrouped = groupReceiptsByStore(rangeFilteredReceipts, knownStores)
+  const shownGrouped = pendingOnly ? groupReceiptsByStore(displayReceipts.filter((r) => pendingCounts.has(r.id)), knownStores) : rangeGrouped
   const storeColorOf = storeColorResolver(
     storeEntries,
     grouped.map((g) => g.store),
@@ -5838,10 +6094,12 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
   return (
     <div>
       {error && <p className="error">{error}</p>}
-      {openTarget && onBackToHistory && (
+      {ticketsReturnBar}
+      {backTo && <ReturnBar label={backTo.label} onBack={backTo.onBack} />}
+      {openTarget?.back && onBackToHistory && (
         // COR-04F: barra que se queda PEGADA arriba mientras se hace scroll (la compra se centra en pantalla al llegar y el botón, al principio de la página, quedaba fuera de vista).
         <div className="receipt-back-bar" data-testid="receipt-back-bar">
-          <button type="button" onClick={() => onBackToHistory(openTarget.back)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
+          <button type="button" onClick={() => onBackToHistory(openTarget.back!)} aria-label={`Volver a Historial de precios (${openTarget.back.productName})`}>
             ← Volver a Historial de precios
           </button>
           <span className="muted" style={{ fontSize: 12 }}>{openTarget.back.productName}</span>
@@ -5920,8 +6178,32 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
           y los de este... quiero filtrarme solo por los de este mes o
           por esta semana". */}
       <h2 className="section-title" data-help-id="shopping.receipts-saved">Historial de compras</h2>
+      {pendingCounts.size > 0 && (
+        // COMP-06: las compras con productos «Pendiente» no se pierden de vista: contador y vista directa de solo esas.
+        <div className="card event-card" data-testid="pending-purchases-banner" style={{ borderLeft: '4px solid #f0a020' }}>
+          <strong>⏳ {pendingPurchasesLabel(pendingCounts.size)}</strong>
+          <p className="muted" style={{ margin: '4px 0' }}>
+            Su importe cuenta en las estadísticas por la clasificación del gasto, pero sus productos aún no están identificados. Ábrelas y toca «Resolver» en cada línea.
+          </p>
+          <button
+            type="button"
+            className="link-button"
+            data-testid="toggle-pending-only"
+            onClick={() => {
+              const next = !pendingOnly
+              setPendingOnly(next)
+              if (next) {
+                const first = groupReceiptsByStore(displayReceipts.filter((r) => pendingCounts.has(r.id)), knownStores)[0]
+                if (first) setExpandedStore(first.store)
+              }
+            }}
+          >
+            {pendingOnly ? 'Ver todas las compras' : 'Ver solo estas compras'}
+          </button>
+        </div>
+      )}
       <p className="muted" style={{ marginTop: -8 }}>
-        Se filtran con el selector de arriba ({PRESET_LABELS[rangePreset]}).
+        {pendingOnly ? 'Mostrando solo las compras con productos por identificar (de todas las fechas).' : `Se filtran con el selector de arriba (${PRESET_LABELS[rangePreset]}).`}
       </p>
       <AddStoreInline onAdded={() =>
           listShoppingStores().then((rows) => {
@@ -5930,7 +6212,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
           })
         } />
       <div className="store-folder-grid">
-        {rangeGrouped.map(({ store, receipts: storeReceipts, total }) => {
+        {shownGrouped.map(({ store, receipts: storeReceipts, total }) => {
           const isOpen = expandedStore === store
           return (
             <div key={store} className="store-folder" style={{ background: storeColorOf(store) }}>
@@ -5990,6 +6272,7 @@ export function ReceiptsTab({ onBackToHistory, onOpenProduct }: { onBackToHistor
                         receipt={r}
                         hasTicket={r.hasTicket}
                         highlight={focusId === r.id}
+                        pendingLines={pendingCounts.get(r.id) ?? 0}
                         onOpenProduct={onOpenProduct}
                         onDiscountChanged={reload}
                         members={members}
@@ -6366,6 +6649,7 @@ function ReceiptRow({
   receipt,
   hasTicket,
   highlight = false,
+  pendingLines = 0,
   members,
   onEdit,
   onAttach,
@@ -6383,6 +6667,8 @@ function ReceiptRow({
   hasTicket: boolean
   /** COR-04C: la compra que se pidió desde el Historial de precios: sale desplegada, resaltada y a la vista. */
   highlight?: boolean
+  /** COMP-06: nº de líneas que siguen siendo «Pendiente» (producto sin identificar). */
+  pendingLines?: number
   members: FamilyMember[]
   onEdit: () => void
   onAttach?: () => void
@@ -6471,7 +6757,7 @@ function ReceiptRow({
   }
 
   return (
-    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : undefined}>
+    <div className="card receipt-row" ref={cardRef} data-highlighted={highlight ? 'true' : undefined} style={highlight ? { outline: '2px solid var(--primary, #6c5ce7)', outlineOffset: 2 } : pendingLines > 0 ? { borderLeft: '4px solid #f0a020' } : undefined}>
       <div className="receipt-row-main">
         <button type="button" className="receipt-row-summary" onClick={handleToggleExpand}>
           <span>{formatDate(receipt.receiptDate)}</span>
@@ -6481,6 +6767,11 @@ function ReceiptRow({
           {purchaser && <span className="muted"> · {purchaser.name}</span>}
           {isPaymentMethod(receipt.paymentMethod) && <span className="muted"> · {PAYMENT_METHOD_LABELS[receipt.paymentMethod]}</span>}
           {receipt.isManual && !receipt.storagePath && <span className="muted" title="Compra apuntada a mano, sin ticket"> · ✍️ sin ticket</span>}
+          {pendingLines > 0 && (
+            <span className="pending-tag" data-testid="receipt-pending-lines" title="Hay productos de esta compra sin identificar">
+              {' · '}⏳ {pendingLines} {pendingLines === 1 ? 'producto por identificar' : 'productos por identificar'}
+            </span>
+          )}
           {payments.length > 1 && <span className="muted"> · {payments.map((p) => `${(PAYMENT_METHOD_LABELS as Record<string, string>)[p.method]?.slice(0, 2) ?? ''} ${p.amount.toFixed(2)} €`).join(' + ')}</span>}
           {refundText && <span className="muted"> · {refundText}</span>}
           {/* Petición real: "que marque con un símbolo 'falta ticket'
@@ -6549,13 +6840,21 @@ function ReceiptRow({
                 <p key={l.id} className="muted receipt-row-detail-line">
                   {/* COR-10: el nombre lleva a la ficha del producto (Historial de precios), donde se ve y se corrige su clasificación. */}
                   {onOpenProduct && l.productId ? (
-                    <button type="button" className="link-button" style={{ padding: 0, font: 'inherit', textAlign: 'left', textDecoration: 'underline', color: 'inherit' }} onClick={() => onOpenProduct({ productId: l.productId as string, name: l.name })}>
+                    <button type="button" className="link-button" style={{ padding: 0, font: 'inherit', textAlign: 'left', textDecoration: 'none', color: 'inherit', cursor: 'pointer' }} title="Ver la ficha del producto (Historial de precios)" onClick={() => onOpenProduct({ productId: l.productId as string, name: l.name })}>
                       {l.name}
                     </button>
                   ) : (
                     l.name
                   )}
                   {l.quantity && ` · ${l.quantity} ${unitLabel}`} · {l.price.toFixed(2)} €/{unitLabel}
+                  {isPlaceholderProduct({ displayName: l.name }) && (
+                    <>
+                      {' '}
+                      <button type="button" className="link-button" data-testid="resolve-pending-line" style={{ padding: 0 }} onClick={onEdit}>
+                        ⏳ Resolver
+                      </button>
+                    </>
+                  )}
                 </p>
               )
             })}
@@ -6584,6 +6883,7 @@ function ReceiptRow({
               <div data-testid="receipt-difference" style={{ marginTop: 6 }}>
                 {(receipt.discountTotal ?? 0) > 0 && (
                   <p className="muted" style={{ margin: '2px 0', fontSize: 13 }}>
+                    {diff.kind === 'ok' && <>✓ Compra cuadrada: {fmt(diff.linesTotal)} − {fmt(diff.discount)} = {fmt(diff.total)}. </>}
                     🏷️ Descuento general registrado: −{fmt(receipt.discountTotal ?? 0)} (los precios de los productos son los originales).{' '}
                     <button type="button" className="link-button" disabled={discountBusy} onClick={() => void saveDiscount(0)}>
                       Quitar descuento
@@ -6659,6 +6959,8 @@ interface DraftLine {
   pack?: PackFormat | null
   // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
   ean?: string
+  // COMP-05: al editar una compra, la línea guardada (product_prices.id): su formato se puede guardar al momento sin pulsar «Guardar».
+  priceId?: string
   // Producto del catálogo maestro que la familia confirmó o corrigió en esta revisión (se guarda en el producto al guardar el ticket).
   catalogProductKey?: string
 }
@@ -6878,7 +7180,8 @@ function ReceiptForm({
   }
   // Líneas leídas del ticket que se han omitido por no ser productos (solo para avisar; no se guardan).
   const [skippedLines, setSkippedLines] = useState<string[]>([])
-  const [discountTotal, setDiscountTotal] = useState(0)
+  // COMP-01: al editar, el descuento YA registrado en la compra cuenta en la comprobación de importes (antes arrancaba en 0 y avisaba de una diferencia que ya estaba explicada).
+  const [discountTotal, setDiscountTotal] = useState(mode === 'edit' ? (receipt?.discountTotal ?? 0) : 0)
   const uploadedReceiptId = useRef<string | null>(null)
   const [ocrStatus, setOcrStatus] = useState<OcrStatus>('idle')
   const [loadingLines, setLoadingLines] = useState(mode === 'edit')
@@ -7027,7 +7330,7 @@ function ReceiptForm({
         setLines(
           // l.price YA es el precio por unidad o por kg (nunca el importe total) — no hace falta reconstruir
           // nada, a diferencia de antes.
-          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), ...(l.pack ? { pack: l.pack } : {}) })),
+          detail.map((l) => ({ name: l.name, quantity: l.quantity ?? '1', unit: l.unit === 'kg' ? 'kg' : 'ud', unitPrice: l.price.toFixed(2), priceId: l.id, ...(l.pack ? { pack: l.pack } : {}) })),
         ),
       )
       .catch(() => {})
@@ -7066,6 +7369,49 @@ function ReceiptForm({
 
   function updateLine(index: number, patch: Partial<DraftLine>) {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)))
+  }
+
+  // COMP-05: lo que se decide sobre un PRODUCTO (su clase, su identidad del catálogo, el formato de una compra ya guardada) se guarda al momento, sin esperar a «Guardar compra»:
+  // si se cierra la ventana o se sale sin guardar, el producto ya no vuelve a aparecer pendiente. Los importes, pesos y cantidades de ESTA compra siguen siendo de esta compra
+  // y solo se guardan con ella. El marcador «Pendiente» nunca se clasifica.
+  const [productSaveNote, setProductSaveNote] = useState<string | null>(null)
+  // Cambios de ESTA compra sin guardar (importes, líneas, fecha, tienda): al cancelar se pregunta; lo decidido sobre los productos ya está guardado.
+  const formSnapshot = JSON.stringify([store, receiptDate, totalAmount, category, lines.map((l) => [l.name, l.quantity, l.unit, l.unitPrice])])
+  const baselineRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (mode === 'edit' && !loadingLines && baselineRef.current === null) baselineRef.current = formSnapshot
+  }, [mode, loadingLines, formSnapshot])
+  const formDirty = mode === 'edit' && baselineRef.current !== null && baselineRef.current !== formSnapshot
+  const [leaveAsk, setLeaveAsk] = useState(false)
+  async function persistProduct(lineName: string, change: { classOverride?: { kind: FoodTypeKind; classification: string } | null; catalogKey?: string | null }) {
+    const name = lineName.trim()
+    if (!name || isPlaceholderProduct({ displayName: name, normalizedName: name })) return
+    try {
+      const productId = productByNormalizedName.get(normalizeProductName(name))?.id ?? (await ensureProductId(name))
+      await Promise.all([
+        ...(change.classOverride !== undefined ? [setProductFoodType(productId, change.classOverride?.classification ?? null, change.classOverride?.kind)] : []),
+        ...(change.catalogKey !== undefined ? [setProductCatalogKey(productId, change.catalogKey)] : []),
+      ])
+      setAllProducts(await listProducts())
+      setProductSaveNote('Guardado en el producto')
+      window.setTimeout(() => setProductSaveNote(null), 2500)
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo guardar el cambio del producto'))
+    }
+  }
+  function commitClass(index: number, next: DraftLine['classOverride']) {
+    updateLine(index, { classOverride: next })
+    void persistProduct(lines[index]?.name ?? '', { classOverride: next ?? null })
+  }
+  function commitIdentity(index: number, key: string, classOverride: DraftLine['classOverride']) {
+    updateLine(index, { catalogProductKey: key, classOverride })
+    void persistProduct(lines[index]?.name ?? '', { catalogKey: key, ...(classOverride ? { classOverride } : {}) })
+  }
+  function commitPack(index: number, pack: PackFormat | null | undefined) {
+    updateLine(index, { pack })
+    const priceId = lines[index]?.priceId
+    // Solo una línea ya guardada tiene dónde persistir el formato; en una compra nueva se guarda con la compra y se recuerda de ahí en adelante.
+    if (priceId && pack !== undefined) void setPriceLinePack(priceId, pack).then(() => listAllProductPrices().then(setAllPrices)).catch((err) => setError(errorMessage(err, 'No se pudo guardar el formato')))
   }
 
   function removeLine(index: number) {
@@ -7485,6 +7831,11 @@ function ReceiptForm({
               onOpen={(i) => toggleLine(i, true)}
             />
           )}
+          {productSaveNote && (
+            <p className="muted" role="status" style={{ fontSize: 12, margin: '2px 0' }}>
+              ✓ {productSaveNote}
+            </p>
+          )}
           {lines.map((line, i) => {
             const resolved = resolveDraftLineClass(
               line,
@@ -7511,7 +7862,7 @@ function ReceiptForm({
               return (
                 <div key={i} className={'receipt-line-card receipt-line-compact' + (needsCheck ? ' receipt-line-attention' : '')} data-line-index={i} data-line-compact="true">
                   <div className="receipt-line-row">
-                    <ReceiptLineClassPicker resolved={resolved} foodTypesByKind={foodTypesByKind} onChange={(next) => updateLine(i, { classOverride: next })} />
+                    <ReceiptLineClassPicker resolved={resolved} foodTypesByKind={foodTypesByKind} onChange={(next) => commitClass(i, next)} />
                     <button type="button" className="receipt-line-summary" aria-expanded={false} aria-label={`Editar ${line.name}`} onClick={() => toggleLine(i, true)}>
                       <span className="receipt-line-summary-name">{line.name}</span>
                       <span className="receipt-line-summary-amount">
@@ -7530,7 +7881,7 @@ function ReceiptForm({
                   <ReceiptLineClassPicker
                     resolved={resolved}
                     foodTypesByKind={foodTypesByKind}
-                    onChange={(next) => updateLine(i, { classOverride: next })}
+                    onChange={(next) => commitClass(i, next)}
                   />
                   <input
                     type="text"
@@ -7597,17 +7948,21 @@ function ReceiptForm({
                   onChoose={(key) => {
                     // «Es correcto» confirma lo que ya se enseña. Cambiar de producto o de variante cambia lo que es: su categoría sigue a la nueva identidad (la de la familia que corresponde a la
                     // clase del catálogo), se ve al instante en el símbolo y se guarda con el producto, de modo que Compras, Economía y el Comparador leen la misma.
-                    if (key === reading.entryKey) return updateLine(i, { catalogProductKey: key })
+                    if (key === reading.entryKey) {
+                      updateLine(i, { catalogProductKey: key })
+                      void persistProduct(line.name, { catalogKey: key })
+                      return
+                    }
                     const classKey = catalogHitByKey(key)?.classKey
                     const own = classKey ? familyClassForCatalogClass([...foodTypesByKind.alimentacion, ...foodTypesByKind.no_alimentos], classKey) : undefined
-                    updateLine(i, { catalogProductKey: key, classOverride: own ? { kind: own.kind, classification: own.name } : undefined })
+                    commitIdentity(i, key, own ? { kind: own.kind, classification: own.name } : undefined)
                   }}
                   onRequestProduct={requestProduct ? (searched) => requestProduct({ raw: line.name, searched, classLabel: resolved.classification }) : undefined}
                 />
                 <LineFormatControl
                   line={line}
                   history={allPrices.filter((p) => p.productId === productByNormalizedName.get(normalizeProductName(line.name))?.id).map((p) => ({ price: p.price, pack: p.pack ?? null, recordedDate: p.recordedDate }))}
-                  onPack={(pack) => updateLine(i, { pack })}
+                  onPack={(pack) => commitPack(i, pack)}
                   onReading={(reading) => {
                     const ean = eanHint(reading)
                     if (ean) updateLine(i, { ean })
@@ -7624,7 +7979,7 @@ function ReceiptForm({
               prices={allPrices}
               productIdFor={(name) => productByNormalizedName.get(normalizeProductName(name))?.id ?? null}
               commonOf={commonOf}
-              onPack={(i, pack) => updateLine(i, { pack })}
+              onPack={(i, pack) => commitPack(i, pack)}
               onReading={(i, reading) => {
                 const ean = eanHint(reading)
                 if (ean) updateLine(i, { ean })
@@ -7688,12 +8043,25 @@ function ReceiptForm({
       {requestFor && SUPPORT_ENABLED && <ProductRequestSheet context={requestFor} onClose={() => setRequestFor(null)} />}
       {shortfall && createPortal(<ShortfallDialog notice={shortfall.notice} walletName={shortfall.walletName} onChoose={(c) => shortfall.resolve(c)} onAddCash={(add) => shortfall.resolve({ add })} />, document.body)}
       {error && <p className="error">{error}</p>}
+      {leaveAsk && (
+        <div className="receipt-line-card" role="alert" data-testid="leave-confirm">
+          <p style={{ margin: '0 0 6px' }}>Hay cambios de esta compra sin guardar. Lo que decidiste sobre cada producto (clase, identidad, formato de una compra ya guardada) ya está guardado.</p>
+          <div className="form-actions">
+            <button type="button" onClick={() => setLeaveAsk(false)}>
+              Seguir editando
+            </button>
+            <button type="button" className="link-button" onClick={() => onCancel?.()}>
+              Salir sin guardar
+            </button>
+          </div>
+        </div>
+      )}
       <div className="form-actions">
         <button type="submit" disabled={saving} {...(mode === 'add' ? { 'data-help-id': 'shopping.receipt-save' } : {})}>
           {saving ? 'Guardando…' : mode === 'add' ? (noTicket ? 'Guardar compra' : attachTo ? 'Añadir ticket' : 'Guardar ticket') : 'Guardar'}
         </button>
         {mode === 'edit' && (
-          <button type="button" className="link-button" onClick={onCancel}>
+          <button type="button" className="link-button" onClick={() => (formDirty ? setLeaveAsk(true) : onCancel?.())}>
             Cancelar
           </button>
         )}
@@ -7962,6 +8330,8 @@ export function BudgetsTab({
   myMemberId = null,
   onViewMovements,
   onOpenProduct,
+  onResolvePending,
+  onOpenReceipt,
 }: {
   group: string
   accountsMode?: AccountsMode
@@ -7973,6 +8343,10 @@ export function BudgetsTab({
   onViewMovements?: (filter: MovementsFilter) => void
   // COR-04: tocar un producto del desglose abre SU ficha en Compras → Historial de precios (por identificador). Solo lo pasa Compras; sin él, las filas no son tocables.
   onOpenProduct?: (product: { productId: string; name: string; kind: FoodTypeKind }) => void
+  // COMP-06: lleva a Compras → Tickets con solo las compras con productos por identificar.
+  onResolvePending?: () => void
+  // COMP-07: abre una compra concreta (Tickets) desde «Descuentos y ahorro»; al volver se recupera la estadística. Solo lo pasa Compras.
+  onOpenReceipt?: (receiptId: string) => void
 }) {
   // Piso compartido — solo aplica a Presupuesto Generales ('generales');
   // Alimentación se sigue viendo entera por todos siempre (RLS ya lo
@@ -8209,6 +8583,8 @@ export function BudgetsTab({
   const foodClassEntries: ClassifiableEntry[] = []
   const noAlimentosClassEntries: ClassifiableEntry[] = []
   const splits: ExpenseSplit[] = []
+  // COMP-06: compras cuyas líneas son (en parte) el marcador «Pendiente»: SÍ cuentan (por la clasificación del gasto), pero se avisa de que sus productos no están identificados.
+  const purchasesWithPendingLines = new Set<string>()
   for (const e of monthRealExpenses) {
     const receipt = receiptByExpenseId.get(e.id)
     const baseIsFood = isFoodCategory(e.category, categories)
@@ -8223,6 +8599,7 @@ export function BudgetsTab({
     const allLines = receipt ? (pricesByReceiptId.get(receipt.id) ?? []) : []
     const lines = allLines.filter((pr) => !isPlaceholderProduct(productById.get(pr.productId)))
     const hadPlaceholderLines = lines.length < allLines.length
+    if (hadPlaceholderLines && receipt) purchasesWithPendingLines.add(receipt.id)
     let foodAmount = 0
     let nonFoodAmount = 0
     let unknownAmount = 0
@@ -8574,6 +8951,19 @@ export function BudgetsTab({
                 ni en Alimentación ni en Otros hasta que les pongas una clase.
               </p>
             )}
+            {purchasesWithPendingLines.size > 0 && (
+              <p className="muted" data-testid="stats-pending-lines" style={{ margin: '8px 0 0', fontSize: 12 }}>
+                ⏳ {pendingPurchasesLabel(purchasesWithPendingLines.size)}: su importe SÍ está contado (por la clasificación del gasto), pero sus productos aún no están identificados.
+                {onResolvePending && (
+                  <>
+                    {' '}
+                    <button type="button" className="link-button" onClick={onResolvePending}>
+                      Resolver →
+                    </button>
+                  </>
+                )}
+              </p>
+            )}
           </div>
           <p className="muted" style={{ margin: '8px 0 0' }}>
             Solo registro — no resta de ningún presupuesto. Cuenta para el Presupuesto General.
@@ -8601,6 +8991,7 @@ export function BudgetsTab({
           </p>
         </div>
       )}
+      {group === 'alimentacion' && <DiscountSavingsCard receipts={receipts} from={periodFrom} to={periodTo} onOpenReceipt={onOpenReceipt} />}
 
       {/* Bug real (validación en iPhone): esta comparativa mostraba préstamos, clínica dental y otros
           gastos generales de Economía — CAUSA encontrada: isComparableSpend solo aplicaba el filtro

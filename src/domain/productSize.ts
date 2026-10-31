@@ -25,6 +25,8 @@ const COUNT_PATTERNS: RegExp[] = [
   // «40 lavados», «12 rollos», «48 pañales»: lo que se cuenta es la unidad de uso (€/lavado, €/rollo...). El nombre del producto dice qué es.
   /(?<![\p{L}\d])(\d{1,3})\s*(?:lavados?|rollos?|dosis|c[aá]psulas?|pastillas?|toallitas?|pa[ñn]ales|compresas?|tampones?|servicios?|bolsas?|sobres?)(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])(\d{1,3})\s*(?:uds?|unid(?:ades?)?|u)(?![\p{L}\d])/iu,
+  // COMP-03: «8 Piezas Cadenas para chupetes», «12 pzas», «6 pcs»: lo que trae el paquete (no cuántos paquetes se compran).
+  /(?<![\p{L}\d])(\d{1,3})\s*(?:piezas?|pzas?|pcs?)(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])pack\s*(?:de\s*)?(\d{1,3})(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])p-(\d{1,3})(?![\p{L}\d])/iu,
   /(?<![\p{L}\d])x\s?(\d{1,3})(?![\p{L}\d])/iu,

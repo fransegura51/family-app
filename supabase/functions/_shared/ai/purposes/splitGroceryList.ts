@@ -10,8 +10,12 @@ import { asCleanString, asRecord, parseJsonLoose } from '../validate.ts'
 // Se llama solo cuando el troceo local por comas/"y" ya ha dejado un solo
 // trozo con más de una palabra.
 
+export type SplitListKind = 'tareas' | 'ideas' | 'comparativa'
+
 export interface SplitGroceryInput {
   text: string
+  // Solo «Mis listas»: si viene, lo dictado es una lista de tareas/ideas/comparativa y NO una compra (otras instrucciones).
+  kind?: SplitListKind
 }
 
 export interface SplitGroceryOutput {
@@ -29,10 +33,24 @@ export const splitGroceryListSpec: AiPurposeSpec<SplitGroceryInput, SplitGrocery
     const { text } = body
     if (typeof text !== 'string' || !text.trim()) return { ok: false, error: 'missing text' }
     if (text.length > MAX_TEXT) return { ok: false, error: 'text too long' }
-    return { ok: true, input: { text } }
+    const kind = body.kind === 'tareas' || body.kind === 'ideas' || body.kind === 'comparativa' ? body.kind : undefined
+    return { ok: true, input: { text, kind } }
   },
 
-  buildParts({ text }) {
+  buildParts({ text, kind }) {
+    if (kind) {
+      const what = kind === 'tareas' ? 'una lista de tareas' : kind === 'ideas' ? 'una lista de ideas o anotaciones' : 'una lista para comparar opciones (pros, contras o alternativas)'
+      const listPrompt =
+        `Esto es ${what} dictada por voz de un tirón, en español, sin comas ni pausas claras entre elemento y elemento ` +
+        `(el reconocimiento de voz a veces se equivoca en alguna palabra):\n"${text}"\n\n` +
+        'Sepárala en elementos independientes. Cada elemento es una acción, idea o anotación completa que se diría en una línea ' +
+        '("comprar toallas", "limpiar la ducha"): un verbo y su complemento van juntos y NO se parten. ' +
+        'No inventes elementos, no quites ninguno, no cambies su significado, no corrijas ni reescribas las palabras (aunque parezcan mal reconocidas) ' +
+        'y no cambies el orden. Solo decide dónde acaba un elemento y empieza el siguiente. ' +
+        'Si no ves ninguna separación segura, devuelve el texto entero como un único elemento.\n\n' +
+        'Responde ÚNICAMENTE un objeto JSON, sin texto adicional ni markdown: {"items": ["elemento1", "elemento2"]}'
+      return [{ text: listPrompt }]
+    }
     const prompt =
       'Esto es una lista de la compra dictada por voz de un tirón, en español, sin comas ni pausas claras entre ' +
       `producto y producto:\n"${text}"\n\n` +

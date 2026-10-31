@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EditorialItemRow } from '@/domain/communityEditorial'
-import { agendaDayLabel, agendaRow, agendaState, buildAgenda, defaultAgendaWeek, pollCloseDay } from '@/domain/communityEditorialAgenda'
+import { type AgendaRow, agendaDayLabel, agendaRow, agendaState, buildAgenda, defaultAgendaWeek, pollCloseDay } from '@/domain/communityEditorialAgenda'
 
 const row = (over: Partial<EditorialItemRow> & { id: string }): EditorialItemRow => ({
   kind: 'article', title: over.id, status: 'proposed', version: 1, slotDate: '2026-11-02', topicLabel: null, publishAt: null, publishError: null, tier: null, ...over,
@@ -80,3 +80,73 @@ describe('agenda editorial: hora prevista, estados y semanas', () => {
     expect(agendaDayLabel('2026-11-04')).toBe('Mié 4 nov')
   })
 })
+
+describe('agenda editorial: semana por fecha efectiva (reprogramaciones)', () => {
+  const polled = (publishAt: string, slotDate = '2026-10-31') =>
+    row({ id: 'poll', kind: 'poll', title: 'Encuesta familiar', slotDate, status: 'approved', publishAt })
+  const find = (items: EditorialItemRow[], monday: string) => buildAgenda(items).find((w) => w.monday === monday)
+  const idsOf = (w?: { days: { rows: AgendaRow[] }[] }) => (w?.days ?? []).flatMap((d) => d.rows.map((r) => r.item.id))
+
+  it('encuesta trasladada del sáb 31 oct al sáb 7 nov (el hueco original queda en la semana anterior): sale en la semana del 2 al 8, no en la anterior', () => {
+    const items = [...PROGRAM.filter((i) => i.id !== 'poll'), polled('2026-11-07T09:00:00Z')]
+    const weeks = buildAgenda(items)
+    expect(weeks.map((w) => w.monday)).toEqual(['2026-11-02'])
+    const w = find(items, '2026-11-02')!
+    expect(w.count).toBe(9)
+    expect(idsOf(w)).toContain('poll')
+    expect(find(items, '2026-10-26')).toBeUndefined()
+    const sat = w.days.find((d) => d.date === '2026-11-07')!
+    expect(sat.rows.map((r) => r.item.id).sort()).toEqual(['art5', 'poll'])
+    const p = sat.rows.find((r) => r.item.id === 'poll')!
+    expect(p.time).toBe('10:00')
+    expect(p.closesText).toBe('dom 8 nov, 17:00')
+  })
+  it('con un artículo de la semana anterior, la anterior NO se queda con la encuesta y cada una cuenta lo suyo', () => {
+    const prev = row({ id: 'prev', slotDate: '2026-10-27', publishAt: '2026-10-27T09:00:00Z', status: 'approved' })
+    const items = [prev, ...PROGRAM.filter((i) => i.id !== 'poll'), polled('2026-11-07T09:00:00Z')]
+    expect(idsOf(find(items, '2026-10-26'))).toEqual(['prev'])
+    expect(find(items, '2026-10-26')!.count).toBe(1)
+    expect(find(items, '2026-11-02')!.count).toBe(9)
+  })
+  it('reprogramada varias veces: siempre manda la última fecha, sin duplicados', () => {
+    const chain = ['2026-10-31T09:00:00Z', '2026-11-07T09:00:00Z', '2026-11-14T09:00:00Z', '2026-11-07T09:00:00Z']
+    const sem = chain.map((at) => {
+      const items = [polled(at)]
+      const weeks = buildAgenda(items)
+      return weeks.filter((w) => idsOf(w).includes('poll')).map((w) => w.monday)
+    })
+    expect(sem).toEqual([['2026-10-26'], ['2026-11-02'], ['2026-11-09'], ['2026-11-02']])
+  })
+  it('artículo reprogramado a otra semana: cambia de semana y contadores en ambas; no aparece en las dos', () => {
+    const a = row({ id: 'a', slotDate: '2026-11-03', status: 'approved', publishAt: '2026-11-03T09:00:00Z' })
+    const b = row({ id: 'b', slotDate: '2026-11-04', status: 'proposed', publishAt: null })
+    const before = buildAgenda([a, b])
+    expect(before.map((w) => [w.monday, w.count, w.pending])).toEqual([['2026-11-02', 2, 1]])
+    const moved = buildAgenda([{ ...a, publishAt: '2026-11-11T09:00:00Z' }, b])
+    expect(moved.map((w) => [w.monday, w.count, w.pending])).toEqual([['2026-11-02', 1, 1], ['2026-11-09', 1, 0]])
+    expect(moved.flatMap((w) => idsOf(w)).filter((id) => id === 'a')).toHaveLength(1)
+    expect(moved[0].missingArticles).toContain('Mar 3 nov')
+  })
+  it('artículo y encuesta el mismo día quedan como dos filas independientes bajo una sola fecha', () => {
+    const items = [row({ id: 'art', slotDate: '2026-11-07', status: 'approved', publishAt: '2026-11-07T09:00:00Z' }), polled('2026-11-07T09:00:00Z')]
+    const w = buildAgenda(items)[0]
+    expect(w.days).toHaveLength(1)
+    expect(w.days[0].rows).toHaveLength(2)
+    expect(w.count).toBe(2)
+  })
+  it('el menú anticipado sigue con su semana de contenido aunque se publique el sábado anterior (y también si se reprograma)', () => {
+    const items = [row({ id: 'm', kind: 'menu', slotDate: '2026-11-02', status: 'approved', publishAt: '2026-10-31T09:00:00Z' })]
+    expect(buildAgenda(items).map((w) => w.monday)).toEqual(['2026-11-02'])
+    expect(buildAgenda([{ ...items[0], publishAt: '2026-11-01T09:00:00Z' }]).map((w) => w.monday)).toEqual(['2026-11-02'])
+  })
+  it('cambio de hora de Madrid: 23:30 UTC del sábado 24 oct ya es domingo 25 en Madrid; el 25 oct a las 23:30 UTC (CET) ya es lunes 26 y cambia de semana', () => {
+    const sat = buildAgenda([row({ id: 'x', slotDate: '2026-10-24', status: 'approved', publishAt: '2026-10-24T22:30:00Z' })])
+    expect(sat[0].monday).toBe('2026-10-19')
+    const sun = buildAgenda([row({ id: 'x', slotDate: '2026-10-24', status: 'approved', publishAt: '2026-10-25T22:59:00Z' })])
+    expect(sun[0].monday).toBe('2026-10-19')
+    const mon = buildAgenda([row({ id: 'x', slotDate: '2026-10-24', status: 'approved', publishAt: '2026-10-25T23:01:00Z' })])
+    expect(mon[0].monday).toBe('2026-10-26')
+    expect(mon[0].days[0].date).toBe('2026-10-26')
+  })
+})
+

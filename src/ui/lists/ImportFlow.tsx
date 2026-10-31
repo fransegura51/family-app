@@ -1,45 +1,82 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { addListItems, createList, deleteList, loadListDetail, loadListsOverview, replaceListItems, type ListsOverview } from '@/data/lists'
-import { LIST_KIND_LABELS, normalizeOutline, splitDictation, splitLines, validateTitle, type ListKind, type UserList } from '@/domain/lists'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { addListItems, createListWithColumns, deleteList, loadListDetail, loadListsOverview, replaceListItems, type ListsOverview } from '@/data/lists'
+import {
+  LIST_KIND_LABELS,
+  initialColumnTitles,
+  splitDictation,
+  splitLines,
+  validateTitle,
+  type ListColumn,
+  type ListKind,
+  type UserList,
+} from '@/domain/lists'
+import {
+  assignColumns,
+  mergeWithPrevious,
+  moveLine,
+  newLineKey,
+  normalizeReviewDepth,
+  shouldAskAiToSplit,
+  splitLineAt,
+  toReviewLines,
+  type ReviewLine,
+} from '@/domain/listImport'
 import { analyzeListImage, ListReaderUnavailableError, type ProposedLine } from '@/services/listDocument'
+import { splitListItemsWithAi } from '@/services/splitGroceryList'
 import { isDictationSupported, listenContinuous, type ListenSession } from '@/services/voice'
+import { ComparativaSetup, DEFAULT_COMPARE_SETUP, type CompareSetup } from '@/ui/lists/ComparativaSetup'
 import { CropImage } from '@/ui/lists/CropImage'
 import { imageFileToCanvas, openPdf, type PdfHandle } from '@/ui/lists/sourceImage'
 
 // Importar a «Mis listas» desde una foto, un PDF, la voz o texto pegado. Todo termina en la MISMA pantalla de revisión editable;
 // la IA nunca guarda nada y nunca inventa: lo dudoso se marca para que la persona lo decida. Cancelar no cambia nada.
+// Lo dictado se separa como en Compras (pausas del micrófono → troceo local → IA de separación si todo queda en una línea) y se puede
+// corregir a mano en la revisión: separar aquí, unir con la anterior, mover, editar, quitar, añadir y, en comparativas, elegir la columna.
 
 type Step = 'source' | 'text' | 'pages' | 'crop' | 'reading' | 'review'
 type Dest = 'añadir' | 'sustituir' | 'nueva' | 'otra'
-interface Line {
-  key: number
-  text: string
-  depth: 0 | 1
-  uncertain: boolean
-}
+type ColumnChoice = { id: string; title: string }
 
-let lineKey = 0
-const toLines = (src: { text: string; depth?: 0 | 1; uncertain?: boolean }[]): Line[] => src.map((l) => ({ key: ++lineKey, text: l.text, depth: l.depth ?? 0, uncertain: !!l.uncertain }))
+const capital = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 
-export function ImportFlow({ current, onClose, onFinished }: { current: UserList | null; onClose: () => void; onFinished: (targetListId: string) => void }) {
-  const [step, setStep] = useState<Step>('source')
+export function ImportFlow({
+  current,
+  onClose,
+  onFinished,
+  startColumnId,
+  startAtText,
+}: {
+  current: UserList | null
+  onClose: () => void
+  onFinished: (targetListId: string) => void
+  /** Dictado iniciado desde una columna concreta de una comparativa: esa columna es la predeterminada. */
+  startColumnId?: string | null
+  /** Abrir directamente en «Dictar o pegar texto» (el dictado de una columna). */
+  startAtText?: boolean
+}) {
+  const [step, setStep] = useState<Step>(startAtText ? 'text' : 'source')
   const [error, setError] = useState<string | null>(null)
+  const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null)
   const [pdf, setPdf] = useState<PdfHandle | null>(null)
   const [page, setPage] = useState(1)
-  const [lines, setLines] = useState<Line[]>([])
+  const [lines, setLines] = useState<ReviewLine[]>([])
   const [text, setText] = useState('')
   const [listening, setListening] = useState(false)
   const [dest, setDest] = useState<Dest>(current ? 'añadir' : 'nueva')
   const [newTitle, setNewTitle] = useState('')
   const [newKind, setNewKind] = useState<ListKind>(current?.kind ?? 'tareas')
+  const [newSetup, setNewSetup] = useState<CompareSetup>(DEFAULT_COMPARE_SETUP)
   const [otherId, setOtherId] = useState('')
   const [overview, setOverview] = useState<ListsOverview | null>(null)
   const [confirmReplace, setConfirmReplace] = useState(false)
   const [currentCount, setCurrentCount] = useState(0)
+  const [currentColumns, setCurrentColumns] = useState<ColumnChoice[]>([])
+  const [otherColumns, setOtherColumns] = useState<ColumnChoice[]>([])
   const session = useRef<ListenSession | null>(null)
   const baseText = useRef('')
+  const cursors = useRef<Record<number, number>>({})
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
   const pdfRef = useRef<HTMLInputElement>(null)
@@ -53,11 +90,55 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
   )
   useEffect(() => {
     if (step !== 'review') return
-    if (current) void loadListDetail(current.id).then((d) => setCurrentCount(d?.items.length ?? 0), () => undefined)
+    if (current)
+      void loadListDetail(current.id).then(
+        (d) => {
+          setCurrentCount(d?.items.length ?? 0)
+          setCurrentColumns(d?.list.kind === 'comparativa' ? d.columns.map((c: ListColumn) => ({ id: c.id, title: c.title })) : [])
+        },
+        () => undefined,
+      )
     void loadListsOverview().then(setOverview, () => undefined)
   }, [step, current])
+  // Columnas reales de «otra lista» cuando es una comparativa (con sus títulos, también los personalizados).
+  useEffect(() => {
+    if (dest !== 'otra' || !otherId) {
+      setOtherColumns([])
+      return
+    }
+    let alive = true
+    void loadListDetail(otherId).then(
+      (d) => {
+        if (alive) setOtherColumns(d?.list.kind === 'comparativa' ? d.columns.map((c: ListColumn) => ({ id: c.id, title: c.title })) : [])
+      },
+      () => alive && setOtherColumns([]),
+    )
+    return () => {
+      alive = false
+    }
+  }, [dest, otherId])
 
   const kind: ListKind = current?.kind ?? 'tareas'
+
+  // Columnas del destino elegido. Una comparativa NUEVA aún no tiene columnas guardadas: se usan ids provisionales (new:0, new:1…) que se
+  // cambian por los reales al crearla.
+  const destColumns: ColumnChoice[] = useMemo(() => {
+    if (dest === 'nueva') return newKind === 'comparativa' ? initialColumnTitles(newSetup.mode, newSetup.count).map((title, n) => ({ id: `new:${n}`, title })) : []
+    if (dest === 'otra') return otherColumns
+    return currentColumns
+  }, [dest, newKind, newSetup, otherColumns, currentColumns])
+  const defaultColumn = useMemo(() => {
+    if (startColumnId && destColumns.some((c) => c.id === startColumnId)) return startColumnId
+    return destColumns[0]?.id ?? null
+  }, [destColumns, startColumnId])
+  // Cada línea guarda su columna; si cambia el destino y la elegida ya no existe, pasa a la predeterminada (se ve en el selector).
+  useEffect(() => {
+    if (destColumns.length === 0) return
+    setLines((prev) => {
+      const next = assignColumns(prev, destColumns.map((c) => c.id), defaultColumn)
+      return next.every((l, i) => l.columnId === prev[i].columnId) ? prev : next
+    })
+  }, [destColumns, defaultColumn])
 
   const onImage = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -117,7 +198,7 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
         setStep('crop')
         return
       }
-      setLines(toLines(proposed))
+      setLines(toReviewLines(proposed))
       setStep('review')
     } catch (e) {
       setError(e instanceof ListReaderUnavailableError ? e.message : 'No se ha podido leer la imagen. Comprueba la conexión e inténtalo de nuevo.')
@@ -137,29 +218,65 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
     baseText.current = text.trim()
     setError(null)
     setListening(true)
+    // El dictado es el MISMO de Compras: cada pausa que detecta el micrófono se une con una coma, y de ahí sale la separación.
     session.current = listenContinuous({
-      onTranscript: (t) => setText((baseText.current ? baseText.current + ' ' : '') + t),
+      onTranscript: (t) => setText((baseText.current ? baseText.current + ', ' : '') + t),
       onError: (m) => {
         setError(m)
         setListening(false)
       },
     })
   }
-  const textToReview = () => {
+  const textToReview = async () => {
     session.current?.stop()
     session.current = null
     setListening(false)
-    const parts = text.includes('\n') ? splitLines(text) : splitDictation(text)
+    const pasted = text.includes('\n')
+    let parts = pasted ? splitLines(text) : splitDictation(text)
     if (parts.length === 0) {
       setError('Escribe, pega o dicta algo primero.')
       return
     }
     setError(null)
-    setLines(toLines(parts.map((t) => ({ text: t }))))
+    setNote(null)
+    // Como en Compras: si el troceo local deja UNA sola línea con varias palabras (dictado de un tirón, sin pausas ni comas), se pide a la
+    // misma IA de separación, esta vez con instrucciones de lista. Si no hay conexión o no ve separación segura, se queda como una línea y
+    // se avisa: la persona la separa a mano en la revisión.
+    if (!pasted && shouldAskAiToSplit(parts)) {
+      setBusy(true)
+      try {
+        const ai = await splitListItemsWithAi(parts[0], dest === 'nueva' ? newKind : (current?.kind ?? newKind))
+        if (ai.length > 1) {
+          parts = ai.map((p) => capital(p.trim())).filter(Boolean)
+          setNote('Pepa ha separado el texto en elementos. Revisa que esté bien: puedes separar, unir o corregir cualquiera.')
+        } else setNote('No he visto dónde separar. Si son varios elementos, pon el cursor entre ellos y pulsa «Separar aquí».')
+      } catch {
+        setNote('No he podido separarlo automáticamente. Si son varios elementos, pon el cursor entre ellos y pulsa «Separar aquí».')
+      } finally {
+        setBusy(false)
+      }
+    }
+    setLines(toReviewLines(parts.map((t) => ({ text: t, columnId: startColumnId ?? null }))))
     setStep('review')
   }
 
-  const cleanLines = () => normalizeOutline(lines.map((l) => ({ ...l, text: l.text.replace(/\s+/g, ' ').trim() })).filter((l) => l.text))
+  const updateLine = (key: number, patch: Partial<ReviewLine>) => setLines((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)))
+  const separateHere = (l: ReviewLine) => {
+    const pos = cursors.current[l.key]
+    if (pos == null) {
+      setError('Pon el cursor en el texto, justo donde quieras separar, y pulsa «Separar aquí».')
+      return
+    }
+    const next = splitLineAt(lines, l.key, pos)
+    if (next === lines) {
+      setError('Pon el cursor en medio del texto: al principio o al final no hay nada que separar.')
+      return
+    }
+    setError(null)
+    setLines(next)
+  }
+
+  const cleanLines = () => normalizeReviewDepth(lines.map((l) => ({ ...l, text: l.text.replace(/\s+/g, ' ').trim() })).filter((l) => l.text))
 
   const save = async () => {
     const items = cleanLines()
@@ -187,23 +304,33 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
     let createdId: string | null = null
     try {
       let target: string
+      // Columna de cada elemento (solo comparativas). Una comparativa nueva cambia sus ids provisionales por los reales al crearla.
+      let columnOf: (l: ReviewLine) => string | null = (l) => (destColumns.length ? (l.columnId ?? defaultColumn) : null)
       if (dest === 'nueva') {
-        const l = await createList({ title: newTitle, kind: newKind })
-        createdId = l.id
-        target = l.id
+        const titles = newKind === 'comparativa' ? initialColumnTitles(newSetup.mode, newSetup.count) : []
+        const created = await createListWithColumns({ title: newTitle, kind: newKind }, titles)
+        createdId = created.list.id
+        target = created.list.id
+        if (created.columns.length) columnOf = (l) => created.columns[Math.max(0, Number((l.columnId ?? defaultColumn ?? 'new:0').replace('new:', '')) || 0)]?.id ?? created.columns[0].id
       } else if (dest === 'otra') target = otherId
       else target = (current as UserList).id
 
       if (dest === 'sustituir') {
-        await replaceListItems(target, items.map((l) => ({ text: l.text, depth: l.depth })))
+        await replaceListItems(
+          target,
+          items.map((l) => {
+            const columnId = columnOf(l)
+            return columnId ? { text: l.text, depth: l.depth, columnId } : { text: l.text, depth: l.depth }
+          }),
+        )
       } else {
         const d = await loadListDetail(target)
         const last = d?.items.reduce((m, i) => Math.max(m, i.sortOrder), 0) ?? 0
         const base = Math.max(Date.now(), last + 1000)
-        const firstCol = d?.list.kind === 'comparativa' ? (d.columns[0]?.id ?? null) : null
+        const fallbackCol = d?.list.kind === 'comparativa' ? (d.columns[0]?.id ?? null) : null
         await addListItems(
           target,
-          items.map((l, n) => ({ text: l.text, depth: l.depth, columnId: firstCol, sortOrder: base + n * 1000 })),
+          items.map((l, n) => ({ text: l.text, depth: l.depth, columnId: dest === 'nueva' ? columnOf(l) : (columnOf(l) ?? fallbackCol), sortOrder: base + n * 1000 })),
         )
       }
       onFinished(target)
@@ -218,6 +345,10 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
 
   const others = (overview?.lists ?? []).filter((l) => !l.archivedAt && l.id !== current?.id)
   const folderName = (l: UserList) => overview?.folders.find((f) => f.id === l.folderId)?.name
+  const pickDest = (d: Dest) => {
+    setDest(d)
+    setConfirmReplace(false)
+  }
 
   return (
     <div className="modal-overlay" onClick={busy ? undefined : onClose}>
@@ -255,7 +386,9 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
         {step === 'text' && (
           <>
             <h3>Dictar o pegar texto</h3>
-            <p className="muted">Di o escribe varios elementos seguidos («comprar mochila, dos cuadernos y un estuche») o pega una línea por elemento. Antes de guardar los revisas.</p>
+            <p className="muted">
+              Di o escribe varios elementos seguidos, haciendo una pequeña pausa entre uno y otro («comprar platos… comprar toallas… limpiar la ducha»), o pega una línea por elemento. Puedes corregir el texto antes de continuar y, después, separar o unir elementos a mano. Antes de guardar lo revisas.
+            </p>
             <textarea className="lists-input lists-textarea" rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder="Escribe, pega o dicta aquí" aria-label="Texto a importar" />
             <div className="form-actions">
               {isDictationSupported() && (
@@ -263,8 +396,8 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
                   {listening ? '⏹ Parar' : '🎤 Dictar'}
                 </button>
               )}
-              <button type="button" className="primary-button" onClick={textToReview}>
-                Continuar
+              <button type="button" className="primary-button" onClick={() => void textToReview()} disabled={busy}>
+                {busy ? 'Separando…' : 'Continuar'}
               </button>
               <button type="button" className="link-button" onClick={onClose}>
                 Cancelar
@@ -318,32 +451,76 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
           <>
             <h3>Revisa antes de guardar</h3>
             <p className="muted">Corrige lo que haga falta. Lo marcado con «revisar» no se leyó con seguridad.</p>
+            {note && (
+              <p className="muted lists-review-note" role="status">
+                {note}
+              </p>
+            )}
             <div className="lists-review">
-              {lines.map((l) => (
-                <div key={l.key} className={'lists-review-row' + (l.depth === 1 ? ' lists-review-sub' : '') + (l.uncertain ? ' lists-review-doubt' : '')}>
-                  <button
-                    type="button"
-                    className="lists-tool"
-                    onClick={() => setLines((p) => p.map((x) => (x.key === l.key ? { ...x, depth: x.depth === 1 ? 0 : 1 } : x)))}
-                    aria-label={l.depth === 1 ? 'Quitar sangría' : 'Poner como subelemento'}
-                    title={l.depth === 1 ? 'Quitar sangría' : 'Poner como subelemento'}
-                  >
-                    {l.depth === 1 ? '⇤' : '⇥'}
-                  </button>
-                  <input
-                    className="lists-input"
-                    value={l.text}
-                    maxLength={1000}
-                    aria-label="Elemento"
-                    onChange={(e) => setLines((p) => p.map((x) => (x.key === l.key ? { ...x, text: e.target.value, uncertain: false } : x)))}
-                  />
-                  {l.uncertain && <span className="lists-doubt">revisar</span>}
-                  <button type="button" className="lists-tool" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))} aria-label="Quitar este elemento">
-                    ✕
-                  </button>
+              {lines.map((l, idx) => (
+                <div key={l.key} className={'lists-review-item' + (l.depth === 1 ? ' lists-review-sub' : '') + (l.uncertain ? ' lists-review-doubt' : '')}>
+                  <div className="lists-review-row">
+                    <button
+                      type="button"
+                      className="lists-tool"
+                      onClick={() => updateLine(l.key, { depth: l.depth === 1 ? 0 : 1 })}
+                      aria-label={l.depth === 1 ? 'Quitar sangría' : 'Poner como subelemento'}
+                      title={l.depth === 1 ? 'Quitar sangría' : 'Poner como subelemento'}
+                    >
+                      {l.depth === 1 ? '⇤' : '⇥'}
+                    </button>
+                    <input
+                      className="lists-input"
+                      value={l.text}
+                      maxLength={1000}
+                      aria-label="Elemento"
+                      onChange={(e) => {
+                        cursors.current[l.key] = e.target.selectionStart ?? e.target.value.length
+                        updateLine(l.key, { text: e.target.value, uncertain: false })
+                      }}
+                      onSelect={(e) => {
+                        cursors.current[l.key] = e.currentTarget.selectionStart ?? 0
+                      }}
+                      onKeyUp={(e) => {
+                        cursors.current[l.key] = e.currentTarget.selectionStart ?? 0
+                      }}
+                    />
+                    {l.uncertain && <span className="lists-doubt">revisar</span>}
+                    <button type="button" className="lists-tool" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))} aria-label="Quitar este elemento">
+                      ✕
+                    </button>
+                  </div>
+                  <div className="lists-review-tools">
+                    <button type="button" className="lists-mini" onMouseDown={(e) => e.preventDefault()} onClick={() => separateHere(l)} aria-label={`Separar aquí: ${l.text}`} data-help-id="listas.separar-aqui">
+                      ✂ Separar aquí
+                    </button>
+                    {idx > 0 && (
+                      <button type="button" className="lists-mini" onClick={() => setLines((p) => mergeWithPrevious(p, l.key))} aria-label={`Unir con el anterior: ${l.text}`}>
+                        ⤴ Unir con el anterior
+                      </button>
+                    )}
+                    <button type="button" className="lists-mini" disabled={idx === 0} onClick={() => setLines((p) => moveLine(p, l.key, -1))} aria-label={`Subir: ${l.text}`}>
+                      ▲
+                    </button>
+                    <button type="button" className="lists-mini" disabled={idx === lines.length - 1} onClick={() => setLines((p) => moveLine(p, l.key, 1))} aria-label={`Bajar: ${l.text}`}>
+                      ▼
+                    </button>
+                    {destColumns.length > 0 && (
+                      <label className="lists-review-col" data-help-id={idx === 0 ? 'listas.columna-destino' : undefined}>
+                        <span className="muted">Columna</span>
+                        <select className="lists-input" value={l.columnId ?? defaultColumn ?? ''} onChange={(e) => updateLine(l.key, { columnId: e.target.value })} aria-label={`Columna de «${l.text || 'este elemento'}»`}>
+                          {destColumns.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.title || 'Sin nombre'}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
                 </div>
               ))}
-              <button type="button" className="lists-add" onClick={() => setLines((p) => [...p, ...toLines([{ text: '' }])])}>
+              <button type="button" className="lists-add" onClick={() => setLines((p) => [...p, { key: newLineKey(), text: '', depth: 0, uncertain: false, columnId: defaultColumn }])}>
                 ＋ Añadir línea
               </button>
             </div>
@@ -352,19 +529,19 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
             <div className="lists-dest" role="radiogroup" aria-label="Destino">
               {current && (
                 <label className="lists-dest-opt">
-                  <input type="radio" name="dest" checked={dest === 'añadir'} onChange={() => { setDest('añadir'); setConfirmReplace(false) }} /> Añadir a esta lista
+                  <input type="radio" name="dest" checked={dest === 'añadir'} onChange={() => pickDest('añadir')} /> Añadir a esta lista
                 </label>
               )}
               {current && (
                 <label className="lists-dest-opt">
-                  <input type="radio" name="dest" checked={dest === 'sustituir'} onChange={() => { setDest('sustituir'); setConfirmReplace(false) }} /> Sustituir lo que hay en esta lista
+                  <input type="radio" name="dest" checked={dest === 'sustituir'} onChange={() => pickDest('sustituir')} /> Sustituir lo que hay en esta lista
                 </label>
               )}
               <label className="lists-dest-opt">
-                <input type="radio" name="dest" checked={dest === 'nueva'} onChange={() => { setDest('nueva'); setConfirmReplace(false) }} /> Crear una lista nueva
+                <input type="radio" name="dest" checked={dest === 'nueva'} onChange={() => pickDest('nueva')} /> Crear una lista nueva
               </label>
               <label className="lists-dest-opt">
-                <input type="radio" name="dest" checked={dest === 'otra'} onChange={() => { setDest('otra'); setConfirmReplace(false) }} /> Añadir a otra lista que ya tengo
+                <input type="radio" name="dest" checked={dest === 'otra'} onChange={() => pickDest('otra')} /> Añadir a otra lista que ya tengo
               </label>
             </div>
             {dest === 'nueva' && (
@@ -377,6 +554,7 @@ export function ImportFlow({ current, onClose, onFinished }: { current: UserList
                     </option>
                   ))}
                 </select>
+                {newKind === 'comparativa' && <ComparativaSetup value={newSetup} onChange={setNewSetup} />}
                 <span className="muted">Será privada.</span>
               </div>
             )}

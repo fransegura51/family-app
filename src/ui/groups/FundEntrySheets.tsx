@@ -144,11 +144,11 @@ export function EntrySheet({ ctx, kind, preselect, bankTx, onClose, onSaved }: {
           void save()
         }}
       >
-        {kind === 'aportacion' && (
+        {(kind === 'aportacion' || bank) && (
           <div style={{ marginBottom: 6 }}>
             {bank ? (
               <div className="grp-banner grp-banner-info">
-                🏦 Enlazado a un ingreso del banco ({fmtEuro(bank.amount)}, {formatDate(bank.date)}). No se contará dos veces.{' '}
+                🏦 Enlazado a {kind === 'aportacion' ? 'un ingreso' : 'un movimiento'} del banco ({fmtEuro(bank.amount)}, {formatDate(bank.date)}). No se contará dos veces.{' '}
                 <button type="button" className="link-button" style={{ padding: 0 }} onClick={() => setBank(null)}>
                   Quitar enlace
                 </button>

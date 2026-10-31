@@ -4,7 +4,7 @@ import { partitionTicketLines } from "./ticketLines.ts"
 import { modalityOfParts, newCallId, recordAiCall } from "../_shared/ai/meter.ts"
 import { createProvider, secretNameFor } from "../_shared/ai/providers.ts"
 import { AiProviderError } from "../_shared/ai/types.ts"
-import { receiptPhotoSpec, parseReceiptPhotoOutput, type ReceiptPhotoItem } from "../_shared/ai/purposes/receiptPhoto.ts"
+import { receiptPhotoSpec, parseReceiptPhotoOutput, checkReceiptTotal, type ReceiptPhotoItem } from "../_shared/ai/purposes/receiptPhoto.ts"
 
 // Recibe el ticket digital de Mercadona que llega por email (PDF
 // adjunto) — un workflow externo (Outlook reenvía el correo de
@@ -262,6 +262,16 @@ Deno.serve(async (req) => {
     // Líneas de descuento (importe negativo): no son una compra (product_prices exige precio >= 0), pero su suma SE REGISTRA en el ticket.
     const discountTotal = Math.round(items.filter((it) => it.lineTotal < 0).reduce((sum, it) => sum + Math.abs(it.lineTotal), 0) * 100) / 100
     const purchaseItems = items.filter((it) => !(it.unitPrice < 0 || it.lineTotal < 0))
+    // PESO-3: las líneas deducidas o que no cuadran se anotan en el ticket para que se revisen; el total y el gasto son siempre los del ticket.
+    const reviewLines = purchaseItems.filter((it) => it.review)
+    const sumCheck = checkReceiptTotal(items, total)
+    const reviewNote =
+      reviewLines.length > 0 || (sumCheck && !sumCheck.matches)
+        ? [
+            ...reviewLines.map((it) => `${it.name.trim()}: ${it.review === "peso_calculado" ? "peso calculado a partir del importe impreso" : "cantidad × precio no cuadra con el importe impreso"}`),
+            ...(sumCheck && !sumCheck.matches ? [`la suma de las líneas (${sumCheck.linesSum.toFixed(2)} €) no coincide con el total (${sumCheck.total.toFixed(2)} €)`] : []),
+          ].join("; ")
+        : null
     let receiptId: string | null = null
     let expenseId: string | null = null
     try {
@@ -276,6 +286,7 @@ Deno.serve(async (req) => {
           expense_id: null,
           category: "Alimentación",
           discount_total: discountTotal,
+          notes: reviewNote,
         })
         .select("id")
         .single()

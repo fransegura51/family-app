@@ -21,6 +21,8 @@ export interface ReceiptScanItem {
   unitPrice: number
   // Importe en euros realmente cobrado por la línea, tal como aparece impreso en el ticket.
   lineTotal: number
+  // El servidor marca las líneas por peso deducidas del importe ('peso_calculado') o que no cuadran ('importe_no_cuadra'): se revisan.
+  review?: 'peso_calculado' | 'importe_no_cuadra'
 }
 
 export interface ReceiptScanResult {
@@ -77,14 +79,15 @@ export async function analyzeReceiptPhoto(file: File): Promise<ReceiptScanResult
     date: typeof json.date === 'string' ? json.date : null,
     total: typeof json.total === 'number' ? json.total : null,
     items: Array.isArray(json.items)
-      ? json.items.map((it: { name: string; quantity?: number; unit?: string; unitPrice?: number; lineTotal?: number }) => {
+      ? json.items.map((it: { name: string; quantity?: number; unit?: string; unitPrice?: number; lineTotal?: number; review?: string }) => {
           // El servidor (parseReceiptPhotoOutput) ya deja esto limpio — aquí solo defensa por si acaso,
           // igual que ya se hacía con quantity. 'kg' únicamente con el literal exacto, nunca por defecto.
           const unit: MeasurementUnit = it.unit === 'kg' ? 'kg' : 'ud'
           const quantity = typeof it.quantity === 'number' && it.quantity > 0 ? it.quantity : 1
           const lineTotal = typeof it.lineTotal === 'number' ? it.lineTotal : 0
           const unitPrice = typeof it.unitPrice === 'number' && it.unitPrice > 0 ? it.unitPrice : quantity > 0 ? lineTotal / quantity : lineTotal
-          return { name: it.name, quantity, unit, unitPrice, lineTotal }
+          const review = it.review === 'peso_calculado' || it.review === 'importe_no_cuadra' ? it.review : undefined
+          return { name: it.name, quantity, unit, unitPrice, lineTotal, ...(review ? { review } : {}) }
         })
       : [],
   }

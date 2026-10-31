@@ -38,7 +38,12 @@ export interface ReceiptPhotoItem {
   // Importe en euros REALMENTE cobrado por esa línea (impreso en el ticket) — nunca se reconstruye
   // multiplicando quantity × unitPrice, para no arrastrar redondeos: es el propio número impreso.
   lineTotal: number
+  // Solo si la línea no cuadra del todo (ver reconcileReceiptItem): 'peso_calculado' = el ticket no imprime los kg y el peso se
+  // dedujo del importe impreso; 'importe_no_cuadra' = cantidad × precio no da el importe y no se puede deducir con seguridad.
+  review?: ReceiptItemReview
 }
+
+export type ReceiptItemReview = 'peso_calculado' | 'importe_no_cuadra'
 
 export interface ReceiptPhotoOutput {
   store: string | null
@@ -92,10 +97,55 @@ export const RECEIPT_PHOTO_PROMPT =
   '(5.07). Si el peso está impreso en gramos, conviértelo tú a kg (dividir entre 1000, p. ej. 495 g = ' +
   '0.495) — kg es la única unidad de peso válida aquí, nunca gramos. Los tres números (peso, precio/kg, ' +
   'importe) están siempre impresos por separado: extráelos tal cual, nunca los ignores ni derives uno de otro.\n' +
+  'ATENCIÓN con tickets de columnas "Cnt. | Descripción | P. Unit | Importe" (Mercadona): en una línea de peso la columna P. Unit puede ' +
+  "ser un precio por KILO (p. ej. '1 RESERVA LONCHAS 25,00 6,35': 25,00 €/kg, importe cobrado 6,35 €) aunque la cantidad sea 1 y no haya " +
+  'una línea aparte con los kg. Copia SIEMPRE el último número como lineTotal (6.35) y el de P. Unit como unitPrice (25.00); nunca pongas ' +
+  'el precio por kilo como importe de la línea. Si el peso se imprime en una segunda línea (p. ej. PEPINO / 1,910 kg  1,70 €/kg  3,25) ' +
+  'es el formato 4.\n' +
   'Si tienes cualquier duda sobre una línea y no puedes distinguir con seguridad un formato de venta ' +
   'por peso, usa quantity=1, unit="ud" y el último número en euros de la línea como unitPrice y como ' +
   'lineTotal — es preferible eso a inventar un peso o un precio por kg que no ves con seguridad. ' +
   'Los números, con punto decimal.'
+
+const round2 = (n: number) => Math.round(n * 100) / 100
+
+// PESO-3 — Mercadona (03/10/2026) imprime "1 RESERVA LONCHAS  25,00  6,35": 25,00 es el precio por kg (columna P. Unit) y 6,35 el importe
+// cobrado; no hay línea con los kilos. La lectura guardó 25,00 × 1 ud, y la suma del ticket subió 37,45 € por encima del total real.
+// Regla determinista, sin IA: el importe impreso (lineTotal) manda siempre y nunca se altera. Se comprueba que cantidad × precio lo reproduce:
+//  - Cuadra (con la tolerancia del redondeo de céntimos, o de los gramos en las líneas por peso) → la línea se respeta tal cual.
+//  - No cuadra, es 1 ud y el "precio" es MAYOR que el importe → es precio por kg sin peso impreso: peso = importe ÷ precio (3 decimales),
+//    y solo se acepta si ese peso devuelve el importe impreso al céntimo; si no, se revisa.
+//  - Cualquier otro desajuste (varias unidades, kg que no cuadra, precio menor que el importe...) es ambiguo: se conserva el importe
+//    impreso como 1 ud (la suma sigue cuadrando con el ticket) y la línea se marca para revisar. No se inventa ninguna cantidad.
+export function reconcileReceiptItem(item: ReceiptPhotoItem): ReceiptPhotoItem {
+  const { quantity, unit, unitPrice, lineTotal } = item
+  if (!(lineTotal > 0) || !(unitPrice > 0) || !(quantity > 0)) return item // descuentos y líneas a 0 (PARKING) no se tocan
+  const tolerance = unit === 'kg' ? 0.02 : 0.011
+  if (Math.abs(quantity * unitPrice - lineTotal) <= tolerance) return item
+  if (unit === 'ud' && quantity === 1 && unitPrice > lineTotal) {
+    const weight = Math.round((lineTotal / unitPrice) * 1000) / 1000
+    if (weight > 0 && Math.abs(round2(weight * unitPrice) - lineTotal) <= 0.005) {
+      return { ...item, quantity: weight, unit: 'kg', review: 'peso_calculado' }
+    }
+  }
+  return { ...item, quantity: 1, unit: 'ud', unitPrice: lineTotal, review: 'importe_no_cuadra' }
+}
+
+export interface ReceiptTotalCheck {
+  // Suma de los importes impresos de las líneas, incluidos los descuentos (negativos).
+  linesSum: number
+  total: number
+  difference: number
+  matches: boolean
+}
+
+// Compara la suma de los importes IMPRESOS (lineTotal, con descuentos en negativo) con el total del ticket.
+export function checkReceiptTotal(items: ReceiptPhotoItem[], total: number | null): ReceiptTotalCheck | null {
+  if (total == null) return null
+  const linesSum = round2(items.reduce((sum, it) => sum + it.lineTotal, 0))
+  const difference = round2(linesSum - total)
+  return { linesSum, total, difference, matches: Math.abs(difference) <= 0.05 }
+}
 
 // Nunca lanza: si Gemini no devuelve JSON válido, se devuelve vacío (el cliente ya avisa de revisar antes de
 // guardar) — mismo comportamiento de siempre, no un 502 "ai_invalid_output".
@@ -143,6 +193,7 @@ export function parseReceiptPhotoOutput(rawText: string): ReceiptPhotoOutput {
         }
       })
       .filter((it: ReceiptPhotoItem) => it.name.trim() && Number.isFinite(it.lineTotal) && Number.isFinite(it.unitPrice))
+      .map(reconcileReceiptItem)
   }
   return { store, date, total, items }
 }

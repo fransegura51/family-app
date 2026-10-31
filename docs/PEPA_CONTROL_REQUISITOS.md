@@ -1643,3 +1643,11 @@ Antes de implementar un nuevo encargo sobre PEPA:
 Para componentes plegables/desplegables, la prueba manual debe cubrir **tanto el estado abierto como el cerrado**.
 
 Ningún requisito pasa a **Aprobado** sin confirmación expresa del usuario, aunque el resto de evidencia esté completa.
+
+## PESO-3 / INC-MERC-0310 — Líneas por peso sin kilos impresos (31/10/2026)
+
+| ID | Requisito | Estado | Evidencia |
+|---|---|---|---|
+| PESO-3a | Reparar la compra Mercadona 03/10/2026 (suma 166,70 € → 129,25 €) conservando total, gasto y conciliación, con respaldo reversible | **Aplicado en producción 31/10/2026** (2 líneas; ver `docs/auditoria/REPARACION_MERCADONA_2026-10-03.md`) | Consulta: suma de líneas 129,25 = total 129,25; 33 líneas; gasto 4c0dc08d intacto |
+| PESO-3b | El lector no toma el precio por kilo como importe de una unidad: deduce el peso del importe impreso solo si lo reproduce al céntimo; si no, conserva el importe y marca la línea para revisar; comprueba la suma contra el total con descuentos | **Implementado y probado en local (sin publicar)** | `src/domain/receiptWeightLines.test.ts` (ticket Mercadona completo = 129,25 €), `aiGateway.test.ts`; función `analyze-receipt-photo` / `mercadona-ticket-webhook` SIN desplegar |
+| PESO-3c | Revisión de las 4 diferencias de Lidl y los 2 tickets de 4,61 € (28/09) | **Investigado, sin modificar datos** | Ver informe en la conversación; pendiente de ver las fotos de los tickets |

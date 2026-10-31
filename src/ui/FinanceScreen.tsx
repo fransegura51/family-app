@@ -6955,6 +6955,8 @@ interface DraftLine {
   // sobre lo que hubiera adivinado resolveDraftLineClass — undefined
   // deja que se seguisa recalculando sola mientras cambia el nombre.
   classOverride?: { kind: FoodTypeKind; classification: string }
+  // PESO-3: la lectura dedujo el peso del importe impreso o la línea no cuadra con su importe: se marca para revisar.
+  review?: 'peso_calculado' | 'importe_no_cuadra'
   // Formato del envase (COMP-2): undefined = no decidido (se aplica lo que el nombre o las compras anteriores dicen con seguridad); null = «Ahora no».
   pack?: PackFormat | null
   // Código de barras leído de una foto del envase (solo ayuda para reconocer el artículo; opcional).
@@ -7359,7 +7361,7 @@ function ReceiptForm({
       setSkippedLines(skipped.map((s) => s.line.name.trim()))
       // Los descuentos (líneas negativas) no van al historial de precios, pero SÍ se registran: su suma queda guardada en el ticket.
       setDiscountTotal(Math.round(credits.reduce((sum, c) => sum + Math.abs(c.lineTotal), 0) * 100) / 100)
-      setLines(purchaseLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2) })))
+      setLines(purchaseLines.map((l) => ({ name: l.name, quantity: String(l.quantity), unit: l.unit, unitPrice: l.unitPrice.toFixed(2), ...(l.review ? { review: l.review } : {}) })))
       setOcrStatus('done')
     } catch (err) {
       setOcrStatus('error')
@@ -7857,7 +7859,13 @@ function ReceiptForm({
             const lineAmount = !Number.isNaN(lineTotal) ? lineTotal.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
             // Tickets largos: cada línea se ve en dos renglones (nombre e importe; lo que PEPA ha entendido) y se despliega para editar. Los que piden revisión se marcan.
             const compact = compactLines && !expandAllLines && line.name.trim() !== '' && !openLines.has(i)
-            const needsCheck = reading.state === 'probable' || reading.state === 'dudoso'
+            const needsCheck = reading.state === 'probable' || reading.state === 'dudoso' || !!line.review
+            const reviewText =
+              line.review === 'peso_calculado'
+                ? 'El ticket no indica los kilos: PEPA los ha calculado a partir del importe. Revísalo.'
+                : line.review === 'importe_no_cuadra'
+                  ? 'La cantidad por el precio no cuadra con el importe del ticket. Revisa esta línea.'
+                  : null
             if (compact) {
               return (
                 <div key={i} className={'receipt-line-card receipt-line-compact' + (needsCheck ? ' receipt-line-attention' : '')} data-line-index={i} data-line-compact="true">
@@ -7872,6 +7880,7 @@ function ReceiptForm({
                     {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
                   </div>
                   <ReceiptLineBrief reading={reading} classLabel={resolved.classification} onOpen={() => toggleLine(i, true)} />
+                  {reviewText && <p className="muted" style={{ fontSize: 12, margin: '2px 0' }}>{reviewText}</p>}
                 </div>
               )
             }
@@ -7891,6 +7900,7 @@ function ReceiptForm({
                     data-help-id="shopping.receipt-line-name"
                   />
                   {resolved.isNew && <span className="receipt-line-new-badge">Nuevo</span>}
+                  {reviewText && <span className="muted" style={{ fontSize: 12 }}>{reviewText}</span>}
                   {compactLines && line.name.trim() !== '' && (
                     <button type="button" className="link-button receipt-line-fold" aria-label={`Plegar ${line.name}`} title="Plegar la línea" onClick={() => toggleLine(i, false)}>
                       ▴

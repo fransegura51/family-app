@@ -144,13 +144,13 @@ describe('analyze-receipt-photo (y mercadona-ticket-webhook, mismo propósito)',
 
   it('interpreta una respuesta correcta, redondeando la cantidad (venta por unidad, esquema nuevo)', () => {
     const out = parseReceiptPhotoOutput(
-      '```json\n{"store":"Mercadona","date":"2026-09-16","total":7.33,"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.20,"lineTotal":2.40}]}\n```',
+      '```json\n{"store":"Mercadona","date":"2026-09-16","total":7.33,"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.20,"lineTotal":3.60}]}\n```',
     )
     expect(out).toEqual({
       store: 'Mercadona',
       date: '2026-09-16',
       total: 7.33,
-      items: [{ name: 'Leche', quantity: 3, unit: 'ud', unitPrice: 1.2, lineTotal: 2.4 }],
+      items: [{ name: 'Leche', quantity: 3, unit: 'ud', unitPrice: 1.2, lineTotal: 3.6 }],
     })
   })
 
@@ -219,7 +219,7 @@ describe('analyze-receipt-photo (y mercadona-ticket-webhook, mismo propósito)',
       expect(out.items[0].quantity).toBe(1.554)
       expect(out.items[0].quantity).not.toBe(1)
       expect(out.items[0].quantity).not.toBe(2)
-      const ud = parseReceiptPhotoOutput('{"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.2,"lineTotal":2.4}]}')
+      const ud = parseReceiptPhotoOutput('{"items":[{"name":"Leche","quantity":2.98,"unit":"ud","unitPrice":1.2,"lineTotal":3.6}]}')
       expect(ud.items[0].quantity).toBe(3)
     })
 

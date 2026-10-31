@@ -9,6 +9,8 @@ vi.mock('@/services/listDocument', () => ({ analyzeListImage: vi.fn(), ListReade
 const data = vi.hoisted(() => ({
   addListItems: vi.fn(),
   createList: vi.fn(),
+  createListWithColumns: vi.fn(),
+  addColumns: vi.fn(),
   deleteList: vi.fn(),
   loadListDetail: vi.fn(),
   loadListsOverview: vi.fn(),
@@ -99,16 +101,16 @@ describe('Mis listas — importar', () => {
   })
 
   it('crear una lista nueva pide título; se crea privada y si falla a medias no deja una lista vacía', async () => {
-    data.createList.mockResolvedValue(list({ id: 'NEW', title: 'Nueva' }))
+    data.createListWithColumns.mockResolvedValue({ list: list({ id: 'NEW', title: 'Nueva' }), columns: [] })
     data.addListItems.mockRejectedValue(new Error('red'))
     await toReview('uno, dos')
     fireEvent.click(screen.getByRole('radio', { name: /Crear una lista nueva/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
     expect(screen.getByText('Escribe un título.')).toBeTruthy()
-    expect(data.createList).not.toHaveBeenCalled()
+    expect(data.createListWithColumns).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText('Título de la lista nueva'), { target: { value: 'Nueva' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }))
-    await waitFor(() => expect(data.createList).toHaveBeenCalledWith({ title: 'Nueva', kind: 'tareas' }))
+    await waitFor(() => expect(data.createListWithColumns).toHaveBeenCalledWith({ title: 'Nueva', kind: 'tareas' }, []))
     await waitFor(() => expect(data.deleteList).toHaveBeenCalledWith('NEW'))
     expect(await screen.findByText(/No se ha cambiado nada/)).toBeTruthy()
     expect(onFinished).not.toHaveBeenCalled()
@@ -143,7 +145,7 @@ describe('Mis listas — importar', () => {
     expect(onClose).toHaveBeenCalled()
     expect(data.addListItems).not.toHaveBeenCalled()
     expect(data.replaceListItems).not.toHaveBeenCalled()
-    expect(data.createList).not.toHaveBeenCalled()
+    expect(data.createListWithColumns).not.toHaveBeenCalled()
   })
 
   it('sin lista abierta solo ofrece crear una nueva o añadir a otra (importar desde fuera de una lista)', async () => {

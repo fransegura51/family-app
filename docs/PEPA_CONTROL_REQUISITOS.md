@@ -1254,6 +1254,19 @@ mentira); (3) la lectura de fotos/PDF con IA y el dictado real no se han ejecuta
 vincula después de guardarlo (en su edición); (5) en Compras los productos que vienen de Mis listas llevan una pequeña 📝 (sin acción; no se ha visto aún con datos reales); (6) el permiso por sección `listas` hay que marcarlo a mano para menores e invitados con restricciones (como cualquier sección nueva).
 Nada pasa a **Aprobado** sin confirmación expresa del usuario.
 
+### Correcciones tras las pruebas reales en iPhone (31/10/2026, MISLISTAS-FIX)
+
+Encargo del usuario: «CORRECCIONES DE MIS LISTAS TRAS PRUEBAS REALES EN IPHONE» (cinco correcciones + mejora del menú). Migración nueva `0362_lists_style_and_replace_columns.sql` (columna opcional `item_style` y `replace_list_items` con columna por elemento; sin tocar datos existentes). Lo que ya funcionaba (MISLISTAS-1 a 14) no se reconstruye.
+
+| ID | Descripción | Acordado | Implementado | Probado técnicamente | Aprobado por el usuario |
+|---|---|---|---|---|---|
+| MISLISTAS-15 | Selector de Calendario: cada evento/tarea lleva entre paréntesis la persona asignada (de `calendar_event_members`, nunca deducida del título; sin asignados = «Toda la familia»; homónimos numerados), búsqueda por título y por persona, selección múltiple, sin duplicar por id y sin tocar asignaciones ni vínculos | Sí | Sí — `CalendarLinksSheet`, `eventPeopleLabel` | Sí — `listsFixesUi.test.tsx`, `listsFixes.test.ts`; pendiente verlo con los eventos reales | No |
+| MISLISTAS-16 | Comparativa: al crearla se pregunta «¿Qué quieres comparar?» (Pros y contras = dos columnas, sin «Opción 3»; Varias opciones = 2 a 5 columnas «Opción 1…» con nombre editable, añadir hasta 5 y quitar hasta 2); también al crear una lista nueva importando; sin puntuaciones; listas existentes sin tocar | Sí | Sí — `ComparativaSetup`, `createListWithColumns` | Sí — `listsFixesUi.test.tsx`, `importDictation.test.tsx` | No |
+| MISLISTAS-17 | Arrastrar listas a carpetas en iPhone: asa de 44 px, pulsación prolongada sobre la fila (sin impedir el desplazamiento), bloqueo del scroll solo mientras se arrastra, destino resuelto también por rectángulos y al soltar, indicador de destino; «Mover a…» intacto | Sí | Sí — `gestures.ts` | Parcial — `gestures.test.tsx` (jsdom); **no comprobado en un iPhone real** (no se pudo reproducir el fallo original) | No |
+| MISLISTAS-18 | Ideas con «Estilo de lista» (bombillas por defecto, puntos, numeración automática, guiones, estrellas, casillas, sin símbolo), guardado y sincronizado (`user_lists.item_style`), contenido y estados «hecho» conservados, Tareas sin cambios | Sí | Sí — `ItemRow`, `ListDetailScreen` | Sí — `listsFixesUi.test.tsx`, `listsFixes.test.ts` | No |
+| MISLISTAS-19 | Dictado en Mis listas: misma separación que Compras (pausas del micrófono → comas, troceo local, IA `split-grocery-list` con instrucciones de lista si queda una sola línea), revisión con «Separar aquí», «Unir con el anterior», mover, editar, quitar y añadir; selector de columna por elemento en comparativas (columnas reales, también en «otra lista», «sustituir» y comparativa nueva); dictado desde una columna | Sí | Sí — `ImportFlow`, `listImport.ts`, `splitListItemsWithAi` | Parcial — `importDictation.test.tsx`, `listImport.test.ts`; **dictado con micrófono real en iPhone no probado** | No |
+| MISLISTAS-20 | Menú de acciones de la lista agrupado en panel inferior (Importar y enviar · Calendario · Ordenación y estilo · Privacidad · Más), una acción por fila de al menos 44 px, mismas acciones a un toque | Sí | Sí | Sí — `listsFixesUi.test.tsx`; pendiente verlo en iPhone | No |
+
 ---
 
 ## Fase 1 (27/10/2026): avatares de Comunidad, varios platos por comida, logotipos de tiendas y sincronización entre dispositivos (PEPA-F1)

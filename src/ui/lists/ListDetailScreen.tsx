@@ -20,13 +20,20 @@ import {
 } from '@/data/lists'
 import {
   LIST_KIND_LABELS,
+  LIST_ITEM_STYLES,
   LIST_VISIBILITY_LABELS,
+  MAX_COMPARE_COLUMNS,
+  MIN_COMPARE_COLUMNS,
   blockRange,
   canIndent,
   canOutdent,
   displayItems,
+  effectiveItemStyle,
   indentItem,
   isObviousDuplicate,
+  isProsContras,
+  nextOptionTitle,
+  numberingMarks,
   newId,
   outdentItem,
   plainForShopping,
@@ -35,6 +42,7 @@ import {
   validateTitle,
   type ListColumn,
   type ListItem,
+  type ListItemStyle,
   type ListVisibility,
 } from '@/domain/lists'
 import { showToast } from '@/state/toast'
@@ -75,13 +83,15 @@ export function ListDetailScreen({ listId }: { listId: string }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [menu, setMenu] = useState(false)
-  const [sheet, setSheet] = useState<'privacy' | 'import' | 'calendar' | null>(null)
+  const [sheet, setSheet] = useState<'privacy' | 'import' | 'calendar' | 'style' | null>(null)
   const [undo, setUndo] = useState<UndoState | null>(null)
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [titleEditing, setTitleEditing] = useState(false)
   const [titleText, setTitleText] = useState('')
   const [linkedCount, setLinkedCount] = useState(0)
+  // Dictado iniciado desde una columna de la comparativa: esa columna es la predeterminada al revisar.
+  const [importColumn, setImportColumn] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -316,7 +326,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
   }
   const addCol = async () => {
     try {
-      const c = await addColumn(listId, `Opción ${columns.length + 1}`, columns.length)
+      const c = await addColumn(listId, nextOptionTitle(columns), columns.length)
       setColumns((prev) => [...prev, c])
     } catch {
       fail()
@@ -324,7 +334,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
   }
   const removeCol = async (c: ListColumn) => {
     const rest = columns.filter((x) => x.id !== c.id)
-    if (rest.length < 2) return
+    if (rest.length < MIN_COMPARE_COLUMNS) return
     const moving = groupItems(c.id)
     try {
       // Sus elementos pasan a la primera columna que queda; nunca se pierden con la columna.
@@ -395,17 +405,21 @@ export function ListDetailScreen({ listId }: { listId: string }) {
   }
 
   const progress = progressOf(items)
-  const canReorder = list.sortMode === 'manual' && !selecting
+  const itemStyle: ListItemStyle = effectiveItemStyle(list.kind, list.itemStyle ?? null)
+  // «Pendientes arriba» solo tiene sentido con casillas: sin ellas (Ideas con otro estilo) se ve siempre el orden manual.
+  const effectiveSort = itemStyle === 'casillas' ? list.sortMode : 'manual'
+  const canReorder = effectiveSort === 'manual' && !selecting
 
   const renderGroup = (key: string | null) => {
     const group = groupItems(key)
-    const shown = displayItems(group, list.sortMode)
-    const rows = shown.map((item) => {
+    const shown = displayItems(group, effectiveSort)
+    const marks = itemStyle === 'numeracion' ? numberingMarks(shown) : []
+    const rows = shown.map((item, shownIdx) => {
       if (editingId === item.id) {
         const idx = group.findIndex((i) => i.id === item.id)
         return (
           <div key={item.id} className={'price-row lists-item lists-item-editing' + (item.depth === 1 ? ' lists-item-sub' : '')}>
-            <span className="shopping-check lists-check-ghost" aria-hidden="true" />
+            <span className={itemStyle === 'casillas' ? 'shopping-check lists-check-ghost' : 'lists-mark lists-check-ghost'} aria-hidden="true" />
             <ItemEditor
               initialRich={item.rich}
               initialText={item.text}
@@ -427,6 +441,8 @@ export function ListDetailScreen({ listId }: { listId: string }) {
         <ItemRow
           key={item.id}
           item={item}
+          style={itemStyle}
+          numbering={marks[shownIdx]}
           selectMode={selecting}
           selected={selected.has(item.id)}
           linkedToShopping={linked.has(item.id)}
@@ -457,7 +473,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
       const prevItem = draft.afterId ? group.find((i) => i.id === draft.afterId) : group[group.length - 1]
       const editor = (
         <div key="draft" className={'price-row lists-item lists-item-editing' + (draft.depth === 1 ? ' lists-item-sub' : '')}>
-          <span className="shopping-check lists-check-ghost" aria-hidden="true" />
+          <span className={itemStyle === 'casillas' ? 'shopping-check lists-check-ghost' : 'lists-mark lists-check-ghost'} aria-hidden="true" />
           <ItemEditor
             initialRich={null}
             initialText=""
@@ -555,13 +571,17 @@ export function ListDetailScreen({ listId }: { listId: string }) {
       </p>
 
       {menu && (
-        <div className="member-row-actions lists-menu">
+        <div className="modal-overlay" onClick={() => setMenu(false)}>
+        <div className="modal-sheet lists-menu-sheet" role="dialog" aria-modal="true" aria-label="Acciones de la lista" onClick={(e) => e.stopPropagation()}>
+        <div className="lists-menu">
+          <p className="lists-menu-group">Importar y enviar</p>
           <button
             type="button"
             className="link-button"
             data-help-id="listas.importar"
             onClick={() => {
               setMenu(false)
+              setImportColumn(null)
               setSheet('import')
             }}
           >
@@ -570,6 +590,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
           <button type="button" className="link-button" data-help-id="listas.enviar-compra" onClick={startSelecting} disabled={items.length === 0}>
             Enviar a Lista de la compra
           </button>
+          <p className="lists-menu-group">Calendario</p>
           <button
             type="button"
             className="link-button"
@@ -581,7 +602,21 @@ export function ListDetailScreen({ listId }: { listId: string }) {
           >
             Vincular con el Calendario…
           </button>
-          {mine && (
+          {mine && (list.kind === 'ideas' || itemStyle === 'casillas') && <p className="lists-menu-group">Ordenación y estilo</p>}
+          {mine && list.kind === 'ideas' && (
+            <button
+              type="button"
+              className="link-button"
+              data-help-id="listas.estilo"
+              onClick={() => {
+                setMenu(false)
+                setSheet('style')
+              }}
+            >
+              Estilo de lista…
+            </button>
+          )}
+          {mine && itemStyle === 'casillas' && (
             <button
               type="button"
               className="link-button"
@@ -593,6 +628,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
               {list.sortMode === 'manual' ? 'Pendientes arriba, hechos abajo' : 'Volver al orden manual'}
             </button>
           )}
+          {mine && <p className="lists-menu-group">Privacidad</p>}
           {mine && (
             <button
               type="button"
@@ -605,6 +641,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
               Privacidad…
             </button>
           )}
+          <p className="lists-menu-group">Más</p>
           <button
             type="button"
             className="link-button"
@@ -648,6 +685,13 @@ export function ListDetailScreen({ listId }: { listId: string }) {
             />
           )}
         </div>
+          <div className="form-actions">
+            <button type="button" className="link-button" onClick={() => setMenu(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+        </div>
       )}
 
       {selecting && (
@@ -669,12 +713,24 @@ export function ListDetailScreen({ listId }: { listId: string }) {
       )}
 
       {isComparativa ? (
-        <div className="lists-columns" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(150px, 1fr))` }}>
+        <div className="lists-columns" data-help-id="listas.columnas" style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(150px, 1fr))` }}>
           {columns.map((c) => (
             <div key={c.id} className={'lists-column' + (drag.over?.id === c.id ? ' lists-drop-into' : '')} data-drop-id={c.id} data-drop-kind="column">
               <div className="lists-column-head">
                 <input className="lists-column-title" defaultValue={c.title} aria-label="Título de la columna" maxLength={60} placeholder="Columna" onBlur={(e) => void renameCol(c, e.target.value)} />
-                {columns.length > 2 && (
+                <button
+                  type="button"
+                  className="lists-tool"
+                  aria-label={`Dictar en la columna ${c.title || 'sin nombre'}`}
+                  title="Dictar en esta columna"
+                  onClick={() => {
+                    setImportColumn(c.id)
+                    setSheet('import')
+                  }}
+                >
+                  🎤
+                </button>
+                {columns.length > MIN_COMPARE_COLUMNS && (
                   <ConfirmButton label="✕" ariaLabel={`Quitar la columna ${c.title}`} confirmMessage="Sus elementos pasan a la primera columna." onConfirm={() => void removeCol(c)} />
                 )}
               </div>
@@ -682,7 +738,7 @@ export function ListDetailScreen({ listId }: { listId: string }) {
               {addButton(c.id)}
             </div>
           ))}
-          {columns.length < 4 && (
+          {columns.length < MAX_COMPARE_COLUMNS && !isProsContras(columns) && (
             <button type="button" className="lists-add lists-add-column" onClick={() => void addCol()}>
               ＋ Columna
             </button>
@@ -724,12 +780,27 @@ export function ListDetailScreen({ listId }: { listId: string }) {
       )}
 
       {sheet === 'privacy' && mine && <PrivacySheet current={list.visibility} onClose={() => setSheet(null)} onPick={(v) => void changeList({ visibility: v }).then(() => setSheet(null))} />}
+      {sheet === 'style' && mine && list.kind === 'ideas' && (
+        <StyleSheet
+          current={itemStyle}
+          onClose={() => setSheet(null)}
+          onPick={(v) => {
+            void changeList({ itemStyle: v }).then(() => setSheet(null))
+          }}
+        />
+      )}
       {sheet === 'import' && (
         <ImportFlow
           current={list}
-          onClose={() => setSheet(null)}
+          startColumnId={importColumn}
+          startAtText={importColumn !== null}
+          onClose={() => {
+            setSheet(null)
+            setImportColumn(null)
+          }}
           onFinished={(targetId) => {
             setSheet(null)
+            setImportColumn(null)
             if (targetId === list.id) void load()
             else navigate(`/listas/${targetId}`)
           }}
@@ -745,6 +816,33 @@ export function ListDetailScreen({ listId }: { listId: string }) {
         />
       )}
       <UndoBar state={undo} onClose={() => setUndo(null)} />
+    </div>
+  )
+}
+
+// «Estilo de lista» (Ideas): solo cambia cómo se ven los elementos; no toca el contenido ni los estados (las casillas ocultas conservan lo marcado).
+function StyleSheet({ current, onPick, onClose }: { current: ListItemStyle; onPick: (v: ListItemStyle) => void; onClose: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-sheet" role="dialog" aria-modal="true" aria-label="Estilo de lista" onClick={(e) => e.stopPropagation()}>
+        <h3>Estilo de lista</h3>
+        <div className="lists-kind-options" role="radiogroup" aria-label="Estilo de lista" data-help-id="listas.estilos">
+          {LIST_ITEM_STYLES.map((o) => (
+            <button key={o.value} type="button" role="radio" aria-checked={current === o.value} className={'lists-kind' + (current === o.value ? ' lists-kind-active' : '')} onClick={() => onPick(o.value)}>
+              <strong>
+                {o.sample ? `${o.sample} ` : ''}
+                {o.label}
+              </strong>
+            </button>
+          ))}
+        </div>
+        <p className="muted">Puedes cambiarlo cuando quieras. No se pierde nada: si ocultas las casillas, lo que habías marcado se conserva.</p>
+        <div className="form-actions">
+          <button type="button" className="link-button" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

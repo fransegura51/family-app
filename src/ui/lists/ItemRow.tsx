@@ -1,5 +1,5 @@
 import { memo, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
-import { RICH_COLORS, parseRich, type ListItem } from '@/domain/lists'
+import { LIST_ITEM_STYLES, RICH_COLORS, parseRich, type ListItem, type ListItemStyle } from '@/domain/lists'
 import { useSwipeDelete } from '@/ui/lists/gestures'
 
 // Un elemento se pinta con elementos de React (b / span con color), nunca con innerHTML.
@@ -18,6 +18,10 @@ export function RichText({ text, rich }: { text: string; rich: string | null }) 
 
 export interface ItemRowProps {
   item: ListItem
+  /** Estilo de los elementos: «casillas» pinta la casilla de completar; los demás, una marca (símbolo o número) sin casilla. */
+  style?: ListItemStyle
+  /** Marca de numeración ya calculada (solo con el estilo de numeración). */
+  numbering?: string
   selectMode: boolean
   selected: boolean
   linkedToShopping: boolean
@@ -36,6 +40,9 @@ export interface ItemRowProps {
 function ItemRowBase(p: ItemRowProps) {
   const { item } = p
   const swipe = useSwipeDelete(!p.selectMode)
+  const style = p.style ?? 'casillas'
+  const withBoxes = style === 'casillas'
+  const mark = style === 'numeracion' ? (p.numbering ?? '') : (LIST_ITEM_STYLES.find((x) => x.value === style)?.sample ?? '')
   return (
     <div
       className={'shopping-row-outer lists-item-outer' + (p.dropMark ? ` lists-drop-${p.dropMark}` : '')}
@@ -51,7 +58,7 @@ function ItemRowBase(p: ItemRowProps) {
         </div>
       )}
       <div
-        className={'price-row shopping-row-inner lists-item' + (item.depth === 1 ? ' lists-item-sub' : '') + (item.done ? ' lists-item-done' : '') + (p.dragging ? ' shopping-item-dragging' : '')}
+        className={'price-row shopping-row-inner lists-item' + (item.depth === 1 ? ' lists-item-sub' : '') + (item.done && withBoxes ? ' lists-item-done' : '') + (p.dragging ? ' shopping-item-dragging' : '')}
         style={{
           transform: p.dragging ? `translateY(${p.dragOffsetY}px)` : swipe.translateX !== 0 ? `translateX(${swipe.translateX}px)` : undefined,
           transition: swipe.moving ? 'none' : undefined,
@@ -71,6 +78,10 @@ function ItemRowBase(p: ItemRowProps) {
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </button>
+        ) : !withBoxes ? (
+          <span className={'lists-mark' + (style === 'numeracion' ? ' lists-mark-num' : '')} aria-hidden="true">
+            {mark}
+          </span>
         ) : (
           <button
             type="button"

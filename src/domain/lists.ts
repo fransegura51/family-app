@@ -41,6 +41,8 @@ export interface UserList {
   folderId: string | null
   sortOrder: number
   sortMode: ListSortMode
+  /** Solo Ideas: estilo de los elementos; null = el predeterminado del formato. */
+  itemStyle?: ListItemStyle | null
   archivedAt: string | null
   createdAt: string
   updatedAt: string
@@ -359,6 +361,7 @@ export function duplicateList(list: UserList, columns: ListColumn[], items: List
       folderId: null,
       sortOrder: list.sortOrder,
       sortMode: list.sortMode,
+      itemStyle: list.itemStyle ?? null,
       archivedAt: null,
     },
     columns: columns.map((c) => ({ id: columnIds.get(c.id)!, title: c.title, sortOrder: c.sortOrder })),
@@ -467,4 +470,82 @@ export function relocateBlock<T extends Relocatable>(items: T[], dragId: string,
     }
     return seen.has(i.columnId) ? i : { ...i, depth: 0 as const }
   })
+}
+
+// ---------------------------------------------------------------------------------------------- personas de un evento (selector de Calendario)
+// A quién pertenece un evento o tarea sale SOLO de sus asignados reales (calendar_event_members); nunca del título ni de la posición.
+// Sin asignados = toda la familia (así lo entiende el Calendario). Si dos personas se llaman igual se numeran para distinguirlas.
+export const WHOLE_FAMILY_LABEL = 'Toda la familia'
+export function eventPeopleLabel(memberIds: string[], members: { id: string; name: string }[]): string {
+  if (memberIds.length === 0) return WHOLE_FAMILY_LABEL
+  const byId = new Map(members.map((m) => [m.id, m]))
+  const sameName = (name: string) => members.filter((m) => normalizeForCompare(m.name) === normalizeForCompare(name))
+  const names = memberIds.flatMap((id) => {
+    const m = byId.get(id)
+    if (!m) return []
+    const twins = sameName(m.name)
+    return [twins.length > 1 ? `${m.name} (${twins.findIndex((t) => t.id === m.id) + 1})` : m.name]
+  })
+  return names.length ? names.join(', ') : ''
+}
+// El buscador del selector encuentra por título Y por nombre de persona.
+export const matchesEventQuery = (title: string, people: string, query: string): boolean => matchesQuery(`${title} ${people}`, query)
+
+// ---------------------------------------------------------------------------------------------- comparativas (modalidad y columnas)
+// Una única clase de lista «Comparativa» con dos modalidades al crearla: pros y contras (dos columnas) o varias opciones (2 a 5, con nombre editable).
+export type CompareMode = 'proscontras' | 'opciones'
+export const MIN_COMPARE_COLUMNS = 2
+export const MAX_COMPARE_COLUMNS = 5
+export const PROS_TITLE = 'Pros'
+export const CONTRAS_TITLE = 'Contras'
+export const clampOptionCount = (n: number): number => Math.min(MAX_COMPARE_COLUMNS, Math.max(MIN_COMPARE_COLUMNS, Math.round(n) || MIN_COMPARE_COLUMNS))
+export function initialColumnTitles(mode: CompareMode, count = 2): string[] {
+  if (mode === 'proscontras') return [PROS_TITLE, CONTRAS_TITLE]
+  return Array.from({ length: clampOptionCount(count) }, (_, n) => `Opción ${n + 1}`)
+}
+// «Pros y contras» = exactamente dos columnas con esos títulos. En esa modalidad no se ofrece «＋ Columna» (no nace una «Opción 3»).
+export const isProsContras = (columns: { title: string }[]): boolean =>
+  columns.length === 2 && normalizeForCompare(columns[0].title) === 'pros' && normalizeForCompare(columns[1].title) === 'contras'
+export function nextOptionTitle(columns: { title: string }[]): string {
+  const used = new Set(columns.map((c) => normalizeForCompare(c.title)))
+  let n = columns.length + 1
+  while (used.has(normalizeForCompare(`Opción ${n}`))) n++
+  return `Opción ${n}`
+}
+
+// ---------------------------------------------------------------------------------------------- estilo de lista (Ideas)
+export type ListItemStyle = 'bombillas' | 'puntos' | 'numeracion' | 'guiones' | 'estrellas' | 'casillas' | 'ninguno'
+export const LIST_ITEM_STYLES: { value: ListItemStyle; label: string; sample: string }[] = [
+  { value: 'bombillas', label: 'Bombillas', sample: '💡' },
+  { value: 'puntos', label: 'Puntos', sample: '•' },
+  { value: 'numeracion', label: 'Numeración automática', sample: '1.' },
+  { value: 'guiones', label: 'Guiones', sample: '—' },
+  { value: 'estrellas', label: 'Estrellas', sample: '⭐' },
+  { value: 'casillas', label: 'Casillas para completar', sample: '☐' },
+  { value: 'ninguno', label: 'Sin símbolo', sample: '' },
+]
+export const isListItemStyle = (v: unknown): v is ListItemStyle => LIST_ITEM_STYLES.some((s) => s.value === v)
+// Tareas y Comparativa no cambian: siempre casillas. Ideas: el estilo elegido o, por defecto, bombillas.
+export function effectiveItemStyle(kind: ListKind, style: ListItemStyle | null): ListItemStyle {
+  if (kind !== 'ideas') return 'casillas'
+  return style ?? 'bombillas'
+}
+// Marcas de numeración: se recalculan SIEMPRE sobre lo que se ve (orden, altas y bajas). Los subelementos se numeran a su manera (1.1, 1.2…)
+// dentro de su elemento, y las columnas de una comparativa empiezan cada una en 1 (quien llama pasa cada grupo por separado).
+export function numberingMarks(items: { depth: 0 | 1 }[]): string[] {
+  let top = 0
+  let sub = 0
+  return items.map((it) => {
+    if (it.depth === 0) {
+      top += 1
+      sub = 0
+      return `${top}.`
+    }
+    sub += 1
+    return `${Math.max(top, 1)}.${sub}`
+  })
+}
+export function itemMark(style: ListItemStyle, numbering: string | undefined): string {
+  if (style === 'numeracion') return numbering ?? ''
+  return LIST_ITEM_STYLES.find((s) => s.value === style)?.sample ?? ''
 }

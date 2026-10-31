@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   createFolder,
-  createList,
+  createListWithColumns,
   deleteFolder,
   deleteList,
   duplicateExistingList,
@@ -15,6 +15,7 @@ import {
 import {
   LIST_KIND_HINTS,
   LIST_KIND_LABELS,
+  initialColumnTitles,
   progressOf,
   searchLists,
   validateFolderName,
@@ -27,6 +28,7 @@ import { emitHelpEvent } from '@/help/tours/helpBus'
 import { useRealtimeRefresh } from '@/state/useRealtimeRefresh'
 import { ConfirmButton } from '@/ui/ConfirmButton'
 import { SectionBreadcrumb } from '@/ui/SectionBreadcrumb'
+import { ComparativaSetup, DEFAULT_COMPARE_SETUP, type CompareSetup } from '@/ui/lists/ComparativaSetup'
 import { useDragSort } from '@/ui/lists/gestures'
 import { ListDetailScreen } from '@/ui/lists/ListDetailScreen'
 import { UndoBar, type UndoState } from '@/ui/lists/UndoBar'
@@ -165,6 +167,7 @@ function ListsHome() {
         data-drop-id={l.id}
         data-drop-kind="list"
         style={dragging ? { transform: `translateY(${drag.offsetY}px)` } : undefined}
+        {...(mine && !query ? drag.rowProps(l.id) : {})}
       >
         {!(mine && !query) && <span className="lists-row-spacer" aria-hidden="true" />}
         {mine && !query && (
@@ -334,9 +337,9 @@ function ListsHome() {
           sheet={sheet}
           data={data}
           onClose={() => setSheet(null)}
-          onCreateList={(title, kind) =>
+          onCreateList={(title, kind, setup) =>
             run(async () => {
-              const l = await createList({ title, kind })
+              const { list: l } = await createListWithColumns({ title, kind }, kind === 'comparativa' ? initialColumnTitles(setup.mode, setup.count) : [])
               emitHelpEvent('lists.list-created') // para los tutoriales «Enséñame»: la lista YA está guardada
               setSheet(null)
               navigate(`/listas/${l.id}`)
@@ -380,13 +383,14 @@ function SheetModal({
   sheet: NonNullable<Sheet>
   data: ListsOverview
   onClose: () => void
-  onCreateList: (title: string, kind: ListKind) => Promise<void>
+  onCreateList: (title: string, kind: ListKind, setup: CompareSetup) => Promise<void>
   onCreateFolder: (name: string) => Promise<void>
   onRenameFolder: (id: string, name: string) => Promise<void>
   onMove: (listId: string, folderId: string | null) => Promise<void>
 }) {
   const [text, setText] = useState(sheet.type === 'renameFolder' ? sheet.folder.name : '')
   const [kind, setKind] = useState<ListKind>('tareas')
+  const [setup, setSetup] = useState<CompareSetup>(DEFAULT_COMPARE_SETUP)
   const [problem, setProblem] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const folderNames = data.folders.filter((f) => sheet.type !== 'renameFolder' || f.id !== sheet.folder.id).map((f) => f.name)
@@ -400,7 +404,7 @@ function SheetModal({
     }
     setBusy(true)
     try {
-      if (sheet.type === 'newList') await onCreateList(text, kind)
+      if (sheet.type === 'newList') await onCreateList(text, kind, setup)
       else if (sheet.type === 'newFolder') await onCreateFolder(text)
       else if (sheet.type === 'renameFolder') await onRenameFolder(sheet.folder.id, text)
     } finally {
@@ -446,7 +450,7 @@ function SheetModal({
               }}
             />
             {sheet.type === 'newList' && (
-              <div className="lists-kind-options" role="radiogroup" aria-label="Tipo de lista">
+              <div className="lists-kind-options" role="radiogroup" aria-label="Tipo de lista" data-help-id="listas.tipo">
                 {(Object.keys(LIST_KIND_LABELS) as ListKind[]).map((k) => (
                   <button key={k} type="button" role="radio" aria-checked={kind === k} className={'lists-kind' + (kind === k ? ' lists-kind-active' : '')} onClick={() => setKind(k)}>
                     <strong>{LIST_KIND_LABELS[k]}</strong>
@@ -455,6 +459,7 @@ function SheetModal({
                 ))}
               </div>
             )}
+            {sheet.type === 'newList' && kind === 'comparativa' && <ComparativaSetup value={setup} onChange={setSetup} />}
             {sheet.type === 'newList' && <p className="muted lists-hint">Será privada: solo tú la verás hasta que decidas compartirla.</p>}
             {problem && <p className="error">{problem}</p>}
             <div className="form-actions">

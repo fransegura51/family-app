@@ -1,6 +1,6 @@
 import type { TourDef } from '@/help/tours/types'
 
-// Mis listas (g11): visita «Conoce Mis listas» y tres tutoriales «Enséñame» (crear y escribir · importar · conectar con Calendario y Compras).
+// Mis listas (g11): visita «Conoce Mis listas» y cinco capítulos «Enséñame» (crear y escribir · comparativas · estilo de Ideas · importar · conectar con Calendario y Compras).
 // Cada control señalado lleva su `data-help-id` en src/ui/lists/*. Ningún paso guarda, envía, comparte ni borra por la persona: los que
 // escriben o guardan son `sensitive` o solo señalan y esperan, y todos se pueden abandonar con «Salir».
 
@@ -31,7 +31,7 @@ export const visitaListas: TourDef = {
     },
     {
       id: 'nueva-carpeta',
-      text: '«Nueva carpeta» sirve para agrupar listas. Arrastra una lista con ⠿ hasta la carpeta para meterla, o usa «Mover a…» en sus tres puntos. Meter una lista en una carpeta no cambia quién la ve.',
+      text: '«Nueva carpeta» sirve para agrupar listas. Arrastra una lista con ⠿ (o mantenla pulsada y arrástrala) hasta la carpeta, o usa «Mover a…» en sus tres puntos. Meter una lista en una carpeta no cambia quién la ve.',
       target: 'listas.nueva-carpeta',
       ...info,
     },
@@ -131,6 +131,13 @@ export const tutListasImportar: TourDef = {
       text: 'Antes de guardar siempre ves una vista previa que puedes corregir; lo que no se leyó con seguridad sale marcado «revisar». Después eliges si añadir a esta lista, sustituir lo que hay, crear una lista nueva o añadir a otra. «Cancelar» no cambia nada. Yo no guardo nada por ti.',
       ...info,
     },
+    {
+      id: 'separar',
+      text: 'Si dictaste varios elementos y salieron juntos, pon el cursor entre ellos y pulsa «Separar aquí»; «Unir con el anterior» los vuelve a juntar. En una comparativa, cada elemento tiene su selector de columna. Solo se ve cuando estás revisando un dictado.',
+      target: 'listas.separar-aqui',
+      ...info,
+      optional: true,
+    },
   ],
   finishText: 'Eso es todo: PEPA solo propone, tú decides qué se guarda y dónde.',
   next: ['listas-crear', 'listas-conectar'],
@@ -183,4 +190,94 @@ export const tutListasConectar: TourDef = {
   next: ['listas-crear', 'listas-importar'],
 }
 
-export const TOURS_LISTAS: TourDef[] = [visitaListas, tutListasCrear, tutListasImportar, tutListasConectar]
+export const tutListasComparativa: TourDef = {
+  id: 'tut-listas-comparativa',
+  module: 'listas',
+  group: 'Crear y escribir',
+  summary: 'Elige si la comparativa es de pros y contras o de varias opciones.',
+  version: 1,
+  title: 'Comparativas: dos columnas o varias opciones',
+  cardId: 'listas-comparativa',
+  durationSec: 90,
+  startPath: '/listas',
+  readyOn: ['listas.nueva-lista'],
+  steps: [
+    {
+      id: 'nueva',
+      text: 'Pulsa «Nueva lista». No se crea nada hasta que pulses «Crear».',
+      target: 'listas.nueva-lista',
+      completeOn: [{ type: 'click', target: 'listas.nueva-lista' }],
+    },
+    {
+      id: 'tipo',
+      text: 'Escribe un título y elige el tipo «Comparativa».',
+      target: 'listas.tipo',
+      completeOn: [{ type: 'appear', target: 'listas.comparativa-modalidad' }],
+    },
+    {
+      id: 'modalidad',
+      text: '«¿Qué quieres comparar?»: «Pros y contras» crea dos columnas, Pros y Contras. «Varias opciones» te pregunta cuántas (de 2 a 5) y crea una columna por opción. Para seguir, pulsa «Siguiente».',
+      target: 'listas.comparativa-modalidad',
+      ...info,
+    },
+    {
+      id: 'crear',
+      text: 'Cuando quieras, pulsa «Crear»: se guarda de verdad y la lista se abre. Si prefieres no crearla, pulsa «Salir».',
+      target: 'listas.crear',
+      completeOn: [{ type: 'event', name: 'lists.list-created' }],
+      sensitive: true,
+    },
+    {
+      id: 'columnas',
+      text: 'Cada columna tiene su nombre, que se edita tocándolo (también después de guardar). En varias opciones puedes añadir columnas (hasta 5) o quitarlas con ✕, y el 🎤 de cada columna dicta directamente en ella. Para terminar, pulsa «Siguiente».',
+      target: 'listas.columnas',
+      ...info,
+    },
+  ],
+  finishText: 'Eso es todo: una comparativa no lleva puntuaciones ni cálculos, solo columnas.',
+  next: ['listas-ideas-estilo', 'listas-importar'],
+}
+
+export const tutListasEstilo: TourDef = {
+  id: 'tut-listas-estilo',
+  module: 'listas',
+  group: 'Crear y escribir',
+  summary: 'Cambia cómo se ven los elementos de una lista de Ideas.',
+  version: 1,
+  title: 'Ideas: elegir el estilo de la lista',
+  cardId: 'listas-ideas-estilo',
+  durationSec: 80,
+  startPath: '/listas',
+  readyOn: ['listas.nueva-lista'],
+  steps: [
+    {
+      id: 'abre-lista',
+      text: 'Abre una lista de Ideas tuya (si no tienes ninguna, crea una eligiendo el tipo «Ideas»). Cuando estés dentro, seguiré.',
+      completeOn: [{ type: 'appear', target: 'listas.menu' }],
+    },
+    {
+      id: 'menu',
+      text: 'Pulsa los tres puntos de la lista.',
+      target: 'listas.menu',
+      completeOn: [{ type: 'click', target: 'listas.menu' }, { type: 'appear', target: 'listas.estilo' }],
+      skipIf: [{ type: 'appear', target: 'listas.estilo' }],
+    },
+    {
+      id: 'estilo',
+      text: 'Pulsa «Estilo de lista…». Solo aparece en listas de Ideas que son tuyas.',
+      target: 'listas.estilo',
+      completeOn: [{ type: 'click', target: 'listas.estilo' }, { type: 'appear', target: 'listas.estilos' }],
+      missingText: 'Esta lista no es de Ideas o no es tuya. Abre una lista de Ideas tuya para ver «Estilo de lista…».',
+    },
+    {
+      id: 'estilos',
+      text: 'Aquí están los siete estilos: bombillas, puntos, numeración automática, guiones, estrellas, casillas para completar o sin símbolo. Elegir uno se aplica y se guarda al momento; puedes cambiarlo cuando quieras y no se pierde nada. Para terminar, pulsa «Siguiente».',
+      target: 'listas.estilos',
+      ...info,
+    },
+  ],
+  finishText: 'Las listas de Tareas siguen con sus casillas; el estilo es solo para Ideas.',
+  next: ['listas-comparativa', 'listas-importar'],
+}
+
+export const TOURS_LISTAS: TourDef[] = [visitaListas, tutListasCrear, tutListasComparativa, tutListasEstilo, tutListasImportar, tutListasConectar]

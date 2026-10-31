@@ -1,9 +1,11 @@
 import { supabase } from '@/data/supabaseClient'
 import {
   duplicateList,
+  isListItemStyle,
   type ListColumn,
   type ListFolder,
   type ListItem,
+  type ListItemStyle,
   type ListKind,
   type ListSortMode,
   type ListVisibility,
@@ -20,7 +22,7 @@ async function currentFamilyId(): Promise<string> {
   return data.family_id
 }
 
-const LIST_COLS = 'id, family_id, created_by, title, kind, visibility, folder_id, sort_order, sort_mode, archived_at, created_at, updated_at'
+const LIST_COLS = 'id, family_id, created_by, title, kind, visibility, folder_id, sort_order, sort_mode, item_style, archived_at, created_at, updated_at'
 const ITEM_COLS = 'id, list_id, family_id, depth, text, rich, done, done_at, sort_order, column_id, created_at, updated_at'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -34,6 +36,7 @@ const toList = (r: any): UserList => ({
   folderId: r.folder_id,
   sortOrder: Number(r.sort_order),
   sortMode: r.sort_mode as ListSortMode,
+  itemStyle: isListItemStyle(r.item_style) ? r.item_style : null,
   archivedAt: r.archived_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -128,12 +131,27 @@ export async function createList(input: { title: string; kind: ListKind; folderI
   return toList(data)
 }
 
+// Lista nueva con sus columnas (comparativa) de una vez; si las columnas no se pueden crear, no se deja una lista a medias.
+export async function createListWithColumns(input: { title: string; kind: ListKind; folderId?: string | null; visibility?: ListVisibility }, columnTitles: string[]): Promise<{ list: UserList; columns: ListColumn[] }> {
+  const list = await createList(input)
+  if (columnTitles.length === 0) return { list, columns: [] }
+  let columns: ListColumn[]
+  try {
+    columns = await addColumns(list.id, columnTitles)
+  } catch (e) {
+    await supabase.from('user_lists').delete().eq('id', list.id)
+    throw e
+  }
+  return { list, columns }
+}
+
 export interface ListPatch {
   title?: string
   kind?: ListKind
   visibility?: ListVisibility
   folderId?: string | null
   sortMode?: ListSortMode
+  itemStyle?: ListItemStyle | null
   archivedAt?: string | null
 }
 export async function updateList(id: string, patch: ListPatch): Promise<void> {
@@ -143,6 +161,7 @@ export async function updateList(id: string, patch: ListPatch): Promise<void> {
   if (patch.visibility !== undefined) row.visibility = patch.visibility
   if (patch.folderId !== undefined) row.folder_id = patch.folderId
   if (patch.sortMode !== undefined) row.sort_mode = patch.sortMode
+  if (patch.itemStyle !== undefined) row.item_style = patch.itemStyle
   if (patch.archivedAt !== undefined) row.archived_at = patch.archivedAt
   const { error } = await supabase.from('user_lists').update(row).eq('id', id)
   if (error) throw error
@@ -176,6 +195,7 @@ export async function duplicateExistingList(listId: string): Promise<string> {
     visibility: 'privada',
     folder_id: null,
     sort_mode: copy.list.sortMode,
+    item_style: copy.list.itemStyle ?? null,
   })
   if (error) throw error
   try {
@@ -282,8 +302,8 @@ export async function saveItemPlacements(items: ItemPlacement[]): Promise<void> 
   if (failed?.error) throw failed.error
 }
 
-export async function replaceListItems(listId: string, items: { text: string; rich?: string | null; depth?: 0 | 1 }[]): Promise<number> {
-  const { data, error } = await supabase.rpc('replace_list_items', { p_list: listId, p_items: items.map((i) => ({ text: i.text, rich: i.rich ?? '', depth: i.depth ?? 0 })) })
+export async function replaceListItems(listId: string, items: { text: string; rich?: string | null; depth?: 0 | 1; columnId?: string | null }[]): Promise<number> {
+  const { data, error } = await supabase.rpc('replace_list_items', { p_list: listId, p_items: items.map((i) => ({ text: i.text, rich: i.rich ?? '', depth: i.depth ?? 0, ...(i.columnId ? { column_id: i.columnId } : {}) })) })
   if (error) throw error
   return Number(data)
 }
@@ -293,6 +313,12 @@ export async function addColumn(listId: string, title: string, sortOrder: number
   const { data, error } = await supabase.from('list_columns').insert({ list_id: listId, title, sort_order: sortOrder }).select('id, list_id, title, sort_order').single()
   if (error) throw error
   return toColumn(data)
+}
+// Crea varias columnas de una vez (comparativa nueva): una sola escritura, así no queda a medias.
+export async function addColumns(listId: string, titles: string[]): Promise<ListColumn[]> {
+  const { data, error } = await supabase.from('list_columns').insert(titles.map((title, n) => ({ list_id: listId, title, sort_order: n }))).select('id, list_id, title, sort_order').order('sort_order')
+  if (error) throw error
+  return data.map(toColumn)
 }
 export async function renameColumn(id: string, title: string): Promise<void> {
   const { error } = await supabase.from('list_columns').update({ title }).eq('id', id)
